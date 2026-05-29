@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AuthRepository
+import uz.distributor.crm.data.repository.PushRepository
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -21,6 +22,7 @@ data class LoginUiState(
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val pushRepository: PushRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -34,6 +36,7 @@ class LoginViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 authRepository.login(_uiState.value.username, _uiState.value.password)
+                runCatching { pushRepository.registerCurrentToken() }
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
             } catch (e: Exception) {
                 _uiState.update {

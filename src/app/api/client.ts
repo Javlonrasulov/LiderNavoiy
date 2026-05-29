@@ -131,6 +131,35 @@ export const api = {
 
   // ─── Health ───
   health: () => request<{ status: string }>('/health'),
+
+  // ─── Notifications (Push) ───
+  getNotifications: () =>
+    request<Array<{
+      id: string;
+      title: string;
+      body: string;
+      type: string;
+      isRead: boolean;
+      createdAt: string;
+    }>>('/notifications'),
+
+  sendPush: (body: {
+    userId?: string;
+    distributorId?: string;
+    title: string;
+    body: string;
+    type?: string;
+  }) =>
+    request<{ sent: boolean; messageId?: string; error?: string }>('/notifications/send', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  broadcastPush: (body: { title: string; body: string; companyId?: string; type?: string }) =>
+    request<{ sent: number; failed?: number; total?: number }>('/notifications/broadcast', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 };
 
 // ─── WebSocket tracking ───

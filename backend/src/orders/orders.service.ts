@@ -4,12 +4,23 @@ import { Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto } from './dto/order.dto';
 import { OrderStatus } from '../common/enums';
+import { NotificationsService } from '../notifications/notifications.service';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { Client } from '../clients/entities/client.entity';
+import { User } from '../auth/entities/user.entity';
 
 @Injectable()
 export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly repo: Repository<Order>,
+    @InjectRepository(DistributorProfile)
+    private readonly profileRepo: Repository<DistributorProfile>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(distributorId: string, dto: CreateOrderDto, offline = false) {
@@ -24,7 +35,31 @@ export class OrdersService {
       isOfflineCreated: offline,
       offlineId: dto.offlineId ?? null,
     });
-    return this.repo.save(order);
+    const saved = await this.repo.save(order);
+
+    // Push notification to admins
+    this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount).catch(() => {});
+
+    return saved;
+  }
+
+  private async notifyAdminsAsync(
+    distributorId: string,
+    clientId: string,
+    totalAmount: number,
+  ) {
+    const profile = await this.profileRepo.findOne({ where: { id: distributorId } });
+    let agentName = 'Agent';
+    if (profile?.userId) {
+      const user = await this.userRepo.findOne({ where: { id: profile.userId } });
+      agentName = user?.fullName ?? agentName;
+    }
+    const client = await this.clientRepo.findOne({ where: { id: clientId } });
+    await this.notifications.notifyAdminsNewOrder(
+      agentName,
+      totalAmount,
+      client?.name,
+    );
   }
 
   async syncBatch(distributorId: string, orders: CreateOrderDto[]) {
