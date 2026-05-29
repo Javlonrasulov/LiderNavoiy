@@ -4,11 +4,10 @@
 
 ```
 Lider Navoiy/
-├── src/                    Admin Panel (React + Vite) — TAYYOR
+├── src/                    Admin Panel (React + Vite) — faqat admin
 ├── src/app/api/client.ts   Admin ↔ Backend API ulanish
 ├── backend/                NestJS API — TAYYOR
 ├── android-app/            Kotlin Android Agent — TAYYOR
-└── agent-app/_legacy-src/  Eski web agent (referens)
 ```
 
 ---

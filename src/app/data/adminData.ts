@@ -2,11 +2,11 @@
 
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
 import type React from 'react';
-import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, Bell } from 'lucide-react';
 import GarageIcon from '../components/GarageIcon';
 
 // ─── TYPES ───
-export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'prodaji' | 'ombor';
+export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'prodaji' | 'ombor' | 'push';
 
 export type NavChild = { id: Tab; key: string; icon: React.ComponentType<any> };
 export type NavEntry =
@@ -100,6 +100,7 @@ export const NAV_ITEMS_BASE: NavEntry[] = [
   { id: 'reports'   as Tab, key: 'navReports',   icon: BarChart3 },
   { id: 'zatrati'    as Tab, key: 'navZatrati',    icon: TrendingDown },
   { id: 'postavchik' as Tab, key: 'navPostavchik', icon: Truck },
+  { id: 'push'       as Tab, key: 'navPush',       icon: Bell },
   { id: 'tarozi'     as Tab, key: 'navTarozi',     icon: Scale, subKey: 'navTaroziSub', hideInSidebar: true },
   { id: 'prodaji'    as Tab, key: 'navProdaji',    icon: ClipboardList, hideInSidebar: true },
   { id: 'ombor'      as Tab, key: 'navOmbor',      icon: GarageIcon, hideInSidebar: true },
@@ -118,6 +119,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     navXodimlar: 'Xodimlar', navAgents: 'Agentlar', navSotrudniki: 'Xodimlar ro\'yxati',
     navClients: 'Mijozlar', navLiniya: 'Liniya',
     navReports: 'Hisobotlar', navZatrati: 'Xarajatlar', navPostavchik: 'Yetkazib beruvchilar',
+    navPush: 'Push xabar',
     navTarozi: 'Tarozi', navTaroziSub: '(sklad)',
     navProdaji: 'Sotuvlar',
     navOmbor: 'Ombor',
@@ -535,6 +537,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     navXodimlar: 'Ходимлар', navAgents: 'Агентлар', navSotrudniki: 'Ходимлар рўйхати',
     navClients: 'Мижозлар', navLiniya: 'Линия',
     navReports: 'Ҳисоботлар', navZatrati: 'Харажатлар', navPostavchik: 'Таъминотчилар',
+    navPush: 'Push хabar',
     navTarozi: 'Тарози', navTaroziSub: '(склад)',
     navProdaji: 'Сотувлар',
     navOmbor: 'Омбор',
@@ -952,6 +955,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     navXodimlar: 'Сотрудники', navAgents: 'Агенты', navSotrudniki: 'Список сотрудников',
     navClients: 'Клиенты', navLiniya: 'Линии',
     navReports: 'Отчёты', navZatrati: 'Затраты', navPostavchik: 'Поставщики',
+    navPush: 'Push уведомления',
     navTarozi: 'Весы', navTaroziSub: '(склад)',
     navProdaji: 'Продажи',
     navOmbor: 'Склад',
