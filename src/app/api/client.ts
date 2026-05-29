@@ -1,0 +1,152 @@
+/**
+ * Backend API client for Admin Panel
+ * Set VITE_API_URL in .env (default: http://localhost:3000/api/v1)
+ */
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const WS_BASE = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: {
+    id: string;
+    username: string;
+    fullName: string;
+    role: string;
+    distributorId?: string;
+    companyName?: string;
+  };
+}
+
+export interface Distributor {
+  id: string;
+  userId: string;
+  companyId: string | null;
+  companyName: string | null;
+  lineCode: string | null;
+  phone: string | null;
+  status: string;
+  lastLatitude: number | null;
+  lastLongitude: number | null;
+  lastLocationAt: string | null;
+  isOnline: boolean;
+  user?: { fullName: string; username: string };
+}
+
+export interface LocationPoint {
+  latitude: number;
+  longitude: number;
+  speed?: number;
+  accuracy?: number;
+  recordedAt: string;
+}
+
+export interface Client {
+  id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  balance: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+function getToken(): string | null {
+  return localStorage.getItem('api_access_token');
+}
+
+export function setTokens(access: string, refresh: string) {
+  localStorage.setItem('api_access_token', access);
+  localStorage.setItem('api_refresh_token', refresh);
+}
+
+export function clearTokens() {
+  localStorage.removeItem('api_access_token');
+  localStorage.removeItem('api_refresh_token');
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ─── Auth ───
+export const api = {
+  login: (username: string, password: string) =>
+    request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+
+  // ─── Distributors ───
+  getDistributors: (companyId?: string) =>
+    request<Distributor[]>(`/distributors${companyId ? `?companyId=${companyId}` : ''}`),
+
+  getOnlineDistributors: () => request<string[]>('/distributors/online'),
+
+  updateDistributorStatus: (id: string, status: string) =>
+    request<Distributor>(`/distributors/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // ─── GPS ───
+  getLastLocation: (distributorId: string) =>
+    request<LocationPoint>(`/gps/location/last`),
+
+  getRouteHistory: (distributorId: string, date?: string) =>
+    request<{ points: LocationPoint[]; pointCount: number }>(
+      `/gps/route/${distributorId}${date ? `?date=${date}` : ''}`,
+    ),
+
+  getDailyRoute: (distributorId: string, date: string) =>
+    request<{ points: LocationPoint[]; stats: Record<string, number> }>(
+      `/routes/${distributorId}/daily?date=${date}`,
+    ),
+
+  getNearbyClients: (lat: number, lng: number, radius = 500) =>
+    request<Client[]>(`/gps/nearby-clients?latitude=${lat}&longitude=${lng}&radiusMeters=${radius}`),
+
+  // ─── Clients ───
+  getClients: (companyId?: string) =>
+    request<Client[]>(`/clients${companyId ? `?companyId=${companyId}` : ''}`),
+
+  searchClients: (q: string) => request<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`),
+
+  // ─── Health ───
+  health: () => request<{ status: string }>('/health'),
+};
+
+// ─── WebSocket tracking ───
+export function connectTracking(onLocation: (data: LocationPoint & { distributorId: string }) => void) {
+  const token = getToken();
+  if (!token) return null;
+
+  // Dynamic import to avoid bundling issues when socket.io not needed
+  import('socket.io-client').then(({ io }) => {
+    const socket = io(`${WS_BASE}/tracking`, { auth: { token } });
+    socket.on('location:live', onLocation);
+    socket.on('distributor:online', (d) => console.log('Online:', d));
+    socket.on('distributor:offline', (d) => console.log('Offline:', d));
+    return socket;
+  });
+  return null;
+}
+
+export { API_BASE, WS_BASE };

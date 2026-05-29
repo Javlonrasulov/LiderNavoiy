@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test
+coverage/
+
+# Docker
+postgres_data/
+
+# Android
+.gradle/
+local.properties
+*.apk
+*.aab
+*.iml
+.cxx/
+captures/
+.externalNativeBuild/
