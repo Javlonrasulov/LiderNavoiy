@@ -1,0 +1,82 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { UserRole } from '../../common/enums';
+
+export class CreateAppUserDto {
+  @ApiProperty({ example: 'javlon' })
+  @IsString()
+  @MinLength(2)
+  username: string;
+
+  @ApiProperty({ example: 'parol123' })
+  @IsString()
+  @MinLength(4)
+  password: string;
+
+  @ApiProperty({ example: 'Javlonbek Abdurasulov' })
+  @IsString()
+  @MinLength(2)
+  fullName: string;
+
+  @ApiPropertyOptional({ enum: UserRole, default: UserRole.DISTRIBUTOR })
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
+
+  @ApiPropertyOptional({ example: 'OOO "BORAN LEADERS"' })
+  @IsOptional()
+  @IsString()
+  companyName?: string;
+
+  @ApiPropertyOptional({ example: 'boran' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateAppUserDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  username?: string;
+
+  @ApiPropertyOptional({ description: 'Leave empty to keep current password' })
+  @IsOptional()
+  @IsString()
+  @MinLength(4)
+  password?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @ApiPropertyOptional({ enum: UserRole })
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  companyName?: string;
+}
+
+export class AppUserResponseDto {
+  id: string;
+  username: string;
+  fullName: string;
+  role: UserRole;
+  isActive: boolean;
+}

@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.remote.ApiService
+import uz.distributor.crm.data.remote.TrackingSocketManager
+import uz.distributor.crm.data.remote.MessagesSocketManager
 import uz.distributor.crm.data.remote.dto.LoginRequest
 import uz.distributor.crm.domain.model.AuthTokens
 import uz.distributor.crm.domain.model.AuthUser
@@ -25,6 +27,8 @@ class AuthRepository @Inject constructor(
     private val api: ApiService,
     private val gson: Gson,
     private val tokenHolder: TokenHolder,
+    private val trackingSocket: TrackingSocketManager,
+    private val messagesSocket: MessagesSocketManager,
 ) {
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
@@ -55,10 +59,16 @@ class AuthRepository @Inject constructor(
         val prefs = context.dataStore.data.first()
         val token = prefs[accessTokenKey]
         tokenHolder.setToken(token)
+        if (token != null) {
+            trackingSocket.connect()
+            messagesSocket.connect()
+        }
         return token != null
     }
 
     suspend fun logout() {
+        trackingSocket.disconnect()
+        messagesSocket.disconnect()
         tokenHolder.setToken(null)
         context.dataStore.edit { it.clear() }
     }
@@ -69,6 +79,8 @@ class AuthRepository @Inject constructor(
 
     private suspend fun saveTokens(tokens: AuthTokens) {
         tokenHolder.setToken(tokens.accessToken)
+        trackingSocket.connect()
+        messagesSocket.connect()
         context.dataStore.edit { prefs ->
             prefs[accessTokenKey] = tokens.accessToken
             prefs[refreshTokenKey] = tokens.refreshToken

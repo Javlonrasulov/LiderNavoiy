@@ -1,5 +1,7 @@
 package uz.distributor.crm.data.remote.dto
 
+import com.google.gson.annotations.JsonAdapter
+
 data class LoginRequest(val username: String, val password: String)
 
 data class AuthResponseDto(
@@ -49,7 +51,7 @@ data class ClientDto(
     val code: String,
     val name: String,
     val address: String?,
-    val balance: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
     val latitude: Double?,
     val longitude: Double?,
 )
@@ -60,9 +62,9 @@ data class ProductDto(
     val name: String,
     val category: String?,
     val brand: String?,
-    val price: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val price: Double = 0.0,
     val unit: String,
-    val stockBalance: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val stockBalance: Double = 0.0,
 )
 
 data class OrderItemDto(
@@ -91,3 +93,73 @@ data class CreateVisitRequest(
 
 data class BatchVisitsRequest(val visits: List<CreateVisitRequest>)
 data class BatchOrdersRequest(val orders: List<CreateOrderRequest>)
+
+data class ChatContactDto(
+    val id: String,
+    val fullName: String,
+    val role: String,
+    val username: String,
+)
+
+data class LastMessageDto(
+    val id: String,
+    val text: String,
+    val senderId: String,
+    val createdAt: String,
+    val isRead: Boolean,
+    val messageType: String = "text",
+    val fileName: String? = null,
+)
+
+data class ConversationDto(
+    val id: String,
+    val otherUser: ChatContactDto,
+    val lastMessage: LastMessageDto?,
+    val unreadCount: Int,
+    val updatedAt: String,
+)
+
+data class ChatMessageDto(
+    val id: String,
+    val conversationId: String,
+    val senderId: String,
+    val text: String,
+    val isRead: Boolean,
+    val createdAt: String,
+    val messageType: String = "text",
+    val fileUrl: String? = null,
+    val fileName: String? = null,
+    val fileMime: String? = null,
+    @JsonAdapter(FlexibleIntAdapter::class)
+    val fileSize: Int? = null,
+)
+
+data class MessageAttachmentRequest(
+    val url: String,
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Int,
+    val messageType: String,
+)
+
+data class SendMessageRequest(
+    val text: String = "",
+    val attachment: MessageAttachmentRequest? = null,
+)
+
+data class DeleteMessagesRequest(
+    val messageIds: List<String>,
+    val forEveryone: Boolean = false,
+)
+
+data class DeleteMessagesResponse(val deleted: List<String>)
+
+data class UploadResponseDto(
+    val url: String,
+    val fullUrl: String,
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Int,
+    val messageType: String,
+)
+data class StartConversationRequest(val userId: String)

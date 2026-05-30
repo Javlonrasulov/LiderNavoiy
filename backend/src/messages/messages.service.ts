@@ -1,0 +1,384 @@
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
+import { Conversation } from './entities/conversation.entity';
+import { ChatMessage } from './entities/chat-message.entity';
+import { MessageDeletion } from './entities/message-deletion.entity';
+import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
+
+export interface ChatUserDto {
+  id: string;
+  fullName: string;
+  role: string;
+  username: string;
+}
+
+export interface LastMessageDto {
+  id: string;
+  text: string;
+  senderId: string;
+  createdAt: string;
+  isRead: boolean;
+  messageType: string;
+  fileName: string | null;
+}
+
+export interface MessageAttachmentDto {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  messageType: 'image' | 'document';
+}
+
+export interface MessageDto {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  text: string;
+  isRead: boolean;
+  createdAt: string;
+  messageType: string;
+  fileUrl: string | null;
+  fileName: string | null;
+  fileMime: string | null;
+  fileSize: number | null;
+}
+
+export interface ConversationDto {
+  id: string;
+  otherUser: ChatUserDto;
+  lastMessage: LastMessageDto | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+@Injectable()
+export class MessagesService {
+  constructor(
+    @InjectRepository(Conversation)
+    private readonly convRepo: Repository<Conversation>,
+    @InjectRepository(ChatMessage)
+    private readonly msgRepo: Repository<ChatMessage>,
+    @InjectRepository(MessageDeletion)
+    private readonly deletionRepo: Repository<MessageDeletion>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly notifications: NotificationsService,
+  ) {}
+
+  private pairIds(a: string, b: string): [string, string] {
+    return a < b ? [a, b] : [b, a];
+  }
+
+  private toUserDto(user: User): ChatUserDto {
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      role: user.role,
+      username: user.username,
+    };
+  }
+
+  private async assertParticipant(conversationId: string, userId: string) {
+    const conv = await this.convRepo.findOne({ where: { id: conversationId } });
+    if (!conv) throw new NotFoundException('Conversation not found');
+    if (conv.userLowId !== userId && conv.userHighId !== userId) {
+      throw new ForbiddenException('Not a participant');
+    }
+    return conv;
+  }
+
+  async getContacts(userId: string, companyId?: string): Promise<ChatUserDto[]> {
+    const me = await this.userRepo.findOne({ where: { id: userId } });
+    if (!me) throw new NotFoundException('User not found');
+
+    if (me.role === UserRole.DISTRIBUTOR) {
+      const users = await this.userRepo.find({
+        where: { role: In([UserRole.ADMIN, UserRole.MANAGER]), isActive: true },
+        order: { fullName: 'ASC' },
+      });
+      return users.map((u) => this.toUserDto(u));
+    }
+
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .leftJoinAndSelect('u.distributorProfile', 'p')
+      .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
+      .andWhere('u.isActive = true');
+
+    if (companyId) {
+      qb.andWhere('p.companyId = :companyId', { companyId });
+    }
+
+    const users = await qb.orderBy('u.fullName', 'ASC').getMany();
+    return users.map((u) => this.toUserDto(u));
+  }
+
+  async findOrCreateConversation(userId: string, otherUserId: string): Promise<ConversationDto> {
+    if (userId === otherUserId) {
+      throw new BadRequestException('Cannot chat with yourself');
+    }
+
+    const other = await this.userRepo.findOne({ where: { id: otherUserId, isActive: true } });
+    if (!other) throw new NotFoundException('User not found');
+
+    const [low, high] = this.pairIds(userId, otherUserId);
+    let conv = await this.convRepo.findOne({ where: { userLowId: low, userHighId: high } });
+
+    if (!conv) {
+      conv = await this.convRepo.save(
+        this.convRepo.create({ userLowId: low, userHighId: high }),
+      );
+    }
+
+    return this.toConversationDto(conv, userId);
+  }
+
+  async getConversations(userId: string): Promise<ConversationDto[]> {
+    const convs = await this.convRepo.find({
+      where: [{ userLowId: userId }, { userHighId: userId }],
+      order: { updatedAt: 'DESC' },
+    });
+
+    return Promise.all(convs.map((c) => this.toConversationDto(c, userId)));
+  }
+
+  async getConversationForUser(
+    conversationId: string,
+    userId: string,
+  ): Promise<ConversationDto | null> {
+    try {
+      const conv = await this.assertParticipant(conversationId, userId);
+      return this.toConversationDto(conv, userId);
+    } catch {
+      return null;
+    }
+  }
+
+  async getMessages(
+    conversationId: string,
+    userId: string,
+    limit = 50,
+    before?: string,
+  ): Promise<MessageDto[]> {
+    await this.assertParticipant(conversationId, userId);
+
+    const qb = this.msgRepo
+      .createQueryBuilder('m')
+      .leftJoin(
+        MessageDeletion,
+        'md',
+        'md.messageId = m.id AND md.userId = :userId',
+        { userId },
+      )
+      .where('m.conversationId = :conversationId', { conversationId })
+      .andWhere('m.isDeletedForAll = :allFalse', { allFalse: false })
+      .andWhere('md.id IS NULL')
+      .orderBy('m.createdAt', 'DESC')
+      .take(Math.min(limit, 100));
+
+    if (before) {
+      const cursor = await this.msgRepo.findOne({ where: { id: before } });
+      if (cursor) {
+        qb.andWhere('m.createdAt < :createdAt', { createdAt: cursor.createdAt });
+      }
+    }
+
+    const rows = await qb.getMany();
+    return rows.reverse().map((m) => this.toMessageDto(m));
+  }
+
+  async sendMessage(
+    conversationId: string,
+    senderId: string,
+    text?: string,
+    attachment?: MessageAttachmentDto,
+    skipPush = false,
+  ): Promise<MessageDto> {
+    const conv = await this.assertParticipant(conversationId, senderId);
+    const trimmed = (text ?? '').trim();
+
+    if (!trimmed && !attachment) {
+      throw new BadRequestException('Message text or attachment is required');
+    }
+
+    const messageType = attachment?.messageType ?? 'text';
+
+    const msg = await this.msgRepo.save(
+      this.msgRepo.create({
+        conversationId,
+        senderId,
+        text: trimmed,
+        messageType,
+        fileUrl: attachment?.url ?? null,
+        fileName: attachment?.fileName ?? null,
+        fileMime: attachment?.mimeType ?? null,
+        fileSize: attachment?.fileSize ?? null,
+        isRead: false,
+      }),
+    );
+
+    conv.updatedAt = new Date();
+    await this.convRepo.save(conv);
+
+    const recipientId = conv.userLowId === senderId ? conv.userHighId : conv.userLowId;
+
+    if (!skipPush) {
+      const sender = await this.userRepo.findOne({ where: { id: senderId } });
+      const preview = trimmed
+        || (messageType === 'image' ? '📷 Rasm' : `📎 ${attachment?.fileName ?? 'Fayl'}`);
+      await this.notifications.sendToUser(
+        recipientId,
+        sender?.fullName ?? 'Yangi xabar',
+        preview.length > 80 ? preview.slice(0, 80) + '…' : preview,
+        NotificationType.MESSAGE,
+        { conversationId, messageId: msg.id, type: 'message' },
+      );
+    }
+
+    return this.toMessageDto(msg);
+  }
+
+  async markRead(conversationId: string, userId: string): Promise<{ updated: number }> {
+    await this.assertParticipant(conversationId, userId);
+
+    const res = await this.msgRepo
+      .createQueryBuilder()
+      .update(ChatMessage)
+      .set({ isRead: true })
+      .where('conversationId = :conversationId', { conversationId })
+      .andWhere('senderId != :userId', { userId })
+      .andWhere('isRead = false')
+      .execute();
+
+    return { updated: res.affected ?? 0 };
+  }
+
+  async deleteMessages(
+    conversationId: string,
+    userId: string,
+    messageIds: string[],
+    forEveryone: boolean,
+  ): Promise<{ deleted: string[] }> {
+    if (!messageIds.length) {
+      throw new BadRequestException('No messages selected');
+    }
+
+    await this.assertParticipant(conversationId, userId);
+
+    const msgs = await this.msgRepo.find({
+      where: { conversationId, id: In(messageIds) },
+    });
+
+    const deleted: string[] = [];
+
+    for (const msg of msgs) {
+      if (forEveryone && msg.senderId === userId) {
+        msg.isDeletedForAll = true;
+        await this.msgRepo.save(msg);
+        deleted.push(msg.id);
+        continue;
+      }
+
+      const exists = await this.deletionRepo.findOne({
+        where: { messageId: msg.id, userId },
+      });
+      if (!exists) {
+        await this.deletionRepo.save(
+          this.deletionRepo.create({ messageId: msg.id, userId }),
+        );
+      }
+      deleted.push(msg.id);
+    }
+
+    return { deleted };
+  }
+
+  private async getLastVisibleMessage(
+    conversationId: string,
+    viewerId: string,
+  ): Promise<ChatMessage | null> {
+    return this.msgRepo
+      .createQueryBuilder('m')
+      .leftJoin(
+        MessageDeletion,
+        'md',
+        'md.messageId = m.id AND md.userId = :viewerId',
+        { viewerId },
+      )
+      .where('m.conversationId = :conversationId', { conversationId })
+      .andWhere('m.isDeletedForAll = :allFalse', { allFalse: false })
+      .andWhere('md.id IS NULL')
+      .orderBy('m.createdAt', 'DESC')
+      .getOne();
+  }
+
+  private async toConversationDto(conv: Conversation, viewerId: string): Promise<ConversationDto> {
+    const otherId = conv.userLowId === viewerId ? conv.userHighId : conv.userLowId;
+    const other = await this.userRepo.findOne({ where: { id: otherId } });
+
+    const last = await this.getLastVisibleMessage(conv.id, viewerId);
+
+    const unreadCount = await this.msgRepo.count({
+      where: {
+        conversationId: conv.id,
+        isRead: false,
+        senderId: otherId,
+      },
+    });
+
+    return {
+      id: conv.id,
+      otherUser: other
+        ? this.toUserDto(other)
+        : { id: otherId, fullName: 'Noma\'lum', role: 'unknown', username: '' },
+      lastMessage: last ? this.toLastMessageDto(last) : null,
+      unreadCount,
+      updatedAt: conv.updatedAt.toISOString(),
+    };
+  }
+
+  private toMessageDto(m: ChatMessage): MessageDto {
+    return {
+      id: m.id,
+      conversationId: m.conversationId,
+      senderId: m.senderId,
+      text: m.text,
+      isRead: m.isRead,
+      createdAt: m.createdAt.toISOString(),
+      messageType: m.messageType ?? 'text',
+      fileUrl: m.fileUrl,
+      fileName: m.fileName,
+      fileMime: m.fileMime,
+      fileSize: m.fileSize,
+    };
+  }
+
+  private previewText(m: ChatMessage): string {
+    if (m.text) return m.text;
+    if (m.messageType === 'image') return '📷 Rasm';
+    if (m.messageType === 'document') return `📎 ${m.fileName ?? 'Fayl'}`;
+    return '';
+  }
+
+  private toLastMessageDto(m: ChatMessage): LastMessageDto {
+    return {
+      id: m.id,
+      text: this.previewText(m),
+      senderId: m.senderId,
+      createdAt: m.createdAt.toISOString(),
+      isRead: m.isRead,
+      messageType: m.messageType ?? 'text',
+      fileName: m.fileName,
+    };
+  }
+}

@@ -1,5 +1,6 @@
 package uz.distributor.crm.data.remote
 
+import okhttp3.MultipartBody
 import retrofit2.http.*
 import uz.distributor.crm.data.remote.dto.*
 
@@ -58,4 +59,38 @@ interface ApiService {
 
     @POST("notifications/fcm-token")
     suspend fun registerFcmToken(@Body body: Map<String, String>)
+
+    @GET("messages/contacts")
+    suspend fun getChatContacts(@Query("companyId") companyId: String? = null): List<ChatContactDto>
+
+    @GET("messages/conversations")
+    suspend fun getConversations(): List<ConversationDto>
+
+    @POST("messages/conversations")
+    suspend fun startConversation(@Body body: StartConversationRequest): ConversationDto
+
+    @GET("messages/conversations/{id}/messages")
+    suspend fun getChatMessages(
+        @Path("id") conversationId: String,
+        @Query("limit") limit: Int = 50,
+    ): List<ChatMessageDto>
+
+    @POST("messages/conversations/{id}/messages")
+    suspend fun sendChatMessage(
+        @Path("id") conversationId: String,
+        @Body body: SendMessageRequest,
+    ): ChatMessageDto
+
+    @Multipart
+    @POST("messages/upload")
+    suspend fun uploadChatFile(@Part file: MultipartBody.Part): UploadResponseDto
+
+    @PATCH("messages/conversations/{id}/read")
+    suspend fun markConversationRead(@Path("id") conversationId: String): Map<String, Int>
+
+    @POST("messages/conversations/{id}/messages/delete")
+    suspend fun deleteChatMessages(
+        @Path("id") conversationId: String,
+        @Body body: DeleteMessagesRequest,
+    ): DeleteMessagesResponse
 }

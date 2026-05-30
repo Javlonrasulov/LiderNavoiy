@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react';
-import { X, Save, Trash2, ChevronDown, Search, Check, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
+import { X, Save, Trash2, ChevronDown, Check, ChevronRight } from 'lucide-react';
+import {
+  USER_ROLE_CANONICAL,
+  translateUserRole,
+  userStatusOpenLabel,
+  userStatusClosedLabel,
+} from '../../../data/adminData';
 
 /* ═══════════ Types ═══════════ */
 type ModalTab = 'asosiy' | 'boglanish' | 'ontrade' | 'opsiya';
@@ -39,20 +46,42 @@ interface FormData {
   perms: Record<string, string>;
 }
 
+export type UserFormData = FormData;
+
 interface Props {
   D: boolean;
+  t: Record<string, string>;
   user: UserFormRow | null; // null = new user
   onClose: () => void;
   onSave: (data: FormData) => void;
   onDelete?: (id: number) => void;
 }
 
+function tr(t: Record<string, string>, key: string, fallback: string) {
+  return t[key] || fallback;
+}
+
+function trOpt(t: Record<string, string>, opt: string): string {
+  const map: Record<string, string> = {
+    Bevosita: tr(t, 'userOptDirect', 'Bevosita'),
+    Tasdiqlash: tr(t, 'userOptConfirm', 'Tasdiqlash'),
+    Ruxsat: tr(t, 'userOptAllowed', 'Ruxsat'),
+    Taqiqlangan: tr(t, 'userOptForbidden', 'Taqiqlangan'),
+    'Talab qilinadi': tr(t, 'userOptRequired', 'Talab qilinadi'),
+    'Talab qilinmaydi': tr(t, 'userOptNotRequired', 'Talab qilinmaydi'),
+  };
+  return map[opt] || opt;
+}
+
+function grafikList(t: Record<string, string>) {
+  return [
+    tr(t, 'userGrafikRegion', 'Hudud'),
+    tr(t, 'userGrafikDirection', "Yo'nalish"),
+    tr(t, 'userGrafikNone', 'Hisoblanmaydi'),
+  ];
+}
+
 /* ═══════════ Constants ═══════════ */
-const ROLES = [
-  'Savdo agenti', 'Dostavkachi/Shofyor', 'Ofis xodimi', 'Menedjer',
-];
-const STATUS_LIST = ['Kirish ochiq', 'Kirish yopiq'];
-const GRAFIK_LIST = ['Hudud', "Yo'nalish", 'Hisoblanmaydi'];
 const ORG_LIST    = ['OOO "BORAN LEADERS"', 'LEADERS BARAKA'];
 const OMBOR_LIST  = ['Ombor SHERIN', 'Ombor SOF IN', 'Brak'];
 const XODIM_LIST  = [
@@ -67,21 +96,21 @@ const OMBORLAR_LST = ['Ombor SHERIN', 'Ombor SOF IN', 'Brak'];
 const TASHKILOT_LST= ['OOO "BORAN LEADERS"', 'LEADERS BARAKA'];
 
 const PERMISSIONS = [
-  { key: 'yangiMijoz',       label: "Yangi mijoz qo'shish",        opts: ['Bevosita', 'Tasdiqlash']           },
-  { key: 'konsignatsiya',    label: 'Konsignatsiya',               opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'arizaQabul',       label: 'Ariza qabul',                 opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'tovarYetkazish',   label: 'Tovar yetkazish',             opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'tolovQabul',       label: "To'lov qabul",                opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'fotoHisobot',      label: 'Ariza foto-hisobot',          opts: ['Talab qilinadi', 'Talab qilinmaydi']},
-  { key: 'treking',          label: "Treker ko'rish",              opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'yetkazishReys',    label: "Yetkazish reysini ko'rish",   opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'aktSverki',        label: "Akt sverki ko'rish",          opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'reysYuklash',      label: 'Reys yuklash',                opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'grafikMijozlar',   label: "Grafik bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'grafikTashqari',   label: 'Grafik tashqari mijozlar',    opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'reklamaMijozlar',  label: "Reklama bo'yicha mijozlar",   opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'gpsMijozlar',      label: "GPS bo'yicha mijozlar",       opts: ['Ruxsat', 'Taqiqlangan']            },
-  { key: 'qrMijozlar',       label: "QR kod bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan']            },
+  { key: 'yangiMijoz',      labelKey: 'userPermNewClient',       fallback: "Yangi mijoz qo'shish",        opts: ['Bevosita', 'Tasdiqlash'] as const },
+  { key: 'konsignatsiya',   labelKey: 'userPermConsignment',     fallback: 'Konsignatsiya',               opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'arizaQabul',      labelKey: 'userPermOrderAccept',     fallback: 'Ariza qabul',                 opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'tovarYetkazish',  labelKey: 'userPermDelivery',        fallback: 'Tovar yetkazish',             opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'tolovQabul',      labelKey: 'userPermPayment',         fallback: "To'lov qabul",                opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'fotoHisobot',     labelKey: 'userPermPhotoReport',     fallback: 'Ariza foto-hisobot',          opts: ['Talab qilinadi', 'Talab qilinmaydi'] as const },
+  { key: 'treking',         labelKey: 'userPermTracking',        fallback: "Treker ko'rish",              opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'yetkazishReys',   labelKey: 'userPermDeliveryTrip',    fallback: "Yetkazish reysini ko'rish",   opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'aktSverki',       labelKey: 'userPermReconciliation',  fallback: "Akt sverki ko'rish",          opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'reysYuklash',     labelKey: 'userPermTripLoad',        fallback: 'Reys yuklash',                opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'grafikMijozlar',  labelKey: 'userPermScheduleClients', fallback: "Grafik bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'grafikTashqari',  labelKey: 'userPermOffSchedule',     fallback: 'Grafik tashqari mijozlar',    opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'reklamaMijozlar', labelKey: 'userPermPromoClients',    fallback: "Reklama bo'yicha mijozlar",   opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'gpsMijozlar',     labelKey: 'userPermGpsClients',      fallback: "GPS bo'yicha mijozlar",       opts: ['Ruxsat', 'Taqiqlangan'] as const },
+  { key: 'qrMijozlar',      labelKey: 'userPermQrClients',       fallback: "QR kod bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan'] as const },
 ];
 
 const DEFAULT_PERMS: Record<string, string> = {
@@ -117,7 +146,7 @@ function SelectField({
           }}
         >
           <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
-            {value || `— tanlang —`}
+            {value || '— tanlang —'}
           </span>
           <ChevronDown size={13} style={{ flexShrink: 0, marginLeft: 4, opacity: 0.6 }} />
         </button>
@@ -259,7 +288,7 @@ function CheckTable({
 }
 
 /* ═══════════ MAIN COMPONENT ═══════════ */
-export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props) {
+export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Props) {
   const [tab, setTab] = useState<ModalTab>('asosiy');
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
@@ -272,20 +301,24 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
     return () => window.removeEventListener('resize', fn);
   }, []);
 
+  const statusOpen  = userStatusOpenLabel(t);
+  const statusClosed = userStatusClosedLabel(t);
+  const grafikOptions = grafikList(t);
+
   /* ── form state ── */
   const [form, setForm] = useState<FormData>(() => {
     if (user) {
       return {
         code: user.code,
         uid: String(user.id),
-        status: user.status === 'open' ? 'Kirish ochiq' : 'Kirish yopiq',
+        status: user.status === 'open' ? statusOpen : statusClosed,
         xodim: user.emp,
         fio: user.name,
         role: user.role,
         telegramId: user.tg || '',
         org: user.org,
         ombor: '',
-        grafik: 'Hudud',
+        grafik: grafikOptions[0],
         directions: user.dirs ? user.dirs.split(', ') : [],
         kassalar: [],
         omborlar: [],
@@ -294,8 +327,8 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
       };
     }
     return {
-      code: '', uid: '', status: 'Kirish ochiq', xodim: '', fio: '',
-      role: '', telegramId: '', org: '', ombor: '', grafik: 'Hudud',
+      code: '', uid: '', status: statusOpen, xodim: '', fio: '',
+      role: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
       directions: [], kassalar: [], omborlar: [], tashkilotlar: [],
       perms: { ...DEFAULT_PERMS },
     };
@@ -327,18 +360,20 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
   const indigo  = '#6366f1';
   const green   = D ? '#22c55e' : '#16a34a';
 
-  const title = user ? `${user.name} (Foydalanuvchi)` : "Yangi foydalanuvchi";
+  const title = user
+    ? `${user.name} ${tr(t, 'userModalSuffix', '(Foydalanuvchi)')}`
+    : tr(t, 'userModalNew', 'Yangi foydalanuvchi');
 
   const TABS: { id: ModalTab; label: string }[] = [
-    { id: 'asosiy',   label: 'Asosiy'        },
-    { id: 'boglanish',label: "Bog'lanishlar"  },
-    { id: 'ontrade',  label: 'Ilova'          },
-    { id: 'opsiya',   label: 'Opsiyalar'      },
+    { id: 'asosiy',    label: tr(t, 'userTabMain', 'Asosiy') },
+    { id: 'boglanish', label: tr(t, 'userTabLinks', "Bog'lanishlar") },
+    { id: 'ontrade',   label: tr(t, 'userTabApp', 'Ilova') },
+    { id: 'opsiya',    label: tr(t, 'userTabOptions', 'Opsiyalar') },
   ];
 
   /* ─── Tab content renderers ─── */
   const renderAsosiy = () => (
-    <div style={{ padding: isMobile ? '0 14px' : '0 20px' }}>
+    <div style={{ padding: isMobile ? '0 14px 20px' : '0 20px 24px' }}>
       {/* Row 1: Kod + ID + Status */}
       <div style={{
         display: 'flex', gap: 8, alignItems: 'center',
@@ -347,7 +382,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
       }}>
         {/* Kod */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500, whiteSpace: 'nowrap' }}>Kod:</span>
+          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500, whiteSpace: 'nowrap' }}>{tr(t, 'userFldCode', 'Kod:')}</span>
           <input
             value={form.code}
             onChange={e => upd('code', e.target.value)}
@@ -362,7 +397,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
         </div>
         {/* ID */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500 }}>ID:</span>
+          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldId', 'ID:')}</span>
           <input
             value={form.uid}
             onChange={e => upd('uid', e.target.value)}
@@ -377,11 +412,13 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
         </div>
         {/* Status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500, whiteSpace: 'nowrap' }}>Holat:</span>
+          <span style={{ fontSize: 12.5, color: muted, fontWeight: 500, whiteSpace: 'nowrap' }}>{tr(t, 'userFldStatus', 'Holat:')}</span>
           <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
             <StatusToggle
               value={form.status}
               onChange={v => upd('status', v)}
+              statusOpen={statusOpen}
+              statusClosed={statusClosed}
               D={D} txt={txt} muted={muted} border={border} green={green}
             />
           </div>
@@ -390,11 +427,11 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
 
       {/* Xodim row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>Xodim:</span>
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldEmployee', 'Xodim:')}</span>
         <input
           value={form.xodim}
           onChange={e => upd('xodim', e.target.value)}
-          placeholder="Xodimni tanlang"
+          placeholder={tr(t, 'userPhEmployee', 'Xodimni tanlang')}
           style={{
             flex: 1, minWidth: 0, padding: '6px 10px', borderRadius: 7,
             border: `1px solid ${border}`,
@@ -407,26 +444,26 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
       </div>
 
       {/* FIO */}
-      <TextField label="F.I.O:" value={form.fio} onChange={v => upd('fio', v)}
+      <TextField label={tr(t, 'userFldFio', 'F.I.O:')} value={form.fio} onChange={v => upd('fio', v)}
         D={D} border={border} txt={txt} muted={muted} />
 
       {/* Rol */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>Rol:</span>
-        <RoleSelect value={form.role} onChange={v => upd('role', v)}
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldRole', 'Rol:')}</span>
+        <RoleSelect value={form.role} onChange={v => upd('role', v)} t={t}
           D={D} border={border} txt={txt} muted={muted} />
         <LookupBtn D={D} border={border} muted={muted} />
       </div>
 
       {/* Telegram ID */}
-      <TextField label="Telegram ID:" value={form.telegramId} onChange={v => upd('telegramId', v)}
+      <TextField label={tr(t, 'userFldTelegram', 'Telegram ID:')} value={form.telegramId} onChange={v => upd('telegramId', v)}
         placeholder="@username"
         D={D} border={border} txt={txt} muted={muted} />
 
       {/* Tashkilot */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>Tashkilot:</span>
-        <SelectInline value={form.org} onChange={v => upd('org', v)}
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldOrg', 'Tashkilot:')}</span>
+        <SelectInline value={form.org} onChange={v => upd('org', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
           options={ORG_LIST} D={D} border={border} txt={txt} muted={muted} />
         <LookupBtn D={D} border={border} muted={muted} />
         <ClearBtn show={!!form.org} onClear={() => upd('org', '')} muted={muted} />
@@ -434,8 +471,8 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
 
       {/* Ombor */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>Ombor:</span>
-        <SelectInline value={form.ombor} onChange={v => upd('ombor', v)}
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldWarehouse', 'Ombor:')}</span>
+        <SelectInline value={form.ombor} onChange={v => upd('ombor', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
           options={OMBOR_LIST} D={D} border={border} txt={txt} muted={muted} />
         <LookupBtn D={D} border={border} muted={muted} />
         <ClearBtn show={!!form.ombor} onClear={() => upd('ombor', '')} muted={muted} />
@@ -443,9 +480,9 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
 
       {/* Grafik turi */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>Grafik turi:</span>
-        <SelectInline value={form.grafik} onChange={v => upd('grafik', v)}
-          options={GRAFIK_LIST} D={D} border={border} txt={txt} muted={muted} />
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldSchedule', 'Grafik turi:')}</span>
+        <SelectInline value={form.grafik} onChange={v => upd('grafik', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
+          options={grafikOptions} D={D} border={border} txt={txt} muted={muted} />
         <LookupBtn D={D} border={border} muted={muted} />
       </div>
     </div>
@@ -459,18 +496,18 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
       gap: 12,
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <CheckTable title="Yo'nalishlar" items={DIRECTIONS} selected={form.directions}
+        <CheckTable title={tr(t, 'userFldDirections', "Yo'nalishlar")} items={DIRECTIONS} selected={form.directions}
           onToggle={i => toggleList('directions', i)}
           D={D} border={border} txt={txt} muted={muted} surface={surface} />
-        <CheckTable title="Omborlar" items={OMBORLAR_LST} selected={form.omborlar}
+        <CheckTable title={tr(t, 'userFldWarehouses', 'Omborlar')} items={OMBORLAR_LST} selected={form.omborlar}
           onToggle={i => toggleList('omborlar', i)}
           D={D} border={border} txt={txt} muted={muted} surface={surface} />
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <CheckTable title="Kassalar" items={KASSALAR_LST} selected={form.kassalar}
+        <CheckTable title={tr(t, 'userFldCashiers', 'Kassalar')} items={KASSALAR_LST} selected={form.kassalar}
           onToggle={i => toggleList('kassalar', i)}
           D={D} border={border} txt={txt} muted={muted} surface={surface} />
-        <CheckTable title="Tashkilotlar" items={TASHKILOT_LST} selected={form.tashkilotlar}
+        <CheckTable title={tr(t, 'userFldOrgs', 'Tashkilotlar')} items={TASHKILOT_LST} selected={form.tashkilotlar}
           onToggle={i => toggleList('tashkilotlar', i)}
           D={D} border={border} txt={txt} muted={muted} surface={surface} />
       </div>
@@ -486,11 +523,11 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
         border: `1px solid ${D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.2)'}`,
       }}>
         <div style={{ fontSize: 11, color: indigo, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Ontrade Mobile Login
+          {tr(t, 'userAppLoginTitle', 'Ontrade Mobile Login')}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>Login:</span>
+            <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>{tr(t, 'userAppLogin', 'Login:')}</span>
             <input
               placeholder="ontrade_login"
               style={{
@@ -501,7 +538,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>Parol:</span>
+            <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>{tr(t, 'userAppPassword', 'Parol:')}</span>
             <input
               type="password" placeholder="••••••••"
               style={{
@@ -516,10 +553,10 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
       {/* Mobile settings */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         {[
-          { label: "To'lov qabul qilish", val: true },
-          { label: 'GPS tracking', val: false },
-          { label: 'Konsignatsiya', val: false },
-          { label: "Offline rejim", val: true },
+          { label: tr(t, 'userAppAcceptPay', "To'lov qabul qilish"), val: true },
+          { label: tr(t, 'userAppGps', 'GPS tracking'), val: false },
+          { label: tr(t, 'userAppConsig', 'Konsignatsiya'), val: false },
+          { label: tr(t, 'userAppOffline', 'Offline rejim'), val: true },
         ].map((item, i) => (
           <div key={item.label} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -545,9 +582,9 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
           background: D ? '#1e1e1e' : '#f3f4f6',
           borderBottom: `1px solid ${border}`,
         }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sozlama</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>1-variant</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>2-variant</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tr(t, 'userPermSetting', 'Sozlama')}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>{tr(t, 'userPermOpt1', '1-variant')}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>{tr(t, 'userPermOpt2', '2-variant')}</span>
         </div>
         {PERMISSIONS.map((perm, i) => {
           const current = form.perms[perm.key];
@@ -564,23 +601,23 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
                 gap: isMobile ? 6 : 0,
               }}
             >
-              <span style={{ fontSize: 12.5, color: txt, fontWeight: 500 }}>{perm.label}:</span>
+              <span style={{ fontSize: 12.5, color: txt, fontWeight: 500 }}>{tr(t, perm.labelKey, perm.fallback)}:</span>
               {isMobile ? (
                 /* mobile: horizontal option buttons */
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {perm.opts.map(opt => (
-                    <PermBtn key={opt} label={opt} active={current === opt}
+                    <PermBtn key={opt} label={trOpt(t, opt)} active={current === opt}
                       onClick={() => togglePerm(perm.key)}
-                      D={D} border={border} txt={txt} muted={muted} />
+                      D={D} border={border} txt={txt} muted={muted} t={t} />
                   ))}
                 </div>
               ) : (
                 <>
                   {perm.opts.map(opt => (
                     <div key={opt} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <PermBtn label={opt} active={current === opt}
+                      <PermBtn label={trOpt(t, opt)} active={current === opt}
                         onClick={() => setForm(f => ({ ...f, perms: { ...f.perms, [perm.key]: opt } }))}
-                        D={D} border={border} txt={txt} muted={muted} />
+                        D={D} border={border} txt={txt} muted={muted} t={t} />
                     </div>
                   ))}
                 </>
@@ -660,7 +697,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
                 }}
               >
                 <Save size={12} />
-                {!isMobile && <span>Saqlash</span>}
+                {!isMobile && <span>{tr(t, 'userSave', 'Saqlash')}</span>}
               </button>
 
               {/* Delete */}
@@ -690,7 +727,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
                     fontSize: 11, cursor: 'pointer',
                   }}
                 >
-                  {!isMobile && <span>Amallar</span>}
+                  {!isMobile && <span>{tr(t, 'userActions', 'Amallar')}</span>}
                   <ChevronDown size={12} />
                 </button>
                 {showActions && (
@@ -701,7 +738,12 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
                     boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
                     minWidth: 160, overflow: 'hidden',
                   }}>
-                    {["Nusxa ko'chirish", "Parolni tiklash", "Huquqlarni nusxalash", "Faollashtirish"].map(action => (
+                    {[
+                      tr(t, 'userActionCopy', "Nusxa ko'chirish"),
+                      tr(t, 'userActionResetPwd', 'Parolni tiklash'),
+                      tr(t, 'userActionCopyPerms', 'Huquqlarni nusxalash'),
+                      tr(t, 'userActionActivate', 'Faollashtirish'),
+                    ].map(action => (
                       <button key={action} onClick={() => setShowActions(false)} style={{
                         width: '100%', textAlign: 'left', padding: '9px 14px',
                         border: 'none', background: 'transparent', color: txt,
@@ -786,9 +828,9 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
               {/* Permission badges summary */}
               {[
-                { label: "To'lov", active: form.perms.tolovQabul === 'Ruxsat', color: green },
-                { label: 'Konsig', active: form.perms.konsignatsiya === 'Ruxsat', color: '#f59e0b' },
-                { label: 'GPS', active: form.perms.gpsMijozlar === 'Ruxsat', color: '#3b82f6' },
+                { label: tr(t, 'userAcceptPay', "To'lov"), active: form.perms.tolovQabul === 'Ruxsat', color: green },
+                { label: tr(t, 'userConsig', 'Konsig'), active: form.perms.konsignatsiya === 'Ruxsat', color: '#f59e0b' },
+                { label: tr(t, 'userGPS', 'GPS'), active: form.perms.gpsMijozlar === 'Ruxsat', color: '#3b82f6' },
               ].map(b => (
                 <span key={b.label} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -813,7 +855,7 @@ export function AdminUserFormModal({ D, user, onClose, onSave, onDelete }: Props
                 boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
               }}
             >
-              <Save size={13} /> Saqlash va yopish
+              <Save size={13} /> {tr(t, 'userSaveClose', 'Saqlash va yopish')}
             </button>
           </div>
         )}
@@ -849,14 +891,15 @@ function ClearBtn({ show, onClear, muted }: { show: boolean; onClear: () => void
   );
 }
 
-function StatusToggle({ value, onChange, D, txt, muted, border, green }: {
+function StatusToggle({ value, onChange, statusOpen, statusClosed, D, txt, muted, border, green }: {
   value: string; onChange: (v: string) => void;
+  statusOpen: string; statusClosed: string;
   D: boolean; txt: string; muted: string; border: string; green: string;
 }) {
-  const isOpen = value === 'Kirish ochiq';
+  const isOpen = value === statusOpen;
   return (
     <button
-      onClick={() => onChange(isOpen ? 'Kirish yopiq' : 'Kirish ochiq')}
+      onClick={() => onChange(isOpen ? statusClosed : statusOpen)}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 7,
         padding: '5px 11px', borderRadius: 20,
@@ -878,14 +921,99 @@ function StatusToggle({ value, onChange, D, txt, muted, border, green }: {
   );
 }
 
-function SelectInline({ value, onChange, options, D, border, txt, muted }: {
+function SelectInline({ value, onChange, options, placeholder, D, border, txt, muted }: {
   value: string; onChange: (v: string) => void; options: string[];
+  placeholder?: string;
   D: boolean; border: string; txt: string; muted: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 220, openUp: false });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const reposition = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const itemH = 36;
+    const listH = Math.min(options.length * itemH + 8, 220);
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < listH && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(listH, openUp ? spaceAbove : spaceBelow);
+    setPos({
+      top: openUp ? r.top - 4 : r.bottom + 4,
+      left: r.left,
+      width: r.width,
+      maxHeight: Math.max(maxHeight, 80),
+      openUp,
+    });
+  }, [options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        dropRef.current && !dropRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  const dropdown = open ? ReactDOM.createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 10000,
+        transform: pos.openUp ? 'translateY(-100%)' : undefined,
+        background: D ? '#1e1e1e' : '#fff',
+        border: `1px solid ${border}`,
+        borderRadius: 8,
+        boxShadow: D ? '0 12px 40px rgba(0,0,0,0.7)' : '0 12px 40px rgba(0,0,0,0.13)',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ maxHeight: pos.maxHeight, overflowY: 'auto' }}>
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => { onChange(opt); setOpen(false); }}
+            style={{
+              width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
+              background: value === opt ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
+              color: value === opt ? '#6366f1' : txt,
+              fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            {value === opt ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
   return (
     <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -896,46 +1024,109 @@ function SelectInline({ value, onChange, options, D, border, txt, muted }: {
         }}
       >
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value || '— tanlang —'}
+          {value || placeholder || '— tanlang —'}
         </span>
         <ChevronDown size={12} style={{ flexShrink: 0, marginLeft: 4, opacity: 0.5 }} />
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 400,
-          background: D ? '#1e1e1e' : '#fff', border: `1px solid ${border}`,
-          borderRadius: 8, marginTop: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-          overflow: 'hidden',
-        }}>
-          {options.map(opt => (
-            <button
-              key={opt}
-              onClick={() => { onChange(opt); setOpen(false); }}
-              style={{
-                width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
-                background: value === opt ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
-                color: value === opt ? '#6366f1' : txt,
-                fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-              }}
-            >
-              {value === opt ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }
 
-function RoleSelect({ value, onChange, D, border, txt, muted }: {
+function RoleSelect({ value, onChange, t, D, border, txt, muted }: {
   value: string; onChange: (v: string) => void;
+  t: Record<string, string>;
   D: boolean; border: string; txt: string; muted: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 220, openUp: false });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const options = USER_ROLE_CANONICAL as unknown as string[];
+
+  const reposition = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const itemH = 36;
+    const listH = Math.min(options.length * itemH + 8, 220);
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < listH && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(listH, openUp ? spaceAbove : spaceBelow);
+    setPos({
+      top: openUp ? r.top - 4 : r.bottom + 4,
+      left: r.left,
+      width: r.width,
+      maxHeight: Math.max(maxHeight, 80),
+      openUp,
+    });
+  }, [options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        dropRef.current && !dropRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  const dropdown = open ? ReactDOM.createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 10000,
+        transform: pos.openUp ? 'translateY(-100%)' : undefined,
+        background: D ? '#1e1e1e' : '#fff',
+        border: `1px solid ${border}`,
+        borderRadius: 8,
+        boxShadow: D ? '0 12px 40px rgba(0,0,0,0.7)' : '0 12px 40px rgba(0,0,0,0.13)',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ maxHeight: pos.maxHeight, overflowY: 'auto' }}>
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => { onChange(opt); setOpen(false); }}
+            style={{
+              width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
+              background: value === opt ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
+              color: value === opt ? '#6366f1' : txt,
+              fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            {value === opt ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
+            {translateUserRole(opt, t)}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
   return (
     <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -946,43 +1137,21 @@ function RoleSelect({ value, onChange, D, border, txt, muted }: {
         }}
       >
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value || '— tanlang —'}
+          {value ? translateUserRole(value, t) : (tr(t, 'userSelect', '— tanlang —'))}
         </span>
         <ChevronDown size={12} style={{ flexShrink: 0, marginLeft: 4, opacity: 0.5 }} />
       </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 400,
-          background: D ? '#1e1e1e' : '#fff', border: `1px solid ${border}`,
-          borderRadius: 8, marginTop: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-          overflow: 'hidden',
-        }}>
-          {ROLES.map(opt => (
-            <button
-              key={opt}
-              onClick={() => { onChange(opt); setOpen(false); }}
-              style={{
-                width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
-                background: value === opt ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
-                color: value === opt ? '#6366f1' : txt,
-                fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-              }}
-            >
-              {value === opt ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
-              {opt}
-            </button>
-          ))}
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }
 
-function PermBtn({ label, active, onClick, D, border, txt, muted }: {
+function PermBtn({ label, active, onClick, D, border, txt, muted, t }: {
   label: string; active: boolean; onClick: () => void;
   D: boolean; border: string; txt: string; muted: string;
+  t: Record<string, string>;
 }) {
-  const isPositive = label === 'Ruxsat' || label === 'Bevosita' || label === 'Talab qilinadi';
+  const isPositive = label === trOpt(t, 'Ruxsat') || label === trOpt(t, 'Bevosita') || label === trOpt(t, 'Talab qilinadi');
   const activeColor = isPositive ? '#22c55e' : '#ef4444';
   return (
     <button

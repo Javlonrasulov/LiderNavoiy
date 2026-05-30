@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.MainScaffold
 import uz.distributor.crm.presentation.components.NavTab
 
@@ -27,6 +29,7 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user by viewModel.user.collectAsState(initial = null)
+    val lang = LocalAppLanguage.current
 
     MainScaffold(currentTab = NavTab.HOME, onTabSelected = onNavigate) { padding ->
         Column(
@@ -69,7 +72,7 @@ fun ProfileScreen(
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, null)
                 Spacer(Modifier.width(8.dp))
-                Text("Chiqish")
+                Text(AppStrings.logout(lang))
             }
         }
     }

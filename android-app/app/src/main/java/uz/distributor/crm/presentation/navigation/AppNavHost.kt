@@ -24,6 +24,7 @@ import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
 import uz.distributor.crm.presentation.location.LocationScreen
+import uz.distributor.crm.presentation.messages.ChatScreen
 import uz.distributor.crm.presentation.messages.MessagesScreen
 import uz.distributor.crm.presentation.order.OrderSummaryScreen
 import uz.distributor.crm.presentation.plan.PlanScreen
@@ -64,12 +65,14 @@ fun AppNavHost() {
                 onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
                 onClientsClick = { navController.navigate("clients") },
                 onProfileClick = { navController.navigate("profile") },
+                onOrderSummaryClick = { navController.navigate("order/cart") },
             )
         }
         composable("clients") {
             ClientsScreen(
                 onBack = { navController.popBackStack() },
                 onClientClick = { id -> navController.navigate("client/$id") },
+                onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
             )
         }
         composable(
@@ -109,7 +112,19 @@ fun AppNavHost() {
             PlanScreen(onNavigate = { navController.navigate(it.route) { launchSingleTop = true } })
         }
         composable("messages") {
-            MessagesScreen(onNavigate = { navController.navigate(it.route) { launchSingleTop = true } })
+            MessagesScreen(
+                onNavigate = { navController.navigate(it.route) { launchSingleTop = true } },
+                onChatClick = { id -> navController.navigate("chat/$id") },
+            )
+        }
+        composable(
+            route = "chat/{conversationId}",
+            arguments = listOf(navArgument("conversationId") { type = NavType.StringType }),
+        ) { entry ->
+            ChatScreen(
+                conversationId = entry.arguments?.getString("conversationId") ?: "",
+                onBack = { navController.popBackStack() },
+            )
         }
         composable("profile") {
             ProfileScreen(

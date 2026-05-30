@@ -30,7 +30,7 @@ import { AdminXodimlarTab } from '../components/admin/tabs/AdminXodimlarTab';
 import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
 import { AdminTaroziTab } from '../components/admin/tabs/AdminTaroziTab';
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
-import { AdminPushTab } from '../components/admin/tabs/AdminPushTab';
+import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
@@ -423,7 +423,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'push' && <AdminPushTab />}
+          {tab === 'messages' && <AdminMessagesTab />}
 
         </main>
       </div>

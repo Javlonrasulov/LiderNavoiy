@@ -1,4 +1,4 @@
-# Distributor CRM — Android App
+ # Distributor CRM — Android App
 
 Native Android agent app: Kotlin + Jetpack Compose + MVVM + Hilt.
 

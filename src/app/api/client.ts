@@ -20,6 +20,14 @@ export interface AuthResponse {
   };
 }
 
+export interface AppUserRecord {
+  id: string;
+  username: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+}
+
 export interface Distributor {
   id: string;
   userId: string;
@@ -94,6 +102,37 @@ export const api = {
 
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 
+  // ─── App users (APK login) ───
+  createAppUser: (body: {
+    username: string;
+    password: string;
+    fullName: string;
+    role?: string;
+    companyName?: string;
+    companyId?: string;
+    isActive?: boolean;
+  }) =>
+    request<AppUserRecord>('/users/app', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateAppUser: (id: string, body: {
+    username?: string;
+    password?: string;
+    fullName?: string;
+    role?: string;
+    isActive?: boolean;
+    companyName?: string;
+  }) =>
+    request<AppUserRecord>(`/users/app/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deactivateAppUser: (id: string) =>
+    request<void>(`/users/app/${id}`, { method: 'DELETE' }),
+
   // ─── Distributors ───
   getDistributors: (companyId?: string) =>
     request<Distributor[]>(`/distributors${companyId ? `?companyId=${companyId}` : ''}`),
@@ -160,7 +199,104 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // ─── Messages (Chat) ───
+  getContacts: (companyId?: string) =>
+    request<ChatContact[]>(`/messages/contacts${companyId ? `?companyId=${companyId}` : ''}`),
+
+  getConversations: () => request<ChatConversation[]>('/messages/conversations'),
+
+  startConversation: (userId: string) =>
+    request<ChatConversation>('/messages/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+
+  getMessages: (conversationId: string, limit = 50, before?: string) =>
+    request<ChatMessage[]>(
+      `/messages/conversations/${conversationId}/messages?limit=${limit}${before ? `&before=${before}` : ''}`,
+    ),
+
+  sendMessage: (
+    conversationId: string,
+    text?: string,
+    attachment?: MessageAttachment,
+  ) =>
+    request<ChatMessage>(`/messages/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ text: text ?? '', attachment }),
+    }),
+
+  uploadChatFile: async (file: File): Promise<MessageAttachment & { fullUrl: string }> => {
+    const token = getToken();
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE}/messages/upload`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
+  markConversationRead: (conversationId: string) =>
+    request<{ updated: number }>(`/messages/conversations/${conversationId}/read`, {
+      method: 'PATCH',
+    }),
+
+  deleteMessages: (conversationId: string, messageIds: string[], forEveryone = false) =>
+    request<{ deleted: string[] }>(`/messages/conversations/${conversationId}/messages/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ messageIds, forEveryone }),
+    }),
 };
+
+export interface ChatContact {
+  id: string;
+  fullName: string;
+  role: string;
+  username: string;
+}
+
+export interface MessageAttachment {
+  url: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  messageType: 'image' | 'document';
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  text: string;
+  isRead: boolean;
+  createdAt: string;
+  messageType?: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileMime?: string | null;
+  fileSize?: number | null;
+}
+
+export interface ChatConversation {
+  id: string;
+  otherUser: ChatContact;
+  lastMessage: {
+    id: string;
+    text: string;
+    senderId: string;
+    createdAt: string;
+    isRead: boolean;
+  } | null;
+  unreadCount: number;
+  updatedAt: string;
+}
 
 // ─── WebSocket tracking ───
 export function connectTracking(onLocation: (data: LocationPoint & { distributorId: string }) => void) {
@@ -178,4 +314,34 @@ export function connectTracking(onLocation: (data: LocationPoint & { distributor
   return null;
 }
 
+// ─── WebSocket messages ───
+export async function connectMessages(handlers: {
+  onMessage: (payload: { message: ChatMessage; conversation?: ChatConversation }) => void;
+  onDeleted?: (payload: {
+    conversationId: string;
+    messageIds: string[];
+    forEveryone: boolean;
+    conversation?: ChatConversation;
+  }) => void;
+}) {
+  const token = getToken();
+  if (!token) return null;
+
+  const { io } = await import('socket.io-client');
+  const socket = io(`${WS_BASE}/messages`, { auth: { token } });
+  socket.on('message:new', handlers.onMessage);
+  if (handlers.onDeleted) {
+    socket.on('message:deleted', handlers.onDeleted);
+  }
+  return socket;
+}
+
 export { API_BASE, WS_BASE };
+
+export const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_URL || WS_BASE;
+
+export function resolveFileUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `${UPLOADS_BASE}${url}`;
+}

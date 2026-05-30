@@ -3,7 +3,8 @@ import {
   Search, Check, Plus, X,
   MapPin, Building2, CreditCard, Package, Navigation,
 } from 'lucide-react';
-import { AdminUserFormModal, type UserFormRow } from './AdminUserFormModal';
+import { AdminUserFormModal, type UserFormRow, type UserFormData } from './AdminUserFormModal';
+import { translateUserRole, userStatusOpenLabel } from '../../../data/adminData';
 import { demo } from '../../../data/demoLimit';
 
 interface Props {
@@ -31,7 +32,7 @@ interface UserRow {
   gps: boolean;
 }
 
-const DUMMY_USERS = demo([
+const INITIAL_USERS: UserRow[] = demo([
   { id: 1,  code: '0051', name: 'Abduxakimov Diyorbek',        tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Abduxakimov D...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
   { id: 2,  code: '0035', name: 'Amriddinov Sardor',           tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Amriddinov S...',   onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
   { id: 3,  code: '0043', name: 'Baxodirov Utkir',             tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'LEADERS BAR...',  emp: 'Baxodirov Utk...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
@@ -49,6 +50,27 @@ const DUMMY_USERS = demo([
   { id: 15, code: '0032', name: 'Patipov Umrzok',              tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Patipov Umrzok',    onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
   { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
 ]);
+
+function formToUserRow(data: UserFormData, t: Record<string, string>, id: number): UserRow {
+  const org = data.org.length > 14 ? `${data.org.slice(0, 13)}...` : data.org;
+  const emp = data.xodim.length > 14 ? `${data.xodim.slice(0, 13)}...` : data.xodim;
+  return {
+    id,
+    code: data.code.trim(),
+    name: data.fio.trim() || data.xodim.trim(),
+    tg: data.telegramId.trim(),
+    lastAct: '',
+    role: data.role,
+    status: data.status === userStatusOpenLabel(t) ? 'open' : 'closed',
+    org,
+    emp,
+    onTrade: '',
+    dirs: data.directions.join(', '),
+    acceptPay: data.perms.tolovQabul === 'Ruxsat',
+    consig: data.perms.konsignatsiya === 'Ruxsat',
+    gps: data.perms.gpsMijozlar === 'Ruxsat',
+  };
+}
 
 function roleColor(role: string) {
   if (role.includes('Savdo'))                                  return { bg: 'rgba(99,102,241,0.13)',  text: '#818cf8' };
@@ -119,7 +141,7 @@ function MobileUserCard({ u, D, isSelected, onSelect, t }: {
           display: 'inline-block', maxWidth: '100%',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
-          {u.role}
+          {translateUserRole(u.role, t)}
         </span>
       </div>
 
@@ -173,6 +195,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const [isMobile, setIsMobile] = useState<boolean>(
     () => typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
+  const [users, setUsers] = useState<UserRow[]>(() => [...INITIAL_USERS]);
   const [search,   setSearch]  = useState('');
   const [selected, setSelected] = useState<number | null>(15);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -181,6 +204,27 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const openNew    = () => setModalUser('new');
   const openEdit   = (u: UserRow) => setModalUser(u as unknown as UserFormRow);
   const closeModal = () => setModalUser(null);
+
+  const handleSave = (data: UserFormData) => {
+    if (modalUser === 'new') {
+      const nextId = users.reduce((max, u) => Math.max(max, u.id), 0) + 1;
+      const nextCode = data.code.trim() || String(nextId).padStart(4, '0');
+      const row = formToUserRow({ ...data, code: nextCode }, t, nextId);
+      if (!row.name) return;
+      setUsers(prev => [...prev, row]);
+      setSelected(row.id);
+    } else if (modalUser) {
+      const row = formToUserRow(data, t, modalUser.id);
+      if (!row.name) return;
+      setUsers(prev => prev.map(u => (u.id === modalUser.id ? row : u)));
+      setSelected(row.id);
+    }
+  };
+
+  const handleDelete = (id: number) => {
+    setUsers(prev => prev.filter(u => u.id !== id));
+    setSelected(prev => (prev === id ? null : prev));
+  };
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -199,7 +243,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const indigo = '#6366f1';
   const green  = D ? '#22c55e' : '#16a34a';
 
-  const filtered = DUMMY_USERS.filter(u => {
+  const filtered = users.filter(u => {
     const q = search.trim().toLowerCase();
     return !q
       || u.name.toLowerCase().includes(q)
@@ -224,10 +268,11 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const modalEl = modalUser !== null ? (
     <AdminUserFormModal
       D={D}
+      t={t}
       user={modalUser === 'new' ? null : modalUser}
       onClose={closeModal}
-      onSave={() => {}}
-      onDelete={() => closeModal()}
+      onSave={handleSave}
+      onDelete={handleDelete}
     />
   ) : null;
 
@@ -318,11 +363,11 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
             fontSize: 11, color: muted, flexWrap: 'wrap', gap: 5, flexShrink: 0,
             width: '100%', boxSizing: 'border-box', minWidth: 0,
           }}>
-            <span>Jami: <b style={{ color: txt }}>{filtered.length}</b> ta</span>
+            <span>{t.totalEmpLabel || 'Jami'}: <b style={{ color: txt }}>{filtered.length}</b> {t.userTotalUnit || 'ta'}</span>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
               {[
-                { label: "To'lov", count: filtered.filter(u => u.acceptPay).length, color: green },
-                { label: 'GPS',    count: filtered.filter(u => u.gps).length,       color: '#3b82f6' },
+                { label: t.userAcceptPay || "To'lov", count: filtered.filter(u => u.acceptPay).length, color: green },
+                { label: t.userGPS       || 'GPS',    count: filtered.filter(u => u.gps).length,       color: '#3b82f6' },
               ].map(s => (
                 <span key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                   <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: s.color }} />
@@ -504,7 +549,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
                         background: D ? 'rgba(99,102,241,0.14)' : 'rgba(99,102,241,0.08)',
                         color: isSel ? '#818cf8' : '#6366f1', fontWeight: 600,
                       }}>
-                        {u.role}
+                        {translateUserRole(u.role, t)}
                       </span>
                     </td>
                     <td style={{

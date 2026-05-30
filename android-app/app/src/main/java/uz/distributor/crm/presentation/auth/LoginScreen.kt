@@ -5,11 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -19,6 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
+import uz.distributor.crm.presentation.theme.SherinColors
+import uz.distributor.crm.presentation.theme.SherinGlassIconButton
+import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.service.LocationSyncWorker
 import uz.distributor.crm.service.LocationTrackingService
 
@@ -29,6 +36,8 @@ fun LoginScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val lang = LocalAppLanguage.current
+    var showLangMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isSuccess) {
         if (state.isSuccess) {
@@ -46,36 +55,58 @@ fun LoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.linearGradient(listOf(Color(0xFF4F8EF7), Color(0xFF7B5CF6)))),
-        contentAlignment = Alignment.Center,
+            .background(sherinHeroBrush(false)),
     ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 48.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Box {
+                SherinGlassIconButton(onClick = { showLangMenu = true }, icon = Icons.Default.Language, size = 40.dp)
+                AppLanguageDropdownMenu(
+                    expanded = showLangMenu,
+                    onDismissRequest = { showLangMenu = false },
+                    current = lang,
+                    isDark = false,
+                    onSelect = viewModel::setLanguage,
+                )
+            }
+        }
+
         Card(
             modifier = Modifier
+                .align(Alignment.Center)
                 .fillMaxWidth()
                 .padding(24.dp),
             shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(16.dp),
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("Distributor CRM", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("Agent kirish", color = Color.Gray, fontSize = 14.sp)
-                Spacer(Modifier.height(24.dp))
+            Column(modifier = Modifier.padding(28.dp)) {
+                Text(AppStrings.loginTitle(lang), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF111827))
+                Text(AppStrings.loginSubtitle(lang), color = Color(0xFF6B7280), fontSize = 14.sp)
+                Spacer(Modifier.height(28.dp))
 
                 OutlinedTextField(
                     value = state.username,
                     onValueChange = viewModel::onUsernameChange,
-                    label = { Text("Login") },
+                    label = { Text(AppStrings.loginField(lang)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
                 )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = state.password,
                     onValueChange = viewModel::onPasswordChange,
-                    label = { Text("Parol") },
+                    label = { Text(AppStrings.password(lang)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    shape = RoundedCornerShape(14.dp),
                 )
 
                 state.error?.let {
@@ -86,14 +117,15 @@ fun LoginScreen(
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = viewModel::login,
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
                     enabled = !state.isLoading,
                     shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SherinColors.Primary),
                 ) {
                     if (state.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                     } else {
-                        Text("Kirish", fontSize = 16.sp)
+                        Text(AppStrings.loginButton(lang), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

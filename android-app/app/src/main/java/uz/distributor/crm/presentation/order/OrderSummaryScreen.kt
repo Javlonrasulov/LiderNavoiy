@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.localization.LocalAppLanguage
 import java.text.DecimalFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,15 +31,16 @@ fun OrderSummaryScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val fmt = remember { DecimalFormat("#,###") }
+    val lang = LocalAppLanguage.current
 
     if (state.submitted) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF22C55E), modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(16.dp))
-                Text("Buyurtma yuborildi!", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(AppStrings.orderSent(lang), fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(Modifier.height(24.dp))
-                Button(onClick = onDone) { Text("Asosiy sahifaga") }
+                Button(onClick = onDone) { Text(AppStrings.backToHome(lang)) }
             }
         }
         return
@@ -45,7 +48,7 @@ fun OrderSummaryScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF9FAFB))) {
         TopAppBar(
-            title = { Text("Buyurtma") },
+            title = { Text(AppStrings.order(lang)) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
         )
@@ -71,8 +74,8 @@ fun OrderSummaryScreen(
         Surface(shadowElevation = 8.dp, color = Color.White) {
             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Jami:", fontSize = 16.sp)
-                    Text("${fmt.format(state.total.toLong())} SUM", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    Text("${AppStrings.total(lang)}:", fontSize = 16.sp)
+                    Text("${fmt.format(state.total.toLong())} ${AppStrings.sumCurrency(lang)}", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 }
                 Spacer(Modifier.height(12.dp))
                 Button(
@@ -83,7 +86,7 @@ fun OrderSummaryScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
                 ) {
                     if (state.isSubmitting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                    else Text("Tasdiqlash", fontSize = 16.sp)
+                    else Text(AppStrings.confirm(lang), fontSize = 16.sp)
                 }
             }
         }

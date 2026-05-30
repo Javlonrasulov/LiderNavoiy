@@ -43,7 +43,7 @@ const CATS: { id: number; name: string; icon: string; color: string }[] = demo([
   { id: 6, name: 'Nonvoylik',        icon: '🍞', color: '#f97316' },
 ]);
 
-const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: number }[] } = demoRecKeys({
+const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: number }[] } = Object.entries(demoRecKeys({
   1: [
     { name: 'Rossiyskiy pishloq', unit: 'kg',   basePrice: 98_000  },
     { name: 'Golland pishloq',    unit: 'kg',   basePrice: 115_000 },
@@ -88,7 +88,7 @@ const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: numb
     { name: "Osh yog'i 18l",   unit: 'banka', basePrice: 185_000 },
     { name: "Tuz 1kg",         unit: 'kg',    basePrice: 4_200   },
   ],
-}).reduce<typeof PRODUCTS>((acc, [key, val]) => {
+})).reduce<typeof PRODUCTS>((acc, [key, val]) => {
   acc[Number(key)] = demo(val);
   return acc;
 }, {});

@@ -15,6 +15,7 @@ import com.google.android.gms.location.*
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import uz.distributor.crm.R
+import uz.distributor.crm.data.local.AgentLocationHolder
 import uz.distributor.crm.data.repository.LocationRepository
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.presentation.MainActivity
@@ -24,6 +25,7 @@ import javax.inject.Inject
 class LocationTrackingService : Service() {
 
     @Inject lateinit var locationRepository: LocationRepository
+    @Inject lateinit var agentLocationHolder: AgentLocationHolder
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedClient: FusedLocationProviderClient
@@ -34,7 +36,7 @@ class LocationTrackingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        const val INTERVAL_MS = 5_000L
+        const val INTERVAL_MS = 2_000L
     }
 
     override fun onCreate() {
@@ -99,6 +101,7 @@ class LocationTrackingService : Service() {
                         bearing = if (loc.hasBearing()) loc.bearing else null,
                         recordedAt = loc.time,
                     )
+                    agentLocationHolder.update(point)
                     scope.launch {
                         locationRepository.sendRealtime(point)
                     }

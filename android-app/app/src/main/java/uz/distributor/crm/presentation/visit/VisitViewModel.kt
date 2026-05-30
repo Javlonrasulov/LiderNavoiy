@@ -19,6 +19,7 @@ data class VisitUiState(
     val cartTotal: Double = 0.0,
     val isLoading: Boolean = true,
     val clientId: String = "",
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -56,16 +57,30 @@ class VisitViewModel @Inject constructor(
         }
     }
 
+    fun retry() = load()
+
     private fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            productRepository.getProducts(true)
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            val refreshed = productRepository.refreshFromApi()
             val cats = productRepository.getCategories()
             val first = cats.firstOrNull()
             val products = if (first != null) productRepository.getByCategory(first) else emptyList()
             refreshCart()
             _uiState.update {
-                it.copy(categories = cats, selectedCategory = first, products = products, isLoading = false)
+                it.copy(
+                    categories = cats,
+                    selectedCategory = first,
+                    products = products,
+                    isLoading = false,
+                    error = when {
+                        cats.isEmpty() && !refreshed ->
+                            "Mahsulotlar yuklanmadi. Backend ishlayaptimi va internet bormi?"
+                        cats.isEmpty() ->
+                            "Mahsulotlar topilmadi. Seed: npx ts-node scripts/seed.ts"
+                        else -> null
+                    },
+                )
             }
         }
     }

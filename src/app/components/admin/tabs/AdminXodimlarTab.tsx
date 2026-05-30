@@ -57,11 +57,11 @@ export function AdminXodimlarTab({
   const activeTxt   = '#fff';
 
   const tabs: { id: XodimlarSubTab; label: string; shortLabel: string; tinyLabel: string; icon: React.ComponentType<any> }[] = [
-    { id: 'sotrudniki',  label: t.navSotrudniki  || "Xodimlar ro'yxati", shortLabel: "Ro'yxat",  tinyLabel: "Ro'yxat",  icon: Users         },
-    { id: 'departments', label: t.navDepartments || 'Podrazdeleniya',    shortLabel: "Bo'linma", tinyLabel: "Bo'linma", icon: Layers        },
-    { id: 'users',       label: t.navUsers       || 'Foydalanuvchilar',  shortLabel: "Foydal.",  tinyLabel: "Foydal.",  icon: Contact       },
-    { id: 'agents',      label: t.navAgents      || 'Agentlar',          shortLabel: 'Agentlar', tinyLabel: 'Agentlar', icon: UserCheck     },
-    { id: 'dostavka',    label: t.dostavkaNav    || 'Dostavka',          shortLabel: 'Dostavka', tinyLabel: 'Dostavka', icon: Truck         },
+    { id: 'sotrudniki',  label: t.navSotrudniki  || "Xodimlar ro'yxati", shortLabel: t.shortLabelRoyyxat  || "Ro'yxat",  tinyLabel: t.shortLabelRoyyxat  || "Ro'yxat",  icon: Users         },
+    { id: 'departments', label: t.navDepartments || "Bo'linmalar",       shortLabel: t.shortLabelDept     || "Bo'linma", tinyLabel: t.shortLabelDept     || "Bo'linma", icon: Layers        },
+    { id: 'users',       label: t.navUsers       || 'Foydalanuvchilar',  shortLabel: t.shortLabelUsers    || 'Foydal.',  tinyLabel: t.shortLabelUsers    || 'Foydal.',  icon: Contact       },
+    { id: 'agents',      label: t.navAgents      || 'Agentlar',          shortLabel: t.shortLabelAgents   || 'Agentlar', tinyLabel: t.shortLabelAgents   || 'Agentlar', icon: UserCheck     },
+    { id: 'dostavka',    label: t.dostavkaNav    || 'Yetkazish',         shortLabel: t.shortLabelDostavka || 'Yetkazish', tinyLabel: t.shortLabelDostavka || 'Yetkazish', icon: Truck         },
     { id: 'plan',        label: t.planNav        || 'Reja',              shortLabel: t.planNav || 'Reja',     tinyLabel: t.planNav || 'Reja',     icon: ClipboardList },
   ];
 

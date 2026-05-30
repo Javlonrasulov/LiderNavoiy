@@ -83,6 +83,8 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
     suspend fun updateStatus(ids: List<Long>, status: String)
     @Query("DELETE FROM pending_locations WHERE syncStatus = 'SYNCED' AND recordedAt < :before")
     suspend fun deleteOldSynced(before: Long)
+    @Query("SELECT COUNT(*) FROM pending_locations WHERE syncStatus = 'PENDING'")
+    suspend fun pendingCount(): Int
 }
 
 @Dao interface ClientDao {

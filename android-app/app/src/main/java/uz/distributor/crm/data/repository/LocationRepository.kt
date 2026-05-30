@@ -6,6 +6,7 @@ import uz.distributor.crm.data.local.PendingLocationEntity
 import uz.distributor.crm.data.local.SyncStatus
 import uz.distributor.crm.data.local.toEntity
 import uz.distributor.crm.data.remote.ApiService
+import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.remote.dto.BatchLocationRequest
 import uz.distributor.crm.data.remote.dto.LocationPointDto
 import uz.distributor.crm.domain.model.LocationPoint
@@ -18,6 +19,7 @@ import javax.inject.Singleton
 class LocationRepository @Inject constructor(
     private val db: AppDatabase,
     private val api: ApiService,
+    private val trackingSocket: TrackingSocketManager,
 ) {
     private val deviceId = Build.MODEL + "-" + Build.ID
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
@@ -48,6 +50,7 @@ class LocationRepository @Inject constructor(
     }
 
     suspend fun sendRealtime(point: LocationPoint) {
+        trackingSocket.emitLocation(point)
         try {
             api.sendLocation(point.toDto())
         } catch (_: Exception) {

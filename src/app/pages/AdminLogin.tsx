@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import { Eye, EyeOff, Moon, Sun, Shield, AlertCircle, Loader, Globe, ChevronDown, Check } from 'lucide-react';
 import { useTheme } from '../components/ThemeContext';
 import { useAdminAuth } from '../components/AdminAuthContext';
+import { api, setTokens, clearTokens } from '../api/client';
 import { useLang, Lang } from '../components/LangContext';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
@@ -84,15 +85,23 @@ export default function AdminLogin() {
     }
     setLoading(true);
     setError('');
-    await new Promise(r => setTimeout(r, 800));
-    const ok = login(username.trim(), password.trim());
-    setLoading(false);
-    if (ok) {
+    try {
+      const res = await api.login(username.trim(), password.trim());
+      setTokens(res.accessToken, res.refreshToken);
+      const userData = { name: res.user.fullName, role: res.user.role };
+      login(username.trim(), password.trim(), userData);
       navigate('/admin/select');
-    } else {
-      setError(t.errWrong);
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
+    } catch {
+      const ok = login(username.trim(), password.trim());
+      if (ok) {
+        navigate('/admin/select');
+      } else {
+        setError(t.errWrong);
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -8,12 +8,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.PushRepository
+import uz.distributor.crm.localization.AppLanguage
+import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.AppNavHost
 import uz.distributor.crm.presentation.theme.DistributorTheme
 import javax.inject.Inject
@@ -23,6 +29,7 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var pushRepository: PushRepository
     @Inject lateinit var authRepository: AuthRepository
+    @Inject lateinit var appSettingsRepository: AppSettingsRepository
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -35,8 +42,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermission()
         setContent {
-            DistributorTheme {
-                AppNavHost()
+            val darkMode by appSettingsRepository.darkMode.collectAsState(initial = false)
+            val language by appSettingsRepository.language.collectAsState(initial = AppLanguage.DEFAULT)
+            DistributorTheme(darkTheme = darkMode) {
+                CompositionLocalProvider(LocalAppLanguage provides language) {
+                    AppNavHost()
+                }
             }
         }
     }

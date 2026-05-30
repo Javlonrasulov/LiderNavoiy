@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { demo } from '../data/demoLimit';
+import { clearTokens } from '../api/client';
 
 export interface Company {
   id: string;
@@ -79,7 +80,7 @@ interface AdminAuthContextType {
   isLoggedIn: boolean;
   selectedCompany: Company | null;
   adminUser: { name: string; role: string } | null;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string, userData?: { name: string; role: string }) => boolean;
   logout: () => void;
   selectCompany: (company: Company) => void;
   clearCompany: () => void;
@@ -109,22 +110,30 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const login = (username: string, password: string): boolean => {
-    const user = ADMIN_CREDENTIALS.find(
-      c => c.username === username && c.password === password
-    );
-    if (user) {
-      const userData = { name: user.name, role: user.role };
+  const login = (username: string, password: string, userData?: { name: string; role: string }): boolean => {
+    if (userData) {
       setIsLoggedIn(true);
       setAdminUser(userData);
       localStorage.setItem('admin_logged_in', 'true');
       localStorage.setItem('admin_user', JSON.stringify(userData));
       return true;
     }
+    const user = ADMIN_CREDENTIALS.find(
+      c => c.username === username && c.password === password
+    );
+    if (user) {
+      const data = { name: user.name, role: user.role };
+      setIsLoggedIn(true);
+      setAdminUser(data);
+      localStorage.setItem('admin_logged_in', 'true');
+      localStorage.setItem('admin_user', JSON.stringify(data));
+      return true;
+    }
     return false;
   };
 
   const logout = () => {
+    clearTokens();
     setIsLoggedIn(false);
     setAdminUser(null);
     setSelectedCompany(null);

@@ -12,6 +12,16 @@ class ProductRepository @Inject constructor(
     private val api: ApiService,
     private val db: AppDatabase,
 ) {
+    suspend fun refreshFromApi(): Boolean {
+        return try {
+            val dtos = api.getProducts()
+            db.productDao().insertAll(dtos.map { it.toEntity() })
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun getProducts(forceRefresh: Boolean = false): List<Product> {
         if (forceRefresh) refreshFromApi()
         val cached = db.productDao().getAll()
@@ -35,16 +45,9 @@ class ProductRepository @Inject constructor(
         return db.productDao().getById(id)?.toDomain()
     }
 
-    private suspend fun refreshFromApi() {
-        try {
-            val dtos = api.getProducts()
-            db.productDao().insertAll(dtos.map { it.toEntity() })
-        } catch (_: Exception) { }
-    }
-
     private fun ProductDto.toEntity() = ProductEntity(
         id = id, code = code, name = name, category = category,
-        price = price.toDoubleOrNull() ?: 0.0, unit = unit,
-        stockBalance = stockBalance.toDoubleOrNull() ?: 0.0,
+        price = price, unit = unit,
+        stockBalance = stockBalance,
     )
 }

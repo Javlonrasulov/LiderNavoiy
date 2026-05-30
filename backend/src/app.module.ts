@@ -13,6 +13,8 @@ import { TrackingModule } from './tracking/tracking.module';
 import { ProductsModule } from './products/products.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthModule } from './health/health.module';
+import { MessagesModule } from './messages/messages.module';
+import { UsersModule } from './users/users.module';
 import { RedisModule } from './common/redis/redis.module';
 
 @Module({
@@ -45,6 +47,8 @@ import { RedisModule } from './common/redis/redis.module';
     ProductsModule,
     DashboardModule,
     HealthModule,
+    MessagesModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

@@ -44,7 +44,7 @@ class ClientRepository @Inject constructor(
 
     private fun ClientDto.toEntity() = ClientEntity(
         id = id, code = code, name = name, address = address,
-        balance = balance.toDoubleOrNull() ?: 0.0,
+        balance = balance,
         latitude = latitude, longitude = longitude,
     )
 }
