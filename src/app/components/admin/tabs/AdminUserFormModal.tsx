@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Save, Trash2, ChevronDown, Check, ChevronRight } from 'lucide-react';
+import { X, Save, Trash2, ChevronDown, Check, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import {
   USER_ROLE_CANONICAL,
   translateUserRole,
   userStatusOpenLabel,
   userStatusClosedLabel,
 } from '../../../data/adminData';
+import { getStoredAppPassword } from '../../../utils/appUserCreds';
 
 /* ═══════════ Types ═══════════ */
 type ModalTab = 'asosiy' | 'boglanish' | 'ontrade' | 'opsiya';
@@ -22,6 +23,7 @@ export interface UserFormRow {
   org: string;
   emp: string;
   onTrade: string;
+  backendUserId?: string;
   dirs: string;
   acceptPay: boolean;
   consig: boolean;
@@ -44,6 +46,8 @@ interface FormData {
   omborlar: string[];
   tashkilotlar: string[];
   perms: Record<string, string>;
+  appLogin: string;
+  appPassword: string;
 }
 
 export type UserFormData = FormData;
@@ -53,7 +57,7 @@ interface Props {
   t: Record<string, string>;
   user: UserFormRow | null; // null = new user
   onClose: () => void;
-  onSave: (data: FormData) => void;
+  onSave: (data: FormData) => void | boolean | Promise<void | boolean>;
   onDelete?: (id: number) => void;
 }
 
@@ -294,6 +298,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
   const [showActions, setShowActions] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth < 640);
@@ -324,6 +331,8 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         omborlar: [],
         tashkilotlar: user.org ? [user.org.replace('...', '')] : [],
         perms: { ...DEFAULT_PERMS, ...(user.acceptPay ? { tolovQabul: 'Ruxsat' } : {}) },
+        appLogin: user.onTrade || '',
+        appPassword: getStoredAppPassword(user.onTrade || ''),
       };
     }
     return {
@@ -331,8 +340,24 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       role: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
       directions: [], kassalar: [], omborlar: [], tashkilotlar: [],
       perms: { ...DEFAULT_PERMS },
+      appLogin: '', appPassword: '',
     };
   });
+
+  const submitForm = async (closeAfter: boolean) => {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const result = await onSave(form);
+      if (result !== false) {
+        if (closeAfter) onClose();
+      }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const upd = (key: keyof FormData, val: string) =>
     setForm(f => ({ ...f, [key]: val }));
@@ -529,7 +554,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>{tr(t, 'userAppLogin', 'Login:')}</span>
             <input
-              placeholder="ontrade_login"
+              value={form.appLogin}
+              onChange={e => upd('appLogin', e.target.value)}
+              placeholder="javlon"
               style={{
                 flex: 1, minWidth: 0, padding: '7px 10px', borderRadius: 8,
                 border: `1px solid ${border}`, background: D ? '#1a1a1a' : '#fff',
@@ -539,14 +566,34 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ minWidth: 80, fontSize: 12.5, color: muted }}>{tr(t, 'userAppPassword', 'Parol:')}</span>
-            <input
-              type="password" placeholder="••••••••"
-              style={{
-                flex: 1, minWidth: 0, padding: '7px 10px', borderRadius: 8,
-                border: `1px solid ${border}`, background: D ? '#1a1a1a' : '#fff',
-                color: txt, fontSize: 12.5, outline: 'none', boxSizing: 'border-box' as const,
-              }}
-            />
+            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.appPassword}
+                onChange={e => upd('appPassword', e.target.value)}
+                placeholder="••••••••"
+                style={{
+                  width: '100%', padding: '7px 36px 7px 10px', borderRadius: 8,
+                  border: `1px solid ${border}`, background: D ? '#1a1a1a' : '#fff',
+                  color: txt, fontSize: 12.5, outline: 'none', boxSizing: 'border-box' as const,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                style={{
+                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  color: muted, display: 'flex', alignItems: 'center',
+                }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>
+            {tr(t, 'userAppHint', 'Bu login va parol mobil ilova (APK) ga kirish uchun ishlatiladi.')}
           </div>
         </div>
       </div>
@@ -685,19 +732,20 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {/* Save & Close */}
               <button
-                onClick={() => { onSave(form); onClose(); }}
+                onClick={() => submitForm(false)}
+                disabled={saving}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: isMobile ? '7px 12px' : '7px 14px',
                   borderRadius: 9, border: 'none',
                   background: indigo, color: '#fff',
-                  fontSize: isMobile ? 11 : 12, fontWeight: 700, cursor: 'pointer',
+                  fontSize: isMobile ? 11 : 12, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
                   boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
-                  flexShrink: 0,
+                  flexShrink: 0, opacity: saving ? 0.7 : 1,
                 }}
               >
                 <Save size={12} />
-                {!isMobile && <span>{tr(t, 'userSave', 'Saqlash')}</span>}
+                {!isMobile && <span>{saving ? '...' : tr(t, 'userSave', 'Saqlash')}</span>}
               </button>
 
               {/* Delete */}
@@ -846,17 +894,28 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
               ))}
             </div>
             <button
-              onClick={() => { onSave(form); onClose(); }}
+              onClick={() => submitForm(true)}
+              disabled={saving}
               style={{
                 flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
                 padding: '9px 18px', borderRadius: 10, border: 'none',
                 background: indigo, color: '#fff',
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, cursor: saving ? 'wait' : 'pointer',
                 boxShadow: '0 4px 14px rgba(99,102,241,0.4)',
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              <Save size={13} /> {tr(t, 'userSaveClose', 'Saqlash va yopish')}
+              <Save size={13} /> {saving ? '...' : tr(t, 'userSaveClose', 'Saqlash va yopish')}
             </button>
+          </div>
+        )}
+        {saveError && (
+          <div style={{
+            padding: '8px 20px', borderTop: `1px solid ${border}`,
+            background: D ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+            color: '#ef4444', fontSize: 12, flexShrink: 0,
+          }}>
+            {saveError}
           </div>
         )}
       </div>

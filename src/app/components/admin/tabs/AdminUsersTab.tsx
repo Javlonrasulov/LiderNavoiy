@@ -5,6 +5,12 @@ import {
 } from 'lucide-react';
 import { AdminUserFormModal, type UserFormRow, type UserFormData } from './AdminUserFormModal';
 import { translateUserRole, userStatusOpenLabel } from '../../../data/adminData';
+import { api } from '../../../api/client';
+import {
+  mapAdminRoleToBackend,
+  removeStoredAppPassword,
+  storeAppPassword,
+} from '../../../utils/appUserCreds';
 import { demo } from '../../../data/demoLimit';
 
 interface Props {
@@ -26,6 +32,7 @@ interface UserRow {
   org: string;
   emp: string;
   onTrade: string;
+  backendUserId?: string;
   dirs: string;
   acceptPay: boolean;
   consig: boolean;
@@ -51,9 +58,15 @@ const INITIAL_USERS: UserRow[] = demo([
   { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
 ]);
 
-function formToUserRow(data: UserFormData, t: Record<string, string>, id: number): UserRow {
+function formToUserRow(
+  data: UserFormData,
+  t: Record<string, string>,
+  id: number,
+  backendUserId?: string,
+): UserRow {
   const org = data.org.length > 14 ? `${data.org.slice(0, 13)}...` : data.org;
   const emp = data.xodim.length > 14 ? `${data.xodim.slice(0, 13)}...` : data.xodim;
+  const appLogin = data.appLogin.trim();
   return {
     id,
     code: data.code.trim(),
@@ -64,12 +77,65 @@ function formToUserRow(data: UserFormData, t: Record<string, string>, id: number
     status: data.status === userStatusOpenLabel(t) ? 'open' : 'closed',
     org,
     emp,
-    onTrade: '',
+    onTrade: appLogin,
+    backendUserId,
     dirs: data.directions.join(', '),
     acceptPay: data.perms.tolovQabul === 'Ruxsat',
     consig: data.perms.konsignatsiya === 'Ruxsat',
     gps: data.perms.gpsMijozlar === 'Ruxsat',
   };
+}
+
+async function syncAppCredentials(
+  data: UserFormData,
+  t: Record<string, string>,
+  existing?: UserRow | null,
+): Promise<string | undefined> {
+  const username = data.appLogin.trim();
+  const password = data.appPassword.trim();
+  const fullName = data.fio.trim() || data.xodim.trim();
+  const isActive = data.status === userStatusOpenLabel(t);
+  const role = mapAdminRoleToBackend(data.role);
+  const companyName = data.org.replace(/\.\.\.$/, '').trim() || undefined;
+
+  if (!username) return existing?.backendUserId;
+
+  const token = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('api_access_token')
+    : null;
+  if (!token) {
+    throw new Error("Avval admin panelga kirish qiling (backend bilan bog'lanish kerak)");
+  }
+
+  if (!existing?.backendUserId) {
+    if (!password) throw new Error('APK uchun parol kiriting');
+    const created = await api.createAppUser({
+      username,
+      password,
+      fullName,
+      role,
+      companyName,
+      isActive,
+    });
+    storeAppPassword(username, password);
+    return created.id;
+  }
+
+  const payload: Parameters<typeof api.updateAppUser>[1] = {
+    username,
+    fullName,
+    role,
+    isActive,
+    companyName,
+  };
+  if (password) payload.password = password;
+
+  const updated = await api.updateAppUser(existing.backendUserId, payload);
+  if (password) storeAppPassword(username, password);
+  if (existing.onTrade && existing.onTrade !== username) {
+    removeStoredAppPassword(existing.onTrade);
+  }
+  return updated.id;
 }
 
 function roleColor(role: string) {
@@ -205,23 +271,43 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const openEdit   = (u: UserRow) => setModalUser(u as unknown as UserFormRow);
   const closeModal = () => setModalUser(null);
 
-  const handleSave = (data: UserFormData) => {
-    if (modalUser === 'new') {
-      const nextId = users.reduce((max, u) => Math.max(max, u.id), 0) + 1;
-      const nextCode = data.code.trim() || String(nextId).padStart(4, '0');
-      const row = formToUserRow({ ...data, code: nextCode }, t, nextId);
-      if (!row.name) return;
-      setUsers(prev => [...prev, row]);
-      setSelected(row.id);
-    } else if (modalUser) {
-      const row = formToUserRow(data, t, modalUser.id);
-      if (!row.name) return;
-      setUsers(prev => prev.map(u => (u.id === modalUser.id ? row : u)));
-      setSelected(row.id);
+  const handleSave = async (data: UserFormData): Promise<boolean> => {
+    try {
+      const existingRow = modalUser && modalUser !== 'new'
+        ? users.find(u => u.id === modalUser.id) ?? null
+        : null;
+
+      const backendUserId = await syncAppCredentials(data, t, existingRow);
+
+      if (modalUser === 'new') {
+        const nextId = users.reduce((max, u) => Math.max(max, u.id), 0) + 1;
+        const nextCode = data.code.trim() || String(nextId).padStart(4, '0');
+        const row = formToUserRow({ ...data, code: nextCode }, t, nextId, backendUserId);
+        if (!row.name) return false;
+        setUsers(prev => [...prev, row]);
+        setSelected(row.id);
+      } else if (modalUser) {
+        const row = formToUserRow(data, t, modalUser.id, backendUserId ?? modalUser.backendUserId);
+        if (!row.name) return false;
+        setUsers(prev => prev.map(u => (u.id === modalUser.id ? row : u)));
+        setSelected(row.id);
+      }
+      return true;
+    } catch (e) {
+      throw e instanceof Error ? e : new Error('Saqlashda xatolik');
     }
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
+    const row = users.find(u => u.id === id);
+    if (row?.backendUserId) {
+      try {
+        await api.deactivateAppUser(row.backendUserId);
+      } catch {
+        /* local delete even if API fails */
+      }
+    }
+    if (row?.onTrade) removeStoredAppPassword(row.onTrade);
     setUsers(prev => prev.filter(u => u.id !== id));
     setSelected(prev => (prev === id ? null : prev));
   };

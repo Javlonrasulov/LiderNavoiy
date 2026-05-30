@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -38,6 +41,19 @@ fun LoginScreen(
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
     var showLangMenu by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    val loginFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color.White,
+        unfocusedContainerColor = Color.White,
+        focusedTextColor = Color(0xFF111827),
+        unfocusedTextColor = Color(0xFF111827),
+        focusedBorderColor = SherinColors.Primary,
+        unfocusedBorderColor = Color(0xFFD1D5DB),
+        focusedLabelColor = SherinColors.Primary,
+        unfocusedLabelColor = Color(0xFF6B7280),
+        cursorColor = SherinColors.Primary,
+    )
 
     LaunchedEffect(state.isSuccess) {
         if (state.isSuccess) {
@@ -96,6 +112,7 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
+                    colors = loginFieldColors,
                 )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
@@ -104,9 +121,31 @@ fun LoginScreen(
                     label = { Text(AppStrings.password(lang)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) {
+                                    Icons.Default.Visibility
+                                } else {
+                                    Icons.Outlined.VisibilityOff
+                                },
+                                contentDescription = if (passwordVisible) {
+                                    AppStrings.hide(lang)
+                                } else {
+                                    AppStrings.showPassword(lang)
+                                },
+                                tint = Color(0xFF6B7280),
+                            )
+                        }
+                    },
                     shape = RoundedCornerShape(14.dp),
+                    colors = loginFieldColors,
                 )
 
                 state.error?.let {
@@ -125,7 +164,12 @@ fun LoginScreen(
                     if (state.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
                     } else {
-                        Text(AppStrings.loginButton(lang), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            AppStrings.loginButton(lang),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
                     }
                 }
             }

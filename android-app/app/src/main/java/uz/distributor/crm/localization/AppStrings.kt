@@ -56,9 +56,9 @@ object AppStrings {
     fun msgCancel(lang: AppLanguage) = tr(lang, "Bekor qilish", "Бекор қilish", "Отмена")
     fun msgDeleteConfirm(lang: AppLanguage) = tr(lang, "Ushbu xabarni o'chirish?", "Ушбу хabarni ўчириш?", "Удалить это сообщение?")
     fun msgDeleteForAll(lang: AppLanguage, name: String) = when (lang) {
-        AppLanguage.UZ -> "Shuningdek $name uchun ham o'chirish"
-        AppLanguage.CY -> "Шунингdek $name учун ҳам ўчириш"
-        AppLanguage.RU -> "Также удалить для $name"
+        AppLanguage.UZ_LATIN -> "Shuningdek $name uchun ham o'chirish"
+        AppLanguage.UZ_CYRILLIC -> "Шунингdek $name учун ҳам ўчириш"
+        AppLanguage.RUS -> "Также удалить для $name"
     }
     fun todayClients(lang: AppLanguage) = tr(lang, "Bugungi klientlar", "Бугунги клиентлар", "Сегодняшние клиенты")
     fun allClients(lang: AppLanguage) = tr(lang, "Barchasi", "Барчаси", "Все")
@@ -67,10 +67,11 @@ object AppStrings {
     fun openNavigator(lang: AppLanguage) = tr(lang, "Navigator ochish", "Навигатор очиш", "Открыть навигатор")
     fun viewImage(lang: AppLanguage) = tr(lang, "Rasmi", "Расми", "Фото")
 
-    fun loginTitle(lang: AppLanguage) = "Sherin CRM"
+    fun loginTitle(lang: AppLanguage) = "Lider Navoiy"
     fun loginSubtitle(lang: AppLanguage) = tr(lang, "Agent kirish", "Агент кириш", "Вход агента")
     fun loginField(lang: AppLanguage) = "Login"
     fun password(lang: AppLanguage) = tr(lang, "Parol", "Парол", "Пароль")
+    fun showPassword(lang: AppLanguage) = tr(lang, "Parolni ko'rish", "Паролни кўриш", "Показать пароль")
     fun loginButton(lang: AppLanguage) = tr(lang, "Kirish", "Кириш", "Войти")
     fun loginError(lang: AppLanguage) = tr(lang, "Kirish xatosi", "Кириш хатоси", "Ошибка входа")
     fun clientTitle(lang: AppLanguage) = tr(lang, "Klient", "Клиент", "Клиент")
