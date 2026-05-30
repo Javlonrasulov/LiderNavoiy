@@ -29,7 +29,7 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   fcmToken: string | null;
 
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })

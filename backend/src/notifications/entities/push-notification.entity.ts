@@ -34,7 +34,7 @@ export class PushNotification {
   @Column({ default: false })
   isSent: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   fcmMessageId: string | null;
 
   @CreateDateColumn()

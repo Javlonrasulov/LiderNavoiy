@@ -21,7 +21,7 @@ export class Order {
   @Column('uuid')
   clientId: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   visitId: string | null;
 
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
@@ -36,7 +36,7 @@ export class Order {
   @Column({ default: false })
   isOfflineCreated: boolean;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   offlineId: string | null;
 
   @CreateDateColumn()

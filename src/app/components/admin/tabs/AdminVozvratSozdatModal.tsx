@@ -3,6 +3,7 @@ import {
   X, ChevronLeft, ChevronRight, Maximize2, Minimize2,
   Search, Save, Check, Plus, RefreshCw, Trash2, ListChecks, Calendar,
 } from 'lucide-react';
+import { demo, demoRec, demoRecKeys } from '../../../data/demoLimit';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OrderLine {
@@ -28,7 +29,7 @@ interface ProductRow extends OrderLine {
 }
 
 // ── Mock clients ──────────────────────────────────────────────────────────────
-const MOCK_CLIENTS = [
+const MOCK_CLIENTS = demo([
   { name: 'NAVOIY MEXROJBEK OMADI MCHJ',       agent: 'Норова Нозима',      liniya: '10 - 10-никр'      },
   { name: 'BEST WAY GROUP MCHJ',                agent: 'Тухтаниёзов У.',     liniya: '02 - Нурато'       },
   { name: 'CHP SALIMOVA HATICHA MUXTOROVNA',    agent: 'Тухтаниёзов У.',     liniya: '04 - Казилтепа'    },
@@ -42,10 +43,10 @@ const MOCK_CLIENTS = [
   { name: 'TRADING BOXODIR KARMANA',            agent: 'Эргашева Пала',      liniya: '02 - Янги Йул'     },
   { name: 'INTELLECT BEST SAVDO YTT',           agent: 'Тухтаниёзов У.',     liniya: '02 - Xatirchi'     },
   { name: 'ADIZOVA KOLNOZ ISMATOVNA YaTT',      agent: 'Тошниёзов Ш.',       liniya: '10 - Жалол'        },
-];
+]);
 
 // ── Available dates per client ────────────────────────────────────────────────
-const CLIENT_DATES: Record<string, string[]> = {
+const CLIENT_DATES: Record<string, string[]> = demoRec(demoRecKeys({
   'NAVOIY MEXROJBEK OMADI MCHJ':      ['07.03.2026', '03.03.2026', '10.03.2026', '05.03.2026'],
   'BEST WAY GROUP MCHJ':              ['02.03.2026', '04.03.2026', '11.03.2026'],
   'CHP SALIMOVA HATICHA MUXTOROVNA':  ['04.03.2026', '11.03.2026', '13.03.2026'],
@@ -59,10 +60,10 @@ const CLIENT_DATES: Record<string, string[]> = {
   'TRADING BOXODIR KARMANA':          ['03.03.2026', '09.03.2026'],
   'INTELLECT BEST SAVDO YTT':         ['07.03.2026', '04.03.2026'],
   'ADIZOVA KOLNOZ ISMATOVNA YaTT':    ['11.03.2026', '05.03.2026'],
-};
+}));
 
 // ── Mock order lines per client|date ─────────────────────────────────────────
-const MOCK_ORDERS: Record<string, OrderLine[]> = {
+const MOCK_ORDERS: Record<string, OrderLine[]> = demoRec(demoRecKeys({
   'NAVOIY MEXROJBEK OMADI MCHJ|07.03.2026': [
     { id:1, gruppa:'Тим (Склад)', tovar:'Для завтрака НУР 0.9кг',    aktsiya:'', shtUp:1, ves1ed:0.900, kolOtgr:1.870, ostPoZayavke:0, kolvoBlok:1, prajs:38800, tsena:35696.00, summaOtgr:66751.52,  skid:8.000,  kolVozvDefault:1.870, vesDefault:1.870 },
     { id:2, gruppa:'Тим (Склад)', tovar:'Сосиски Радуга 0.42кг',     aktsiya:'', shtUp:1, ves1ed:0.420, kolOtgr:6.000, ostPoZayavke:0, kolvoBlok:1, prajs:18300, tsena:14640.00, summaOtgr:87840.00,  skid:20.000, kolVozvDefault:6.000, vesDefault:2.520 },
@@ -116,7 +117,7 @@ const MOCK_ORDERS: Record<string, OrderLine[]> = {
     { id:1, gruppa:'Тим (Склад)', tovar:'Колбаса Молочная 0.8кг',    aktsiya:'', shtUp:1, ves1ed:0.800, kolOtgr:2.400, ostPoZayavke:0, kolvoBlok:1, prajs:35000, tsena:32200.00, summaOtgr:77280.00,  skid:8.000,  kolVozvDefault:2.400, vesDefault:1.920 },
     { id:2, gruppa:'Тим (Склад)', tovar:'Сосиски Молочные 0.5кг',    aktsiya:'', shtUp:1, ves1ed:0.500, kolOtgr:3.500, ostPoZayavke:0, kolvoBlok:1, prajs:22000, tsena:20240.00, summaOtgr:70840.00,  skid:8.000,  kolVozvDefault:3.500, vesDefault:1.750 },
   ],
-};
+}));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtMoney(n: number) {

@@ -5,6 +5,7 @@ import {
   CalendarDays, Truck, PackageCheck, RefreshCw, Download,
 } from 'lucide-react';
 import { TovarYuklashCreateModal, ConfirmedOrder } from './TovarYuklashCreateModal';
+import { demo } from '../../../../data/demoLimit';
 
 /* ─── Types ───────────────────────────────────────────────── */
 type OtgrStatus  = 'process' | 'done' | 'cancelled';
@@ -66,7 +67,7 @@ function fmtVes(n: number) {
 }
 
 /* ─── Mock data ───────────────────────────────────────────── */
-const DATA: OtgrRow[] = [
+const DATA: OtgrRow[] = demo([
   { id:1, date:'10.03.2026', num:1021, transport:'DAMAS (VAN) 01 9...', driver:'Садуллаев Шухра.',  reys:2,  kolTT:11, kol3k:11, obrn:0,  neobr:0,  term:'0/0', otgr:0,  status:'done',      summa:19_749_933, ves:303000, exid:'10.', direction:'SHERIN', timeOtgr:'10.03.2026 14:53', author:'Зарипов Б.' },
   { id:2, date:'10.03.2026', num:1022, transport:'DAMAS (VAN) 85 9...', driver:'Буронов Феруз',     reys:2,  kolTT:5,  kol3k:5,  obrn:0,  neobr:0,  term:'0/0', otgr:0,  status:'done',      summa:22_536_972, ves:348000, exid:'10.', direction:'SHERIN', timeOtgr:'10.03.2026 15:1..', author:'Зарипов Б.' },
   { id:3, date:'10.03.2026', num:1023, transport:'DAMAS (VAN) 01 5...', driver:'Иргашев Азизхон.',  reys:4,  kolTT:1,  kol3k:1,  obrn:0,  neobr:0,  term:'0/0', otgr:0,  status:'done',      summa:3_375_256,  ves:0,      exid:'10.', direction:'SHERIN', timeOtgr:'10.03.2026 15:4..', author:'Зарипов Б.' },
@@ -91,7 +92,7 @@ const DATA: OtgrRow[] = [
   { id:22,date:'11.03.2026', num:1042, transport:'DAMAS (VAN) 01 5...', driver:'Буронов Феруз',     reys:2,  kolTT:2,  kol3k:2,  obrn:2,  neobr:0,  term:'0/0', otgr:0,  status:'cancelled', summa:548_676,    ves:0,      exid:'11.', direction:'SHERIN', timeOtgr:'11.03.2026 16:4..', author:'Зарипов Б.' },
   { id:23,date:'11.03.2026', num:1043, transport:'DAMAS (VAN) 01 9...', driver:'Садуллаев Шухра.',  reys:1,  kolTT:15, kol3k:15, obrn:15, neobr:0,  term:'0/0', otgr:0,  status:'done',      summa:27_657_639, ves:453000, exid:'11.', direction:'SHERIN', timeOtgr:'11.03.2026 16:3..', author:'Зарипов Б.' },
   { id:24,date:'11.03.2026', num:1044, transport:'DAMAS (VAN) 01 8...', driver:'Абдухакимов Диё.',  reys:2,  kolTT:2,  kol3k:2,  obrn:2,  neobr:0,  term:'0/0', otgr:0,  status:'process',   summa:1_204_294,  ves:27000,  exid:'11.', direction:'SHERIN', timeOtgr:'11.03.2026 17:1..', author:'Зарипов Б.' },
-];
+]);
 
 /* ─── Props ──────────────────────────────────────────────── */
 interface Props { D: boolean; t: Record<string, string>; onCreateClick?: () => void; pendingOrders?: ConfirmedOrder[]; }

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { X, MapPin, Wifi, WifiOff, Maximize2, Minimize2, Search } from 'lucide-react';
-
 import L from 'leaflet';
+import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
 export interface EmployeeMarker {
   id: number;
   name: string;
@@ -27,7 +26,7 @@ interface Props {
   t: Record<string, string>;
 }
 
-const DEFAULT_CENTER: [number, number] = [40.1025, 65.3790];
+const NAVOIY: [number, number] = [40.0843, 65.3791];
 const DEFAULT_ZOOM = 13;
 
 function makeIcon(role: 'agent' | 'delivery', online: boolean, highlight = false) {
@@ -40,12 +39,11 @@ function makeIcon(role: 'agent' | 'delivery', online: boolean, highlight = false
       ? (online ? '#a5b4fc' : '#9ca3af')
       : (online ? '#6ee7b7' : '#9ca3af');
   const size = highlight ? 42 : 36;
-  const half = size / 2;
   return L.divIcon({
     className: '',
     iconSize: [size, size],
-    iconAnchor: [half, half],
-    popupAnchor: [0, -half - 4],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2 - 4],
     html: `
       <div style="
         width:${size}px;height:${size}px;border-radius:50%;
@@ -54,9 +52,7 @@ function makeIcon(role: 'agent' | 'delivery', online: boolean, highlight = false
         box-shadow:0 2px ${highlight ? 16 : 8}px rgba(0,0,0,${highlight ? 0.5 : 0.35});
         display:flex;align-items:center;justify-content:center;
         color:#fff;font-size:${highlight ? 14 : 12}px;font-weight:700;
-        position:relative;
-        transition:all .2s;
-      ">
+        position:relative;transition:all .2s;">
         ${role === 'delivery' ? '🚚' : '👤'}
         ${online ? `<span style="position:absolute;bottom:0;right:0;width:10px;height:10px;background:#22c55e;border-radius:50%;border:2px solid #fff;"></span>` : ''}
       </div>`,
@@ -64,9 +60,10 @@ function makeIcon(role: 'agent' | 'delivery', online: boolean, highlight = false
 }
 
 export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, initialZoom, cityLabel, t }: Props) {
-  const mapRef        = useRef<L.Map | null>(null);
-  const divRef        = useRef<HTMLDivElement>(null);
-  const markerMapRef  = useRef<Map<number, L.Marker>>(new Map());
+  const mapRef       = useRef<L.Map | null>(null);
+  const divRef       = useRef<HTMLDivElement>(null);
+  const tileRef      = useRef<L.TileLayer | null>(null);
+  const markersRef   = useRef<Map<number, L.Marker>>(new Map());
 
   const [filter,      setFilter]      = useState<'all' | 'agent' | 'delivery'>('all');
   const [onlineOnly,  setOnlineOnly]  = useState(false);
@@ -74,57 +71,64 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
   const [highlighted, setHighlighted] = useState<number | null>(null);
+  const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
-  // ── init map ────────────────────────────────────────────────────────────────
+  const refreshMapSize = useCallback(() => {
+    mapRef.current?.invalidateSize(true);
+  }, []);
+
   useEffect(() => {
-    if (!open || !divRef.current) return;
-    if (mapRef.current) return;
+    if (!open || !divRef.current || mapRef.current) return;
+
+    const safeLat = centerCoord && isFinite(centerCoord[0]) ? centerCoord[0] : NAVOIY[0];
+    const safeLng = centerCoord && isFinite(centerCoord[1]) ? centerCoord[1] : NAVOIY[1];
 
     const map = L.map(divRef.current, {
-      center: centerCoord || DEFAULT_CENTER,
+      center: [safeLat, safeLng],
       zoom: initialZoom || DEFAULT_ZOOM,
       zoomControl: false,
       attributionControl: false,
-      zoomAnimation: false,
     });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(map);
-
+    switchTileLayer(map, tileRef, activeLayer, dark);
     mapRef.current = map;
+
+    requestAnimationFrame(refreshMapSize);
+    setTimeout(refreshMapSize, 100);
+    setTimeout(refreshMapSize, 350);
+
     return () => {
       map.remove();
       mapRef.current = null;
+      markersRef.current.clear();
     };
   }, [open]);
 
-  // ── fly to new city when org/centerCoord changes ────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !centerCoord) return;
+    if (!map || !open) return;
+    switchTileLayer(map, tileRef, activeLayer, dark);
+  }, [activeLayer, dark, open]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !open || !centerCoord) return;
     if (!isFinite(centerCoord[0]) || !isFinite(centerCoord[1])) return;
-    // reset search & highlight on org change
     setSearchQuery('');
     setHighlighted(null);
-    map.flyTo(centerCoord, initialZoom || DEFAULT_ZOOM, { duration: 1.1 });
-  }, [centerCoord?.[0], centerCoord?.[1]]);
+    map.flyTo(centerCoord, initialZoom || DEFAULT_ZOOM, { duration: 0.9 });
+  }, [centerCoord?.[0], centerCoord?.[1], open]);
 
-  // ── invalidate size after fullscreen toggle ─────────────────────────────────
   useEffect(() => {
-    const timer = setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 320);
+    const timer = setTimeout(refreshMapSize, 320);
     return () => clearTimeout(timer);
-  }, [fullscreen]);
+  }, [fullscreen, refreshMapSize]);
 
-  // ── add / update markers ────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !open) return;
 
-    markerMapRef.current.forEach(m => m.remove());
-    markerMapRef.current.clear();
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current.clear();
 
     const filtered = employees.filter(e => {
       if (filter !== 'all' && e.role !== filter) return false;
@@ -134,11 +138,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
 
     filtered.forEach(emp => {
       const isHL = highlighted === emp.id;
-      const marker = L.marker([emp.lat, emp.lng], {
-        icon: makeIcon(emp.role, emp.online, isHL),
-        zIndexOffset: isHL ? 1000 : 0,
-      });
-
       const roleLabel   = emp.role === 'agent'
         ? (t.empRoleAgent    || 'Agent')
         : (t.empRoleDelivery || 'Dostavkachi');
@@ -147,25 +146,26 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
         : (t.empOffline || 'Offline');
       const statusColor = emp.online ? '#22c55e' : '#ef4444';
 
+      const marker = L.marker([emp.lat, emp.lng], {
+        icon: makeIcon(emp.role, emp.online, isHL),
+        zIndexOffset: isHL ? 1000 : 0,
+      });
       marker.bindPopup(`
         <div style="min-width:150px;font-family:sans-serif;">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px;">${emp.name}</div>
           <div style="font-size:11px;color:#6b7280;margin-bottom:2px;">${roleLabel}</div>
           <div style="font-size:11px;color:${statusColor};font-weight:600;">${statusLabel}</div>
           <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${emp.lastSeen}</div>
-        </div>
-      `, { closeButton: false });
-
+        </div>`);
       marker.addTo(map);
-      markerMapRef.current.set(emp.id, marker);
+      markersRef.current.set(emp.id, marker);
 
       if (isHL) {
         setTimeout(() => marker.openPopup(), 150);
       }
     });
-  }, [employees, filter, onlineOnly, open, highlighted]);
+  }, [employees, filter, onlineOnly, open, highlighted, t]);
 
-  // ── fly to employee ─────────────────────────────────────────────────────────
   const flyTo = useCallback((emp: EmployeeMarker) => {
     setHighlighted(emp.id);
     setSearchQuery(emp.name);
@@ -175,7 +175,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
 
   if (!open) return null;
 
-  // ── derived ─────────────────────────────────────────────────────────────────
   const total   = employees.length;
   const agentCt = employees.filter(e => e.role === 'agent').length;
   const drivers = employees.filter(e => e.role === 'delivery').length;
@@ -186,7 +185,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     ? employees.filter(e => e.name.toLowerCase().includes(trimmedQ))
     : [];
 
-  // ── styles ──────────────────────────────────────────────────────────────────
   const bg  = dark ? 'bg-[#111112] border-gray-800' : 'bg-white border-gray-200';
   const hdr = dark ? 'bg-[#0a0a0a] border-gray-800' : 'bg-gray-50 border-gray-200';
   const sub = dark ? 'text-gray-400' : 'text-gray-500';
@@ -199,7 +197,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
   const iconBtn = `w-8 h-8 rounded-xl flex items-center justify-center transition-colors flex-shrink-0
     ${dark ? 'hover:bg-gray-800 text-gray-400 hover:text-white' : 'hover:bg-gray-100 text-gray-500 hover:text-gray-800'}`;
 
-  // fullscreen vs normal sizing
   const outerCls = fullscreen
     ? 'fixed inset-0 z-[501] p-0'
     : 'fixed inset-0 z-[500] flex items-center justify-center p-4';
@@ -219,9 +216,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
         style={innerStyle}
         onClick={e => e.stopPropagation()}
       >
-        {/* ── Header ── */}
         <div className={`px-4 py-3 border-b ${hdr} flex-shrink-0`}>
-          {/* Row 1: Title + action buttons */}
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="min-w-0 flex-1">
               <h2 className="font-bold text-sm truncate">
@@ -233,7 +228,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
-              {/* Fullscreen toggle */}
               <button
                 onClick={() => setFullscreen(v => !v)}
                 className={iconBtn}
@@ -241,14 +235,12 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
               >
                 {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
               </button>
-              {/* Close */}
               <button onClick={onClose} className={iconBtn}>
                 <X size={16} />
               </button>
             </div>
           </div>
 
-          {/* Row 2: Filter pills + online toggle */}
           <div className="flex items-center gap-1 flex-wrap">
             {(['all', 'agent', 'delivery'] as const).map(f => (
               <button
@@ -264,7 +256,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
               </button>
             ))}
 
-            {/* Online toggle */}
             <button
               onClick={() => setOnlineOnly(v => !v)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${pill(onlineOnly)}`}
@@ -275,9 +266,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
           </div>
         </div>
 
-        {/* ── Legend + Search ── */}
         <div className={`px-4 py-2.5 border-b ${hdr} flex-shrink-0`}>
-          {/* Legend dots */}
           <div className="flex items-center gap-3 flex-wrap mb-2">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-indigo-500 inline-block flex-shrink-0" />
@@ -299,7 +288,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
             </div>
           </div>
 
-          {/* Search input — full width on mobile */}
           <div className="relative w-full">
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all
               ${searchFocus
@@ -332,7 +320,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
               )}
             </div>
 
-            {/* Search results dropdown */}
             {searchFocus && searchResults.length > 0 && (
               <div className={`absolute right-0 top-full mt-1 w-56 rounded-xl border shadow-2xl z-[900] overflow-hidden
                 ${dark ? 'bg-[#1a1a1b] border-gray-700' : 'bg-white border-gray-200'}`}
@@ -351,7 +338,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
                           ? 'hover:bg-gray-800 text-gray-200'
                           : 'hover:bg-gray-50 text-gray-800'}`}
                     >
-                      {/* Avatar */}
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0
                         ${isAgent
                           ? (emp.online ? 'bg-indigo-600' : 'bg-gray-500')
@@ -371,7 +357,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
               </div>
             )}
 
-            {/* No results */}
             {searchFocus && trimmedQ.length >= 1 && searchResults.length === 0 && (
               <div className={`absolute right-0 top-full mt-1 w-52 rounded-xl border shadow-xl z-[900] px-4 py-3
                 ${dark ? 'bg-[#1a1a1b] border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'}`}
@@ -382,10 +367,8 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
           </div>
         </div>
 
-        {/* ── Map container ── */}
-        <div className="flex-1 w-full" style={{ minHeight: 0, position: 'relative', overflow: 'hidden' }}>
-          <div ref={divRef} style={{ position: 'absolute', inset: 0 }} />
-          {/* Custom zoom controls — rendered above Leaflet layers */}
+        <div className="flex-1 w-full" style={{ minHeight: 280, position: 'relative', overflow: 'hidden' }}>
+          <div ref={divRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
           <div style={{
             position: 'absolute', top: 8, left: 8, zIndex: 800,
             display: 'flex', flexDirection: 'column',
@@ -413,6 +396,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
               }}
             >−</button>
           </div>
+          <MapLayerSwitcher activeLayer={activeLayer} onChange={setActiveLayer} bottom={12} left={12} />
         </div>
       </div>
     </div>

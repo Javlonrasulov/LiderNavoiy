@@ -17,10 +17,10 @@ export class Product {
   @Column()
   name: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   category: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   brand: string | null;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })

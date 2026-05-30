@@ -5,6 +5,7 @@ import {
   Maximize2, X,
 } from 'lucide-react';
 import { AdminVozvratSozdatModal } from './AdminVozvratSozdatModal';
+import { demo } from '../../../data/demoLimit';
 
 // ── Mock return data ──────────────────────────────────────────────────────────
 interface ReturnRow {
@@ -25,7 +26,7 @@ interface ReturnRow {
   exId: number;
 }
 
-const MOCK_RETURNS: ReturnRow[] = [
+const MOCK_RETURNS = demo([
   { id:1,  sana:'02.03.2026 14:25:30', nomer:29072, kod:'КОЛМУРОДОВА САБРИНА',             kontragent:'KOLMURODOVA SABRINA',                    agent:'Самандарова',        buyurtmaNo:14918, buyurtmaSana:'26.02.2026', liniya:'02 - Tourabort.',     yonalish:'SHERIN', tip:'D2', summa:373494.20,  vazn:13.350,  muallif:'Зарипов Бегзод', exId:80  },
   { id:2,  sana:'02.03.2026 14:26:13', nomer:31629, kod:'МУСУЛИМА МУБИНА ЮКСАЛИШИ Х/К',   kontragent:'MUSLIMA MUBINA YKSALISHI X/K',            agent:'Тухтаниёзов У.',    buyurtmaNo:15482, buyurtmaSana:'28.02.2026', liniya:'02 - Xatirchi',       yonalish:'SHERIN', tip:'D2', summa:5610,       vazn:5.610,   muallif:'Зарипов Бегзод', exId:81  },
   { id:3,  sana:'03.03.2026 12:27:16', nomer:28926, kod:'QUSHBEG RESTARAN',                kontragent:'Qushbeg restaran',                        agent:'Назаров Давл.',     buyurtmaNo:15645, buyurtmaSana:'02.03.2026', liniya:'27 - Xasanov A.',     yonalish:'SHERIN', tip:'D2', summa:1464341.92, vazn:41.680,  muallif:'Зарипов Бегзод', exId:82  },
@@ -54,7 +55,7 @@ const MOCK_RETURNS: ReturnRow[] = [
   { id:26, sana:'15.03.2026 09:15:44', nomer:63044, kod:'AYOL SAVDO KOMBINATI',            kontragent:'Ayol Savdo Kombinati',                    agent:'Эргашева Пала',     buyurtmaNo:19232, buyurtmaSana:'13.03.2026', liniya:'04 - Казилтепа',      yonalish:'SHERIN', tip:'D2', summa:534720.00,  vazn:22.800,  muallif:'Зарипов Бегзод', exId:105 },
   { id:27, sana:'15.03.2026 11:38:22', nomer:91002, kod:'PREMIUM SAVDO MCHJ',              kontragent:'Premium Savdo MCHJ',                      agent:'Тухтаниёзов У.',    buyurtmaNo:19350, buyurtmaSana:'13.03.2026', liniya:'02 - Xatirchi',       yonalish:'SHERIN', tip:'D2', summa:987600.00,  vazn:45.500,  muallif:'Зарипов Бегзод', exId:106 },
   { id:28, sana:'15.03.2026 14:05:17', nomer:44107, kod:'NASIBA HOLDING',                  kontragent:'Nasiba Holding OOO',                      agent:'Самандарова',       buyurtmaNo:19401, buyurtmaSana:'14.03.2026', liniya:'27 - Xasanov A.',     yonalish:'SHERIN', tip:'D2', summa:1234500.00, vazn:88.200,  muallif:'Исматулаев Кув.', exId:107 },
-];
+]);
 
 const PAGE_SIZE = 15;
 

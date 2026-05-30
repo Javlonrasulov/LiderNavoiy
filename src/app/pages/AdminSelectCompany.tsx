@@ -15,8 +15,8 @@ interface LocalCompany extends Company {
 
 /* ─── Lang ───────────────────────────────────────────────── */
 const LANGS: { id: Lang; label: string; flag: string }[] = [
-  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'cy', label: 'Ўзбек',  flag: 'КР' },
+  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'ru', label: 'Русский', flag: 'RU' },
 ];
 

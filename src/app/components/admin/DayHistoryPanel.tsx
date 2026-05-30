@@ -4,6 +4,7 @@ import {
   ShoppingCart, Check, Clock, MapPin, TrendingUp, X,
 } from 'lucide-react';
 import { ADMIN_PRODUCTS } from '../../data/adminProducts';
+import { demo } from '../../data/demoLimit';
 
 interface Props {
   empId: number;
@@ -21,7 +22,7 @@ function seededRand(seed: number) {
   };
 }
 
-const CLIENT_NAMES = [
+const CLIENT_NAMES = demo([
   'Ahmed Ota Markit', 'Gemur Ruslan', 'Muratov Jahongir',
   'Armixon Grand Savdo', 'Asad Asil Beklarim', 'Gulsevar Baraka',
   'Timurbek Shirina', 'Ahmadova Dildora', 'Ikronov Urozbek',
@@ -31,7 +32,7 @@ const CLIENT_NAMES = [
   "Hamza Do'koni", 'Sarvar Supermarket', 'Dilnoza Nonvoyxona',
   'Umarov Sherzod', 'Kenja Savdo', 'Abdullayev Jamshid',
   'Zulfiya Bozor', 'Nodira Mahsulotlari', 'Komiljon TTM',
-];
+]);
 const DISTRICTS = [
   'Janubiy', 'Shimoliy', 'Markaziy', "G'arbiy", 'Sharqiy',
   '1-mavze', '2-mavze', '3-mavze', 'Karmana', 'Ravshan',

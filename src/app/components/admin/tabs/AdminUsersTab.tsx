@@ -4,6 +4,7 @@ import {
   MapPin, Building2, CreditCard, Package, Navigation,
 } from 'lucide-react';
 import { AdminUserFormModal, type UserFormRow } from './AdminUserFormModal';
+import { demo } from '../../../data/demoLimit';
 
 interface Props {
   D: boolean;
@@ -30,7 +31,7 @@ interface UserRow {
   gps: boolean;
 }
 
-const DUMMY_USERS: UserRow[] = [
+const DUMMY_USERS = demo([
   { id: 1,  code: '0051', name: 'Abduxakimov Diyorbek',        tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Abduxakimov D...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
   { id: 2,  code: '0035', name: 'Amriddinov Sardor',           tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Amriddinov S...',   onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
   { id: 3,  code: '0043', name: 'Baxodirov Utkir',             tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'LEADERS BAR...',  emp: 'Baxodirov Utk...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
@@ -47,7 +48,7 @@ const DUMMY_USERS: UserRow[] = [
   { id: 14, code: '0050', name: 'Ismatullaev Quvonchbek',      tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Ismatullaev K...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
   { id: 15, code: '0032', name: 'Patipov Umrzok',              tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Patipov Umrzok',    onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
   { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
-];
+]);
 
 function roleColor(role: string) {
   if (role.includes('Savdo'))                                  return { bg: 'rgba(99,102,241,0.13)',  text: '#818cf8' };

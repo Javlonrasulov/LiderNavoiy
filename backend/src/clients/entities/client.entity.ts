@@ -19,19 +19,19 @@ export class Client {
   @Column()
   name: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   fullName: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   address: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   companyId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   lineCode: string | null;
 
   @Column({ type: 'double precision', nullable: true })
@@ -43,7 +43,7 @@ export class Client {
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   balance: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   category: string | null;
 
   @Column({ default: true })

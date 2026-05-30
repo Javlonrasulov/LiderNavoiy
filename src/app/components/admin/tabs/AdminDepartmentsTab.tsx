@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, X, Check, AlertTriangle, Layers } from 'lucide-react';
+import { demo } from '../../../data/demoLimit';
 
 interface DeptRow {
   id: number;
@@ -7,7 +8,7 @@ interface DeptRow {
   name: string;
 }
 
-const INITIAL_DEPTS: DeptRow[] = [
+const INITIAL_DEPTS: DeptRow[] = demo([
   { id: 1, code: 1, name: 'АУП'          },
   { id: 2, code: 2, name: 'Бухгалтерия'  },
   { id: 3, code: 3, name: 'Финанс отдел' },
@@ -17,7 +18,7 @@ const INITIAL_DEPTS: DeptRow[] = [
   { id: 7, code: 7, name: 'Касса'        },
   { id: 8, code: 8, name: 'Доставка'     },
   { id: 9, code: 9, name: 'Продавцы'     },
-];
+]);
 
 interface Props {
   D: boolean;

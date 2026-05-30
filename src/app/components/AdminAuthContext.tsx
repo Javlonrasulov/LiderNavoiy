@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { demo } from '../data/demoLimit';
 
 export interface Company {
   id: string;
@@ -11,7 +12,7 @@ export interface Company {
   clients: number;
 }
 
-export const COMPANIES: Company[] = [
+export const COMPANIES = demo([
   {
     id: 'boran',
     name: 'Boran Leaders+ Darveshi Navoiy',
@@ -72,7 +73,7 @@ export const COMPANIES: Company[] = [
     agents: 3,
     clients: 76,
   },
-];
+]);
 
 interface AdminAuthContextType {
   isLoggedIn: boolean;

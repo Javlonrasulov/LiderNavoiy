@@ -10,6 +10,7 @@ import { MiniBarChart, MiniDonutChart, MiniLineChart } from '../../MiniCharts';
 import { fmt } from '../../../data/adminData';
 import * as XLSX from 'xlsx';
 import { AddExpenseModal } from './AddExpenseModal';
+import { demo, demoRec } from '../../../data/demoLimit';
 
 interface Props {
   D: boolean; card: string; divider: string; sub: string;
@@ -41,7 +42,7 @@ const isBetween = (d: Date, a: Date, b: Date) => {
 };
 
 // ─── Static category config ───────────────────────────────────────────────────
-const CAT_STATIC = [
+const CAT_STATIC = demo([
   { id:'ofis', tKey:'zatCatOfis', color:'#6366f1', icon:Building2, amount:23_630_847.61,
     subs:[
       { name:'Ijara (ofis)',           amount:11_000_000    },
@@ -82,18 +83,18 @@ const CAT_STATIC = [
       { name:"Ta'mirlash ishlari",     amount: 1_162_000 },
     ],
   },
-];
+]).map(c => ({ ...c, subs: demo(c.subs) }));
 const TOTAL = CAT_STATIC.reduce((s,c)=>s+c.amount,0);
 
 // ─── Monthly trend ────────────────────────────────────────────────────────────
-const MONTHLY_TREND = [
+const MONTHLY_TREND = demo([
   { month:'Okt', total:88_500_000,  ofis:20_100_000, dostavka:31_200_000, transport:14_200_000, ombor:17_400_000, qurilish:5_600_000 },
   { month:'Nov', total:95_200_000,  ofis:21_500_000, dostavka:33_800_000, transport:15_100_000, ombor:19_200_000, qurilish:5_600_000 },
   { month:'Dek', total:108_900_000, ofis:24_000_000, dostavka:38_500_000, transport:17_600_000, ombor:22_700_000, qurilish:6_100_000 },
   { month:'Yan', total:96_300_000,  ofis:22_100_000, dostavka:34_000_000, transport:15_500_000, ombor:19_100_000, qurilish:5_600_000 },
   { month:'Fev', total:114_712_848, ofis:23_630_848, dostavka:39_797_000, transport:17_101_000, ombor:27_922_000, qurilish:6_262_000 },
   { month:'Mar', total:42_100_000,  ofis: 9_200_000, dostavka:14_800_000, transport: 6_400_000, ombor: 9_100_000, qurilish:2_600_000 },
-];
+]);
 // (pct change is now computed dynamically inside the component)
 
 // ─── Detail transaction data ──────────────────────────────────────────────────
@@ -101,7 +102,7 @@ interface TxRow {
   id:number; date:string; group:string; item:string;
   desc:string; amount:number; note:string; reg:string;
 }
-const SALAR: TxRow[] = [
+const SALAR: TxRow[] = demo([
   { id: 1, date:'02.02.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:4_100_000, note:'',             reg:'Kassa chiqim ord.' },
   { id: 2, date:'09.02.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:6_600_000, note:'',             reg:'Kassa chiqim ord.' },
   { id: 3, date:'14.02.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:2_500_000, note:'',             reg:'Kassa chiqim ord.' },
@@ -114,21 +115,21 @@ const SALAR: TxRow[] = [
   { id:10, date:'02.03.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:2_707_000, note:'boshqa',       reg:'Kassa chiqim ord.' },
   { id:11, date:'05.03.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:2_700_000, note:'971',          reg:'Kassa chiqim ord.' },
   { id:12, date:'05.03.2026', group:"DOSTAVKA (TA'MINOTCHI)", item:'ЧП "SALAR MEAT PRODUCT" (Sherin)', desc:"yo'l kira", amount:2_500_000, note:'909',          reg:'Kassa chiqim ord.' },
-];
-const REGION: TxRow[] = [
+]);
+const REGION: TxRow[] = demo([
   { id:1, date:'05.02.2026', group:"DOSTAVKA", item:'Region Foods — Xorazm', desc:'mahsulot yetkazish', amount:1_050_000, note:'',      reg:'Kassa chiqim ord.' },
   { id:2, date:'12.02.2026', group:"DOSTAVKA", item:'Region Foods — Xorazm', desc:'mahsulot yetkazish', amount:1_100_000, note:'',      reg:'Kassa chiqim ord.' },
   { id:3, date:'25.02.2026', group:"DOSTAVKA", item:'Region Foods — Xorazm', desc:'mahsulot yetkazish', amount:  750_000, note:'',      reg:'Kassa chiqim ord.' },
   { id:4, date:'01.03.2026', group:"DOSTAVKA", item:'Region Foods — Xorazm', desc:'mahsulot yetkazish', amount:  250_000, note:'',      reg:'Kassa chiqim ord.' },
-];
-const JAHONGIR: TxRow[] = [
+]);
+const JAHONGIR: TxRow[] = demo([
   { id:1, date:'10.02.2026', group:"DOSTAVKA", item:'Jahongir Zubayda — Xorazm', desc:"yetkazish xizmati", amount:400_000, note:'', reg:'Kassa chiqim ord.' },
   { id:2, date:'20.02.2026', group:"DOSTAVKA", item:'Jahongir Zubayda — Xorazm', desc:"yetkazish xizmati", amount:400_000, note:'', reg:'Kassa chiqim ord.' },
-];
-const RUMIYA: TxRow[] = [
+]);
+const RUMIYA: TxRow[] = demo([
   { id:1, date:'15.02.2026', group:"DOSTAVKA", item:'Rumiya Cheese', desc:"pishloq yetkazish", amount:250_000, note:'', reg:'Kassa chiqim ord.' },
-];
-const DETAIL_MAP: Record<string,TxRow[]> = {
+]);
+const DETAIL_MAP: Record<string,TxRow[]> = demoRec({
   'ofis': [
     { id:1, date:'01.02.2026', group:'OFIS', item:'Ijara',    desc:'Ofis ijarasi',         amount: 5_500_000,  note:'',       reg:'Hisob-faktura'      },
     { id:2, date:'03.02.2026', group:'OFIS', item:'Kommunal', desc:'Elektr energiya',       amount: 1_230_000,  note:'',       reg:"To'lov topshirig'i" },
@@ -236,7 +237,7 @@ const DETAIL_MAP: Record<string,TxRow[]> = {
     { id:1, date:'20.02.2026', group:"QURILISH/TA'MIRLASH", item:"Ta'mirlash", desc:'Suv quvuri',     amount:862_000, note:'', reg:'Kassa chiqim ord.' },
     { id:2, date:'05.03.2026', group:"QURILISH/TA'MIRLASH", item:"Ta'mirlash", desc:"Bo'yoq ishlari", amount:300_000, note:'', reg:'Kassa chiqim ord.' },
   ],
-};
+});
 
 // ─── Calendar helpers ─────────────────────────────────────────────────────────
 function getDaysInMonth(y:number,m:number){return new Date(y,m+1,0).getDate();}
@@ -865,7 +866,10 @@ export function AdminZatratiTab({ D, card, divider, sub, t, showBalances, select
       const m = rangeStart.getMonth(); // 0-based: 2=Mar
       const TREND_BY_MONTH: Record<number,number> = {9:0,10:1,11:2,0:3,1:4,2:5};
       const idx = TREND_BY_MONTH[m];
-      if (idx !== undefined && idx > 0) prevTotal = MONTHLY_TREND[idx-1].total;
+      if (idx !== undefined && idx > 0) {
+        const prev = MONTHLY_TREND[idx - 1];
+        if (prev) prevTotal = prev.total;
+      }
     }
     if (prevTotal === 0 || filteredTotal === 0) return null;
     return Math.round(((filteredTotal - prevTotal) / prevTotal) * 100);

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { NumpadModal } from '../NumpadModal';
 import { NewOrderModal } from './NewOrderModal';
+import { demo } from '../../../data/demoLimit';
 
 interface Props {
   D: boolean; card: string; divider: string; sub: string;
@@ -175,7 +176,7 @@ function SendButton({
 type OrderStatus = 'pending' | 'ready' | 'delivered';
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
-const AGENTS: { id:number; name:string; code:string; client:string; status:OrderStatus; group:boolean }[] = [
+const AGENTS: { id:number; name:string; code:string; client:string; status:OrderStatus; group:boolean }[] = demo([
   { id: 1,  name: 'Норова Нодира', code: '',      client: '22 / 28',                  status:'pending',   group: true  },
   { id: 2,  name: '',              code: '15028', client: 'NAVOI MALINA MARKET',       status:'ready',     group: false },
   { id: 3,  name: '',              code: '16004', client: 'NAVOIY OYBEK ZIYO MC.',     status:'ready',     group: false },
@@ -194,9 +195,9 @@ const AGENTS: { id:number; name:string; code:string; client:string; status:Order
   { id: 16, name: '',              code: '16029', client: 'BAHONOV BAHRIDDIN F...',    status:'pending',   group: false },
   { id: 17, name: '',              code: '28784', client: 'Raxmonova Umida Odil gizi', status:'pending',   group: false },
   { id: 18, name: '',              code: '28670', client: 'SUXROB GOLD XK',            status:'pending',   group: false },
-];
+]);
 
-const PRODUCTS = [
+const PRODUCTS = demo([
   { id: 1,  n: 1,  name: 'Кока-Кола 1.5L (quti)',       zakaz: 1,  cena: 90200, ves: 0, ed: 'kg',   summa: 0, qoldiq: 1020.300, danger: false },
   { id: 2,  n: 2,  name: 'Pepsi 1L x6 (o\'ram)',         zakaz: 1,  cena: 90200, ves: 0, ed: 'kg',   summa: 0, qoldiq:  379.360, danger: false },
   { id: 3,  n: 3,  name: 'Sprite 0.5L (quti)',           zakaz: 1,  cena: 90200, ves: 0, ed: 'kg',   summa: 0, qoldiq:    0.860, danger: false },
@@ -210,13 +211,13 @@ const PRODUCTS = [
   { id: 11, n: 11, name: 'Aquafina 1.5L',                zakaz: 6,  cena: 12400, ves: 0, ed: 'dona', summa: 0, qoldiq: 2800.000, danger: false },
   { id: 12, n: 12, name: 'Juicy 1L Apelsin',             zakaz: 3,  cena: 22300, ves: 0, ed: 'dona', summa: 0, qoldiq:  512.000, danger: false },
   { id: 13, n: 13, name: 'Lipton Ice Tea 0.5L',         zakaz: 2,  cena: 24700, ves: 0, ed: 'dona', summa: 0, qoldiq: 3502.000, danger: true  },
-];
+]);
 
 // qoldiq uchun formatlash: "1 020,300"
 const fmtQ = (n: number) =>
   n.toLocaleString('ru-RU', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
-const LINES  = ['01-Toshrabot', '02-Navoiy Shimol', '03-Karmana', '05-Markaz'];
+const LINES  = demo(['01-Toshrabot', '02-Navoiy Shimol', '03-Karmana', '05-Markaz']);
 const DIRS   = ['Shimol', 'Janub', 'Markaz', 'G\'arb', 'Sharq'];
 const TYPES  = ['Odd', 'Maxsus', 'Eksport'];
 

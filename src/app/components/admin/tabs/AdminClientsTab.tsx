@@ -4,19 +4,20 @@ import { Check, ChevronLeft, ChevronRight, Download, Filter, ImageIcon, MapPin, 
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
 import AddClient from '../../AddClient';
 import { ClientStatsPanel } from '../ClientStatsPanel';
+import { demo } from '../../../data/demoLimit';
 
 const TODAY = '2026-03-08';
 const INACTIVE_CUTOFF = '2026-03-01';
 const PER_PAGE = 20;
 
-const PHOTOS = [
+const PHOTOS = demo([
   'https://images.unsplash.com/photo-1717233464702-090e655f7a4f?w=900&q=80',
   'https://images.unsplash.com/photo-1606824722920-4c652a70f348?w=900&q=80',
   'https://images.unsplash.com/photo-1753982861969-295e79c4bf78?w=900&q=80',
   'https://images.unsplash.com/photo-1619261148028-967ca5e0ccc3?w=900&q=80',
   'https://images.unsplash.com/photo-1769107262371-295ab518ab0b?w=900&q=80',
   'https://images.unsplash.com/photo-1542838132-92c53300491e?w=900&q=80',
-];
+]);
 
 interface Props {
   D: boolean;

@@ -5,6 +5,7 @@ import {
   Search, Building2, User, Layers, Warehouse, FileText,
   Maximize2, Minimize2, Plus, Minus, ChevronRight,
 } from 'lucide-react';
+import { demo } from '../../../data/demoLimit';
 
 interface Props {
   D: boolean;
@@ -15,14 +16,14 @@ interface Props {
 }
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
-const MOCK_CLIENTS = [
+const MOCK_CLIENTS = demo([
   'NAVOI MALINA MARKET', 'NAVOIY OYBEK ZIYO MC.', 'AMIRXON UMIDIMIZ OK',
   'FARMON OK-19 (NAVOIY)', 'XUMO GULI MCHJ', 'ASLAN NAVOIY TONGI',
   'ZAHIDUN SAVDO', 'BEK SARDOR 2005 OK',
-];
-const MOCK_AGENTS  = ['Норова Нодира', 'Каримов Алишер', 'Рахимов Бобур', 'Юсупова Зулфия'];
-const MOCK_CATS    = ['SHERIN', 'PREMIUM', 'EXPORT', 'LOCAL'];
-const MOCK_SKLADS  = ['Sklad SHERIN', 'Sklad PREMIUM', 'Asosiy Sklad'];
+]);
+const MOCK_AGENTS  = demo(['Норова Нодира', 'Каримов Алишер', 'Рахимов Бобур', 'Юсупова Зулфия']);
+const MOCK_CATS    = demo(['SHERIN', 'PREMIUM', 'EXPORT', 'LOCAL']);
+const MOCK_SKLADS  = demo(['Sklad SHERIN', 'Sklad PREMIUM', 'Asosiy Sklad']);
 
 interface Product {
   id: number;
@@ -32,7 +33,7 @@ interface Product {
   ed: string;
   kategory: string;
 }
-const MOCK_PRODUCTS: Product[] = [
+const MOCK_PRODUCTS: Product[] = demo([
   { id: 1,  name: 'Кока-Кола 1.5L (quti)',   cena: 90200, qoldiq: 1020.300, ed: 'dona', kategory: 'SHERIN' },
   { id: 2,  name: "Pepsi 1L x6 (o'ram)",      cena: 90200, qoldiq:  379.360, ed: 'dona', kategory: 'SHERIN' },
   { id: 3,  name: 'Sprite 0.5L (quti)',        cena: 90200, qoldiq:    0.860, ed: 'dona', kategory: 'SHERIN' },
@@ -45,7 +46,7 @@ const MOCK_PRODUCTS: Product[] = [
   { id: 10, name: 'Mountain Dew 0.5L',         cena: 15600, qoldiq: 1300.000, ed: 'dona', kategory: 'LOCAL'  },
   { id: 11, name: 'Aquafina 1.5L',             cena: 12400, qoldiq: 2800.000, ed: 'dona', kategory: 'LOCAL'  },
   { id: 12, name: 'Juicy 1L Apelsin',          cena: 22300, qoldiq:  512.000, ed: 'dona', kategory: 'LOCAL'  },
-];
+]);
 
 type Row = {
   id: number;

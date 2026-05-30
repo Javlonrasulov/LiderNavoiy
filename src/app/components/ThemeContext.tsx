@@ -12,7 +12,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(false);
-  const [language, setLanguage] = useState<'uz_latn' | 'uz_cyrl' | 'ru'>('uz_latn');
+  const [language, setLanguage] = useState<'uz_latn' | 'uz_cyrl' | 'ru'>('uz_cyrl');
 
   const toggleTheme = () => {
     setIsDark((prev) => !prev);

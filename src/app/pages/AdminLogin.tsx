@@ -6,8 +6,8 @@ import { useAdminAuth } from '../components/AdminAuthContext';
 import { useLang, Lang } from '../components/LangContext';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
-  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'cy', label: 'Ўзбек',  flag: 'КР' },
+  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'ru', label: 'Русский', flag: 'RU' },
 ];
 

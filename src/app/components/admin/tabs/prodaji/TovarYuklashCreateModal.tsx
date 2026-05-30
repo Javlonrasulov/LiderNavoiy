@@ -5,6 +5,7 @@ import {
   ChevronUp, ChevronLeft, ChevronRight,
   Minimize2, Maximize2, Search, CalendarDays, Clock,
 } from 'lucide-react';
+import { demo } from '../../../../data/demoLimit';
 
 /* ─── Types ──────────────────────────────────────────────── */
 type ZayavkaStatus = 'otgr' | 'process' | 'done' | 'cancelled';
@@ -19,7 +20,7 @@ interface ZayavkaRow {
 }
 
 /* ─── Mock data ──────────────────────────────────────────── */
-const ZAYAVKI: ZayavkaRow[] = [
+const ZAYAVKI: ZayavkaRow[] = demo([
   { id:1,  num:19195, date:'14.03.2026 09:12', direction:'SHERIN', tip:'D2', kodTT:'24002', kontragent:'AMINJONOVA ANOR...',    km:610, agent:'Toshniёzov...',  status:'otgr',    marsh:'24-6-н.',  summa:1_038_160,  dolg:43_172_277,  poluch:0, ves:9,  timeObr:'09:14', note:'' },
   { id:2,  num:19196, date:'14.03.2026 09:18', direction:'SHERIN', tip:'D2', kodTT:'23004', kontragent:'SHAMS-NAVOIY XK',        km:650, agent:'Toshniёzov...',  status:'otgr',    marsh:'23-Эн.',   summa:3_659_628,  dolg:43_172_277,  poluch:0, ves:43, timeObr:'09:20', note:'' },
   { id:3,  num:19197, date:'14.03.2026 09:22', direction:'SHERIN', tip:'D2', kodTT:'23005', kontragent:'SAYIDOVA MARJON...',     km:620, agent:'Alisher...',     status:'otgr',    marsh:'23-6-н.',  summa:227_010,    dolg:1_328_665,   poluch:0, ves:5,  timeObr:'09:25', note:'' },
@@ -35,27 +36,27 @@ const ZAYAVKI: ZayavkaRow[] = [
   { id:13, num:19321, date:'14.03.2026 11:05', direction:'SHERIN', tip:'D2', kodTT:'23043', kontragent:'SHIRIN ORZU 2020 M...',  km:620, agent:'Ulugbek...',     status:'otgr',    marsh:'23-Эн.',   summa:744_382,    dolg:3_791_171,   poluch:0, ves:14, timeObr:'11:08', note:'' },
   { id:14, num:19322, date:'14.03.2026 11:10', direction:'SHERIN', tip:'D2', kodTT:'28552', kontragent:'HUSANOVA DILRABO...',     km:590, agent:'Ulugbek...',     status:'process', marsh:'23-6-н.',  summa:771_550,    dolg:2_504_199,   poluch:0, ves:15, timeObr:'',      note:'' },
   { id:15, num:19323, date:'14.03.2026 11:15', direction:'SHERIN', tip:'D2', kodTT:'23082', kontragent:'RAHMATULLAYEV...',         km:605, agent:'Toshniёzov...',  status:'process', marsh:'23-Эн.',   summa:616_240,    dolg:1_200_870,   poluch:0, ves:12, timeObr:'',      note:'' },
-];
+]);
 
-const SKLAD_LIST     = ['Sklad SHERIN', 'Sklad MARKAZ', 'Sklad SHIMOL', 'Sklad JANUB', 'Sklad ZARAFSHON'];
-const TASHKILOT_LIST = ['OOO "BORAN LEADERS"', 'OOO "SHERIN TRADE"', 'OOO "NAVOIY SAVDO"', 'OOO "PILLER DIST"'];
-const MUALLIF_LIST   = ['Zaripov Begzod', 'Ismatullayev Hamza', 'Xoliqov Sardor', 'Nazarov Dilshod', 'Mirzayev Alisher'];
-const TRANSPORT_LIST = [
+const SKLAD_LIST     = demo(['Sklad SHERIN', 'Sklad MARKAZ', 'Sklad SHIMOL', 'Sklad JANUB', 'Sklad ZARAFSHON']);
+const TASHKILOT_LIST = demo(['OOO "BORAN LEADERS"', 'OOO "SHERIN TRADE"', 'OOO "NAVOIY SAVDO"', 'OOO "PILLER DIST"']);
+const MUALLIF_LIST   = demo(['Zaripov Begzod', 'Ismatullayev Hamza', 'Xoliqov Sardor', 'Nazarov Dilshod', 'Mirzayev Alisher']);
+const TRANSPORT_LIST = demo([
   'DAMAS (VAN) 01 561 VMA', 'DAMAS (VAN) 85 932 HNA', 'DAMAS (LABO) 01 555 XNA',
   'JAG 01 912 BNA', 'DAMAS (VAN) 60 R 123 ZA', 'DAMAS (VAN) 01 797 LC',
   'DAMAS 80 R 938 ZA', 'DAMAS (VAN) 01 819 MA',
-];
-const HAYDOVCHI_LIST = [
+]);
+const HAYDOVCHI_LIST = demo([
   'Irgashev Azizxon Ilxomovich', 'Buronov Feruz Baxromovich',
   'Sadullayev Shuxrat Raximovich', 'Tuxtapilov Umrzoq Sotvoldiyev',
   'Nazarov Davlatbek Jurayev', 'Pirnazorov Olimjon Xasanov',
   'Rustamov Shoxrux Mirzayev', 'Abduxakimov Diyorbek Tursunov',
-];
-const AGENT_LIST = [
+]);
+const AGENT_LIST = demo([
   'Toshniёzov Obidjon Bekpulatovich', 'Alisher Karimov Saidovich',
   'Bobur Toshmatov Xolmurodov', 'Jasur Yusupov Abdullayev',
   'Sherzod Nazarov Mirzayev', 'Ulugbek Holmatov Ibragimov',
-];
+]);
 
 /* ─── Utils ──────────────────────────────────────────────── */
 function pad2(n:number){ return String(n).padStart(2,'0'); }

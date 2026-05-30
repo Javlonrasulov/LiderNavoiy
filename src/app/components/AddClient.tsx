@@ -3,13 +3,8 @@ import { X, Check, Save, MapPin, ChevronDown, Maximize2, Minimize2, Camera, Plus
 import { useTheme } from './ThemeContext';
 import { useLang } from './LangContext';
 import L from 'leaflet';
-
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl:       'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl:     'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
+import { demo } from '../data/demoLimit';
 
 interface AddClientProps { onClose: () => void; }
 type TabKey = 'rekvizit' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
@@ -108,10 +103,10 @@ const DIRECTIONS  = ["SHERIN", "SOF IN", "NAVOIY NORTH", "ATLAS", "BORAN", "ZARA
 const LINES       = ["01 - Toshrabot. Xazora. Air.", "02 - Navoiy Shimol", "03 - Karmana", "04 - Konimex", "05 - Markaz"];
 const CLASSES     = ["BM - Bozordagi dukon", "SM - Supermarket", "PM - Premium market", "KS - Kichik savdo"];
 const TYPES       = ["Torgovaya tochka", "Ulgurji", "Distributtor", "Restorant / Kafe"];
-const CHANNELS    = ["Retail", "Horeca", "Wholesale", "Online"];
-const PRICE_ZONES = ["Toshrabot. Xazora. Airoport.", "Navoiy Shimol", "Karmana", "Konimex"];
-const CATEGORIES  = ["Standard", "VIP", "Premium"];
-const AGENTS      = ["Alisher Karimov", "Bobur Yusupov", "Dilshod Toshmatov", "Eldor Nazarov"];
+const CHANNELS    = demo(["Retail", "Horeca", "Wholesale", "Online"]);
+const PRICE_ZONES = demo(["Toshrabot. Xazora. Airoport.", "Navoiy Shimol", "Karmana", "Konimex"]);
+const CATEGORIES  = demo(["Standard", "VIP", "Premium"]);
+const AGENTS      = demo(["Alisher Karimov", "Bobur Yusupov", "Dilshod Toshmatov", "Eldor Nazarov"]);
 
 export default function AddClient({ onClose }: AddClientProps) {
   const { isDark } = useTheme();
@@ -120,7 +115,7 @@ export default function AddClient({ onClose }: AddClientProps) {
 
   // Map admin lang keys → TRANS keys
   const langKey = lang === 'cy' ? 'uz_cyrl' : lang === 'ru' ? 'ru' : 'uz_latn';
-  const t = TRANS[langKey as keyof typeof TRANS] ?? TRANS.uz_latn;
+  const t = TRANS[langKey as keyof typeof TRANS] ?? TRANS.uz_cyrl;
 
   const [activeTab, setActiveTab]     = useState<TabKey>('rekvizit');
   const [isMaximized, setIsMaximized] = useState(false);
@@ -145,42 +140,84 @@ export default function AddClient({ onClose }: AddClientProps) {
   const [gpsCoords, setGpsCoords]   = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLoc, setLoadingLoc] = useState(false);
   const mapRef          = useRef<L.Map | null>(null);
+  const tileRef         = useRef<L.TileLayer | null>(null);
+  const markerRef       = useRef<L.Marker | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
-    if (activeTab === 'xarita' && mapContainerRef.current && !mapRef.current) {
-      const init: [number, number] = gpsCoords ? [gpsCoords.lat, gpsCoords.lng] : [40.0844, 65.3792];
-      const map = L.map(mapContainerRef.current, { zoomAnimation: false }).setView(init, 14);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-      const marker = L.marker(init, { draggable: true }).addTo(map);
-      marker.on('dragend', (e: any) => {
-        const ll = e.target.getLatLng();
-        setGpsCoords({ lat: ll.lat, lng: ll.lng });
-        set('gps', `${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`);
-      });
-      map.on('click', (e: L.LeafletMouseEvent) => {
-        marker.setLatLng([e.latlng.lat, e.latlng.lng]);
-        setGpsCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
-        set('gps', `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
-      });
-      if (!gpsCoords && navigator.geolocation) {
-        setLoadingLoc(true);
-        navigator.geolocation.getCurrentPosition(p => {
-          map.setView([p.coords.latitude, p.coords.longitude], 16);
-          marker.setLatLng([p.coords.latitude, p.coords.longitude]);
-          setGpsCoords({ lat: p.coords.latitude, lng: p.coords.longitude });
-          set('gps', `${p.coords.latitude.toFixed(6)},${p.coords.longitude.toFixed(6)}`);
-          setLoadingLoc(false);
-        }, () => setLoadingLoc(false));
-      }
-      mapRef.current = map;
-    }
-    return () => {
-      if (activeTab !== 'xarita' && mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    if (activeTab !== 'xarita' || !mapContainerRef.current || mapRef.current) return;
+
+    const init: [number, number] = gpsCoords ? [gpsCoords.lat, gpsCoords.lng] : [40.0844, 65.3792];
+
+    const updateCoords = (lat: number, lng: number) => {
+      setGpsCoords({ lat, lng });
+      set('gps', `${lat.toFixed(6)},${lng.toFixed(6)}`);
     };
-  }, [activeTab]);
+
+    const pinIcon = L.divIcon({
+      className: '',
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+      popupAnchor: [0, -28],
+      html: `<div style="width:28px;height:28px;background:#6366f1;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 10px rgba(0,0,0,.35);"></div>`,
+    });
+
+    const map = L.map(mapContainerRef.current, {
+      center: init,
+      zoom: 14,
+      zoomControl: true,
+      attributionControl: false,
+    });
+    switchTileLayer(map, tileRef, activeLayer, D);
+    mapRef.current = map;
+
+    const placeMarker = (lat: number, lng: number) => {
+      if (markerRef.current) markerRef.current.remove();
+      const marker = L.marker([lat, lng], { icon: pinIcon, draggable: true });
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        updateCoords(pos.lat, pos.lng);
+      });
+      marker.addTo(map);
+      markerRef.current = marker;
+    };
+
+    placeMarker(init[0], init[1]);
+
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      placeMarker(e.latlng.lat, e.latlng.lng);
+      updateCoords(e.latlng.lat, e.latlng.lng);
+    });
+
+    if (!gpsCoords && navigator.geolocation) {
+      setLoadingLoc(true);
+      navigator.geolocation.getCurrentPosition(p => {
+        const lat = p.coords.latitude;
+        const lng = p.coords.longitude;
+        map.setView([lat, lng], 16);
+        placeMarker(lat, lng);
+        updateCoords(lat, lng);
+        setLoadingLoc(false);
+      }, () => setLoadingLoc(false));
+    }
+
+    setTimeout(() => map.invalidateSize(true), 100);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
+    };
+  }, [activeTab, D]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || activeTab !== 'xarita') return;
+    switchTileLayer(map, tileRef, activeLayer, D);
+  }, [activeLayer, D, activeTab]);
 
   /* ── Tokens ── */
   const bg      = D ? '#111111' : '#ffffff';
@@ -700,6 +737,7 @@ export default function AddClient({ onClose }: AddClientProps) {
               )}
               <div style={{ position: 'relative', flex: 1 }}>
                 <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+                <MapLayerSwitcher activeLayer={activeLayer} onChange={setActiveLayer} bottom={12} left={12} />
                 {loadingLoc && (
                   <div style={{ position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 1000 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',

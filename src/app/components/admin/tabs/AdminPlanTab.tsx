@@ -2,13 +2,14 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import React from 'react';
 import { Plus, X, Search, ChevronRight, ChevronLeft, Check, AlertCircle, Calendar, Edit3, ChevronDown, ChevronUp, ArrowLeft, BarChart2 } from 'lucide-react';
 import { type AgentRow, fmt } from '../../../data/adminData';
+import { demo } from '../../../data/demoLimit';
 
 // ─── 3 categories ─────────────────────────────────────────────────────────────
-const CATS = [
+const CATS = demo([
   { key: 'SHERIN', name: 'Sherin', color: '#10b981' },
   { key: 'TIM',    name: 'TIM',    color: '#f59e0b' },
   { key: 'SIR',    name: 'Sir',    color: '#3b82f6' },
-];
+]);
 
 function agentPlanData(agent: AgentRow, idx: number) {
   const seed = agent.id * 17 + idx;

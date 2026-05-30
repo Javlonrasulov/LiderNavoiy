@@ -4,6 +4,7 @@ import {
   BarChart3, Package, ShoppingCart, ArrowUpRight, Maximize2, Minimize2, Calendar,
 } from 'lucide-react';
 import type { ClientRow } from '../../data/adminData';
+import { demo, demoRecKeys } from '../../data/demoLimit';
 
 /* ── Types ─────────────────────────────────────────── */
 interface CategoryData {
@@ -33,16 +34,16 @@ type Period = 'hafta' | 'oy' | '6oy' | 'custom';
 type BuyFilter = 'all' | 'top' | 'avg' | 'none';
 
 /* ── Mock data ──────────────────────────────────────── */
-const CATS: { id: number; name: string; icon: string; color: string }[] = [
+const CATS: { id: number; name: string; icon: string; color: string }[] = demo([
   { id: 1, name: 'Pishloqlar',       icon: '🧀', color: '#f59e0b' },
   { id: 2, name: 'Sut mahsulotlari', icon: '🥛', color: '#6366f1' },
   { id: 3, name: 'Kolbasa / Et',     icon: '🌭', color: '#ef4444' },
   { id: 4, name: 'Muzqaymoq',        icon: '🍦', color: '#06b6d4' },
   { id: 5, name: 'Ichimliklar',      icon: '🥤', color: '#10b981' },
   { id: 6, name: 'Nonvoylik',        icon: '🍞', color: '#f97316' },
-];
+]);
 
-const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: number }[] } = {
+const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: number }[] } = demoRecKeys({
   1: [
     { name: 'Rossiyskiy pishloq', unit: 'kg',   basePrice: 98_000  },
     { name: 'Golland pishloq',    unit: 'kg',   basePrice: 115_000 },
@@ -87,7 +88,10 @@ const PRODUCTS: { [catId: number]: { name: string; unit: string; basePrice: numb
     { name: "Osh yog'i 18l",   unit: 'banka', basePrice: 185_000 },
     { name: "Tuz 1kg",         unit: 'kg',    basePrice: 4_200   },
   ],
-};
+}).reduce<typeof PRODUCTS>((acc, [key, val]) => {
+  acc[Number(key)] = demo(val);
+  return acc;
+}, {});
 
 function seeded(seed: number, max: number, min = 0) {
   return ((seed * 1664525 + 1013904223) & 0x7fffffff) % (max - min + 1) + min;

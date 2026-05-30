@@ -8,6 +8,7 @@ import {
   PhoneCall, Wifi, WifiOff, BarChart3,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
+import { demo } from '../../../data/demoLimit';
 import { COMPANIES } from '../../AdminAuthContext';
 import { TrackingMap } from '../TrackingMap';
 import { DayHistoryPanel } from '../DayHistoryPanel';
@@ -45,7 +46,7 @@ const NAVOIY_DISTRICTS = [
 ];
 
 // ── Real client/shop names ─────────────────────────────────────────────────
-const CLIENT_NAMES = [
+const CLIENT_NAMES = demo([
   'Ahmed Ota Markit', 'Gemur Ruslan', 'Muratov Jahongir',
   'Issiqlik elekter stansiyasi', 'Armixon Grand Savdo', 'Asad Asil Beklarim',
   'Gulsevar Baraka Nonlari', 'Timurbekd Shirina', 'Ahmudova Dildora',
@@ -66,7 +67,7 @@ const CLIENT_NAMES = [
   'Kamola Market', 'Sanjar Do\'koni', 'Rustam Savdo Markazi',
   'Xurshid Oziq-Ovqat', 'Mavluda Nonvoyxona', 'Davron TTM',
   'Sherali Grand Savdo', 'Aziza Mahsulotlari', 'Muzaffar Market',
-];
+]);
 
 const CITY_COORDS: Record<string, [number, number]> = {
   'Navoiy':    [40.0843, 65.3791],

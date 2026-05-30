@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Bell, Send, Radio } from 'lucide-react';
-import { api } from '../../api/client';
+import { api } from '../../../api/client';
 
 export function AdminPushTab() {
   const [title, setTitle] = useState('');

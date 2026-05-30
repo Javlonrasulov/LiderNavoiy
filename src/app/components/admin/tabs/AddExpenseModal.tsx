@@ -4,6 +4,7 @@ import {
   X, ChevronDown, Check, Save, Maximize2, Minimize2,
   AlertCircle, ArrowRightLeft,
 } from 'lucide-react';
+import { demo } from '../../../data/demoLimit';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Props {
@@ -23,7 +24,7 @@ export interface ExpenseForm {
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-const AUTHORS = [
+const AUTHORS = demo([
   { name: 'Ulugbek Holmatov',  role: 'Direktor'      },
   { name: 'Alisher Karimov',   role: 'Bosh hisobchi' },
   { name: 'Jasur Yusupov',     role: 'Kassa mudiri'  },
@@ -31,25 +32,25 @@ const AUTHORS = [
   { name: 'Bobur Toshmatov',   role: 'Menejer'       },
   { name: 'Davron Mirzayev',   role: 'Muhasib'       },
   { name: 'Dilnoza Yusupova',  role: 'HR menejer'    },
-];
-const OP_TYPES = [
+]);
+const OP_TYPES = demo([
   'Инкассация','Затрат организации','Аванс','Зарплата - Сотрудник',
   'Зарплата - Ведомость','Оплата поставщику','Доп расходы по поступ. товаров',
   'Расход к физ.лицам','Филиал','Дивидент','Обмен валюты','Другая касса',
   'Оплата прочим контрагентам','Оплата клиенту','Увеличение себ ОС',
   'Покупка материалов','Покупка осн.средств','Под отчет','Прочие',
-];
-const ORGS     = ['OOO "BORAN LEADERS"','OOO "ZARAFSHON"','OOO "TOSHKENT FILIAL"'];
-const KASSALAR = ['Касса SHERIN','Касса BORAN','Касса ZARAFSHON','Касса XORAZM'];
-const CURRENCIES = ['UZS','USD','EUR','RUB'];
-const ZATRAT_LST = [
+]);
+const ORGS     = demo(['OOO "BORAN LEADERS"','OOO "ZARAFSHON"','OOO "TOSHKENT FILIAL"']);
+const KASSALAR = demo(['Касса SHERIN','Касса BORAN','Касса ZARAFSHON','Касса XORAZM']);
+const CURRENCIES = demo(['UZS','USD','EUR','RUB']);
+const ZATRAT_LST = demo([
   "Ijara xarajatlari","Kommunal to'lovlar","Ish haqi",
   "Transport xarajatlari","Qurilish materiallari",
   "Ta'mirlash ishlari","Reklama xarajatlari","Ofis jihozlari","Boshqa xarajatlar",
-];
-const SUB1 = ['ДОСТАВКА (ПОСТАВЩИК)','ОФИС','ТРАНСПОРТ','СКЛАД','СТРОИТЕЛЬСТВО'];
-const SUB2 = ["Jahongir Zubayda - XORAZM","Alisher Karimov - TOSHKENT","Sherzod Umarov - SAMARQAND","Dilnoza Yusupova - FARG'ONA"];
-const SUB3 = ['Йул кира','Командировка','Доставка','Хизмат','Таъмирлаш'];
+]);
+const SUB1 = demo(['ДОСТАВКА (ПОСТАВЩИК)','ОФИС','ТРАНСПОРТ','СКЛАД','СТРОИТЕЛЬСТВО']);
+const SUB2 = demo(["Jahongir Zubayda - XORAZM","Alisher Karimov - TOSHKENT","Sherzod Umarov - SAMARQAND","Dilnoza Yusupova - FARG'ONA"]);
+const SUB3 = demo(['Йул кира','Командировка','Доставка','Хизмат','Ta\'mirlash']);
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const fmtNum = (v: string) => {

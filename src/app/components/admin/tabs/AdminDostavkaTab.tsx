@@ -5,10 +5,11 @@ import {
   GitBranch, Wifi, WifiOff, Navigation, Signal,
   Package, Clock, Maximize2, Minimize2, CheckCircle2, XCircle, CalendarDays,
 } from 'lucide-react';
-import L from 'leaflet';
 import { LINES, type AgentRow } from '../../../data/adminData';
+import { demo } from '../../../data/demoLimit';
 import { COMPANIES } from '../../AdminAuthContext';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from '../../MapLayerSwitcher';
+import L from 'leaflet';
 import { DayHistoryPanel } from '../DayHistoryPanel';
 
 interface Props {
@@ -43,7 +44,7 @@ const STREETS = [
   "Sultonov ko'chasi", "Gulsanam ko'chasi", "Xorazm ko'chasi",
 ];
 
-const CLIENT_NAMES = [
+const CLIENT_NAMES = demo([
   'Ahmed Ota Markit', 'Gemur Ruslan', 'Muratov Jahongir',
   'Armixon Grand Savdo', 'Asad Asil Beklarim', 'Gulsevar Baraka',
   'Timurbekd Shirina', 'Ahmadova Dildora', 'Ikronov Urozbek',
@@ -52,7 +53,7 @@ const CLIENT_NAMES = [
   'Gulsanam Ruslan', 'Baxtiyor Savdo Markazi', 'Navoiy Oziq-Ovqat',
   'Hamza Do\'koni', 'Sarvar Supermarket', 'Dilnoza Nonvoyxona',
   'Umarov Sherzod', 'Kenja Savdo', 'Abdullayev Jamshid',
-];
+]);
 
 const NAVOIY_DISTRICTS = [
   'Janubiy', 'Shimoliy', 'Markaziy', "G'arbiy", 'Sharqiy',
@@ -137,94 +138,59 @@ interface LiveMapProps {
 function LiveLocationMap({ emp, D, height = 580, fullscreen }: LiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const tileRef = useRef<L.TileLayer | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = L.map(containerRef.current, {
-      center: NAVOIY,   // Always start at Navoiy
+      center: NAVOIY,
       zoom: 13,
-      zoomControl: true,
+      zoomControl: false,
       attributionControl: false,
-      scrollWheelZoom: true,
-      zoomAnimation: false,
     });
+    switchTileLayer(map, tileLayerRef, activeLayer, D);
     mapRef.current = map;
 
-    const tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-    }).addTo(map);
-    tileRef.current = tile;
-
-    if (D) {
-      const tilePane = map.getPane('tilePane');
-      if (tilePane) {
-        tilePane.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.7)';
-      }
-    }
-
-    // Accuracy circle
+    const circleColor = emp.online ? '#6366f1' : '#9ca3af';
     L.circle([emp.lat, emp.lng], {
       radius: 150,
-      color: emp.online ? '#6366f1' : '#9ca3af',
-      fillColor: emp.online ? '#6366f1' : '#9ca3af',
-      fillOpacity: 0.10,
+      color: circleColor,
       weight: 1.5,
-      dashArray: '4 5',
+      opacity: 0.8,
+      fillColor: circleColor,
+      fillOpacity: 0.1,
     }).addTo(map);
 
-    // Main marker
     const pinColor = emp.online ? '#6366f1' : '#9ca3af';
     const borderC = D ? '#1c1c1e' : '#ffffff';
     const initials = emp.avatar || emp.name.slice(0, 2).toUpperCase();
 
-    const markerHtml = `
-      <div style="position:relative;display:flex;align-items:center;justify-content:center;">
-        ${emp.online ? `
-        <div style="
-          position:absolute;width:52px;height:52px;border-radius:50%;
-          background:${pinColor};opacity:0.18;
-          animation:lvPulse 2s ease-out infinite;
-        "></div>` : ''}
-        <div style="
-          width:42px;height:42px;border-radius:50%;
-          background:${pinColor};border:3px solid ${borderC};
-          box-shadow:0 4px 16px rgba(0,0,0,0.35);
-          display:flex;align-items:center;justify-content:center;
-          position:relative;z-index:2;
-        ">
-          <span style="color:#fff;font-size:13px;font-weight:700;">${initials}</span>
-        </div>
-        <div style="
-          position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);
-          width:0;height:0;
-          border-left:7px solid transparent;border-right:7px solid transparent;
-          border-top:11px solid ${pinColor};
-          z-index:1;
-        "></div>
-        <div style="
-          position:absolute;top:-5px;right:-4px;z-index:3;
-          width:14px;height:14px;border-radius:50%;
-          background:${emp.online ? '#10b981' : '#9ca3af'};
-          border:2px solid ${borderC};
-        "></div>
-      </div>
-    `;
-
-    const icon = L.divIcon({
-      html: markerHtml,
+    const markerIcon = L.divIcon({
       className: '',
       iconSize: [50, 60],
-      iconAnchor: [25, 60],
-      popupAnchor: [0, -62],
+      iconAnchor: [25, 55],
+      popupAnchor: [0, -55],
+      html: `
+        <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+          ${emp.online ? `
+          <div style="position:absolute;width:52px;height:52px;border-radius:50%;
+            background:${pinColor};opacity:0.18;animation:lvPulse 2s ease-out infinite;"></div>` : ''}
+          <div style="width:42px;height:42px;border-radius:50%;background:${pinColor};border:3px solid ${borderC};
+            box-shadow:0 4px 16px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;position:relative;z-index:2;">
+            <span style="color:#fff;font-size:13px;font-weight:700;">${initials}</span>
+          </div>
+          <div style="position:absolute;bottom:-9px;left:50%;transform:translateX(-50%);width:0;height:0;
+            border-left:7px solid transparent;border-right:7px solid transparent;border-top:11px solid ${pinColor};z-index:1;"></div>
+          <div style="position:absolute;top:-5px;right:-4px;z-index:3;width:14px;height:14px;border-radius:50%;
+            background:${emp.online ? '#10b981' : '#9ca3af'};border:2px solid ${borderC};"></div>
+        </div>`,
     });
 
-    const marker = L.marker([emp.lat, emp.lng], { icon }).addTo(map);
+    const marker = L.marker([emp.lat, emp.lng], { icon: markerIcon });
     marker.bindPopup(`
-      <div style="font-family:system-ui;min-width:170px;padding:6px 4px;">
+      <div style="min-width:170px;padding:6px 4px;font-family:system-ui,sans-serif;">
         <div style="font-weight:700;font-size:14px;margin-bottom:5px;">${emp.name}</div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:2px;">${emp.role}</div>
         <div style="font-size:11px;color:#6b7280;margin-bottom:6px;">${emp.street}, ${emp.city}</div>
@@ -234,29 +200,22 @@ function LiveLocationMap({ emp, D, height = 580, fullscreen }: LiveMapProps) {
             ${emp.online ? 'Online' : `${emp.lastSeenMins} daqiqa oldin`}
           </span>
         </div>
-      </div>
-    `).openPopup();
-
-    // Pan to employee location
-    map.panTo([emp.lat, emp.lng]);
+      </div>`);
+    marker.addTo(map);
+    marker.openPopup();
+    map.flyTo([emp.lat, emp.lng], 14, { duration: 0.4 });
 
     return () => {
       map.remove();
       mapRef.current = null;
+      tileLayerRef.current = null;
     };
   }, []);
 
   const handleLayerChange = (id: LayerId) => {
     setActiveLayer(id);
-    if (mapRef.current && tileRef.current) {
-      switchTileLayer(mapRef.current, tileRef.current, id, (newTile) => {
-        tileRef.current = newTile;
-        if (D) {
-          const pane = mapRef.current?.getPane('tilePane');
-          if (pane) pane.style.filter = 'invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.7)';
-        }
-      });
-    }
+    const map = mapRef.current;
+    if (map) switchTileLayer(map, tileLayerRef, id, D);
   };
 
   return (
@@ -270,7 +229,7 @@ function LiveLocationMap({ emp, D, height = 580, fullscreen }: LiveMapProps) {
       `}</style>
       <div ref={containerRef} style={{ width: '100%', height: '100%', borderRadius: fullscreen ? 0 : 0, overflow: 'hidden' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 999 }}>
-        <MapLayerSwitcher activeLayer={activeLayer} onChange={handleLayerChange} D={D} />
+        <MapLayerSwitcher activeLayer={activeLayer} onChange={handleLayerChange} />
       </div>
     </div>
   );

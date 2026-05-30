@@ -1,5 +1,7 @@
 // ─── Shared admin data, types, translations, utils ────────────────────────
 
+import { demo, demoRec, demoRecKeys } from './demoLimit';
+
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
 import type React from 'react';
 import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, Bell } from 'lucide-react';
@@ -16,7 +18,7 @@ export type SettingsTab = 'categories' | 'terminals' | 'products';
 export type LangAdmin = 'uz' | 'cy' | 'ru';
 
 // ─── LINIYA DATA ───
-export const LINES = [
+export const LINES = demo([
   { id: 1,  code: '01', name: 'Toshrabot - Xazora - Air',      kolTT: 32, agent: 'Alisher Karimov',    plan: 88, visits: 120, sales: 45_600_000 },
   { id: 2,  code: '02', name: 'Navoiy Shimol',                  kolTT: 27, agent: 'Bobur Toshmatov',    plan: 74, visits: 98,  sales: 38_200_000 },
   { id: 3,  code: '03', name: 'Karmana',                        kolTT: 19, agent: 'Jasur Yusupov',      plan: 95, visits: 87,  sales: 52_100_000 },
@@ -42,7 +44,7 @@ export const LINES = [
   { id: 23, code: '23', name: "Farg'ona Markaz",                kolTT: 42, agent: 'Eldor Hamidov',      plan: 96, visits: 158, sales: 94_500_000 },
   { id: 24, code: '24', name: "Marg'ilon - Qo'qon",            kolTT: 36, agent: 'Ravshan Yuldoshev',   plan: 84, visits: 141, sales: 73_800_000 },
   { id: 25, code: '25', name: 'Namangan liniyasi',              kolTT: 31, agent: 'Jamshid Salimov',    plan: 78, visits: 122, sales: 59_600_000 },
-];
+]);
 
 export type AgentRow = {
   id: number; name: string; avatar: string;
@@ -107,8 +109,8 @@ export const NAV_ITEMS_BASE: NavEntry[] = [
 ];
 
 export const ADMIN_LANGS: { id: LangAdmin; label: string; flag: string }[] = [
-  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'cy', label: 'Ўзбек',  flag: 'КР' },
+  { id: 'uz', label: "O'zbek", flag: 'UZ' },
   { id: 'ru', label: 'Русский', flag: 'RU' },
 ];
 
@@ -1371,14 +1373,14 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
 };
 
 // ─── ORG CITIES ───
-export const ORG_CITIES: Record<string, { center: [number, number]; label: string; zoom: number }> = {
+export const ORG_CITIES = demoRecKeys({
   boran:     { center: [40.1025, 65.3790], label: 'Navoiy shahri',    zoom: 13 },
   zarafshon: { center: [41.5686, 64.2038], label: 'Zarafshon shahri', zoom: 13 },
   mipter:    { center: [40.1025, 65.3790], label: 'Navoiy shahri',    zoom: 13 },
   navruz:    { center: [39.7747, 64.4286], label: 'Buxoro shahri',    zoom: 13 },
   sarbon:    { center: [39.6270, 66.9750], label: 'Samarqand shahri', zoom: 13 },
   atlas:     { center: [40.3864, 71.7864], label: "Farg'ona shahri",  zoom: 13 },
-};
+});
 export const UZ_CENTER: [number, number] = [41.2, 64.6];
 
 // ─── SOTRUDNIKI (Employee HR list) ───
@@ -1391,7 +1393,7 @@ export type SotrudnikRow = {
   orgId: string;
 };
 
-export const SOTRUDNIKI_LIST: SotrudnikRow[] = [
+export const SOTRUDNIKI_LIST = demo([
   { tabel:  1, name: 'Менежер',                          department: '',              position: 'Директор',      phone: '',                orgId: 'boran'    },
   { tabel:  2, name: 'Муродов Фирузбек',                 department: '',              position: 'Директор',      phone: '',                orgId: 'boran'    },
   { tabel:  4, name: 'Зарипов Шахзод',                   department: '',              position: 'Директор',      phone: '',                orgId: 'boran'    },
@@ -1453,10 +1455,10 @@ export const SOTRUDNIKI_LIST: SotrudnikRow[] = [
   { tabel:  3, name: 'Мансур Норматов',                  department: 'Продавцы',      position: 'Торговый агент',phone: '(90) 830-94-05',  orgId: 'atlas'    },
   { tabel:  4, name: 'Зиёда Тургунова',                  department: 'Доставка',      position: 'Доставщик',     phone: '(94) 940-05-16',  orgId: 'atlas'    },
   { tabel:  5, name: 'Ҳусан Мелиқузиев',                 department: 'Склад',         position: 'Кладовщик',     phone: '',                orgId: 'atlas'    },
-];
+]);
 
 // ─── ORG EMPLOYEES ───
-export const ORG_EMPLOYEES: Record<string, EmployeeMarker[]> = {
+export const ORG_EMPLOYEES = demoRec({
   boran: [
     { id:101, name:'Alisher Karimov',  avatar:'AK', role:'agent',    online:true,  lastSeen:'2 daqiqa oldin',   lat:40.1025, lng:65.3790, orgId:'boran' },
     { id:102, name:'Bobur Toshmatov',  avatar:'BT', role:'agent',    online:true,  lastSeen:'5 daqiqa oldin',   lat:40.1150, lng:65.3650, orgId:'boran' },
@@ -1508,10 +1510,10 @@ export const ORG_EMPLOYEES: Record<string, EmployeeMarker[]> = {
     { id:604, name:'Ziyoda Turgunova',   avatar:'ZT', role:'delivery', online:true,  lastSeen:'1 daqiqa oldin',   lat:40.3870, lng:71.7840, orgId:'atlas' },
     { id:605, name:"Husan Meliqo'ziyev", avatar:'HM', role:'delivery', online:false, lastSeen:'55 daqiqa oldin',  lat:40.3840, lng:71.7990, orgId:'atlas' },
   ],
-};
+});
 
 // ─── CLIENTS ───
-export const allClients: ClientRow[] = [
+export const allClients = demo([
   { id: 1337, code: '2', name: 'Ahmеd Ota Markit',             fullName: 'Ahmеd Ota Markit',               line: '01', priceCat: 'Standart', territory: 'Аеroport',          inn: '',          legalAddr: 'Аеroport',                   phone: '+99893 777 71 40', contact: '',             cls: 'MM-',  gps: '',        agent: 'Alisher Karimov',  balance: -862960, category: 'Standard', lastVisit: '2026-03-05', rowType: 'normal'   },
   { id: 1345, code: '2', name: 'Gеmur Ruslan',                 fullName: 'Gеmur Ruslan',                    line: '01', priceCat: 'Standart', territory: 'Tovr. Nurfashon1', inn: '',          legalAddr: 'Tovrabot Nurfashon1',         phone: '+99890 730 08 84', contact: '',             cls: 'MM-',  gps: '',        agent: 'Bobur Toshmatov',  balance: -343120, category: 'VIP',      lastVisit: '2026-03-06', rowType: 'normal'   },
   { id: 1398, code: '2', name: 'Muratov Jahongir',             fullName: 'Muratov Jahongir',                line: '01', priceCat: 'Standart', territory: '',                  inn: '',          legalAddr: '',                           phone: '+99897 556 85 70', contact: '',             cls: 'MM-',  gps: '',        agent: 'Alisher Karimov',  balance: -471489, category: 'Premium',   lastVisit: '2026-03-04', rowType: 'normal'   },
@@ -1536,19 +1538,19 @@ export const allClients: ClientRow[] = [
   { id: 1122, code: '2', name: 'XOJ AKBAR MUZAFFAROV',         fullName: 'XOJ AKBAR MUZAFFAROV',            line: '01', priceCat: 'Standart', territory: 'Tovrabo.',          inn: '5141042',   legalAddr: 'АIROPORT АЕRO MАRKЕT',      phone: '+99894 098 46 93', contact: 'Аnvar Аka',    cls: 'MM-',  gps: '',        agent: 'Eldor Nazarov',    balance: -680000, category: 'Premium',   lastVisit: '2026-03-01', rowType: 'normal'   },
   { id: 1334, code: '2', name: 'АO UZRTSB',                    fullName: 'АO UZRTSB',                       line: '01', priceCat: 'Standart', territory: '',                  inn: '200933985', legalAddr: 'birjadan tushgan savdo',     phone: '906184700',        contact: '',             cls: 'ZAB.', gps: '',        agent: 'Feruza Mirzaeva',  balance: 0,       category: 'Standard', lastVisit: '2026-02-28', rowType: 'normal'   },
   { id: 1,    code: '2', name: 'Аtt Xojiyеv Ilxom',            fullName: 'Аtt Xojiyеv Ilxom',               line: '01', priceCat: 'Standart', territory: '',                  inn: '332096811', legalAddr: 'Xojinoilar uyidi Oldin opa', phone: '337646363',        contact: '',             cls: 'MM-',  gps: '-40.127', agent: 'Alisher Karimov',  balance: -543000, category: 'Standard', lastVisit: '2026-03-03', rowType: 'normal'   },
-];
+]);
 
 // ─── CHART DATA ───
-export const salesChart: ChartRow[] = [
+export const salesChart = demo([
   { month: 'Okt', sales: 42000000, payments: 35000000 },
   { month: 'Noy', sales: 58000000, payments: 48000000 },
   { month: 'Dek', sales: 51000000, payments: 44000000 },
   { month: 'Yan', sales: 67000000, payments: 55000000 },
   { month: 'Fev', sales: 73000000, payments: 61000000 },
   { month: 'Mar', sales: 63350000, payments: 47100000 },
-];
+]);
 
-export const ORG_CHART: Record<string, { month: ChartRow[]; week: ChartRow[]; day: ChartRow[] }> = {
+export const ORG_CHART = demoRecKeys({
   boran: {
     month: [
       { month:'Okt', sales:12100000, payments:9800000 }, { month:'Noy', sales:15800000, payments:12500000 },
@@ -1651,20 +1653,20 @@ export const ORG_CHART: Record<string, { month: ChartRow[]; week: ChartRow[]; da
       { month:'Ya', sales:48000,  payments:37000  },
     ],
   },
-};
+});
 
 // ─── COMPANY KPI DATA ───
-export const COMPANY_DATA: Record<string, { sales: number; payments: number; debt: number; clients: number; visits: number; plan: number }> = {
+export const COMPANY_DATA = demoRecKeys({
   boran:     { sales: 63350000, payments: 47100000, debt: 16250000, clients: 138, visits: 89,  plan: 75000000 },
   zarafshon: { sales: 48200000, payments: 36500000, debt: 11700000, clients: 112, visits: 72,  plan: 60000000 },
   mipter:    { sales: 31000000, payments: 24000000, debt: 7000000,  clients: 87,  visits: 51,  plan: 40000000 },
   navruz:    { sales: 78500000, payments: 58000000, debt: 20500000, clients: 195, visits: 110, plan: 90000000 },
   sarbon:    { sales: 42100000, payments: 31200000, debt: 10900000, clients: 103, visits: 68,  plan: 50000000 },
   atlas:     { sales: 27300000, payments: 20100000, debt: 7200000,  clients: 76,  visits: 45,  plan: 35000000 },
-};
+});
 
 // ─── COMPANY AGENTS ───
-export const COMPANY_AGENTS: Record<string, AgentRow[]> = {
+export const COMPANY_AGENTS = demoRec({
   boran: [
     { id:101,name:'Alisher Karimov',  avatar:'AK',clients:24,visits:18,sales:12450000,payments:8200000, debt:4250000,plan:15000000,status:'active',  orgId:'boran'},
     { id:102,name:'Bobur Toshmatov',  avatar:'BT',clients:31,visits:25,sales:18900000,payments:14100000,debt:4800000,plan:20000000,status:'active',  orgId:'boran'},
@@ -1702,25 +1704,25 @@ export const COMPANY_AGENTS: Record<string, AgentRow[]> = {
     { id:602,name:'Zafar Isoqov',     avatar:'ZI',clients:15,visits:11,sales:7800000, payments:5900000, debt:1900000,plan:9500000, status:'active',orgId:'atlas'},
     { id:603,name:'Aziz Raximov',     avatar:'AR',clients:12,visits:8, sales:5500000, payments:4000000, debt:1500000,plan:7000000, status:'active',orgId:'atlas'},
   ],
-};
+});
 
 // ─── PIE DATA ───
-export const catPie = [
+export const catPie = demo([
   { name: 'Standard', value: 58, color: '#6366f1' },
   { name: 'VIP', value: 28, color: '#8b5cf6' },
   { name: 'Premium', value: 14, color: '#a78bfa' },
-];
+]);
 
-export const COMPANY_CATPIE: Record<string, typeof catPie> = {
+export const COMPANY_CATPIE = demoRecKeys({
   boran:     [{name:'Standard',value:58,color:'#6366f1'},{name:'VIP',value:28,color:'#8b5cf6'},{name:'Premium',value:14,color:'#a78bfa'}],
   zarafshon: [{name:'Standard',value:65,color:'#6366f1'},{name:'VIP',value:22,color:'#8b5cf6'},{name:'Premium',value:13,color:'#a78bfa'}],
   mipter:    [{name:'Standard',value:70,color:'#6366f1'},{name:'VIP',value:18,color:'#8b5cf6'},{name:'Premium',value:12,color:'#a78bfa'}],
   navruz:    [{name:'Standard',value:52,color:'#6366f1'},{name:'VIP',value:32,color:'#8b5cf6'},{name:'Premium',value:16,color:'#a78bfa'}],
   sarbon:    [{name:'Standard',value:60,color:'#6366f1'},{name:'VIP',value:25,color:'#8b5cf6'},{name:'Premium',value:15,color:'#a78bfa'}],
   atlas:     [{name:'Standard',value:68,color:'#6366f1'},{name:'VIP',value:20,color:'#8b5cf6'},{name:'Premium',value:12,color:'#a78bfa'}],
-};
+});
 
-export const weeklyData = [
+export const weeklyData = demo([
   { day: 'Du', visits: 18, orders: 12 },
   { day: 'Se', visits: 22, orders: 16 },
   { day: 'Ch', visits: 15, orders: 10 },
@@ -1728,57 +1730,57 @@ export const weeklyData = [
   { day: 'Ju', visits: 24, orders: 18 },
   { day: 'Sh', visits: 8,  orders: 5  },
   { day: 'Ya', visits: 3,  orders: 2  },
-];
+]);
 
-export const COMPANY_WEEKLY: Record<string, typeof weeklyData> = {
+export const COMPANY_WEEKLY = demoRecKeys({
   boran:     weeklyData,
   zarafshon: weeklyData.map(d=>({...d,visits:Math.round(d.visits*.76),orders:Math.round(d.orders*.76)})),
   mipter:    weeklyData.map(d=>({...d,visits:Math.round(d.visits*.49),orders:Math.round(d.orders*.49)})),
   navruz:    weeklyData.map(d=>({...d,visits:Math.round(d.visits*1.24),orders:Math.round(d.orders*1.24)})),
   sarbon:    weeklyData.map(d=>({...d,visits:Math.round(d.visits*.66),orders:Math.round(d.orders*.66)})),
   atlas:     weeklyData.map(d=>({...d,visits:Math.round(d.visits*.43),orders:Math.round(d.orders*.43)})),
-};
+});
 
-export const payPie = [
+export const payPie = demo([
   { name: 'Naxt', value: 45, color: '#10b981' },
   { name: 'Karta', value: 35, color: '#3b82f6' },
   { name: "Ko'chirma", value: 20, color: '#f59e0b' },
-];
+]);
 
-export const debtData = [
+export const debtData = demo([
   { range: '1-30 kun', amount: 8500000, color: '#10b981' },
   { range: '31-60 kun', amount: 5200000, color: '#f59e0b' },
   { range: '61-90 kun', amount: 3100000, color: '#f97316' },
   { range: '90+ kun', amount: 2650000, color: '#ef4444' },
-];
+]);
 
 // Reports agent list (static)
-export const agentsReport = [
+export const agentsReport = demo([
   { id: 1, name: 'Alisher Karimov', avatar: 'AK', clients: 24, visits: 18, sales: 12450000, payments: 8200000, debt: 4250000, plan: 15000000, status: 'active' },
   { id: 2, name: 'Bobur Toshmatov', avatar: 'BT', clients: 31, visits: 25, sales: 18900000, payments: 14100000, debt: 4800000, plan: 20000000, status: 'active' },
   { id: 3, name: 'Dilnoza Yusupova', avatar: 'DY', clients: 19, visits: 14, sales: 9200000, payments: 7600000, debt: 1600000, plan: 12000000, status: 'active' },
   { id: 4, name: 'Eldor Nazarov', avatar: 'EN', clients: 28, visits: 22, sales: 15700000, payments: 11300000, debt: 4400000, plan: 18000000, status: 'active' },
   { id: 5, name: 'Feruza Mirzaeva', avatar: 'FM', clients: 16, visits: 11, sales: 7100000, payments: 5900000, debt: 1200000, plan: 10000000, status: 'inactive' },
-];
+]);
 
 // Settings data
-export const categoriesData = [
+export const categoriesData = demo([
   { id: 1, name: 'Ichimliklar', products: 24, icon: '🥤' },
   { id: 2, name: 'Oziq-ovqat', products: 48, icon: '🍞' },
   { id: 3, name: 'Sut mahsulotlari', products: 16, icon: '🥛' },
   { id: 4, name: 'Shirinliklar', products: 32, icon: '🍬' },
   { id: 5, name: 'Gigiyena', products: 20, icon: '🧴' },
-];
+]);
 
-export const terminalsData = [
+export const terminalsData = demo([
   { id: 1, name: 'Payme Terminal #1', bank: 'Payme', status: 'active' },
   { id: 2, name: 'Click Terminal #2', bank: 'Click', status: 'active' },
   { id: 3, name: 'Humo Terminal #3', bank: 'Xalq banki', status: 'active' },
   { id: 4, name: 'UzCard Terminal #4', bank: 'NBU', status: 'inactive' },
   { id: 5, name: 'Visa Terminal #5', bank: 'Kapitalbank', status: 'active' },
-];
+]);
 
-export const settingsProducts = [
+export const settingsProducts = demo([
   { id: 1, name: 'Coca-Cola 0.5L', cat: 'Ichimliklar', price: 8500, stock: 240 },
   { id: 2, name: 'Pepsi 1L', cat: 'Ichimliklar', price: 12000, stock: 180 },
   { id: 3, name: 'Non (loaf)', cat: 'Oziq-ovqat', price: 4500, stock: 95 },
@@ -1787,6 +1789,6 @@ export const settingsProducts = [
   { id: 6, name: 'Shampun', cat: 'Gigiyena', price: 32000, stock: 60 },
   { id: 7, name: 'Fanta 0.5L', cat: 'Ichimliklar', price: 7500, stock: 310 },
   { id: 8, name: 'Yogurt', cat: 'Sut mahsulotlari', price: 5200, stock: 85 },
-];
+]);
 
 

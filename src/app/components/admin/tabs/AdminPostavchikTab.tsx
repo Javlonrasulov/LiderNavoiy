@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, Scale,
 } from 'lucide-react';
 import { fmt } from '../../../data/adminData';
+import { demo } from '../../../data/demoLimit';
 import { DatePickerCalendar } from '../DatePickerCalendar';
 import { PostupleniyaModal } from '../PostupleniyaModal';
 import { PostupleniyaDetailModal, type PostRowRef } from '../PostupleniyaDetailModal';
@@ -34,7 +35,7 @@ interface SupRow {
   c_close: number;
 }
 
-export const SUP_DATA: SupRow[] = [
+export const SUP_DATA = demo([
   { id:  1, name: '"IMILKY" MCHJ',            d_open:           0, c_open:          0, debit: 108_519_050, credit:  65_000_000, d_close:  43_519_050, c_close:          0 },
   { id:  2, name: 'ASMO ICE CREAM',            d_open:           0, c_open: 15_615_200, debit: 146_321_000, credit:  99_093_000, d_close:  31_612_800, c_close:          0 },
   { id:  3, name: 'EXCLUSIVE FOOD IMPORT',     d_open:   8_877_600, c_open:          0, debit:     874_000, credit:           0, d_close:   9_751_600, c_close:          0 },
@@ -49,7 +50,7 @@ export const SUP_DATA: SupRow[] = [
   { id: 12, name: 'Сыр Голланд Хоразм. 2',    d_open:           0, c_open:          0, debit:  25_459_000, credit:   9_330_000, d_close:  16_129_000, c_close:          0 },
   { id: 13, name: 'Сыр Хоразм Галланд',        d_open: 176_294_600, c_open:          0, debit: 295_251_000, credit: 290_090_000, d_close: 181_455_600, c_close:          0 },
   { id: 14, name: 'ЧП "SALAR MEAT PRODUCT"',  d_open:           0, c_open:          0, debit:  18_697_528, credit:  10_411_000, d_close:   8_286_528, c_close:          0 },
-];
+]);
 
 function N(n: number) {
   if (n === 0) return '—';
@@ -95,7 +96,7 @@ interface VozvratRow {
   sum:        number;
 }
 
-const VOZVRAT_DATA: VozvratRow[] = [
+const VOZVRAT_DATA = demo([
   { id:1,  dateSend:'10.02.2026 00:00', dateAccept:'10.02.2026 00:00', num:'44', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'Брак',         note:'', dir:'SOF IN', sum:19_372_700 },
   { id:2,  dateSend:'11.02.2026 00:00', dateAccept:'11.02.2026 00:00', num:'45', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'Брак',         note:'', dir:'SOF IN', sum:4_097_574  },
   { id:3,  dateSend:'12.02.2026 13:15', dateAccept:'12.02.2026 13:15', num:'46', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'',             note:'', dir:'SOF IN', sum:4_227_638  },
@@ -121,7 +122,7 @@ const VOZVRAT_DATA: VozvratRow[] = [
   { id:23, dateSend:'06.03.2026 17:51', dateAccept:'06.03.2026 17:51', num:'68', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'Склад SOFIN',  note:'', dir:'SOF IN', sum:0          },
   { id:24, dateSend:'09.03.2026 20:03', dateAccept:'09.03.2026 20:03', num:'69', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'',             note:'', dir:'SOF IN', sum:9_032_300  },
   { id:25, dateSend:'10.03.2026 15:35', dateAccept:'10.03.2026 15:35', num:'70', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'Брак',         note:'', dir:'SOF IN', sum:0          },
-];
+]);
 
 export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const [aktSup, setAktSup] = useState<SupRow | null>(null);
@@ -167,7 +168,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     '2026-03-03','2026-03-07','2026-03-10',
   ]);
 
-  const POST_DATA: PostRow[] = [
+  const POST_DATA = demo([
     { id:1,  date:'05.03.2026 20:59', num:'03574', ox:false, supplier:'Янги асорт «Соф…»',   org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:128_522_400, netto:12_946_200, type:'opt' },
     { id:2,  date:'06.03.2026 04:45', num:'03581', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045350', sum:8_320_000,   netto:80_000,    type:'opt' },
     { id:3,  date:'06.03.2026 04:50', num:'03576', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045821', sum:2_977_500,   netto:31_500,    type:'opt' },
@@ -188,7 +189,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     { id:18, date:'08.03.2026 23:13', num:'03591', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047850', sum:0,           netto:70_400,    type:'chakana' },
     { id:19, date:'09.03.2026 05:00', num:'03592', ox:false, supplier:'Nodir Invest',          org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:4_639_000,   netto:286_000,   type:'opt' },
     { id:20, date:'09.03.2026 07:42', num:'03594', ox:true,  supplier:'«IMILKY» MCHJ',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:32_031_650,  netto:481_610,   type:'opt' },
-  ];
+  ]);
 
   const [postFilter, setPostFilter] = useState<'all'|'opt'|'chakana'|'ishlab'>('all');
   const [postSearch, setPostSearch] = useState('');

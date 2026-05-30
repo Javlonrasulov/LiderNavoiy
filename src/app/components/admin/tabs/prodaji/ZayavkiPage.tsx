@@ -6,6 +6,7 @@ import {
 import type { ConfirmedOrder } from './TovarYuklashCreateModal';
 import { ZayavkaDetailModal } from './ZayavkaDetailModal';
 import type { ZayavkaInfo } from './ZayavkaDetailModal';
+import { demo } from '../../../../data/demoLimit';
 
 /* ─── Types ────────────────────────────────────────────────── */
 type Status    = 'pri' | 'otr' | 'cancelled';
@@ -53,7 +54,7 @@ function fmtSum(n: number) {
 }
 
 /* ─── Mock data ─────────────────────────────────────────────── */
-const DATA: Zayavka[] = [
+const DATA: Zayavka[] = demo([
   { id:1,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18580, code:'28720', client:'GAYBIYEV MUXRIDDIN',          org:'OOO "BOLG\'ORI"', agent:'Эргашева Д.',  liniya:'13 - Эскиюрт', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:600508,  klass:'MM-1', otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true  },
   { id:2,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18581, code:'28050', client:'XUMO GULI MCHJ',              org:'OOO "BOLG\'ORI"', agent:'Норова Н.',    liniya:'14 - Янгийўл', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'SM-',  otgr:'1 040', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
   { id:3,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18584, code:'28742', client:'7-OSHXONA',                   org:'OOO "BOLG\'ORI"', agent:'Назаров Ш.',   liniya:'27 - Хасан',   direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'OST',  otgr:'1 039', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
@@ -76,7 +77,7 @@ const DATA: Zayavka[] = [
   { id:20, orderDate:'11.03.2026', shipDate:'11.03.2026', num:18607, code:'03042', client:'"GULCHEXRA AYA ZARINA"XK',     org:'OOO "BOLG\'ORI"', agent:'Тухтамиш.',    liniya:'03 - Хатир.',  direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:2900510, klass:'SM-',  otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true  },
   { id:21, orderDate:'11.03.2026', shipDate:'11.03.2026', num:18608, code:'20036', client:'RAXMATOVA OZODA',              org:'OOO "TOSHNI."',   agent:'Тошниёз.',     liniya:'26 - Спут.',   direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:513337,  klass:'HRC-', otgr:'1 034', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
   { id:22, orderDate:'11.03.2026', shipDate:'11.03.2026', num:18609, code:'28934', client:'ASLBEK 2019 OK',               org:'OOO "BOLG\'ORI"', agent:'Норова Н.',    liniya:'14 - Янгийўл', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:436963,  klass:'MM-',  otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true  },
-];
+]);
 
 /* ─── Props ─────────────────────────────────────────────────── */
 interface Props { D: boolean; t: Record<string, string>; pendingOrders?: ConfirmedOrder[]; }

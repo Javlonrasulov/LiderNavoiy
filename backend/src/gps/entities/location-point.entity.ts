@@ -46,7 +46,7 @@ export class LocationPoint {
   @Column({ type: 'timestamptz', nullable: true })
   syncedAt: Date | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   deviceId: string | null;
 
   @CreateDateColumn()

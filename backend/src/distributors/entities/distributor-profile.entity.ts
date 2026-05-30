@@ -20,19 +20,19 @@ export class DistributorProfile {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column({ nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   userId: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   companyId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   companyName: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   lineCode: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
   @Column({ type: 'enum', enum: DistributorStatus, default: DistributorStatus.OFFLINE })
