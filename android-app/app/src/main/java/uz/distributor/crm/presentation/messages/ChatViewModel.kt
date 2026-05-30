@@ -69,6 +69,18 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            messageRepository.readSocketEvents.collect { event ->
+                if (event.conversationId != conversationId) return@collect
+                _uiState.update { state ->
+                    state.copy(
+                        messages = state.messages.map { msg ->
+                            if (msg.id in event.messageIds) msg.copy(isRead = true) else msg
+                        },
+                    )
+                }
+            }
+        }
         load()
     }
 

@@ -30,8 +30,12 @@ app/src/main/java/uz/distributor/crm/
    ```kotlin
    buildConfigField("String", "MAPKIT_API_KEY", "\"your-key-here\"")
    ```
-3. For emulator, API URL is `http://10.0.2.2:3000/api/v1/`
-4. For real device, change `API_BASE_URL` to your server IP
+3. For emulator, API URL is `http://10.0.2.2:3000/api/v1/` (default)
+4. For **real phone**, copy `local.properties.example` to `local.properties` and set your PC LAN IP:
+   ```
+   api.host=192.168.1.100
+   ```
+   Then rebuild APK. Phone and PC must be on the same Wi‑Fi; backend must listen on `0.0.0.0:3000`.
 
 ## Build APK
 

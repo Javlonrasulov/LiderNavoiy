@@ -45,9 +45,17 @@ object AppStrings {
     fun messagesTitle(lang: AppLanguage) = navLabel(NavTab.MESSAGES, lang)
     fun search(lang: AppLanguage) = tr(lang, "Qidirish...", "Қидириш...", "Поиск...")
     fun noChats(lang: AppLanguage) = tr(lang, "Xabar yo'q", "Хабар йўқ", "Нет сообщений")
+    fun msgLoadError(lang: AppLanguage) = tr(lang, "Serverga ulanib bo'lmadi", "Серверга уланиб бўлмади", "Не удалось подключиться к серверу")
+    fun startChat(lang: AppLanguage) = tr(lang, "Suhbat boshlash", "Суҳбат бошлаш", "Начать чат")
+    fun selectContact(lang: AppLanguage) = tr(lang, "Kontaktni tanlang", "Контактни танланг", "Выберите контакт")
+    fun serverHint(lang: AppLanguage, host: String) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Server: $host — telefonda local.properties da api.host=kompyuter IP"
+        AppLanguage.UZ_CYRILLIC -> "Сервер: $host — телефонда api.host=компьютер IP"
+        AppLanguage.RUS -> "Сервер: $host — на телефоне укажите api.host=IP компьютера"
+    }
     fun chatPlaceholder(lang: AppLanguage) = tr(lang, "Xabar...", "Хабар...", "Сообщение...")
     fun attachPhoto(lang: AppLanguage) = tr(lang, "Rasm yoki video", "Расм ёки видео", "Фото или видео")
-    fun attachDoc(lang: AppLanguage) = tr(lang, "Hujjat", "Хujjat", "Документ")
+    fun attachDoc(lang: AppLanguage) = tr(lang, "Hujjat", "Ҳужжат", "Документ")
     fun previewImage(lang: AppLanguage) = tr(lang, "Rasm", "Расм", "Фото")
     fun previewFile(lang: AppLanguage) = tr(lang, "Fayl", "Файл", "Файл")
     fun msgLoading(lang: AppLanguage) = tr(lang, "Yuklanmoqda...", "Юкланмоқda...", "Загрузка...")

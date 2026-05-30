@@ -1,6 +1,7 @@
 package uz.distributor.crm.data.repository
 
 import android.content.Context
+import android.content.Intent
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -10,12 +11,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import uz.distributor.crm.data.local.TokenHolder
+import uz.distributor.crm.data.local.UserIdHolder
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.remote.MessagesSocketManager
 import uz.distributor.crm.data.remote.dto.LoginRequest
 import uz.distributor.crm.domain.model.AuthTokens
 import uz.distributor.crm.domain.model.AuthUser
+import uz.distributor.crm.service.LocationTrackingService
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,6 +30,7 @@ class AuthRepository @Inject constructor(
     private val api: ApiService,
     private val gson: Gson,
     private val tokenHolder: TokenHolder,
+    private val userIdHolder: UserIdHolder,
     private val trackingSocket: TrackingSocketManager,
     private val messagesSocket: MessagesSocketManager,
 ) {
@@ -59,6 +63,9 @@ class AuthRepository @Inject constructor(
         val prefs = context.dataStore.data.first()
         val token = prefs[accessTokenKey]
         tokenHolder.setToken(token)
+        prefs[userKey]?.let {
+            userIdHolder.userId = gson.fromJson(it, AuthUser::class.java).id
+        }
         if (token != null) {
             trackingSocket.connect()
             messagesSocket.connect()
@@ -70,7 +77,13 @@ class AuthRepository @Inject constructor(
         trackingSocket.disconnect()
         messagesSocket.disconnect()
         tokenHolder.setToken(null)
+        userIdHolder.userId = null
         context.dataStore.edit { it.clear() }
+        context.startService(
+            Intent(context, LocationTrackingService::class.java).apply {
+                action = LocationTrackingService.ACTION_STOP
+            },
+        )
     }
 
     fun getUserFlow(): Flow<AuthUser?> = context.dataStore.data.map { prefs ->
@@ -79,6 +92,7 @@ class AuthRepository @Inject constructor(
 
     private suspend fun saveTokens(tokens: AuthTokens) {
         tokenHolder.setToken(tokens.accessToken)
+        userIdHolder.userId = tokens.user.id
         trackingSocket.connect()
         messagesSocket.connect()
         context.dataStore.edit { prefs ->

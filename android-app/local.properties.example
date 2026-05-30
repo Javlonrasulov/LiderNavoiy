@@ -1,0 +1,5 @@
+# Copy to local.properties and set your PC LAN IP for real device testing.
+# Emulator uses 10.0.2.2 by default (no change needed).
+#
+# sdk.dir=C\:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
+api.host=192.168.1.100

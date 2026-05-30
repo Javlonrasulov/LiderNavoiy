@@ -227,6 +227,8 @@ export class NotificationsService {
     }
 
     try {
+      const channelId =
+        type === NotificationType.MESSAGE ? 'crm_messages_channel' : 'crm_push_channel';
       const messageId = await messaging.send({
         token,
         notification: { title, body },
@@ -236,7 +238,7 @@ export class NotificationsService {
         android: {
           priority: 'high',
           notification: {
-            channelId: 'crm_push_channel',
+            channelId,
             priority: 'high',
             defaultSound: true,
             defaultVibrateTimings: true,

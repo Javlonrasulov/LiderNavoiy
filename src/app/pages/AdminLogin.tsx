@@ -88,6 +88,7 @@ export default function AdminLogin() {
     try {
       const res = await api.login(username.trim(), password.trim());
       setTokens(res.accessToken, res.refreshToken);
+      localStorage.setItem('api_user_id', res.user.id);
       const userData = { name: res.user.fullName, role: res.user.role };
       login(username.trim(), password.trim(), userData);
       navigate('/admin/select');

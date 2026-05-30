@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare, Send, Search, User, Paperclip, Image as ImageIcon,
-  FileText, X, Copy, Trash2, Reply, CheckCircle2, Circle, ArrowLeft,
+  FileText, X, Copy, Trash2, Reply, CheckCircle2, Circle, ArrowLeft, Check, CheckCheck,
 } from 'lucide-react';
 import {
   api, connectMessages, resolveFileUrl,
@@ -11,6 +11,12 @@ import { useAdminAuth } from '../../AdminAuthContext';
 import { useTheme } from '../../ThemeContext';
 import { useLang } from '../../LangContext';
 import { AP, type LangAdmin } from '../../../data/adminData';
+import {
+  setMessagesTabActive,
+  setActiveConversationId,
+  registerOpenConversationHandler,
+  consumePendingOpenConversation,
+} from '../../../utils/messageNotificationState';
 
 function initials(name: string) {
   return name.split(' ').slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
@@ -160,6 +166,15 @@ export function AdminMessagesTab() {
           });
         }
       },
+      onRead: (payload) => {
+        if (payload.conversationId === activeId) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              payload.messageIds.includes(m.id) ? { ...m, isRead: true } : m,
+            ),
+          );
+        }
+      },
     }).then((s) => { socketRef.current = s; });
     return () => { socketRef.current?.disconnect(); };
   }, [loadData, activeId]);
@@ -174,7 +189,7 @@ export function AdminMessagesTab() {
     return () => window.removeEventListener('click', close);
   }, []);
 
-  const openConversation = async (convId: string) => {
+  const openConversation = useCallback(async (convId: string) => {
     setActiveId(convId);
     setReplyTo(null);
     setPendingFile(null);
@@ -189,7 +204,25 @@ export function AdminMessagesTab() {
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);
     }
-  };
+  }, [t.msgError]);
+
+  useEffect(() => {
+    setMessagesTabActive(true);
+    registerOpenConversationHandler((convId) => {
+      void openConversation(convId);
+    });
+    const pending = consumePendingOpenConversation();
+    if (pending) void openConversation(pending);
+    return () => {
+      setMessagesTabActive(false);
+      setActiveConversationId(null);
+      registerOpenConversationHandler(null);
+    };
+  }, [openConversation]);
+
+  useEffect(() => {
+    setActiveConversationId(activeId);
+  }, [activeId]);
 
   const startWithContact = async (contact: ChatContact) => {
     try {
@@ -524,10 +557,17 @@ export function AdminMessagesTab() {
                               : `${bubbleOther} rounded-bl-md`
                           } ${isSelected ? (D ? 'ring-2 ring-[#6ab2f2]/60' : 'ring-2 ring-indigo-400') : ''}`}
                         >
-                          {renderMessageBody(msg, isMine)}
-                          <p className={`text-[10px] mt-1 text-right ${isMine ? 'text-white/60' : sub}`}>
-                            {formatTime(msg.createdAt)}
-                          </p>
+                        {renderMessageBody(msg, isMine)}
+                        <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-white/60' : sub}`}>
+                          <span className="text-[10px]">{formatTime(msg.createdAt)}</span>
+                          {isMine && (
+                            msg.isRead ? (
+                              <CheckCheck className={`w-3.5 h-3.5 ${D ? 'text-[#6ab2f2]' : 'text-sky-300'}`} />
+                            ) : (
+                              <Check className="w-3.5 h-3.5 opacity-70" />
+                            )
+                          )}
+                        </div>
                         </div>
                       </div>
                       {selectionMode && (

@@ -4,12 +4,15 @@ import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.MessagesSocketManager
 import uz.distributor.crm.data.remote.dto.ChatContactDto
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.data.remote.dto.ChatMessageDto
 import uz.distributor.crm.data.remote.dto.MessageAttachmentRequest
@@ -60,11 +63,53 @@ class MessageRepository @Inject constructor(
         val resolver = context.contentResolver
         val mime = resolver.getType(uri) ?: "application/octet-stream"
         val name = queryDisplayName(uri) ?: "file"
-        val bytes = resolver.openInputStream(uri)?.readBytes()
-            ?: throw IllegalArgumentException("Cannot read file")
-        val body = bytes.toRequestBody(mime.toMediaTypeOrNull())
-        val part = MultipartBody.Part.createFormData("file", name, body)
+        val bytes = if (mime.startsWith("image/") && mime != "image/gif") {
+            compressImage(uri) ?: resolver.openInputStream(uri)?.readBytes()
+                ?: throw IllegalArgumentException("Cannot read file")
+        } else {
+            resolver.openInputStream(uri)?.readBytes()
+                ?: throw IllegalArgumentException("Cannot read file")
+        }
+        val uploadMime = if (mime.startsWith("image/") && mime != "image/gif") "image/jpeg" else mime
+        val uploadName = if (uploadMime == "image/jpeg") {
+            name.replace(Regex("\\.[^.]+$"), ".jpg")
+        } else name
+        val body = bytes.toRequestBody(uploadMime.toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("file", uploadName, body)
         return api.uploadChatFile(part)
+    }
+
+    private fun compressImage(uri: Uri): ByteArray? {
+        val resolver = context.contentResolver
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        val maxDim = 1280
+        var sample = 1
+        while (bounds.outWidth / sample > maxDim || bounds.outHeight / sample > maxDim) {
+            sample *= 2
+        }
+
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bitmap = resolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: return null
+
+        val scaled = if (bitmap.width > maxDim || bitmap.height > maxDim) {
+            val ratio = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height)
+            val w = (bitmap.width * ratio).toInt().coerceAtLeast(1)
+            val h = (bitmap.height * ratio).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(bitmap, w, h, true).also {
+                if (it !== bitmap) bitmap.recycle()
+            }
+        } else bitmap
+
+        return ByteArrayOutputStream().use { out ->
+            scaled.compress(Bitmap.CompressFormat.JPEG, 82, out)
+            scaled.recycle()
+            out.toByteArray()
+        }
     }
 
     fun resolveFileUrl(path: String?): String {
@@ -106,4 +151,6 @@ class MessageRepository @Inject constructor(
     val socketEvents get() = socket.events
 
     val deletedSocketEvents get() = socket.deletedEvents
+
+    val readSocketEvents get() = socket.readEvents
 }

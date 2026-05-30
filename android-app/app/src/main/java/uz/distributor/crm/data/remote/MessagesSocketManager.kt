@@ -14,9 +14,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import uz.distributor.crm.BuildConfig
+import uz.distributor.crm.data.local.ChatSessionHolder
 import uz.distributor.crm.data.local.TokenHolder
+import uz.distributor.crm.data.local.UserIdHolder
 import uz.distributor.crm.data.remote.dto.ChatMessageDto
 import uz.distributor.crm.data.remote.dto.ConversationDto
+import uz.distributor.crm.push.IncomingMessageAlert
+import uz.distributor.crm.push.IncomingMessageNotifier
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,9 +36,16 @@ data class DeletedMessagesEvent(
     val conversation: ConversationDto?,
 )
 
+data class ReadMessagesEvent(
+    val conversationId: String,
+    val messageIds: List<String>,
+)
+
 @Singleton
 class MessagesSocketManager @Inject constructor(
     private val tokenHolder: TokenHolder,
+    private val userIdHolder: UserIdHolder,
+    private val incomingNotifier: IncomingMessageNotifier,
     private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -45,6 +56,9 @@ class MessagesSocketManager @Inject constructor(
 
     private val _deletedEvents = MutableSharedFlow<DeletedMessagesEvent>(extraBufferCapacity = 32)
     val deletedEvents: SharedFlow<DeletedMessagesEvent> = _deletedEvents.asSharedFlow()
+
+    private val _readEvents = MutableSharedFlow<ReadMessagesEvent>(extraBufferCapacity = 32)
+    val readEvents: SharedFlow<ReadMessagesEvent> = _readEvents.asSharedFlow()
 
     fun connect() {
         scope.launch {
@@ -66,10 +80,18 @@ class MessagesSocketManager @Inject constructor(
                     on(Socket.EVENT_CONNECT) { Log.d(TAG, "Messages socket connected") }
                     on(Socket.EVENT_DISCONNECT) { Log.d(TAG, "Messages socket disconnected") }
                     on("message:new") { args ->
-                        parseEvent(args.firstOrNull())?.let { scope.launch { _events.emit(it) } }
+                        parseEvent(args.firstOrNull())?.let { event ->
+                            scope.launch {
+                                _events.emit(event)
+                                maybeNotifyIncoming(event)
+                            }
+                        }
                     }
                     on("message:deleted") { args ->
                         parseDeletedEvent(args.firstOrNull())?.let { scope.launch { _deletedEvents.emit(it) } }
+                    }
+                    on("message:read") { args ->
+                        parseReadEvent(args.firstOrNull())?.let { scope.launch { _readEvents.emit(it) } }
                     }
                 }
                 socket?.connect()
@@ -99,6 +121,29 @@ class MessagesSocketManager @Inject constructor(
         socket?.off()
         socket?.disconnect()
         socket = null
+    }
+
+    private suspend fun maybeNotifyIncoming(event: NewMessageEvent) {
+        val myId = userIdHolder.userId ?: return
+        if (event.message.senderId == myId) return
+        if (event.message.conversationId == ChatSessionHolder.openConversationId) return
+
+        val name = event.conversation?.otherUser?.fullName ?: "Yangi xabar"
+        val preview = previewText(event.message)
+        incomingNotifier.notifyIncoming(
+            IncomingMessageAlert(
+                conversationId = event.message.conversationId,
+                senderName = name,
+                preview = preview,
+            ),
+        )
+    }
+
+    private fun previewText(msg: ChatMessageDto): String {
+        if (msg.text.isNotBlank()) return msg.text
+        if (msg.messageType == "image") return "📷 Rasm"
+        if (msg.messageType == "document") return "📎 ${msg.fileName ?: "Fayl"}"
+        return "Yangi xabar"
     }
 
     private fun toJsonString(raw: Any): String = when (raw) {
@@ -136,6 +181,19 @@ class MessagesSocketManager @Inject constructor(
             DeletedMessagesEvent(conversationId, messageIds, forEveryone, conversation)
         } catch (e: Exception) {
             Log.w(TAG, "parse deleted event failed (${raw.javaClass.simpleName})", e)
+            null
+        }
+    }
+
+    private fun parseReadEvent(raw: Any?): ReadMessagesEvent? {
+        if (raw == null) return null
+        return try {
+            val root = gson.fromJson(toJsonString(raw), JsonObject::class.java)
+            val conversationId = root.get("conversationId")?.asString ?: return null
+            val messageIds = root.getAsJsonArray("messageIds")?.map { it.asString } ?: emptyList()
+            ReadMessagesEvent(conversationId, messageIds)
+        } catch (e: Exception) {
+            Log.w(TAG, "parse read event failed (${raw.javaClass.simpleName})", e)
             null
         }
     }

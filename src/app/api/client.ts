@@ -73,6 +73,7 @@ export function setTokens(access: string, refresh: string) {
 export function clearTokens() {
   localStorage.removeItem('api_access_token');
   localStorage.removeItem('api_refresh_token');
+  localStorage.removeItem('api_user_id');
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -228,9 +229,10 @@ export const api = {
     }),
 
   uploadChatFile: async (file: File): Promise<MessageAttachment & { fullUrl: string }> => {
+    const prepared = await compressChatImage(file);
     const token = getToken();
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', prepared);
     const res = await fetch(`${API_BASE}/messages/upload`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -323,6 +325,7 @@ export async function connectMessages(handlers: {
     forEveryone: boolean;
     conversation?: ChatConversation;
   }) => void;
+  onRead?: (payload: { conversationId: string; messageIds: string[] }) => void;
 }) {
   const token = getToken();
   if (!token) return null;
@@ -333,10 +336,64 @@ export async function connectMessages(handlers: {
   if (handlers.onDeleted) {
     socket.on('message:deleted', handlers.onDeleted);
   }
+  if (handlers.onRead) {
+    socket.on('message:read', handlers.onRead);
+  }
   return socket;
 }
 
 export { API_BASE, WS_BASE };
+
+/** Chat rasmlarini yuborishdan oldin kichraytirish (server joyini tejash) */
+export async function compressChatImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  if (file.size <= 200 * 1024) return file;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDim = 1280;
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          resolve(new File([blob], name, { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        0.82,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
 
 export const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_URL || WS_BASE;
 

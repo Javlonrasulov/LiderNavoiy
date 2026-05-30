@@ -150,4 +150,15 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       });
     }
   }
+
+  async broadcastMessagesRead(
+    conversationId: string,
+    messageIds: string[],
+    senderIds: string[],
+  ) {
+    const payload = { conversationId, messageIds };
+    for (const senderId of senderIds) {
+      this.server.to(`user:${senderId}`).emit('message:read', payload);
+    }
+  }
 }

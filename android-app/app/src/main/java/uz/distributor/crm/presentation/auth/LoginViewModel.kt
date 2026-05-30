@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
+import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -28,6 +29,7 @@ class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val pushRepository: PushRepository,
     private val appSettingsRepository: AppSettingsRepository,
+    private val messagesRealtime: MessagesRealtimeCoordinator,
 ) : ViewModel() {
 
     fun setLanguage(language: AppLanguage) {
@@ -45,6 +47,7 @@ class LoginViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 authRepository.login(_uiState.value.username, _uiState.value.password)
+                messagesRealtime.start()
                 runCatching { pushRepository.registerCurrentToken() }
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
             } catch (e: Exception) {

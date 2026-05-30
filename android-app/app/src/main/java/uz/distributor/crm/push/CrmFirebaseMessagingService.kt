@@ -32,12 +32,24 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
         val title = message.notification?.title ?: message.data["title"] ?: "CRM"
         val body = message.notification?.body ?: message.data["body"] ?: ""
         if (body.isNotBlank()) {
-            NotificationHelper.showNotification(
-                context = this,
-                title = title,
-                body = body,
-                notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
-            )
+            val isMessage = message.data["type"] == "message"
+            val conversationId = message.data["conversationId"]
+            if (isMessage && !conversationId.isNullOrBlank()) {
+                NotificationHelper.showMessageNotification(
+                    context = this,
+                    conversationId = conversationId,
+                    senderName = title,
+                    preview = body,
+                )
+            } else {
+                NotificationHelper.showNotification(
+                    context = this,
+                    title = title,
+                    body = body,
+                    notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
+                    isMessage = isMessage,
+                )
+            }
         }
     }
 

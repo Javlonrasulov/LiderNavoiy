@@ -32,7 +32,8 @@ class LocationTrackingService : Service() {
     private lateinit var locationCallback: LocationCallback
 
     companion object {
-        const val CHANNEL_ID = "location_tracking"
+        /** Yangi kanal — IMPORTANCE_MIN (eski kanal o‘zgarmaydi) */
+        const val CHANNEL_ID = "location_tracking_silent"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
@@ -48,7 +49,13 @@ class LocationTrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> { stopTracking(); stopSelf() }
+            ACTION_STOP -> {
+                stopTracking()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                }
+                stopSelf()
+            }
             else -> startTracking()
         }
         return START_STICKY
@@ -63,12 +70,21 @@ class LocationTrackingService : Service() {
     }
 
     private fun startTracking() {
+        dismissStaleNotifications()
+
+        // Android FGS: avval qisqa foreground, keyin bildirishnomani olib tashlash (GPS davom etadi)
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
             @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_DETACH)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
         }
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
@@ -86,6 +102,16 @@ class LocationTrackingService : Service() {
 
     private fun stopTracking() {
         fusedClient.removeLocationUpdates(locationCallback)
+        getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+    }
+
+    /** Eski APK dagi «GPS kuzatuv faol» bildirishnomasini tozalash */
+    private fun dismissStaleNotifications() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.cancel(NOTIFICATION_ID)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.deleteNotificationChannel("location_tracking")
+        }
     }
 
     private fun setupLocationCallback() {
@@ -117,12 +143,16 @@ class LocationTrackingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.location_notification_title))
-            .setContentText(getString(R.string.location_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(" ")
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(intent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
     }
 
@@ -130,8 +160,14 @@ class LocationTrackingService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.channel_location),
-            NotificationManager.IMPORTANCE_LOW,
-        )
+            NotificationManager.IMPORTANCE_MIN,
+        ).apply {
+            description = getString(R.string.channel_location_desc)
+            setShowBadge(false)
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
+        }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 }

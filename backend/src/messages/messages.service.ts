@@ -248,19 +248,31 @@ export class MessagesService {
     return this.toMessageDto(msg);
   }
 
-  async markRead(conversationId: string, userId: string): Promise<{ updated: number }> {
+  async markRead(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ updated: number; messageIds: string[]; senderIds: string[] }> {
     await this.assertParticipant(conversationId, userId);
 
-    const res = await this.msgRepo
+    const toMark = await this.msgRepo.find({
+      where: { conversationId, isRead: false },
+    });
+    const incoming = toMark.filter((m) => m.senderId !== userId);
+    const messageIds = incoming.map((m) => m.id);
+    const senderIds = [...new Set(incoming.map((m) => m.senderId))];
+
+    if (!messageIds.length) {
+      return { updated: 0, messageIds: [], senderIds: [] };
+    }
+
+    await this.msgRepo
       .createQueryBuilder()
       .update(ChatMessage)
       .set({ isRead: true })
-      .where('conversationId = :conversationId', { conversationId })
-      .andWhere('senderId != :userId', { userId })
-      .andWhere('isRead = false')
+      .where('id IN (:...messageIds)', { messageIds })
       .execute();
 
-    return { updated: res.affected ?? 0 };
+    return { updated: messageIds.length, messageIds, senderIds };
   }
 
   async deleteMessages(

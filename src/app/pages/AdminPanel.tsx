@@ -31,6 +31,7 @@ import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
 import { AdminTaroziTab } from '../components/admin/tabs/AdminTaroziTab';
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
 import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
+import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
 
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
@@ -495,6 +496,10 @@ export default function AdminPanel() {
         cityLabel={mapCenterInfo.label}
         t={t}
       />
+
+      {isLoggedIn && selectedCompany && (
+        <MessageNotificationHost onGoToMessages={() => setTab('messages')} />
+      )}
     </div>
   );
 }

@@ -17,7 +17,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
+import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.data.repository.PushRepository
+import uz.distributor.crm.presentation.navigation.OpenChatHolder
+import uz.distributor.crm.push.EXTRA_OPEN_CONVERSATION_ID
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.AppNavHost
@@ -30,6 +33,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var pushRepository: PushRepository
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var appSettingsRepository: AppSettingsRepository
+    @Inject lateinit var messagesRealtime: MessagesRealtimeCoordinator
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -40,6 +44,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        captureOpenChatIntent(intent)
+        lifecycleScope.launch {
+            if (authRepository.restoreSession()) {
+                messagesRealtime.start()
+            }
+        }
         requestNotificationPermission()
         setContent {
             val darkMode by appSettingsRepository.darkMode.collectAsState(initial = false)
@@ -64,9 +74,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureOpenChatIntent(intent)
+    }
+
+    private fun captureOpenChatIntent(intent: android.content.Intent?) {
+        intent?.getStringExtra(EXTRA_OPEN_CONVERSATION_ID)?.let {
+            OpenChatHolder.pendingConversationId = it
+        }
+    }
+
     private fun registerFcmIfLoggedIn() {
         lifecycleScope.launch {
             if (authRepository.restoreSession()) {
+                messagesRealtime.start()
                 runCatching { pushRepository.registerCurrentToken() }
             }
         }

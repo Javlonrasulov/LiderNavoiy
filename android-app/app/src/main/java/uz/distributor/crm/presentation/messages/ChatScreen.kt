@@ -3,8 +3,14 @@ package uz.distributor.crm.presentation.messages
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,8 +23,11 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +48,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.local.ChatSessionHolder
 import uz.distributor.crm.data.remote.dto.ChatMessageDto
+import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import java.time.Instant
@@ -74,7 +85,6 @@ fun ChatScreen(
     val bubbleOther = if (isDark) Color(0xFF182533) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF708499) else Color(0xFF6B7280)
-    val menuBg = if (isDark) Color(0xFF17212B) else Color.White
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.sendFile(it, input.trim().also { input = "" }) }
@@ -86,6 +96,10 @@ fun ChatScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(conversationId) {
+        ChatSessionHolder.openConversationId = conversationId
+        onDispose { ChatSessionHolder.openConversationId = null }
+    }
     DisposableEffect(lifecycleOwner, conversationId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -235,69 +249,83 @@ fun ChatScreen(
                 }
 
                 if (!selectionMode) {
-                Box {
-                    if (showAttach) {
-                        Column(
-                            Modifier
-                                .padding(start = 12.dp, bottom = 8.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(menuBg)
-                                .widthIn(min = 220.dp),
-                        ) {
-                            AttachRow(Icons.Default.Image, AppStrings.attachPhoto(lang), textPrimary) {
-                                imagePicker.launch("image/*")
-                            }
-                            AttachRow(Icons.Default.Description, AppStrings.attachDoc(lang), textPrimary) {
-                                docPicker.launch("*/*")
-                            }
-                        }
-                    }
-
-                    Row(
+                    Box(
                         Modifier
                             .fillMaxWidth()
                             .background(barBg)
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .navigationBarsPadding(),
                     ) {
-                        IconButton(onClick = { showAttach = !showAttach }) {
-                            Icon(Icons.Default.AttachFile, contentDescription = null, tint = textMuted)
-                        }
-                        OutlinedTextField(
-                            value = input,
-                            onValueChange = { input = it },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(AppStrings.chatPlaceholder(lang), color = textMuted) },
-                            shape = RoundedCornerShape(24.dp),
-                            maxLines = 4,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = inputBg,
-                                unfocusedContainerColor = inputBg,
-                                focusedBorderColor = Color(0xFF6AB2F2),
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedTextColor = textPrimary,
-                                unfocusedTextColor = textPrimary,
-                                cursorColor = Color(0xFF6AB2F2),
-                            ),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        FilledIconButton(
-                            onClick = {
-                                viewModel.send(input)
-                                input = ""
-                            },
-                            enabled = input.isNotBlank() && !state.sending,
-                            modifier = Modifier.size(48.dp),
-                            shape = CircleShape,
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = bubbleMine,
-                                disabledContainerColor = bubbleMine.copy(alpha = 0.4f),
-                            ),
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showAttach,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 4.dp, bottom = 68.dp),
+                            enter = fadeIn() + slideInVertically { it / 2 },
+                            exit = fadeOut() + slideOutVertically { it / 2 },
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White)
+                            AttachPickerMenu(
+                                isDark = isDark,
+                                lang = lang,
+                                onPhoto = {
+                                    showAttach = false
+                                    imagePicker.launch("image/*")
+                                },
+                                onDocument = {
+                                    showAttach = false
+                                    docPicker.launch("*/*")
+                                },
+                            )
+                        }
+
+                        Row(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { showAttach = !showAttach }) {
+                                Icon(
+                                    Icons.Default.AttachFile,
+                                    contentDescription = null,
+                                    tint = if (showAttach) Color(0xFF6AB2F2) else textMuted,
+                                )
+                            }
+                            OutlinedTextField(
+                                value = input,
+                                onValueChange = { input = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(AppStrings.chatPlaceholder(lang), color = textMuted) },
+                                shape = RoundedCornerShape(24.dp),
+                                maxLines = 4,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = inputBg,
+                                    unfocusedContainerColor = inputBg,
+                                    focusedBorderColor = Color(0xFF6AB2F2),
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedTextColor = textPrimary,
+                                    unfocusedTextColor = textPrimary,
+                                    cursorColor = Color(0xFF6AB2F2),
+                                ),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FilledIconButton(
+                                onClick = {
+                                    viewModel.send(input)
+                                    input = ""
+                                },
+                                enabled = input.isNotBlank() && !state.sending,
+                                modifier = Modifier.size(48.dp),
+                                shape = CircleShape,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = bubbleMine,
+                                    disabledContainerColor = bubbleMine.copy(alpha = 0.4f),
+                                ),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White)
+                            }
                         }
                     }
-                }
                 }
             }
         }
@@ -348,22 +376,63 @@ fun ChatScreen(
 }
 
 @Composable
-private fun AttachRow(
+private fun AttachPickerMenu(
+    isDark: Boolean,
+    lang: AppLanguage,
+    onPhoto: () -> Unit,
+    onDocument: () -> Unit,
+) {
+    val popupBg = if (isDark) Color(0xFF2B333B) else Color.White
+    val labelColor = if (isDark) Color(0xFFE8EAED) else Color(0xFF1F2937)
+    val iconTint = if (isDark) Color(0xFFE8EAED) else Color(0xFF374151)
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = popupBg,
+        shadowElevation = if (isDark) 16.dp else 8.dp,
+        tonalElevation = 0.dp,
+    ) {
+        Column(Modifier.padding(vertical = 4.dp)) {
+            AttachMenuItem(
+                icon = Icons.Outlined.Image,
+                label = AppStrings.attachPhoto(lang),
+                labelColor = labelColor,
+                iconTint = iconTint,
+                onClick = onPhoto,
+            )
+            AttachMenuItem(
+                icon = Icons.Outlined.Description,
+                label = AppStrings.attachDoc(lang),
+                labelColor = labelColor,
+                iconTint = iconTint,
+                onClick = onDocument,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AttachMenuItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    textColor: Color,
+    labelColor: Color,
+    iconTint: Color,
     onClick: () -> Unit,
 ) {
     Row(
         Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 18.dp, vertical = 12.dp)
+            .widthIn(min = 240.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = Color(0xFF6AB2F2), modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(label, color = textColor, fontSize = 15.sp)
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(18.dp))
+        Text(label, color = labelColor, fontSize = 16.sp, fontWeight = FontWeight.Normal)
     }
 }
 
@@ -441,12 +510,25 @@ private fun MessageBubble(
                         fontSize = 14.sp,
                     )
                 }
-                Text(
-                    formatChatTime(msg.createdAt),
-                    fontSize = 10.sp,
-                    color = if (isMine) Color(0xFFE0E7FF) else textMuted,
-                    modifier = Modifier.align(Alignment.End),
-                )
+                Row(
+                    Modifier.align(Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        formatChatTime(msg.createdAt),
+                        fontSize = 10.sp,
+                        color = if (isMine) Color(0xFFE0E7FF) else textMuted,
+                    )
+                    if (isMine) {
+                        Icon(
+                            imageVector = if (msg.isRead) Icons.Default.DoneAll else Icons.Default.Done,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = if (msg.isRead) Color(0xFF6AB2F2) else Color.White.copy(alpha = 0.65f),
+                        )
+                    }
+                }
             }
         }
     }

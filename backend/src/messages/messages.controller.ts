@@ -39,10 +39,10 @@ export class MessagesController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 20 * 1024 * 1024 },
+      limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('File is required');
     return this.uploadService.saveFile(file);
   }
@@ -106,8 +106,16 @@ export class MessagesController {
 
   @Patch('conversations/:id/read')
   @ApiOperation({ summary: 'Mark conversation messages as read' })
-  markRead(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.service.markRead(id, req.user.id);
+  async markRead(@Request() req: { user: User }, @Param('id') id: string) {
+    const result = await this.service.markRead(id, req.user.id);
+    if (result.messageIds.length) {
+      await this.gateway.broadcastMessagesRead(
+        id,
+        result.messageIds,
+        result.senderIds,
+      );
+    }
+    return { updated: result.updated };
   }
 
   @Post('conversations/:id/messages/delete')

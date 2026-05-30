@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Distributor CRM</string>
-    <string name="location_notification_title">GPS kuzatuv faol</string>
-    <string name="location_notification_text">Lokatsiya yig\'ilmoqda…</string>
-    <string name="channel_location">Location Tracking</string>
+    <string name="channel_location">Fon xizmati</string>
+    <string name="channel_location_desc">Ilova ishlayotganda fon rejimi</string>
 </resources>

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,8 +20,15 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000/api/v1/\"")
-        buildConfigField("String", "WS_BASE_URL", "\"http://10.0.2.2:3000/tracking\"")
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localProperties.load(localPropertiesFile.inputStream())
+        }
+        // Emulator: 10.0.2.2 | Real phone: PC LAN IP, e.g. api.host=192.168.1.5 in local.properties
+        val apiHost = localProperties.getProperty("api.host", "10.0.2.2")
+        buildConfigField("String", "API_BASE_URL", "\"http://$apiHost:3000/api/v1/\"")
+        buildConfigField("String", "WS_BASE_URL", "\"http://$apiHost:3000/tracking\"")
         buildConfigField("String", "MAPKIT_API_KEY", "\"\"")
     }
 

@@ -25,6 +25,7 @@ import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
 import uz.distributor.crm.presentation.location.LocationScreen
 import uz.distributor.crm.presentation.messages.ChatScreen
+import uz.distributor.crm.presentation.messages.IncomingMessageBannerOverlay
 import uz.distributor.crm.presentation.messages.MessagesScreen
 import uz.distributor.crm.presentation.order.OrderSummaryScreen
 import uz.distributor.crm.presentation.plan.PlanScreen
@@ -48,6 +49,16 @@ class SplashViewModel @Inject constructor(
 fun AppNavHost() {
     val navController = rememberNavController()
 
+    LaunchedEffect(Unit) {
+        OpenChatHolder.pendingConversationId?.let { id ->
+            OpenChatHolder.pendingConversationId = null
+            navController.navigate("chat/$id") {
+                launchSingleTop = true
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
     NavHost(navController = navController, startDestination = "splash") {
         composable("splash") {
             SplashRoute(
@@ -132,6 +143,8 @@ fun AppNavHost() {
                 onLogout = { navController.navigate("login") { popUpTo(0) { inclusive = true } } },
             )
         }
+    }
+    IncomingMessageBannerOverlay(navController = navController)
     }
 }
 
