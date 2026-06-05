@@ -20,6 +20,18 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
+export class ChangePasswordDto {
+  @ApiProperty({ example: 'agent123' })
+  @IsString()
+  @IsNotEmpty()
+  currentPassword: string;
+
+  @ApiProperty({ example: 'newpassword123' })
+  @IsString()
+  @MinLength(6)
+  newPassword: string;
+}
+
 export class AuthResponseDto {
   accessToken: string;
   refreshToken: string;

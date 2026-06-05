@@ -152,35 +152,12 @@ fun BottomNavBar(
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            label,
-                            fontSize = 10.sp,
-                            color = if (active) activeColor else inactiveColor,
-                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                        if (tab == NavTab.MESSAGES && messagesUnread > 0) {
-                            Spacer(Modifier.width(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-                                    .background(Color(0xFFEF4444), CircleShape)
-                                    .padding(horizontal = 4.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = if (messagesUnread > 99) "99+" else messagesUnread.toString(),
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        label,
+                        fontSize = 10.sp,
+                        color = if (active) activeColor else inactiveColor,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    )
                 }
             }
         }

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check } from 'lucide-react';
 import { LINES } from '../../../data/adminData';
+import { api } from '../../../api/client';
 
 interface Props {
   D: boolean;
@@ -10,10 +11,54 @@ interface Props {
   t: Record<string, string>;
 }
 
-type Line = typeof LINES[number];
+type Line = {
+  id: string | number;
+  code: string;
+  name: string;
+  kolTT: number;
+  agent: string;
+  plan: number;
+  visits: number;
+  sales: number;
+};
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
+}
+
+function apiLineToRow(row: {
+  id: string;
+  code: string;
+  name: string;
+  agentName: string | null;
+  clientCount: number;
+}): Line {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    kolTT: row.clientCount,
+    agent: row.agentName ?? '',
+    plan: 0,
+    visits: 0,
+    sales: 0,
+  };
+}
+
+const demoLines: Line[] = LINES.map(l => ({
+  id: l.id,
+  code: l.code,
+  name: l.name,
+  kolTT: l.kolTT,
+  agent: l.agent,
+  plan: l.plan,
+  visits: l.visits,
+  sales: l.sales,
+}));
 
 export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
-  const [lines, setLines]       = useState<Line[]>(LINES);
+  const [lines, setLines]       = useState<Line[]>(demoLines);
+  const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState('');
   const [page, setPage]         = useState(1);
   const [editLine, setEditLine] = useState<Line | null>(null);
@@ -22,6 +67,24 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
   const [form, setForm]         = useState<Omit<Line,'id'>>({ code:'', name:'', kolTT:0, agent:'', plan:0, visits:0, sales:0 });
   const [saved, setSaved]       = useState(false);
   const PER_PAGE = 12;
+
+  const refreshLines = useCallback(async () => {
+    if (!hasApiToken()) {
+      setLines(demoLines);
+      return;
+    }
+    setLoading(true);
+    try {
+      const rows = await api.getLines();
+      setLines(rows.map(apiLineToRow));
+    } catch {
+      setLines(demoLines);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refreshLines(); }, [refreshLines]);
 
   const filtered = lines.filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -49,21 +112,54 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
     setEditLine(line);
   };
 
-  const saveEdit = () => {
-    setLines(prev => prev.map(l => l.id === editLine!.id ? { ...l, ...form } : l));
+  const saveEdit = async () => {
+    if (hasApiToken() && typeof editLine?.id === 'string') {
+      try {
+        const updated = await api.updateLine(editLine.id, {
+          code: form.code,
+          name: form.name,
+          agentName: form.agent || null,
+        });
+        setLines(prev => prev.map(l => l.id === editLine.id ? apiLineToRow(updated) : l));
+      } catch {
+        return;
+      }
+    } else {
+      setLines(prev => prev.map(l => l.id === editLine!.id ? { ...l, ...form } : l));
+    }
     setSaved(true);
     setTimeout(() => { setSaved(false); setEditLine(null); }, 900);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
+    if (hasApiToken() && typeof deleteLine?.id === 'string') {
+      try {
+        await api.deleteLine(deleteLine.id);
+      } catch {
+        return;
+      }
+    }
     setLines(prev => prev.filter(l => l.id !== deleteLine!.id));
     setDeleteLine(null);
     if (page > Math.ceil((filtered.length - 1) / PER_PAGE)) setPage(p => Math.max(1, p - 1));
   };
 
-  const saveAdd = () => {
-    const newLine: Line = { id: Date.now(), ...form };
-    setLines(prev => [...prev, newLine]);
+  const saveAdd = async () => {
+    if (hasApiToken()) {
+      try {
+        const created = await api.createLine({
+          code: form.code,
+          name: form.name,
+          agentName: form.agent || undefined,
+        });
+        setLines(prev => [...prev, apiLineToRow(created)]);
+      } catch {
+        return;
+      }
+    } else {
+      const newLine: Line = { id: Date.now(), ...form };
+      setLines(prev => [...prev, newLine]);
+    }
     setAddMode(false);
     setForm({ code:'', name:'', kolTT:0, agent:'', plan:0, visits:0, sales:0 });
   };

@@ -35,14 +35,22 @@ function RequestCard({
 }) {
   const { checkInn, approve, reject } = useClientRequests();
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const dup = checkInn(item.inn, item.id, existingClients);
 
   const handleApprove = async () => {
     if (dup.duplicate) return;
+    setActionError(null);
     setBusy('approve');
     try {
       const ok = await approve(item.id, companyId, existingClients);
-      if (ok) onDone();
+      if (ok) {
+        onDone();
+      } else {
+        setActionError(t.notifApproveFailed ?? 'Qabul qilib bo\'lmadi. INN takrorlanishi yoki so\'rov topilmadi.');
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : (t.notifApproveFailed ?? 'Qabul qilib bo\'lmadi'));
     } finally {
       setBusy(null);
     }
@@ -107,6 +115,19 @@ function RequestCard({
         {item.note && <span>{t.colNote ?? 'Izoh'}: {item.note}</span>}
       </div>
 
+      {actionError && (
+        <div
+          className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-xs"
+          style={{
+            background: D ? 'rgba(239,68,68,0.12)' : '#fef2f2',
+            color: D ? '#fca5a5' : '#b91c1c',
+          }}
+        >
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
       {dup.duplicate && (
         <div
           className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-xs"
@@ -154,7 +175,7 @@ function RequestCard({
 }
 
 export function ClientRequestBell({ D, sub, text, t, existingClients = [], companyId }: Props) {
-  const { pending, loading } = useClientRequests();
+  const { pending, loading, error } = useClientRequests();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -217,15 +238,18 @@ export function ClientRequestBell({ D, sub, text, t, existingClients = [], compa
             </p>
           </div>
 
-          <div className="overflow-y-auto p-3 space-y-3 flex-1">
-            {loading && pending.length === 0 && (
-              <p className={`text-xs text-center py-6 ${sub}`}>...</p>
-            )}
-            {!loading && pending.length === 0 && (
-              <p className={`text-xs text-center py-8 ${sub}`}>
-                {t.notifEmpty ?? 'Yangi so\'rovlar yo\'q'}
-              </p>
-            )}
+            <div className="overflow-y-auto p-3 space-y-3 flex-1">
+              {error && (
+                <p className="text-xs text-center py-4 text-red-500">{error}</p>
+              )}
+              {loading && pending.length === 0 && !error && (
+                <p className={`text-xs text-center py-6 ${sub}`}>...</p>
+              )}
+              {!loading && pending.length === 0 && !error && (
+                <p className={`text-xs text-center py-8 ${sub}`}>
+                  {t.notifEmpty ?? 'Yangi so\'rovlar yo\'q'}
+                </p>
+              )}
             {pending.map(item => (
               <RequestCard
                 key={item.id}

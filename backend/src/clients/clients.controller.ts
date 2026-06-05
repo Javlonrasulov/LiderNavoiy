@@ -16,7 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { memoryStorage } from 'multer';
 import { ClientsService } from './clients.service';
 import { ClientsUploadService } from './clients-upload.service';
-import { ClientRequestsService } from './client-requests.service';
+import { ClientReconciliationService } from './client-reconciliation.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
@@ -32,6 +32,7 @@ export class ClientsController {
     private readonly service: ClientsService,
     private readonly uploadService: ClientsUploadService,
     private readonly requestsService: ClientRequestsService,
+    private readonly reconciliationService: ClientReconciliationService,
   ) {}
 
   private scopeDistributorId(user: User): string | undefined {
@@ -55,6 +56,35 @@ export class ClientsController {
   @ApiOperation({ summary: 'Search clients' })
   search(@Request() req: { user: User }, @Query('q') q: string) {
     return this.service.search(q, this.scopeDistributorId(req.user));
+  }
+
+  @Get('lines')
+  @ApiOperation({ summary: 'List lines for client assignment' })
+  findLines(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    const scopedCompany =
+      companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+    return this.service.findLines(scopedCompany);
+  }
+
+  @Get(':id/reconciliation')
+  @ApiOperation({ summary: 'Client reconciliation statement' })
+  getReconciliation(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    return this.reconciliationService.getStatement(
+      id,
+      fromDate,
+      toDate,
+      this.scopeDistributorId(req.user),
+    );
   }
 
   @Get(':id')
@@ -82,7 +112,7 @@ export class ClientsController {
         fullName: dto.fullName,
         phone: dto.phone,
         address: dto.address,
-        companyId: dto.companyId,
+        companyId: dto.companyId ?? req.user.distributorProfile?.companyId ?? undefined,
         lineCode: dto.lineCode,
         latitude: dto.latitude,
         longitude: dto.longitude,

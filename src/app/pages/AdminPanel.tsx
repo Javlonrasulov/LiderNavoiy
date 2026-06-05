@@ -254,8 +254,10 @@ export default function AdminPanel() {
     );
   }
 
+  const bellCompanyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
+
   return (
-    <ClientRequestProvider>
+    <ClientRequestProvider companyId={bellCompanyId}>
     <div
       className={`flex min-h-screen overflow-x-hidden ${bg} ${text}`}
       style={{
@@ -302,7 +304,7 @@ export default function AdminPanel() {
           showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu}
           companyBtnRef={companyBtnRef} langBtnRef={langBtnRef}
           setTab={setTab}
-          existingClients={clientsForBell.length > 0 ? clientsForBell : allClients}
+          existingClients={clientsForBell}
         />
         </div>
 

@@ -26,6 +26,13 @@ data class ClientEntity(
     val balance: Double,
     val latitude: Double?,
     val longitude: Double?,
+    val photoUrl: String? = null,
+    val phone: String? = null,
+    val category: String? = null,
+    val territory: String? = null,
+    val lineCode: String? = null,
+    val priceCategory: String? = null,
+    val contactPerson: String? = null,
     val cachedAt: Long = System.currentTimeMillis(),
 )
 
@@ -128,7 +135,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 @Database(
     entities = [PendingLocationEntity::class, ClientEntity::class, ProductEntity::class,
         CartItemEntity::class, PendingOrderEntity::class, PendingVisitEntity::class],
-    version = 1, exportSchema = false,
+    version = 3, exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingLocationDao(): PendingLocationDao
@@ -146,7 +153,9 @@ fun LocationPoint.toEntity(deviceId: String?) = PendingLocationEntity(
 
 fun ClientEntity.toDomain() = uz.distributor.crm.domain.model.Client(
     id = id, code = code, name = name, address = address, balance = balance,
-    latitude = latitude, longitude = longitude,
+    latitude = latitude, longitude = longitude, photoUrl = photoUrl,
+    phone = phone, category = category, territory = territory,
+    lineCode = lineCode, priceCategory = priceCategory, contactPerson = contactPerson,
 )
 
 fun ProductEntity.toDomain() = uz.distributor.crm.domain.model.Product(

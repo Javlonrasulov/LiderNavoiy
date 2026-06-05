@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import uz.distributor.crm.data.remote.ApiErrorMapper
+import uz.distributor.crm.data.remote.dto.ChangePasswordRequest
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -42,6 +44,7 @@ class AuthRepository @Inject constructor(
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
     private val userKey = stringPreferencesKey("user_json")
+    private val passwordKey = stringPreferencesKey("password")
     private val refreshMutex = Mutex()
 
     private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -65,9 +68,21 @@ class AuthRepository @Inject constructor(
             ),
         )
         clientRepository.clearCache()
-        saveTokens(tokens)
+        saveTokens(tokens, password)
         return tokens
     }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> {
+        return try {
+            api.changePassword(ChangePasswordRequest(currentPassword, newPassword))
+            context.dataStore.edit { it[passwordKey] = newPassword }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(ApiErrorMapper.toKey(e)))
+        }
+    }
+
+    fun getPasswordFlow(): Flow<String?> = context.dataStore.data.map { it[passwordKey] }
 
     suspend fun restoreSession(): Boolean {
         val prefs = context.dataStore.data.first()
@@ -136,7 +151,7 @@ class AuthRepository @Inject constructor(
         prefs[userKey]?.let { gson.fromJson(it, AuthUser::class.java) }
     }
 
-    private suspend fun saveTokens(tokens: AuthTokens) {
+    private suspend fun saveTokens(tokens: AuthTokens, password: String? = null) {
         tokenHolder.setToken(tokens.accessToken)
         userIdHolder.userId = tokens.user.id
         trackingSocket.connect()
@@ -145,6 +160,7 @@ class AuthRepository @Inject constructor(
             prefs[accessTokenKey] = tokens.accessToken
             prefs[refreshTokenKey] = tokens.refreshToken
             prefs[userKey] = gson.toJson(tokens.user)
+            password?.let { prefs[passwordKey] = it }
         }
     }
 }

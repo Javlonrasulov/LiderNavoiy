@@ -51,7 +51,14 @@ export class ClientRequestsController {
   create(@Request() req: { user: User }, @Body() dto: CreateClientRequestDto) {
     const distributorId = req.user.distributorProfile?.id;
     const agentName = req.user.fullName ?? req.user.username;
-    return this.service.create(dto, distributorId, agentName);
+    return this.service.create(
+      {
+        ...dto,
+        companyId: dto.companyId ?? req.user.distributorProfile?.companyId ?? undefined,
+      },
+      distributorId,
+      agentName,
+    );
   }
 
   @Post(':id/approve')

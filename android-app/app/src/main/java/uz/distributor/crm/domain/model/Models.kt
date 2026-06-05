@@ -47,6 +47,13 @@ data class Client(
     val balance: Double,
     val latitude: Double?,
     val longitude: Double?,
+    val photoUrl: String? = null,
+    val phone: String? = null,
+    val category: String? = null,
+    val territory: String? = null,
+    val lineCode: String? = null,
+    val priceCategory: String? = null,
+    val contactPerson: String? = null,
 )
 
 data class Product(

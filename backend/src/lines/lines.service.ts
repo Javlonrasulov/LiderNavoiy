@@ -1,0 +1,129 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SalesLine } from './entities/sales-line.entity';
+import { CreateLineDto, LineListItemDto, UpdateLineDto } from './dto/line.dto';
+import { Client } from '../clients/entities/client.entity';
+
+@Injectable()
+export class LinesService {
+  constructor(
+    @InjectRepository(SalesLine)
+    private readonly lineRepo: Repository<SalesLine>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
+  ) {}
+
+  async findAll(companyId?: string): Promise<LineListItemDto[]> {
+    const qb = this.lineRepo
+      .createQueryBuilder('l')
+      .where('l.isActive = true')
+      .orderBy('l.code', 'ASC');
+    if (companyId) {
+      qb.andWhere('(l.companyId = :companyId OR l.companyId IS NULL)', {
+        companyId,
+      });
+    }
+    const lines = await qb.getMany();
+    const counts = await this.clientCountsByLine(companyId);
+    return lines.map((line) => ({
+      id: line.id,
+      code: line.code,
+      name: line.name,
+      agentName: line.agentName,
+      clientCount: counts.get(line.code) ?? 0,
+      companyId: line.companyId,
+    }));
+  }
+
+  async findOne(id: string) {
+    const line = await this.lineRepo.findOne({ where: { id } });
+    if (!line) throw new NotFoundException('Line not found');
+    return line;
+  }
+
+  async create(dto: CreateLineDto) {
+    const code = dto.code.trim();
+    const companyId = dto.companyId?.trim() || null;
+    const dupQb = this.lineRepo
+      .createQueryBuilder('l')
+      .where('l.code = :code', { code });
+    if (companyId) {
+      dupQb.andWhere('l.companyId = :companyId', { companyId });
+    } else {
+      dupQb.andWhere('l.companyId IS NULL');
+    }
+    const exists = await dupQb.getOne();
+    if (exists) {
+      throw new BadRequestException('Bu kod bilan liniya mavjud');
+    }
+
+    const saved = await this.lineRepo.save(
+      this.lineRepo.create({
+        code,
+        name: dto.name.trim(),
+        companyId,
+        agentName: dto.agentName?.trim() || null,
+        isActive: true,
+      }),
+    );
+    return this.toListItem(saved, 0);
+  }
+
+  async update(id: string, dto: UpdateLineDto) {
+    const line = await this.findOne(id);
+    if (dto.code !== undefined) line.code = dto.code.trim();
+    if (dto.name !== undefined) line.name = dto.name.trim();
+    if (dto.agentName !== undefined) {
+      line.agentName = dto.agentName?.trim() || null;
+    }
+    if (dto.isActive !== undefined) line.isActive = dto.isActive;
+    const saved = await this.lineRepo.save(line);
+    const counts = await this.clientCountsByLine(line.companyId ?? undefined);
+    return this.toListItem(saved, counts.get(saved.code) ?? 0);
+  }
+
+  async remove(id: string) {
+    const line = await this.findOne(id);
+    line.isActive = false;
+    await this.lineRepo.save(line);
+    return { ok: true };
+  }
+
+  private async clientCountsByLine(companyId?: string) {
+    const qb = this.clientRepo
+      .createQueryBuilder('c')
+      .select('c.lineCode', 'code')
+      .addSelect('COUNT(*)', 'count')
+      .where('c.isActive = true')
+      .andWhere('c.lineCode IS NOT NULL')
+      .andWhere("TRIM(c.lineCode) <> ''")
+      .groupBy('c.lineCode');
+    if (companyId) {
+      qb.andWhere('c.companyId = :companyId', { companyId });
+    }
+    const rows = await qb.getRawMany<{ code: string; count: string }>();
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      const code = row.code?.trim();
+      if (!code) continue;
+      map.set(code, Number(row.count) || 0);
+    }
+    return map;
+  }
+
+  private toListItem(line: SalesLine, clientCount: number): LineListItemDto {
+    return {
+      id: line.id,
+      code: line.code,
+      name: line.name,
+      agentName: line.agentName,
+      clientCount,
+      companyId: line.companyId,
+    };
+  }
+}

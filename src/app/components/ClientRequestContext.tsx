@@ -11,12 +11,8 @@ import { api } from '../api/client';
 import {
   type ClientRequestItem,
   type InnCheckResult,
-  loadApprovedDemoClients,
-  loadDemoRequests,
+  clearLegacyDemoStorage,
   normalizeInn,
-  requestToClientRow,
-  saveApprovedDemoClients,
-  saveDemoRequests,
 } from '../data/clientRequests';
 import type { ClientRow } from '../data/adminData';
 
@@ -30,49 +26,82 @@ function mapApiRow(r: ClientRequestItem & Record<string, unknown>): ClientReques
     ?? (r.distributor as { user?: { fullName?: string } } | undefined)?.user?.fullName
     ?? null;
   return {
-    ...r,
+    id: r.id,
+    status: (r.status as ClientRequestItem['status']) ?? 'pending',
+    name: r.name,
+    fullName: r.fullName ?? r.name,
+    phone: r.phone ?? null,
+    address: r.address ?? null,
+    companyId: r.companyId ?? null,
+    lineCode: r.lineCode ?? null,
+    latitude: r.latitude ?? null,
+    longitude: r.longitude ?? null,
+    category: r.category ?? null,
+    inn: r.inn ?? null,
+    contactPerson: r.contactPerson ?? null,
+    territory: r.territory ?? null,
+    clientClass: r.clientClass ?? null,
+    priceCategory: r.priceCategory ?? null,
+    photoUrl: r.photoUrl ?? null,
     agentName,
+    note: r.note ?? null,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
+    distributor: r.distributor ?? null,
   };
 }
 
 interface ClientRequestContextValue {
   pending: ClientRequestItem[];
   loading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
   checkInn: (inn: string | null | undefined, requestId?: string, existingClients?: ClientRow[]) => InnCheckResult;
   approve: (id: string, companyId?: string, existingClients?: ClientRow[]) => Promise<boolean>;
   reject: (id: string) => Promise<void>;
-  onClientApproved?: () => void;
-  setOnClientApproved: (fn: (() => void) | undefined) => void;
 }
 
 const ClientRequestContext = createContext<ClientRequestContextValue | null>(null);
 
-export function ClientRequestProvider({ children }: { children: ReactNode }) {
+interface ProviderProps {
+  children: ReactNode;
+  companyId?: string;
+}
+
+export function ClientRequestProvider({ children, companyId }: ProviderProps) {
   const [pending, setPending] = useState<ClientRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [onClientApproved, setOnClientApproved] = useState<(() => void) | undefined>();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    clearLegacyDemoStorage();
+  }, []);
 
   const refresh = useCallback(async () => {
+    if (!hasApiToken()) {
+      setPending([]);
+      setError(null);
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
-      if (hasApiToken()) {
-        const rows = await api.getClientRequests();
-        setPending(rows.filter(r => r.status === 'pending').map(mapApiRow));
-      } else {
-        setPending(loadDemoRequests().filter(r => r.status === 'pending'));
-      }
-    } catch {
-      setPending(loadDemoRequests().filter(r => r.status === 'pending'));
+      const rows = await api.getClientRequests(companyId);
+      setPending(
+        rows
+          .filter(r => r.status === 'pending')
+          .map(r => mapApiRow(r as ClientRequestItem & Record<string, unknown>)),
+      );
+    } catch (e) {
+      setPending([]);
+      setError(e instanceof Error ? e.message : 'So\'rovlarni yuklab bo\'lmadi');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 30_000);
+    const t = setInterval(refresh, 15_000);
     return () => clearInterval(t);
   }, [refresh]);
 
@@ -122,22 +151,13 @@ export function ClientRequestProvider({ children }: { children: ReactNode }) {
   }, [pending]);
 
   const reject = useCallback(async (id: string) => {
-    if (hasApiToken()) {
-      await api.rejectClientRequest(id);
-    } else {
-      const all = loadDemoRequests();
-      saveDemoRequests(
-        all.map(r => r.id === id
-          ? { ...r, status: 'rejected' as const }
-          : r),
-      );
-    }
+    await api.rejectClientRequest(id);
     await refresh();
   }, [refresh]);
 
   const approve = useCallback(async (
     id: string,
-    companyId?: string,
+    _companyId?: string,
     existingClients: ClientRow[] = [],
   ): Promise<boolean> => {
     const item = pending.find(r => r.id === id);
@@ -146,37 +166,21 @@ export function ClientRequestProvider({ children }: { children: ReactNode }) {
     const dup = checkInn(item.inn, id, existingClients);
     if (dup.duplicate) return false;
 
-    if (hasApiToken()) {
-      await api.approveClientRequest(id);
-      onClientApproved?.();
-      window.dispatchEvent(new CustomEvent('lider:client-approved'));
-    } else {
-      const row = requestToClientRow(item);
-      const stored = loadApprovedDemoClients();
-      saveApprovedDemoClients([...stored, row]);
-      const all = loadDemoRequests();
-      saveDemoRequests(
-        all.map(r => r.id === id
-          ? { ...r, status: 'approved' as const }
-          : r),
-      );
-      onClientApproved?.();
-      window.dispatchEvent(new CustomEvent('lider:client-approved'));
-    }
+    await api.approveClientRequest(id);
+    window.dispatchEvent(new CustomEvent('lider:client-approved'));
     await refresh();
     return true;
-  }, [pending, checkInn, onClientApproved, refresh]);
+  }, [pending, checkInn, refresh]);
 
   const value = useMemo(() => ({
     pending,
     loading,
+    error,
     refresh,
     checkInn,
     approve,
     reject,
-    onClientApproved,
-    setOnClientApproved,
-  }), [pending, loading, refresh, checkInn, approve, reject, onClientApproved]);
+  }), [pending, loading, error, refresh, checkInn, approve, reject]);
 
   return (
     <ClientRequestContext.Provider value={value}>

@@ -12,6 +12,9 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refresh(@Body body: Map<String, String>): AuthResponseDto
 
+    @POST("auth/change-password")
+    suspend fun changePassword(@Body body: ChangePasswordRequest)
+
     @GET("dashboard/stats")
     suspend fun getDashboardStats(): DashboardStatsDto
 
@@ -30,8 +33,18 @@ interface ApiService {
     @GET("clients/search")
     suspend fun searchClients(@Query("q") q: String): List<ClientDto>
 
+    @GET("clients/lines")
+    suspend fun getLines(): List<LineDto>
+
     @GET("clients/{id}")
     suspend fun getClient(@Path("id") id: String): ClientDto
+
+    @GET("clients/{id}/reconciliation")
+    suspend fun getClientReconciliation(
+        @Path("id") id: String,
+        @Query("from") from: String,
+        @Query("to") to: String,
+    ): ClientReconciliationDto
 
     @POST("clients")
     suspend fun createClient(@Body body: CreateClientRequest): ClientDto
@@ -47,7 +60,7 @@ interface ApiService {
     suspend fun getProductCategories(): List<Map<String, String>>
 
     @GET("visits")
-    suspend fun getVisits(@Query("from") from: String? = null): List<Map<String, Any>>
+    suspend fun getVisits(@Query("from") from: String? = null): List<VisitDto>
 
     @POST("visits")
     suspend fun createVisit(@Body body: CreateVisitRequest): Map<String, Any>
@@ -56,7 +69,7 @@ interface ApiService {
     suspend fun syncVisits(@Body body: BatchVisitsRequest): Map<String, Any>
 
     @GET("orders")
-    suspend fun getOrders(): List<Map<String, Any>>
+    suspend fun getOrders(): List<OrderDto>
 
     @POST("orders")
     suspend fun createOrder(@Body body: CreateOrderRequest): Map<String, Any>

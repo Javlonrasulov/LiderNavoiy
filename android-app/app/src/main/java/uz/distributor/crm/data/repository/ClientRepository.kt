@@ -14,10 +14,24 @@ import uz.distributor.crm.data.local.*
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.ClientDto
 import uz.distributor.crm.data.remote.dto.CreateClientRequest
+import uz.distributor.crm.data.remote.dto.LineDto
 import uz.distributor.crm.domain.model.Client
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
+
+data class ClientActivityDates(
+    val lastVisitAt: Long? = null,
+    val lastOrderAt: Long? = null,
+)
+
+data class CreateClientResult(
+    val pendingRequest: Boolean,
+)
 
 @Singleton
 class ClientRepository @Inject constructor(
@@ -38,6 +52,58 @@ class ClientRepository @Inject constructor(
             ?: api.getClient(id).toEntity().toDomain()
     }
 
+    suspend fun getClientDetail(id: String): Client? {
+        return try {
+            val entity = api.getClient(id).toEntity()
+            db.clientDao().insertAll(listOf(entity))
+            entity.toDomain()
+        } catch (_: Exception) {
+            db.clientDao().getById(id)?.toDomain()
+        }
+    }
+
+    suspend fun getReconciliation(clientId: String, from: String, to: String) =
+        api.getClientReconciliation(clientId, from, to)
+
+    suspend fun getClientActivity(clientId: String): ClientActivityDates {
+        var lastVisit: Long? = null
+        var lastOrder: Long? = null
+
+        try {
+            api.getVisits().forEach { visit ->
+                if (visit.clientId != clientId) return@forEach
+                parseApiDate(visit.visitedAt)?.let { ts ->
+                    if (lastVisit == null || ts > lastVisit!!) lastVisit = ts
+                }
+            }
+        } catch (_: Exception) { }
+
+        try {
+            api.getOrders().forEach { order ->
+                if (order.clientId != clientId) return@forEach
+                parseApiDate(order.createdAt)?.let { ts ->
+                    if (lastOrder == null || ts > lastOrder!!) lastOrder = ts
+                }
+            }
+        } catch (_: Exception) { }
+
+        db.pendingVisitDao().getPending()
+            .filter { it.clientId == clientId }
+            .forEach { visit ->
+                if (lastVisit == null || visit.visitedAt > lastVisit!!) lastVisit = visit.visitedAt
+            }
+
+        db.pendingOrderDao().getPending()
+            .filter { it.clientId == clientId }
+            .forEach { order ->
+                if (lastOrder == null || order.createdAt > lastOrder!!) lastOrder = order.createdAt
+            }
+
+        return ClientActivityDates(lastVisitAt = lastVisit, lastOrderAt = lastOrder)
+    }
+
+    suspend fun getLines(): List<LineDto> = api.getLines()
+
     suspend fun search(query: String): List<Client> {
         return try {
             api.searchClients(query).map { it.toEntity() }.also {
@@ -52,26 +118,33 @@ class ClientRepository @Inject constructor(
         name: String,
         inn: String?,
         phone: String?,
+        address: String,
         latitude: Double?,
         longitude: Double?,
         photoUri: Uri?,
         distributorId: String?,
-    ): Client {
+        lineCode: String,
+    ): CreateClientResult {
         val photoUrl = photoUri?.let { uploadClientPhoto(it) }
         val created = api.createClient(
             CreateClientRequest(
                 name = name.trim(),
                 inn = inn?.trim()?.ifBlank { null },
                 phone = phone?.trim()?.ifBlank { null },
+                address = address.trim(),
                 latitude = latitude,
                 longitude = longitude,
                 photoUrl = photoUrl,
                 distributorId = distributorId,
+                lineCode = lineCode,
             ),
         )
-        val entity = created.toEntity()
-        db.clientDao().insertAll(listOf(entity))
-        return entity.toDomain()
+        val pendingRequest = created.status == "pending" || created.code.isNullOrBlank()
+        if (!pendingRequest) {
+            val entity = created.toEntity()
+            db.clientDao().insertAll(listOf(entity))
+        }
+        return CreateClientResult(pendingRequest = pendingRequest)
     }
 
     suspend fun clearCache() {
@@ -157,9 +230,37 @@ class ClientRepository @Inject constructor(
         return "$base$path"
     }
 
+    private fun parseApiDate(value: Any?): Long? {
+        when (value) {
+            null -> return null
+            is Number -> return value.toLong()
+            is String -> {
+                val patterns = listOf(
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                    "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                    "yyyy-MM-dd'T'HH:mm:ssXXX",
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                    "yyyy-MM-dd",
+                )
+                for (pattern in patterns) {
+                    try {
+                        val sdf = SimpleDateFormat(pattern, Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }
+                        return sdf.parse(value)?.time
+                    } catch (_: Exception) { }
+                }
+            }
+        }
+        return null
+    }
+
     private fun ClientDto.toEntity() = ClientEntity(
-        id = id, code = code, name = name, address = address,
+        id = id, code = code.orEmpty(), name = name, address = address,
         balance = balance,
         latitude = latitude, longitude = longitude,
+        photoUrl = photoUrl,
+        phone = phone, category = category, territory = territory,
+        lineCode = lineCode, priceCategory = priceCategory, contactPerson = contactPerson,
     )
 }

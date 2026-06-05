@@ -12,10 +12,11 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import uz.distributor.crm.map.MapDefaults
 import uz.distributor.crm.map.MapLayerId
 import uz.distributor.crm.map.MapTileSources
 
-private val NAVOIY = GeoPoint(40.0843, 65.3791)
+private val NAVOIY = GeoPoint(MapDefaults.NAVOIY_LAT, MapDefaults.NAVOIY_LNG)
 private const val PIN_COLOR = 0xFFEF4444.toInt()
 
 @Composable
@@ -63,7 +64,7 @@ fun LocationPickerMap(
             MapView(ctx).apply {
                 setMultiTouchControls(true)
                 setTileSource(MapTileSources.source(MapLayerId.STANDARD, isDark))
-                controller.setZoom(16.0)
+                controller.setZoom(14.0)
                 val start = if (latitude != null && longitude != null) {
                     GeoPoint(latitude, longitude)
                 } else NAVOIY

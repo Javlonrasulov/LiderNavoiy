@@ -33,6 +33,7 @@ import uz.distributor.crm.presentation.messages.MessagesScreen
 import uz.distributor.crm.presentation.order.OrderSummaryScreen
 import uz.distributor.crm.presentation.plan.PlanScreen
 import uz.distributor.crm.presentation.profile.ProfileScreen
+import uz.distributor.crm.presentation.reconciliation.ReconciliationScreen
 import uz.distributor.crm.presentation.visit.VisitScreen
 import javax.inject.Inject
 
@@ -125,6 +126,17 @@ fun AppNavHost(
                 clientId = entry.arguments?.getString("clientId") ?: "",
                 onBack = { navController.popBackStack() },
                 onStartVisit = { id -> navController.navigate("visit/$id") },
+                onReconciliation = { id -> navController.navigate("reconciliation/$id") },
+            )
+        }
+        composable(
+            route = "reconciliation/{clientId}",
+            arguments = listOf(navArgument("clientId") { type = NavType.StringType }),
+        ) { entry ->
+            ReconciliationScreen(
+                clientId = entry.arguments?.getString("clientId") ?: "",
+                clientName = "",
+                onBack = { navController.popBackStack() },
             )
         }
         composable(
@@ -170,7 +182,7 @@ fun AppNavHost(
         }
         composable("profile") {
             ProfileScreen(
-                onNavigate = { navController.navigate(it.route) { launchSingleTop = true } },
+                onBack = { navController.popBackStack() },
                 onLogout = { navController.navigate("login") { popUpTo(0) { inclusive = true } } },
             )
         }

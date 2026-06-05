@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type 
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
-import { loadApprovedDemoClients } from '../../../data/clientRequests';
 import { api } from '../../../api/client';
 import {
   apiClientToRow,
@@ -86,8 +85,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const refreshClients = useCallback(async () => {
     if (!hasApiToken()) {
-      const demo = [...allClients, ...loadApprovedDemoClients()];
-      setClients(demo);
+      setClients(allClients);
       setAgents([]);
       setLines([]);
       setBackendReady(false);

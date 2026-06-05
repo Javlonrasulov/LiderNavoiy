@@ -4,6 +4,11 @@ import com.google.gson.annotations.JsonAdapter
 
 data class LoginRequest(val username: String, val password: String)
 
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String,
+)
+
 data class AuthResponseDto(
     val accessToken: String,
     val refreshToken: String,
@@ -48,24 +53,74 @@ data class BatchLocationResponse(val saved: Int)
 
 data class ClientDto(
     val id: String,
-    val code: String,
+    val code: String? = null,
     val name: String,
-    val address: String?,
+    val address: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
-    val latitude: Double?,
-    val longitude: Double?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val inn: String? = null,
     val photoUrl: String? = null,
+    val status: String? = null,
+    val phone: String? = null,
+    val category: String? = null,
+    val territory: String? = null,
+    val lineCode: String? = null,
+    val priceCategory: String? = null,
+    val contactPerson: String? = null,
+)
+
+data class ReconciliationLineItemDto(
+    val productName: String,
+    val quantity: Double,
+    val price: Double,
+    val total: Double,
+    val unit: String? = null,
+)
+
+data class ReconciliationLineDto(
+    val date: String? = null,
+    val operation: String,
+    val debit: Double? = null,
+    val credit: Double? = null,
+    val expandable: Boolean = false,
+    val isSummary: Boolean = false,
+    val isOpening: Boolean = false,
+    val isClosing: Boolean = false,
+    val items: List<ReconciliationLineItemDto>? = null,
+)
+
+data class ClientReconciliationDto(
+    val clientId: String,
+    val clientCode: String,
+    val clientName: String,
+    val companyName: String? = null,
+    val from: String,
+    val to: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val openingBalance: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val closingBalance: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val totalDebit: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val totalCredit: Double = 0.0,
+    val lines: List<ReconciliationLineDto>,
 )
 
 data class CreateClientRequest(
     val name: String,
     val inn: String? = null,
     val phone: String? = null,
+    val address: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
     val photoUrl: String? = null,
     val distributorId: String? = null,
+    val lineCode: String? = null,
+)
+
+data class LineDto(
+    val code: String,
+    val name: String,
+    val clientCount: Int = 0,
+    val agentName: String? = null,
 )
 
 data class ClientPhotoUploadDto(
@@ -100,6 +155,20 @@ data class CreateOrderRequest(
     val visitId: String? = null,
     val items: List<OrderItemDto>,
     val offlineId: String? = null,
+)
+
+data class VisitDto(
+    val id: String,
+    val clientId: String,
+    val visitedAt: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val orderTotal: Double = 0.0,
+)
+
+data class OrderDto(
+    val id: String,
+    val clientId: String,
+    val createdAt: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val totalAmount: Double = 0.0,
 )
 
 data class CreateVisitRequest(

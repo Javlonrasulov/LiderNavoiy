@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Client } from './entities/client.entity';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { LinesService } from '../lines/lines.service';
 
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectRepository(Client)
     private readonly repo: Repository<Client>,
+    private readonly linesService: LinesService,
   ) {}
 
   private baseQuery() {
@@ -20,7 +22,12 @@ export class ClientsService {
 
   findAll(companyId?: string, lineCode?: string, distributorId?: string) {
     const qb = this.baseQuery().where('c.isActive = true');
-    if (companyId) qb.andWhere('c.companyId = :companyId', { companyId });
+    if (companyId) {
+      qb.andWhere(
+        '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
+        { companyId },
+      );
+    }
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
     if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
     return qb.orderBy('c.name', 'ASC').getMany();
@@ -50,6 +57,10 @@ export class ClientsService {
       .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
     if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
     return qb.limit(50).getMany();
+  }
+
+  findLines(companyId?: string) {
+    return this.linesService.findAll(companyId);
   }
 
   async create(dto: CreateClientDto) {

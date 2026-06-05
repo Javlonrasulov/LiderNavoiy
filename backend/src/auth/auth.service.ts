@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
-import { LoginDto, AuthResponseDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, AuthResponseDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 
 export interface JwtPayload {
@@ -72,6 +72,15 @@ export class AuthService {
 
   async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, 12);
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
+    if (!user || !(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+    user.passwordHash = await this.hashPassword(dto.newPassword);
+    await this.userRepo.save(user);
   }
 
   private async buildAuthResponse(user: User): Promise<AuthResponseDto> {

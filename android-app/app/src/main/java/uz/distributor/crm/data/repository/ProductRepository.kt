@@ -31,10 +31,12 @@ class ProductRepository @Inject constructor(
     }
 
     suspend fun getCategories(): List<String> {
-        val cached = db.productDao().getCategories()
-        if (cached.isNotEmpty()) return cached
-        refreshFromApi()
-        return db.productDao().getCategories()
+        if (db.productDao().getAll().isEmpty()) refreshFromApi()
+        val fromDb = db.productDao().getCategories()
+        if (fromDb.isNotEmpty()) return fromDb
+        return fetchCategoriesFromApi().ifEmpty {
+            db.productDao().getAll().mapNotNull { it.category?.takeIf { c -> c.isNotBlank() } }.distinct()
+        }
     }
 
     suspend fun getByCategory(category: String): List<Product> {
@@ -43,6 +45,15 @@ class ProductRepository @Inject constructor(
 
     suspend fun getProduct(id: String): Product? {
         return db.productDao().getById(id)?.toDomain()
+    }
+
+    private suspend fun fetchCategoriesFromApi(): List<String> {
+        return try {
+            api.getProductCategories()
+                .mapNotNull { row -> row["category"]?.takeIf { it.isNotBlank() } }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     private fun ProductDto.toEntity() = ProductEntity(

@@ -7,7 +7,13 @@ import { User } from '../src/auth/entities/user.entity';
 import { DistributorProfile } from '../src/distributors/entities/distributor-profile.entity';
 import { Client } from '../src/clients/entities/client.entity';
 import { Product } from '../src/products/entities/product.entity';
+import { SalesLine } from '../src/lines/entities/sales-line.entity';
 import { UserRole, DistributorStatus } from '../src/common/enums';
+
+const LINES = [
+  { code: '01', name: 'Toshrabot - Xazora - Air', agentName: 'Alisher Karimov', companyId: 'boran' },
+  { code: '02', name: 'Navoiy Shimol', agentName: 'Bobur Toshmatov', companyId: 'boran' },
+];
 
 const CLIENTS = [
   { code: '29072', name: 'XOLMURODOVA SABRINA MIRO', address: 'Magistral pizza aeroportda', balance: -862.96, lat: 40.0921, lng: 65.3612 },
@@ -37,7 +43,7 @@ async function seed() {
     username: process.env.DB_USERNAME || 'crm_user',
     password: process.env.DB_PASSWORD || 'crm_password',
     database: process.env.DB_DATABASE || 'distributor_crm',
-    entities: [User, DistributorProfile, Client, Product],
+    entities: [User, DistributorProfile, Client, Product, SalesLine],
     synchronize: true,
   });
 
@@ -48,6 +54,7 @@ async function seed() {
   const profileRepo = ds.getRepository(DistributorProfile);
   const clientRepo = ds.getRepository(Client);
   const productRepo = ds.getRepository(Product);
+  const lineRepo = ds.getRepository(SalesLine);
 
   // Admin user
   let admin = await userRepo.findOne({ where: { username: 'admin' } });
@@ -89,6 +96,21 @@ async function seed() {
   const agentProfile = await profileRepo.findOne({
     where: { userId: agent.id },
   });
+
+  for (const line of LINES) {
+    const exists = await lineRepo.findOne({
+      where: { code: line.code, companyId: line.companyId },
+    });
+    if (!exists) {
+      await lineRepo.save(lineRepo.create({
+        code: line.code,
+        name: line.name,
+        agentName: line.agentName,
+        companyId: line.companyId,
+        isActive: true,
+      }));
+    }
+  }
 
   // Clients — agent001 ga biriktirilgan
   for (const c of CLIENTS) {
@@ -132,10 +154,11 @@ async function seed() {
 
   const clientCount = await clientRepo.count();
   const productCount = await productRepo.count();
+  const lineCount = await lineRepo.count();
   console.log(`Seed complete:`);
   console.log(`  admin / admin123`);
   console.log(`  agent001 / agent123`);
-  console.log(`  ${clientCount} clients, ${productCount} products`);
+  console.log(`  ${lineCount} lines, ${clientCount} clients, ${productCount} products`);
   await ds.destroy();
 }
 

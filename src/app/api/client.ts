@@ -248,6 +248,55 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // ─── Lines ───
+  getLines: (companyId?: string) =>
+    request<Array<{
+      id: string;
+      code: string;
+      name: string;
+      agentName: string | null;
+      clientCount: number;
+      companyId: string | null;
+    }>>(`/lines${companyId ? `?companyId=${companyId}` : ''}`),
+
+  createLine: (body: {
+    code: string;
+    name: string;
+    agentName?: string;
+    companyId?: string;
+  }) =>
+    request<{
+      id: string;
+      code: string;
+      name: string;
+      agentName: string | null;
+      clientCount: number;
+      companyId: string | null;
+    }>('/lines', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateLine: (id: string, body: {
+    code?: string;
+    name?: string;
+    agentName?: string | null;
+  }) =>
+    request<{
+      id: string;
+      code: string;
+      name: string;
+      agentName: string | null;
+      clientCount: number;
+      companyId: string | null;
+    }>(`/lines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteLine: (id: string) =>
+    request<{ ok: boolean }>(`/lines/${id}`, { method: 'DELETE' }),
+
   // ─── Client requests (agent → admin approval) ───
   getClientRequests: (companyId?: string) =>
     request<Array<{

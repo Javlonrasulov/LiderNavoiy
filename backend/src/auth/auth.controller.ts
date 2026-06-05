@@ -1,7 +1,9 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshTokenDto, AuthResponseDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RefreshTokenDto, AuthResponseDto } from './dto/auth.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { User } from './entities/user.entity';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -27,5 +29,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout (client-side token discard)' })
   logout(): void {
     return;
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Change password for the authenticated user' })
+  changePassword(
+    @Request() req: { user: User },
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    return this.authService.changePassword(req.user.id, dto);
   }
 }

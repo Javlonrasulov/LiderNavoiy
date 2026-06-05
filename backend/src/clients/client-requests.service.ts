@@ -141,12 +141,15 @@ export class ClientRequestsService {
       );
     }
 
+    const resolvedCompanyId =
+      request.companyId ?? request.distributor?.companyId ?? undefined;
+
     const createDto: CreateClientDto = {
       name: request.name,
       fullName: request.fullName ?? request.name,
       phone: request.phone ?? undefined,
       address: request.address ?? undefined,
-      companyId: request.companyId ?? undefined,
+      companyId: resolvedCompanyId,
       lineCode: request.lineCode ?? undefined,
       latitude: request.latitude ?? undefined,
       longitude: request.longitude ?? undefined,
