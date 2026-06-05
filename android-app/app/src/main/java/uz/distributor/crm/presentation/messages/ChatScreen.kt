@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,13 +37,19 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
@@ -255,41 +262,63 @@ fun ChatScreen(
                             .background(barBg)
                             .navigationBarsPadding(),
                     ) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = showAttach,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 4.dp, bottom = 68.dp),
-                            enter = fadeIn() + slideInVertically { it / 2 },
-                            exit = fadeOut() + slideOutVertically { it / 2 },
-                        ) {
-                            AttachPickerMenu(
-                                isDark = isDark,
-                                lang = lang,
-                                onPhoto = {
-                                    showAttach = false
-                                    imagePicker.launch("image/*")
-                                },
-                                onDocument = {
-                                    showAttach = false
-                                    docPicker.launch("*/*")
-                                },
-                            )
-                        }
+                        val attachMenuBg = if (isDark) Color(0xFF3D4A56) else Color(0xFFFFFFFF)
+                        val density = LocalDensity.current
 
                         Row(
                             Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            IconButton(onClick = { showAttach = !showAttach }) {
-                                Icon(
-                                    Icons.Default.AttachFile,
-                                    contentDescription = null,
-                                    tint = if (showAttach) Color(0xFF6AB2F2) else textMuted,
-                                )
+                            Box {
+                                IconButton(
+                                    onClick = { showAttach = !showAttach },
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.AttachFile,
+                                        contentDescription = null,
+                                        tint = if (showAttach) Color(0xFF6AB2F2) else textMuted,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                if (showAttach) {
+                                    val menuUpPx = with(density) {
+                                        (48.dp + 8.dp).roundToPx()
+                                    }
+                                    Popup(
+                                        alignment = Alignment.BottomStart,
+                                        offset = IntOffset(0, -menuUpPx),
+                                        onDismissRequest = { showAttach = false },
+                                        properties = PopupProperties(focusable = true),
+                                    ) {
+                                        Surface(
+                                            modifier = Modifier.width(AttachMenuWidth),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = attachMenuBg,
+                                            shadowElevation = 16.dp,
+                                            border = BorderStroke(
+                                                0.5.dp,
+                                                if (isDark) Color(0xFF5E6D7E) else Color(0xFFE5E7EB),
+                                            ),
+                                        ) {
+                                            AttachPickerMenuContent(
+                                                isDark = isDark,
+                                                lang = lang,
+                                                onPhoto = {
+                                                    showAttach = false
+                                                    imagePicker.launch("image/*")
+                                                },
+                                                onDocument = {
+                                                    showAttach = false
+                                                    docPicker.launch("*/*")
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             OutlinedTextField(
                                 value = input,
@@ -328,6 +357,21 @@ fun ChatScreen(
                     }
                 }
             }
+
+            if (!selectionMode && showAttach) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .zIndex(8f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { showAttach = false },
+                        )
+                        .background(Color.Black.copy(alpha = if (isDark) 0.45f else 0.25f)),
+                )
+            }
+
         }
     }
 
@@ -375,39 +419,35 @@ fun ChatScreen(
     }
 }
 
+/** Telegram attach popup o‘lchamlari */
+private val AttachMenuWidth = 248.dp
+private val AttachMenuHeight = 96.dp
+
 @Composable
-private fun AttachPickerMenu(
+private fun AttachPickerMenuContent(
     isDark: Boolean,
     lang: AppLanguage,
     onPhoto: () -> Unit,
     onDocument: () -> Unit,
 ) {
-    val popupBg = if (isDark) Color(0xFF2B333B) else Color.White
-    val labelColor = if (isDark) Color(0xFFE8EAED) else Color(0xFF1F2937)
-    val iconTint = if (isDark) Color(0xFFE8EAED) else Color(0xFF374151)
+    val labelColor = if (isDark) Color(0xFFFFFFFF) else Color(0xFF000000)
+    val iconTint = if (isDark) Color(0xFFCBD5E1) else Color(0xFF6B7280)
 
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = popupBg,
-        shadowElevation = if (isDark) 16.dp else 8.dp,
-        tonalElevation = 0.dp,
-    ) {
-        Column(Modifier.padding(vertical = 4.dp)) {
-            AttachMenuItem(
-                icon = Icons.Outlined.Image,
-                label = AppStrings.attachPhoto(lang),
-                labelColor = labelColor,
-                iconTint = iconTint,
-                onClick = onPhoto,
-            )
-            AttachMenuItem(
-                icon = Icons.Outlined.Description,
-                label = AppStrings.attachDoc(lang),
-                labelColor = labelColor,
-                iconTint = iconTint,
-                onClick = onDocument,
-            )
-        }
+    Column(Modifier.padding(vertical = 4.dp)) {
+        AttachMenuItem(
+            icon = Icons.Outlined.Image,
+            label = AppStrings.attachPhoto(lang),
+            labelColor = labelColor,
+            iconTint = iconTint,
+            onClick = onPhoto,
+        )
+        AttachMenuItem(
+            icon = Icons.Outlined.Description,
+            label = AppStrings.attachDoc(lang),
+            labelColor = labelColor,
+            iconTint = iconTint,
+            onClick = onDocument,
+        )
     }
 }
 
@@ -421,18 +461,26 @@ private fun AttachMenuItem(
 ) {
     Row(
         Modifier
+            .fillMaxWidth()
+            .height(44.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 18.dp, vertical = 12.dp)
-            .widthIn(min = 240.dp),
+            .padding(start = 14.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
-        Spacer(Modifier.width(18.dp))
-        Text(label, color = labelColor, fontSize = 16.sp, fontWeight = FontWeight.Normal)
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(20.dp))
+        Text(
+            label,
+            color = labelColor,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

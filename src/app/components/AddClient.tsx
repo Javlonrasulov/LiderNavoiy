@@ -5,14 +5,19 @@ import { useLang } from './LangContext';
 import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 import { demo } from '../data/demoLimit';
+import type { ClientRow } from '../data/adminData';
 
-interface AddClientProps { onClose: () => void; }
+interface AddClientProps {
+  onClose: () => void;
+  client?: ClientRow;
+  onSave?: (data: Partial<ClientRow> & { id: number }) => void;
+}
 type TabKey = 'rekvizit' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
 
 const TRANS = {
   uz_latn: {
     saveClose: "Saqlash va yopish", close: "Yopish",
-    addNew: "Yangi mijoz qo'shish",
+    addNew: "Yangi mijoz qo'shish", editNew: "Mijozni tahrirlash",
     tabs: ["Rekvizitlar", "Kontaktlar", "Yo'nalishlar", "Xarita", "Foto", "Holat"],
     secNomi: "NOMI", secBank: "BANK", secOrg: "TASHKILOT",
     secGps: "GPS / MANZIL", secInn: "INN / JSHSHIR",
@@ -41,7 +46,7 @@ const TRANS = {
   },
   uz_cyrl: {
     saveClose: "Сақлаш ва ёпиш", close: "Ёпиш",
-    addNew: "Янги мижоз қўшиш",
+    addNew: "Янги мижоз қўшиш", editNew: "Мижозни таҳрирлаш",
     tabs: ["Реквизитлар", "Контактлар", "Йўналишлар", "Харита", "Фото", "Ҳолат"],
     secNomi: "НОМИ", secBank: "БАНК", secOrg: "ТАШКИЛОТ",
     secGps: "GPS / МАНЗИЛ", secInn: "ИНН / ЖШШИР",
@@ -70,7 +75,7 @@ const TRANS = {
   },
   ru: {
     saveClose: "Записать и закрыть", close: "Закрыть",
-    addNew: "Новый клиент",
+    addNew: "Новый клиент", editNew: "Редактировать клиента",
     tabs: ["Реквизиты", "Контакты", "Направления", "Карта", "Фото", "Статус"],
     secNomi: "НАИМЕНОВАНИЕ", secBank: "БАНК", secOrg: "ОРГАНИЗАЦИЯ",
     secGps: "GPS / АДРЕС", secInn: "ИНН / ПИНФЛ",
@@ -99,6 +104,8 @@ const TRANS = {
   },
 };
 
+const NAVOIY = { lat: 40.0843, lng: 65.3791 };
+
 const DIRECTIONS  = ["SHERIN", "SOF IN", "NAVOIY NORTH", "ATLAS", "BORAN", "ZARAFSHON"];
 const LINES       = ["01 - Toshrabot. Xazora. Air.", "02 - Navoiy Shimol", "03 - Karmana", "04 - Konimex", "05 - Markaz"];
 const CLASSES     = ["BM - Bozordagi dukon", "SM - Supermarket", "PM - Premium market", "KS - Kichik savdo"];
@@ -108,7 +115,38 @@ const PRICE_ZONES = demo(["Toshrabot. Xazora. Airoport.", "Navoiy Shimol", "Karm
 const CATEGORIES  = demo(["Standard", "VIP", "Premium"]);
 const AGENTS      = demo(["Alisher Karimov", "Bobur Yusupov", "Dilshod Toshmatov", "Eldor Nazarov"]);
 
-export default function AddClient({ onClose }: AddClientProps) {
+function clientToForm(client: ClientRow) {
+  let lat: number | null = null;
+  let lng: number | null = null;
+  if (client.gps?.includes(',')) {
+    const [la, ln] = client.gps.split(',').map(Number);
+    if (!isNaN(la) && !isNaN(ln)) { lat = la; lng = ln; }
+  }
+  const coords = lat !== null && lng !== null ? { lat, lng } : NAVOIY;
+  const gpsStr = lat !== null && lng !== null
+    ? client.gps!
+    : `${NAVOIY.lat.toFixed(6)},${NAVOIY.lng.toFixed(6)}`;
+  return {
+    form: {
+      kod: client.code, liniya: client.line, status: 'active', onTradeId: String(client.id),
+      category: client.category || 'Standard',
+      name: client.name, officialName: client.fullName, legalAddr: client.legalAddr,
+      landmark: '', phones: client.phone, bankAcc: '', mfo: '', bank: '',
+      cls: client.cls, type: '', director: '', chiefAcc: '', channel: '',
+      gps: gpsStr, priceZone: client.priceCat || '',
+      budget: '', mainContract: '', note: '',
+      inn: client.inn, territory: client.territory, settlement: '', pinfl: '', telegram: '',
+      actDate: '', actSum: '', agent: client.agent || '',
+      noDelay: false, routeList: false, sizeW: '', sizeH: '', regDate: '', comment: '',
+    },
+    contacts: client.contact
+      ? [{ name: client.contact, phone: client.phone, role: '' }]
+      : [{ name: '', phone: '', role: '' }],
+    gpsCoords: coords,
+  };
+}
+
+export default function AddClient({ onClose, client, onSave }: AddClientProps) {
   const { isDark } = useTheme();
   const { lang } = useLang();
   const D = isDark;
@@ -117,12 +155,15 @@ export default function AddClient({ onClose }: AddClientProps) {
   const langKey = lang === 'cy' ? 'uz_cyrl' : lang === 'ru' ? 'ru' : 'uz_latn';
   const t = TRANS[langKey as keyof typeof TRANS] ?? TRANS.uz_cyrl;
 
+  const isEdit = !!client;
+  const initial = client ? clientToForm(client) : null;
+
   const [activeTab, setActiveTab]     = useState<TabKey>('rekvizit');
   const [isMaximized, setIsMaximized] = useState(false);
   const [openDrop, setOpenDrop]       = useState<string | null>(null);
-  const [contacts, setContacts]       = useState([{ name: '', phone: '', role: '' }]);
+  const [contacts, setContacts]       = useState(initial?.contacts ?? [{ name: '', phone: '', role: '' }]);
   const [photos, setPhotos]           = useState<string[]>([]);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(initial?.form ?? {
     kod: '', liniya: '', status: 'active', onTradeId: '', category: 'Standard',
     name: '', officialName: '', legalAddr: '', landmark: '', phones: '',
     bankAcc: '', mfo: '', bank: '', cls: '', type: '',
@@ -137,7 +178,7 @@ export default function AddClient({ onClose }: AddClientProps) {
     SHERIN: true, "SOF IN": false, "NAVOIY NORTH": false,
     ATLAS: false, BORAN: false, ZARAFSHON: false,
   });
-  const [gpsCoords, setGpsCoords]   = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsCoords, setGpsCoords]   = useState<{ lat: number; lng: number } | null>(initial?.gpsCoords ?? null);
   const [loadingLoc, setLoadingLoc] = useState(false);
   const mapRef          = useRef<L.Map | null>(null);
   const tileRef         = useRef<L.TileLayer | null>(null);
@@ -147,10 +188,33 @@ export default function AddClient({ onClose }: AddClientProps) {
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
+  const handleSave = () => {
+    if (isEdit && client && onSave) {
+      onSave({
+        id: client.id,
+        code: form.kod,
+        name: form.name,
+        fullName: form.officialName || form.name,
+        line: form.liniya,
+        priceCat: form.priceZone,
+        territory: form.territory,
+        inn: form.inn,
+        legalAddr: form.legalAddr,
+        phone: form.phones,
+        contact: contacts[0]?.name || client.contact,
+        cls: form.cls,
+        gps: form.gps,
+        agent: form.agent,
+        category: form.category,
+      });
+    }
+    onClose();
+  };
+
   useEffect(() => {
     if (activeTab !== 'xarita' || !mapContainerRef.current || mapRef.current) return;
 
-    const init: [number, number] = gpsCoords ? [gpsCoords.lat, gpsCoords.lng] : [40.0844, 65.3792];
+    const init: [number, number] = gpsCoords ? [gpsCoords.lat, gpsCoords.lng] : [NAVOIY.lat, NAVOIY.lng];
 
     const updateCoords = (lat: number, lng: number) => {
       setGpsCoords({ lat, lng });
@@ -192,7 +256,7 @@ export default function AddClient({ onClose }: AddClientProps) {
       updateCoords(e.latlng.lat, e.latlng.lng);
     });
 
-    if (!gpsCoords && navigator.geolocation) {
+    if (!gpsCoords && !isEdit && navigator.geolocation) {
       setLoadingLoc(true);
       navigator.geolocation.getCurrentPosition(p => {
         const lat = p.coords.latitude;
@@ -201,7 +265,14 @@ export default function AddClient({ onClose }: AddClientProps) {
         placeMarker(lat, lng);
         updateCoords(lat, lng);
         setLoadingLoc(false);
-      }, () => setLoadingLoc(false));
+      }, () => {
+        placeMarker(NAVOIY.lat, NAVOIY.lng);
+        updateCoords(NAVOIY.lat, NAVOIY.lng);
+        setLoadingLoc(false);
+      });
+    } else if (!gpsCoords && isEdit) {
+      placeMarker(NAVOIY.lat, NAVOIY.lng);
+      updateCoords(NAVOIY.lat, NAVOIY.lng);
     }
 
     setTimeout(() => map.invalidateSize(true), 100);
@@ -459,7 +530,9 @@ export default function AddClient({ onClose }: AddClientProps) {
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '0 14px', height: 52, flexShrink: 0,
         }}>
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, fontSize: 14, fontWeight: 600, color: valClr }}>
+            {isEdit ? t.editNew : t.addNew}
+          </div>
           <button onClick={() => setIsMaximized(v => !v)}
             style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', color: lblClr }}>
@@ -817,7 +890,7 @@ export default function AddClient({ onClose }: AddClientProps) {
         {/* ── BOTTOM ── */}
         <div style={{ flexShrink: 0, display: 'flex', gap: 8, padding: '10px 14px',
           borderTop: `1px solid ${divClr}`, background: topBg }}>
-          <button style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          <button onClick={handleSave} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             padding: 11, background: focClr, color: '#fff', border: 'none', borderRadius: 10,
             fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <Save size={14} /> {t.saveClose}

@@ -20,18 +20,13 @@ app/src/main/java/uz/distributor/crm/
 
 - Android Studio Ladybug or newer
 - JDK 17
-- Yandex MapKit API key
 - Backend running (see `../backend/README.md`)
 
 ## Setup
 
 1. Open `android-app/` in Android Studio
-2. Set Yandex MapKit key in `app/build.gradle.kts`:
-   ```kotlin
-   buildConfigField("String", "MAPKIT_API_KEY", "\"your-key-here\"")
-   ```
-3. For emulator, API URL is `http://10.0.2.2:3000/api/v1/` (default)
-4. For **real phone**, copy `local.properties.example` to `local.properties` and set your PC LAN IP:
+2. For emulator, API URL is `http://10.0.2.2:3000/api/v1/` (default)
+3. For **real phone**, copy `local.properties.example` to `local.properties` and set your PC LAN IP:
    ```
    api.host=192.168.1.100
    ```
@@ -55,7 +50,7 @@ cd android-app
 - [x] Room offline queue
 - [x] WorkManager batch sync
 - [x] Boot receiver (auto-start tracking)
-- [ ] Yandex MapKit map screen
+- [x] Leaflet xarita (admin MapLayerSwitcher bilan bir xil)
 - [ ] Clients list screen
 - [ ] Visit / order flow
 - [ ] FCM push notifications

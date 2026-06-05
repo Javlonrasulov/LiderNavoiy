@@ -29,7 +29,6 @@ android {
         val apiHost = localProperties.getProperty("api.host", "10.0.2.2")
         buildConfigField("String", "API_BASE_URL", "\"http://$apiHost:3000/api/v1/\"")
         buildConfigField("String", "WS_BASE_URL", "\"http://$apiHost:3000/tracking\"")
-        buildConfigField("String", "MAPKIT_API_KEY", "\"\"")
     }
 
     buildFeatures {
@@ -57,6 +56,7 @@ dependencies {
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
 
     // Compose
@@ -88,8 +88,8 @@ dependencies {
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
-    // Yandex MapKit
-    implementation("com.yandex.android:maps.mobile:4.6.1-full")
+    // Xarita — admin bilan bir xil OSM tile qatlamlari (Leaflet MapLayerSwitcher)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.0")

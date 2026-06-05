@@ -87,7 +87,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message || `HTTP ${res.status}`);
+    const msg = err.message;
+    const text = Array.isArray(msg) ? msg.join(', ') : (msg || res.statusText);
+    throw new Error(text || `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -104,6 +106,8 @@ export const api = {
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 
   // ─── App users (APK login) ───
+  listAppUsers: () => request<AppUserRecord[]>('/users/app'),
+
   createAppUser: (body: {
     username: string;
     password: string;

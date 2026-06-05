@@ -7,7 +7,7 @@ import {
   userStatusOpenLabel,
   userStatusClosedLabel,
 } from '../../../data/adminData';
-import { getStoredAppPassword } from '../../../utils/appUserCreds';
+import { getStoredAppPassword, translateApiError } from '../../../utils/appUserCreds';
 
 /* ═══════════ Types ═══════════ */
 type ModalTab = 'asosiy' | 'boglanish' | 'ontrade' | 'opsiya';
@@ -48,6 +48,9 @@ interface FormData {
   perms: Record<string, string>;
   appLogin: string;
   appPassword: string;
+  appAcceptPay: boolean;
+  appConsig: boolean;
+  appOffline: boolean;
 }
 
 export type UserFormData = FormData;
@@ -333,6 +336,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         perms: { ...DEFAULT_PERMS, ...(user.acceptPay ? { tolovQabul: 'Ruxsat' } : {}) },
         appLogin: user.onTrade || '',
         appPassword: getStoredAppPassword(user.onTrade || ''),
+        appAcceptPay: user.acceptPay,
+        appConsig: user.consig,
+        appOffline: true,
       };
     }
     return {
@@ -341,6 +347,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       directions: [], kassalar: [], omborlar: [], tashkilotlar: [],
       perms: { ...DEFAULT_PERMS },
       appLogin: '', appPassword: '',
+      appAcceptPay: true, appConsig: false, appOffline: true,
     };
   });
 
@@ -348,12 +355,17 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     setSaveError(null);
     setSaving(true);
     try {
-      const result = await onSave(form);
+      const payload: FormData = {
+        ...form,
+        perms: { ...form.perms, gpsMijozlar: 'Ruxsat' },
+      };
+      const result = await onSave(payload);
       if (result !== false) {
         if (closeAfter) onClose();
       }
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+      const msg = e instanceof Error ? e.message : '';
+      setSaveError(translateApiError(msg, t));
     } finally {
       setSaving(false);
     }
@@ -600,21 +612,36 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       {/* Mobile settings */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         {[
-          { label: tr(t, 'userAppAcceptPay', "To'lov qabul qilish"), val: true },
-          { label: tr(t, 'userAppGps', 'GPS tracking'), val: false },
-          { label: tr(t, 'userAppConsig', 'Konsignatsiya'), val: false },
-          { label: tr(t, 'userAppOffline', 'Offline rejim'), val: true },
-        ].map((item, i) => (
+          { key: 'appAcceptPay' as const, label: tr(t, 'userAppAcceptPay', "To'lov qabul qilish"), locked: false },
+          { key: 'appGps' as const, label: tr(t, 'userAppGps', 'GPS tracking'), locked: true },
+          { key: 'appConsig' as const, label: tr(t, 'userAppConsig', 'Konsignatsiya'), locked: false },
+          { key: 'appOffline' as const, label: tr(t, 'userAppOffline', 'Offline rejim'), locked: false },
+        ].map((item, i) => {
+          const val = item.key === 'appGps' ? true : form[item.key];
+          return (
           <div key={item.label} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 14px',
             borderBottom: i < 3 ? `1px solid ${border}` : 'none',
             background: i % 2 === 0 ? 'transparent' : (D ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.012)'),
           }}>
-            <span style={{ fontSize: 12.5, color: txt }}>{item.label}</span>
-            <ToggleSwitch D={D} value={item.val} />
+            <span style={{ fontSize: 12.5, color: txt }}>
+              {item.label}
+              {item.locked && (
+                <span style={{ marginLeft: 6, fontSize: 10, color: muted }}>
+                  ({tr(t, 'userAppGpsAlwaysOn', 'GPS doim yoqiq')})
+                </span>
+              )}
+            </span>
+            <ToggleSwitch
+              D={D}
+              value={val}
+              disabled={item.locked}
+              onChange={item.locked ? undefined : (v) => setForm(f => ({ ...f, [item.key]: v }))}
+            />
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1239,15 +1266,20 @@ function PermBtn({ label, active, onClick, D, border, txt, muted, t }: {
   );
 }
 
-function ToggleSwitch({ D, value }: { D: boolean; value: boolean }) {
-  const [on, setOn] = useState(value);
+function ToggleSwitch({ D, value, onChange, disabled }: {
+  D: boolean; value: boolean; onChange?: (v: boolean) => void; disabled?: boolean;
+}) {
+  const on = value;
   return (
     <div
-      onClick={() => setOn(o => !o)}
+      onClick={() => !disabled && onChange?.(!on)}
       style={{
         width: 38, height: 20, borderRadius: 20,
         background: on ? '#6366f1' : (D ? '#374151' : '#d1d5db'),
-        position: 'relative', cursor: 'pointer', transition: 'background 0.2s',
+        position: 'relative',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.85 : 1,
+        transition: 'background 0.2s',
         flexShrink: 0,
       }}
     >

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Check, ChevronLeft, ChevronRight, Download, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
 import AddClient from '../../AddClient';
 import { ClientStatsPanel } from '../ClientStatsPanel';
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }: Props) {
+  const [clients, setClients] = useState<ClientRow[]>(() => [...allClients]);
   const [search, setSearch] = useState('');
   const [clientPage, setClientPage] = useState(1);
   const [showClientFilter, setShowClientFilter] = useState(false);
@@ -39,6 +40,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
   const [clientMapOpen, setClientMapOpen] = useState(false);
   const [clientPhotoOpen, setClientPhotoOpen] = useState(false);
   const [showAddClient, setShowAddClient] = useState(false);
+  const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
   const [statsClient, setStatsClient] = useState<ClientRow | null>(null);
   const clientFilterBtnRef = useRef<HTMLButtonElement>(null);
   const clientTableRef = useRef<HTMLDivElement>(null);
@@ -46,7 +48,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
     if (clientTableRef.current) clientTableRef.current.scrollBy({ left: dir === 'right' ? 220 : -220, behavior: 'smooth' });
   };
 
-  const filtered = allClients.filter(c => {
+  const handleSaveClient = (data: Partial<ClientRow> & { id: number }) => {
+    setClients(prev => prev.map(c => c.id === data.id ? { ...c, ...data } : c));
+    setActiveClient(prev => prev?.id === data.id ? { ...prev, ...data } : prev);
+  };
+
+  const filtered = clients.filter(c => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       c.name.toLowerCase().includes(q) ||
@@ -149,10 +156,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
   ];
 
   const summaryCards = [
-    { l: t.allClientsLabel,          v: allClients.length,                                        c: '',                 status: 'all'      },
-    { l: t.debtorsLabel,             v: allClients.filter(c => c.balance < 0).length,             c: 'text-rose-400',    status: 'debtors'  },
-    { l: t.surplusLabel,             v: allClients.filter(c => c.balance > 0).length,             c: 'text-emerald-400', status: 'surplus'  },
-    { l: t.inactiveClientsLabel,     v: allClients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
+    { l: t.allClientsLabel,          v: clients.length,                                        c: '',                 status: 'all'      },
+    { l: t.debtorsLabel,             v: clients.filter(c => c.balance < 0).length,             c: 'text-rose-400',    status: 'debtors'  },
+    { l: t.surplusLabel,             v: clients.filter(c => c.balance > 0).length,             c: 'text-emerald-400', status: 'surplus'  },
+    { l: t.inactiveClientsLabel,     v: clients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
   ];
 
   return (
@@ -161,7 +168,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
       <div className="flex items-start justify-between gap-2 flex-shrink-0">
         <div>
           <h2 className="text-xl font-bold">{t.allClientsTitle}</h2>
-          <p className={`text-sm ${sub} mt-0.5`}>{filtered.length} / {allClients.length}</p>
+          <p className={`text-sm ${sub} mt-0.5`}>{filtered.length} / {clients.length}</p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {/* Filter button */}
@@ -236,6 +243,15 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
           </div>
 
           <button
+            onClick={() => { if (activeClient) setEditingClient(activeClient); }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
+              ${activeClient
+                ? D ? 'bg-amber-900/60 hover:bg-amber-800/60 text-amber-300' : 'bg-amber-50 hover:bg-amber-100 text-amber-700'
+                : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')}`}>
+            <Edit2 size={12} /> {t.editClientBtn ?? 'Tahrirlash'}
+          </button>
+
+          <button
             onClick={() => { if (activeClient) setClientMapOpen(true); }}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
               ${activeClient
@@ -277,9 +293,16 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
         </div>
       </div>
 
-      {/* Add Client Modal */}
+      {/* Add / Edit Client Modal */}
       {showAddClient && (
         <AddClient onClose={() => setShowAddClient(false)} />
+      )}
+      {editingClient && (
+        <AddClient
+          client={editingClient}
+          onSave={handleSaveClient}
+          onClose={() => setEditingClient(null)}
+        />
       )}
 
       {/* Client Stats Panel */}

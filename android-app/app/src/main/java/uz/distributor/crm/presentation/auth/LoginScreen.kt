@@ -1,6 +1,7 @@
 package uz.distributor.crm.presentation.auth
 
 import android.content.Intent
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -54,6 +56,17 @@ fun LoginScreen(
         unfocusedLabelColor = Color(0xFF6B7280),
         cursorColor = SherinColors.Primary,
     )
+
+    LaunchedEffect(Unit) {
+        viewModel.resetForm()
+    }
+
+    val rootView = LocalView.current
+    DisposableEffect(Unit) {
+        val previous = rootView.importantForAutofill
+        rootView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        onDispose { rootView.importantForAutofill = previous }
+    }
 
     LaunchedEffect(state.isSuccess) {
         if (state.isSuccess) {

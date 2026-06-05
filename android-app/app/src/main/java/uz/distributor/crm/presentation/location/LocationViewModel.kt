@@ -44,9 +44,16 @@ class LocationViewModel @Inject constructor(
     init {
         trackingSocket.connect()
         viewModelScope.launch {
-            agentLocationHolder.location.collect { loc ->
-                _uiState.update { it.copy(agentLocation = loc) }
-            }
+            agentLocationHolder.location
+                .distinctUntilChanged { a, b ->
+                    if (a == null && b == null) return@distinctUntilChanged true
+                    if (a == null || b == null) return@distinctUntilChanged false
+                    kotlin.math.abs(a.latitude - b.latitude) < 0.0002 &&
+                        kotlin.math.abs(a.longitude - b.longitude) < 0.0002
+                }
+                .collect { loc ->
+                    _uiState.update { it.copy(agentLocation = loc) }
+                }
         }
         loadClients()
     }

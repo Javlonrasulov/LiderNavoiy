@@ -6,6 +6,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.presentation.auth.LoginScreen
@@ -45,9 +47,26 @@ class SplashViewModel @Inject constructor(
     }
 }
 
+@HiltViewModel
+class AppNavigationViewModel @Inject constructor(
+    authRepository: AuthRepository,
+) : ViewModel() {
+    val sessionExpired = authRepository.sessionExpired
+}
+
 @Composable
-fun AppNavHost() {
+fun AppNavHost(
+    navViewModel: AppNavigationViewModel = hiltViewModel(),
+) {
     val navController = rememberNavController()
+
+    LaunchedEffect(Unit) {
+        navViewModel.sessionExpired.collectLatest {
+            navController.navigate("login") {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         OpenChatHolder.pendingConversationId?.let { id ->
@@ -144,7 +163,10 @@ fun AppNavHost() {
             )
         }
     }
-    IncomingMessageBannerOverlay(navController = navController)
+    IncomingMessageBannerOverlay(
+        navController = navController,
+        modifier = Modifier.zIndex(1000f),
+    )
     }
 }
 

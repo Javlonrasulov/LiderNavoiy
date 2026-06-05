@@ -41,6 +41,7 @@ import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
+import uz.distributor.crm.map.MapTileSources
 import uz.distributor.crm.util.NavigationHelper
 import java.text.DecimalFormat
 
@@ -59,6 +60,7 @@ fun LocationScreen(
     val filtered = remember(state.clients) { viewModel.filteredClients() }
     var showDayMenu by remember { mutableStateOf(false) }
     var showLangMenu by remember { mutableStateOf(false) }
+    var activeMapLayer by remember { mutableStateOf(MapTileSources.defaultLayer) }
 
     val dayOptions = listOf(
         "today" to AppStrings.todayClients(lang),
@@ -101,8 +103,18 @@ fun LocationScreen(
             agentLocation = state.agentLocation,
             selectedClientId = state.selectedClient?.id,
             isDark = isDark,
+            activeLayer = activeMapLayer,
             onClientSelected = viewModel::selectClient,
             modifier = Modifier.fillMaxSize(),
+        )
+
+        MapLayerPicker(
+            activeLayer = activeMapLayer,
+            onLayerChange = { activeMapLayer = it },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .zIndex(6f),
+            bottomPadding = (state.sheetFraction * 600).dp.coerceIn(140.dp, 420.dp),
         )
 
         Column(Modifier.fillMaxWidth().zIndex(10f)) {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, Check, Plus, X,
   MapPin, Building2, CreditCard, Package, Navigation,
@@ -7,11 +7,13 @@ import { AdminUserFormModal, type UserFormRow, type UserFormData } from './Admin
 import { translateUserRole, userStatusOpenLabel } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
+  appUserToRow,
   mapAdminRoleToBackend,
   removeStoredAppPassword,
   storeAppPassword,
+  translateApiError,
+  type AppUserListRow,
 } from '../../../utils/appUserCreds';
-import { demo } from '../../../data/demoLimit';
 
 interface Props {
   D: boolean;
@@ -21,25 +23,9 @@ interface Props {
   sub: string;
 }
 
-interface UserRow {
-  id: number;
-  code: string;
-  name: string;
-  tg: string;
-  lastAct: string;
-  role: string;
-  status: 'open' | 'closed';
-  org: string;
-  emp: string;
-  onTrade: string;
-  backendUserId?: string;
-  dirs: string;
-  acceptPay: boolean;
-  consig: boolean;
-  gps: boolean;
-}
+type UserRow = AppUserListRow;
 
-const INITIAL_USERS: UserRow[] = demo([
+const INITIAL_USERS: UserRow[] = [
   { id: 1,  code: '0051', name: 'Abduxakimov Diyorbek',        tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Abduxakimov D...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
   { id: 2,  code: '0035', name: 'Amriddinov Sardor',           tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Amriddinov S...',   onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
   { id: 3,  code: '0043', name: 'Baxodirov Utkir',             tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'LEADERS BAR...',  emp: 'Baxodirov Utk...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
@@ -55,8 +41,17 @@ const INITIAL_USERS: UserRow[] = demo([
   { id: 13, code: '0026', name: 'Ismatov Asadbek',             tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Ismatov Asadb...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: false, consig: false, gps: false },
   { id: 14, code: '0050', name: 'Ismatullaev Quvonchbek',      tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Ismatullaev K...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
   { id: 15, code: '0032', name: 'Patipov Umrzok',              tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Patipov Umrzok',    onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
-]);
+  { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             backendUserId: '', dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
+];
+
+async function fetchUsersFromBackend(): Promise<UserRow[] | null> {
+  const token = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('api_access_token')
+    : null;
+  if (!token) return null;
+  const appUsers = await api.listAppUsers();
+  return appUsers.map((u, i) => appUserToRow(u, i + 1));
+}
 
 function formToUserRow(
   data: UserFormData,
@@ -78,11 +73,11 @@ function formToUserRow(
     org,
     emp,
     onTrade: appLogin,
-    backendUserId,
+    backendUserId: backendUserId || '',
     dirs: data.directions.join(', '),
-    acceptPay: data.perms.tolovQabul === 'Ruxsat',
-    consig: data.perms.konsignatsiya === 'Ruxsat',
-    gps: data.perms.gpsMijozlar === 'Ruxsat',
+    acceptPay: data.appAcceptPay ?? data.perms.tolovQabul === 'Ruxsat',
+    consig: data.appConsig ?? data.perms.konsignatsiya === 'Ruxsat',
+    gps: true,
   };
 }
 
@@ -104,11 +99,11 @@ async function syncAppCredentials(
     ? localStorage.getItem('api_access_token')
     : null;
   if (!token) {
-    throw new Error("Avval admin panelga kirish qiling (backend bilan bog'lanish kerak)");
+    throw new Error(t.userErrAdminLoginRequired || "Avval admin panelga kirish qiling (backend bilan bog'lanish kerak)");
   }
 
   if (!existing?.backendUserId) {
-    if (!password) throw new Error('APK uchun parol kiriting');
+    if (!password) throw new Error(t.userErrPasswordRequired || 'APK uchun parol kiriting');
     const created = await api.createAppUser({
       username,
       password,
@@ -263,8 +258,27 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   );
   const [users, setUsers] = useState<UserRow[]>(() => [...INITIAL_USERS]);
   const [search,   setSearch]  = useState('');
-  const [selected, setSelected] = useState<number | null>(15);
+  const [selected, setSelected] = useState<number | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+
+  const refreshUsers = useCallback(async () => {
+    try {
+      const rows = await fetchUsersFromBackend();
+      if (rows && rows.length > 0) {
+        setUsers(rows);
+        setSelected(prev => {
+          if (prev && rows.some(r => r.id === prev)) return prev;
+          return rows[0]?.id ?? null;
+        });
+      }
+    } catch {
+      /* keep current list */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUsers();
+  }, [refreshUsers]);
 
   const [modalUser, setModalUser] = useState<UserFormRow | null | 'new'>(null);
   const openNew    = () => setModalUser('new');
@@ -277,24 +291,34 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
         ? users.find(u => u.id === modalUser.id) ?? null
         : null;
 
-      const backendUserId = await syncAppCredentials(data, t, existingRow);
-
-      if (modalUser === 'new') {
-        const nextId = users.reduce((max, u) => Math.max(max, u.id), 0) + 1;
-        const nextCode = data.code.trim() || String(nextId).padStart(4, '0');
-        const row = formToUserRow({ ...data, code: nextCode }, t, nextId, backendUserId);
-        if (!row.name) return false;
-        setUsers(prev => [...prev, row]);
-        setSelected(row.id);
-      } else if (modalUser) {
-        const row = formToUserRow(data, t, modalUser.id, backendUserId ?? modalUser.backendUserId);
-        if (!row.name) return false;
-        setUsers(prev => prev.map(u => (u.id === modalUser.id ? row : u)));
-        setSelected(row.id);
+      const login = data.appLogin.trim();
+      if (!existingRow?.backendUserId && login) {
+        const dup = users.find(u => u.onTrade.toLowerCase() === login.toLowerCase());
+        if (dup) {
+          throw new Error(t.userErrUsernameExists || 'Bu login band');
+        }
       }
+
+      await syncAppCredentials(data, t, existingRow);
+
+      const rows = await fetchUsersFromBackend();
+      if (rows && rows.length > 0) {
+        setUsers(rows);
+        const saved = rows.find(
+          u => u.onTrade.toLowerCase() === login.toLowerCase(),
+        );
+        if (saved) setSelected(saved.id);
+      }
+
       return true;
     } catch (e) {
-      throw e instanceof Error ? e : new Error('Saqlashda xatolik');
+      const msg = e instanceof Error ? e.message : '';
+      const translated = translateApiError(msg, t);
+      const isDup =
+        msg.toLowerCase().includes('username already exists') ||
+        translated === (t.userErrUsernameExists || '');
+      if (isDup) await refreshUsers();
+      throw new Error(translated);
     }
   };
 

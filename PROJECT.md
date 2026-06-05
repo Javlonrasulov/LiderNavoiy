@@ -55,7 +55,7 @@ Admin: http://localhost:5173/admin
 ## 3. Android APK yig'ish
 
 1. Android Studio'da `android-app/` oching
-2. `app/build.gradle.kts` da API URL va Yandex MapKit kalitini sozlang
+2. `app/build.gradle.kts` da API URL ni sozlang (xarita — OpenStreetMap, kalit shart emas)
 3. Run yoki: `./gradlew assembleDebug`
 
 Emulator uchun API: `http://10.0.2.2:3000/api/v1`

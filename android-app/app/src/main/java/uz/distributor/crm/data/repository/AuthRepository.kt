@@ -8,8 +8,12 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.local.UserIdHolder
 import uz.distributor.crm.data.remote.ApiService
@@ -37,6 +41,10 @@ class AuthRepository @Inject constructor(
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
     private val userKey = stringPreferencesKey("user_json")
+    private val refreshMutex = Mutex()
+
+    private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val sessionExpired = _sessionExpired.asSharedFlow()
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { it[accessTokenKey] != null }
 
@@ -71,6 +79,40 @@ class AuthRepository @Inject constructor(
             messagesSocket.connect()
         }
         return token != null
+    }
+
+    suspend fun refreshAccessToken(): Boolean = refreshMutex.withLock {
+        val prefs = context.dataStore.data.first()
+        val refresh = prefs[refreshTokenKey] ?: return false
+        return try {
+            val response = api.refresh(mapOf("refreshToken" to refresh))
+            val userJson = prefs[userKey]
+            val user = userJson?.let { gson.fromJson(it, AuthUser::class.java) }
+                ?: AuthUser(
+                    id = response.user.id,
+                    username = response.user.username,
+                    fullName = response.user.fullName,
+                    role = response.user.role,
+                    distributorId = response.user.distributorId,
+                    companyName = response.user.companyName,
+                )
+            saveTokens(
+                AuthTokens(
+                    accessToken = response.accessToken,
+                    refreshToken = response.refreshToken,
+                    expiresIn = response.expiresIn,
+                    user = user,
+                ),
+            )
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun logoutDueToExpiredSession() {
+        logout()
+        _sessionExpired.tryEmit(Unit)
     }
 
     suspend fun logout() {

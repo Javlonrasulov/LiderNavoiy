@@ -18,6 +18,7 @@ import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.data.local.AppDatabase
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.remote.ApiService
+import uz.distributor.crm.data.remote.TokenRefreshInterceptor
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -29,7 +30,10 @@ object AppModule {
     fun provideGson(): Gson = GsonBuilder().create()
 
     @Provides @Singleton
-    fun provideOkHttpClient(tokenHolder: TokenHolder): OkHttpClient {
+    fun provideOkHttpClient(
+        tokenHolder: TokenHolder,
+        tokenRefreshInterceptor: TokenRefreshInterceptor,
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
             else HttpLoggingInterceptor.Level.NONE
@@ -43,6 +47,7 @@ object AppModule {
         }
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

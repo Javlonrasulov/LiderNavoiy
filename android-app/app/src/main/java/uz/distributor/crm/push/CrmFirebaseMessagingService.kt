@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import uz.distributor.crm.R
 import uz.distributor.crm.data.repository.PushRepository
 import javax.inject.Inject
 
@@ -29,7 +30,7 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val title = message.notification?.title ?: message.data["title"] ?: "CRM"
+        val title = message.notification?.title ?: message.data["title"] ?: getString(R.string.app_name)
         val body = message.notification?.body ?: message.data["body"] ?: ""
         if (body.isNotBlank()) {
             val isMessage = message.data["type"] == "message"

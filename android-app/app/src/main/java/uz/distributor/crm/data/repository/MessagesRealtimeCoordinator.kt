@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -53,7 +54,13 @@ class MessagesRealtimeCoordinator @Inject constructor(
                 val convs = messageRepository.getConversations()
                 _conversations.value = convs.sortedByDescending { it.updatedAt }
             } catch (e: Exception) {
-                _loadError.value = e.message ?: "Serverga ulanib bo'lmadi"
+                _loadError.value = when (e) {
+                    is HttpException -> when (e.code()) {
+                        401 -> "Sessiya tugadi — qayta kiring"
+                        else -> "HTTP ${e.code()} ${e.message()}"
+                    }
+                    else -> e.message ?: "Serverga ulanib bo'lmadi"
+                }
             } finally {
                 _isRefreshing.value = false
             }

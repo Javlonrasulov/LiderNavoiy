@@ -17,8 +17,8 @@ import uz.distributor.crm.localization.AppStrings
 import javax.inject.Inject
 
 data class LoginUiState(
-    val username: String = "agent001",
-    val password: String = "agent123",
+    val username: String = "",
+    val password: String = "",
     val isLoading: Boolean = false,
     val isSuccess: Boolean = false,
     val error: String? = null,
@@ -38,6 +38,8 @@ class LoginViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState = _uiState.asStateFlow()
+
+    fun resetForm() = _uiState.update { LoginUiState() }
 
     fun onUsernameChange(v: String) = _uiState.update { it.copy(username = v) }
     fun onPasswordChange(v: String) = _uiState.update { it.copy(password = v) }

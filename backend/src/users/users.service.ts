@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { AuthService } from '../auth/auth.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { In } from 'typeorm';
 import { DistributorStatus, UserRole } from '../common/enums';
 import {
   AppUserResponseDto,
@@ -82,6 +83,19 @@ export class UsersService {
     }
 
     return this.toDto(saved);
+  }
+
+  async findAllApp(): Promise<AppUserResponseDto[]> {
+    const users = await this.userRepo.find({
+      where: { role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]) },
+      order: { createdAt: 'DESC' },
+    });
+    return users.map((u) => this.toDto(u));
+  }
+
+  async findByUsername(username: string): Promise<AppUserResponseDto | null> {
+    const user = await this.userRepo.findOne({ where: { username: username.trim() } });
+    return user ? this.toDto(user) : null;
   }
 
   async deactivate(id: string): Promise<void> {

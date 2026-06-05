@@ -16,8 +16,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -67,21 +71,27 @@ class IncomingMessageBannerViewModel @Inject constructor(
 fun IncomingMessageBannerOverlay(
     navController: NavHostController,
     modifier: Modifier = Modifier,
-    viewModel: IncomingMessageBannerViewModel = hiltViewModel(),
 ) {
+    val activity = LocalContext.current as ComponentActivity
+    val viewModel: IncomingMessageBannerViewModel = hiltViewModel(activity)
     val alert by viewModel.alert.collectAsState()
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF708499) else Color(0xFF6B7280)
     val barBg = if (isDark) Color(0xFF1F2937) else Color.White
 
-    Box(modifier.fillMaxSize()) {
+    Box(
+        modifier
+            .fillMaxSize()
+            .zIndex(1000f),
+    ) {
         AnimatedVisibility(
             visible = alert != null,
             enter = slideInVertically { -it },
             exit = slideOutVertically { -it },
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .statusBarsPadding()
                 .padding(top = 8.dp, start = 12.dp, end = 12.dp),
         ) {
             alert?.let { item ->

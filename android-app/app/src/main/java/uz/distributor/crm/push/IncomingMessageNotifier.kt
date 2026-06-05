@@ -7,7 +7,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import uz.distributor.crm.util.AppForegroundTracker
+import uz.distributor.crm.data.local.ChatSessionHolder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,21 +21,24 @@ data class IncomingMessageAlert(
 class IncomingMessageNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    private val _alerts = MutableSharedFlow<IncomingMessageAlert>(extraBufferCapacity = 8)
+    private val _alerts = MutableSharedFlow<IncomingMessageAlert>(extraBufferCapacity = 16)
     val alerts: SharedFlow<IncomingMessageAlert> = _alerts.asSharedFlow()
 
     suspend fun notifyIncoming(alert: IncomingMessageAlert) {
+        if (alert.conversationId == ChatSessionHolder.openConversationId) return
+
         playSound()
-        if (AppForegroundTracker.isInForeground) {
-            _alerts.emit(alert)
-        } else {
-            NotificationHelper.showMessageNotification(
-                context = context,
-                conversationId = alert.conversationId,
-                senderName = alert.senderName,
-                preview = alert.preview,
-            )
-        }
+
+        // Ilova ichida Telegram uslubidagi tepa banner
+        _alerts.emit(alert)
+
+        // Tizim bildirishnomasi (heads-up) — yangi HIGH kanal orqali
+        NotificationHelper.showMessageNotification(
+            context = context,
+            conversationId = alert.conversationId,
+            senderName = alert.senderName,
+            preview = alert.preview,
+        )
     }
 
     fun playSound() {

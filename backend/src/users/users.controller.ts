@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -11,6 +11,12 @@ import { UsersService } from './users.service';
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('app')
+  @ApiOperation({ summary: 'List mobile app users (APK logins)' })
+  listAppUsers() {
+    return this.usersService.findAllApp();
+  }
 
   @Post('app')
   @ApiOperation({ summary: 'Create mobile app login (APK)' })
