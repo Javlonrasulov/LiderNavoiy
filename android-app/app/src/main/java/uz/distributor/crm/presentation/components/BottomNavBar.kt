@@ -2,24 +2,48 @@ package uz.distributor.crm.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.StateFlow
+import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.theme.SherinColors
+import javax.inject.Inject
+
+@HiltViewModel
+class NavUnreadViewModel @Inject constructor(
+    realtime: MessagesRealtimeCoordinator,
+) : ViewModel() {
+    val messagesUnread: StateFlow<Int> = realtime.totalUnread
+
+    init {
+        realtime.start()
+    }
+}
 
 enum class NavTab { HOME, DELIVERY, LOCATION, PLAN, MESSAGES }
 
@@ -38,8 +62,10 @@ fun BottomNavBar(
     onTabSelected: (NavTab) -> Unit,
     isDark: Boolean,
     modifier: Modifier = Modifier,
+    unreadViewModel: NavUnreadViewModel = hiltViewModel(LocalContext.current as ComponentActivity),
 ) {
     val lang = LocalAppLanguage.current
+    val messagesUnread by unreadViewModel.messagesUnread.collectAsState()
     val tabs = listOf(
         Triple(NavTab.HOME, Icons.Default.Home, AppStrings.navLabel(NavTab.HOME, lang)),
         Triple(NavTab.DELIVERY, Icons.Default.LocalShipping, AppStrings.navLabel(NavTab.DELIVERY, lang)),
@@ -104,15 +130,57 @@ fun BottomNavBar(
                                 tint = if (active) activeColor else inactiveColor,
                                 modifier = Modifier.size(21.dp),
                             )
+                            if (tab == NavTab.MESSAGES && messagesUnread > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 10.dp, y = (-6).dp)
+                                        .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                                        .background(Color(0xFFEF4444), CircleShape)
+                                        .padding(horizontal = 5.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = if (messagesUnread > 99) "99+" else messagesUnread.toString(),
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        label,
-                        fontSize = 10.sp,
-                        color = if (active) activeColor else inactiveColor,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 10.sp,
+                            color = if (active) activeColor else inactiveColor,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        if (tab == NavTab.MESSAGES && messagesUnread > 0) {
+                            Spacer(Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                                    .background(Color(0xFFEF4444), CircleShape)
+                                    .padding(horizontal = 4.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (messagesUnread > 99) "99+" else messagesUnread.toString(),
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -108,27 +108,88 @@ export function appUserToRow(
   };
 }
 
+const SOTR_DEPT_KEYS: Record<string, string> = {
+  '': 'empDeptNone',
+  sales: 'sotrDeptSales',
+  delivery: 'sotrDeptDelivery',
+  salesDept: 'sotrDeptSalesDept',
+  office: 'sotrDeptOffice',
+  cash: 'sotrDeptCash',
+  warehouse: 'sotrDeptWarehouse',
+  accounting: 'sotrDeptAccounting',
+};
+
+const SOTR_POS_KEYS: Record<string, string> = {
+  director: 'sotrPosDirector',
+  salesAgent: 'sotrPosSalesAgent',
+  delivery: 'sotrPosDelivery',
+  deptHead: 'sotrPosDeptHead',
+  chef: 'sotrPosChef',
+  cashier: 'sotrPosCashier',
+  warehouse: 'sotrPosWarehouse',
+  operator: 'sotrPosOperator',
+  accountant: 'sotrPosAccountant',
+  promoter: 'sotrPosPromoter',
+  manager: 'sotrPosManager',
+};
+
+export function translateSotrDept(key: string | undefined, t: Record<string, string>): string {
+  if (!key) return '';
+  const labelKey = SOTR_DEPT_KEYS[key];
+  return labelKey ? (t[labelKey] || key) : key;
+}
+
+export function translateSotrPos(key: string | undefined, t: Record<string, string>): string {
+  if (!key) return '';
+  const labelKey = SOTR_POS_KEYS[key];
+  return labelKey ? (t[labelKey] || key) : key;
+}
+
+export function getSotrDeptOptions(t: Record<string, string>) {
+  return Object.entries(SOTR_DEPT_KEYS).map(([value, labelKey]) => ({
+    value,
+    label: value === '' ? (t.empDeptNone || '— tanlanmagan —') : (t[labelKey] || value),
+  }));
+}
+
+export function getSotrPosOptions(t: Record<string, string>) {
+  return Object.keys(SOTR_POS_KEYS).map(value => ({
+    value,
+    label: t[SOTR_POS_KEYS[value]] || value,
+  }));
+}
+
+export function sotrudnikDeptLabel(emp: SotrudnikRow, t: Record<string, string>): string {
+  return translateSotrDept(emp.deptKey, t) || emp.department;
+}
+
+export function sotrudnikPosLabel(emp: SotrudnikRow, t: Record<string, string>): string {
+  return translateSotrPos(emp.posKey, t) || emp.position;
+}
+
 export function appUserToSotrudnikRow(
   app: AppUserRecord,
   distributor: Distributor | undefined,
   index: number,
-  t: Record<string, string>,
+  _t: Record<string, string>,
 ): SotrudnikRow {
-  let position = t.sotrPosSalesAgent || 'Savdo agenti';
-  let department = t.sotrDeptSales || 'Savdo';
+  let deptKey = 'sales';
+  let posKey = 'salesAgent';
   if (app.role === 'manager') {
-    position = t.sotrPosManager || 'Menejer';
-    department = t.sotrDeptOffice || 'Bosh ofis';
+    deptKey = 'office';
+    posKey = 'manager';
   } else if (app.role === 'admin') {
-    position = t.sotrPosDirector || 'Direktor';
-    department = t.sotrDeptOffice || 'Bosh ofis';
+    deptKey = 'office';
+    posKey = 'director';
   }
 
   return {
     tabel: index,
     name: app.fullName,
-    department,
-    position,
+    department: '',
+    position: '',
+    deptKey,
+    posKey,
     phone: distributor?.phone || '',
     orgId: distributor?.companyId || 'boran',
     backendUserId: app.id,

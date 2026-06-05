@@ -33,6 +33,13 @@ interface ApiService {
     @GET("clients/{id}")
     suspend fun getClient(@Path("id") id: String): ClientDto
 
+    @POST("clients")
+    suspend fun createClient(@Body body: CreateClientRequest): ClientDto
+
+    @Multipart
+    @POST("clients/upload-photo")
+    suspend fun uploadClientPhoto(@Part file: MultipartBody.Part): ClientPhotoUploadDto
+
     @GET("products")
     suspend fun getProducts(@Query("category") category: String? = null): List<ProductDto>
 
@@ -59,6 +66,9 @@ interface ApiService {
 
     @POST("notifications/fcm-token")
     suspend fun registerFcmToken(@Body body: Map<String, String>)
+
+    @GET("notifications/unread-count")
+    suspend fun getUnreadNotificationCount(): UnreadCountDto
 
     @GET("messages/contacts")
     suspend fun getChatContacts(@Query("companyId") companyId: String? = null): List<ChatContactDto>

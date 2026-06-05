@@ -35,6 +35,15 @@ export class ClientsService {
     return client;
   }
 
+  findByInn(inn: string) {
+    const normalized = inn.trim();
+    if (!normalized) return null;
+    return this.baseQuery()
+      .where('c.isActive = true')
+      .andWhere('c.inn = :inn', { inn: normalized })
+      .getOne();
+  }
+
   search(query: string, distributorId?: string) {
     const qb = this.baseQuery()
       .where('c.isActive = true')
@@ -44,8 +53,11 @@ export class ClientsService {
   }
 
   async create(dto: CreateClientDto) {
+    const code =
+      dto.code?.trim() ||
+      `A${Date.now().toString(36).slice(-7).toUpperCase()}`;
     const client = this.repo.create({
-      code: dto.code,
+      code,
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
       phone: dto.phone ?? null,
@@ -61,6 +73,7 @@ export class ClientsService {
       territory: dto.territory ?? null,
       clientClass: dto.clientClass ?? null,
       priceCategory: dto.priceCategory ?? null,
+      photoUrl: dto.photoUrl ?? null,
       isActive: true,
     });
     const saved = await this.repo.save(client);
@@ -84,6 +97,7 @@ export class ClientsService {
     if (dto.territory !== undefined) client.territory = dto.territory;
     if (dto.clientClass !== undefined) client.clientClass = dto.clientClass;
     if (dto.priceCategory !== undefined) client.priceCategory = dto.priceCategory;
+    if (dto.photoUrl !== undefined) client.photoUrl = dto.photoUrl;
     if (dto.isActive !== undefined) client.isActive = dto.isActive;
     await this.repo.save(client);
     return this.findOne(id);

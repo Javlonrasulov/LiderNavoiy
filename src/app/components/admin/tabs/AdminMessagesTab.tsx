@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MessageSquare, Send, Search, User, Paperclip, Image as ImageIcon,
   FileText, X, Copy, Trash2, Reply, CheckCircle2, Circle, ArrowLeft, Check, CheckCheck,
+  PenSquare,
 } from 'lucide-react';
 import {
   api, connectMessages, resolveFileUrl,
@@ -16,6 +17,7 @@ import {
   setActiveConversationId,
   registerOpenConversationHandler,
   consumePendingOpenConversation,
+  triggerUnreadRefresh,
 } from '../../../utils/messageNotificationState';
 
 function initials(name: string) {
@@ -47,6 +49,15 @@ function previewText(msg: ChatMessage, t: Record<string, string>) {
   return '';
 }
 
+function userRoleLabel(role: string, t: Record<string, string>) {
+  switch (role.toLowerCase()) {
+    case 'admin': return t.msgRoleAdmin ?? 'Admin';
+    case 'manager': return t.msgRoleManager ?? 'Menejer';
+    case 'distributor': return t.msgRoleAgent ?? 'Agent';
+    default: return role;
+  }
+}
+
 export function AdminMessagesTab() {
   const { isDark } = useTheme();
   const { lang } = useLang();
@@ -60,6 +71,7 @@ export function AdminMessagesTab() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
+  const [sidebarTab, setSidebarTab] = useState<'chats' | 'contacts'>('chats');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +133,7 @@ export function AdminMessagesTab() {
       ]);
       setConversations(convs);
       setContacts(cts);
+      triggerUnreadRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);
     } finally {
@@ -201,6 +214,7 @@ export function AdminMessagesTab() {
       setConversations((prev) =>
         prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c)),
       );
+      triggerUnreadRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);
     }
@@ -232,6 +246,7 @@ export function AdminMessagesTab() {
         if (exists) return prev.map((c) => (c.id === conv.id ? conv : c));
         return [conv, ...prev];
       });
+      setSidebarTab('chats');
       await openConversation(conv.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);
@@ -319,20 +334,16 @@ export function AdminMessagesTab() {
     setContextMenu(null);
   };
 
-  const filteredContacts = contacts.filter((c) =>
-    c.fullName.toLowerCase().includes(search.toLowerCase()),
-  );
+  const searchLower = search.toLowerCase();
+  const filteredConversations = conversations
+    .filter((c) => c.otherUser.fullName.toLowerCase().includes(searchLower))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  const mergedList = (() => {
-    const convUserIds = new Set(conversations.map((c) => c.otherUser.id));
-    const fromContacts = filteredContacts
-      .filter((c) => !convUserIds.has(c.id))
-      .map((c) => ({ type: 'contact' as const, contact: c }));
-    const fromConvs = conversations
-      .filter((c) => c.otherUser.fullName.toLowerCase().includes(search.toLowerCase()))
-      .map((c) => ({ type: 'conv' as const, conv: c }));
-    return [...fromConvs, ...fromContacts];
-  })();
+  const filteredContacts = contacts.filter((c) =>
+    c.fullName.toLowerCase().includes(searchLower) ||
+    c.username.toLowerCase().includes(searchLower) ||
+    c.role.toLowerCase().includes(searchLower),
+  );
 
   const renderMessageBody = (msg: ChatMessage, isMine: boolean) => (
     <>
@@ -373,9 +384,17 @@ export function AdminMessagesTab() {
         <div className={`p-2 rounded-xl ${D ? 'bg-[#2b5278]/30' : 'bg-indigo-100'}`}>
           <MessageSquare className={`w-6 h-6 ${D ? 'text-[#6ab2f2]' : 'text-indigo-600'}`} />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className={`text-xl font-bold ${text}`}>{t.navMessages}</h2>
         </div>
+        <button
+          type="button"
+          onClick={() => setSidebarTab('contacts')}
+          title={t.msgStartChat}
+          className={`p-2 rounded-xl transition-colors ${hoverBg} ${sub} hover:text-[#6ab2f2]`}
+        >
+          <PenSquare className="w-5 h-5" />
+        </button>
       </div>
 
       {error && (
@@ -389,7 +408,7 @@ export function AdminMessagesTab() {
       <div className={`flex flex-1 min-h-0 border-t ${border}`}>
         {/* Sidebar */}
         <div className={`${activeConv ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-col border-r ${border} ${sidebarBg}`}>
-          <div className="p-3">
+          <div className="p-3 space-y-3">
             <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${inputBg}`}>
               <Search className={`w-4 h-4 ${sub}`} />
               <input
@@ -399,17 +418,49 @@ export function AdminMessagesTab() {
                 className={`flex-1 bg-transparent text-sm outline-none ${text} placeholder-[#708499]`}
               />
             </div>
+            <div className="flex gap-2">
+              {(['chats', 'contacts'] as const).map((tab) => {
+                const selected = sidebarTab === tab;
+                const label = tab === 'chats' ? t.msgChatsTab : t.msgContactsTab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setSidebarTab(tab)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      selected
+                        ? D
+                          ? 'bg-[#2b5278]/30 text-[#6ab2f2]'
+                          : 'bg-indigo-50 text-indigo-600'
+                        : `${sub} ${hoverBg}`
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {loading ? (
               <p className={`text-center text-sm ${sub} py-8`}>{t.msgLoading}</p>
-            ) : mergedList.length === 0 ? (
-              <p className={`text-center text-sm ${sub} py-8`}>{t.msgNoAgents}</p>
-            ) : (
-              mergedList.map((item) => {
-                if (item.type === 'conv') {
-                  const c = item.conv;
+            ) : sidebarTab === 'chats' ? (
+              filteredConversations.length === 0 ? (
+                <div className={`text-center px-4 py-8 ${sub}`}>
+                  <p className="text-sm">{t.msgNoChats}</p>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarTab('contacts')}
+                    className={`mt-4 px-4 py-2 rounded-xl text-sm font-medium ${
+                      D ? 'bg-[#2b5278] text-white' : 'bg-indigo-600 text-white'
+                    }`}
+                  >
+                    {t.msgStartChat}
+                  </button>
+                </div>
+              ) : (
+                filteredConversations.map((c) => {
                   const isActive = c.id === activeId;
                   return (
                     <button
@@ -450,28 +501,33 @@ export function AdminMessagesTab() {
                       </div>
                     </button>
                   );
-                }
-                const contact = item.contact;
-                return (
-                  <button
-                    key={contact.id}
-                    type="button"
-                    onClick={() => startWithContact(contact)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-left ${hoverBg}`}
+                })
+              )
+            ) : filteredContacts.length === 0 ? (
+              <p className={`text-center text-sm ${sub} py-8`}>{t.msgNoContacts}</p>
+            ) : (
+              filteredContacts.map((contact) => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  onClick={() => startWithContact(contact)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-left ${hoverBg}`}
+                >
+                  <div
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                    style={{ background: avatarColor(contact.id) }}
                   >
-                    <div
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-                      style={{ background: avatarColor(contact.id) }}
-                    >
-                      {initials(contact.fullName)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className={`text-sm font-medium ${text}`}>{contact.fullName}</span>
-                      <p className={`text-xs ${sub}`}>{contact.role}</p>
-                    </div>
-                  </button>
-                );
-              })
+                    {initials(contact.fullName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-sm font-medium block truncate ${text}`}>
+                      {contact.fullName}
+                    </span>
+                    <p className={`text-xs ${sub}`}>{userRoleLabel(contact.role, t)}</p>
+                  </div>
+                  <span className={`text-xs ${sub} flex-shrink-0`}>@{contact.username}</span>
+                </button>
+              ))
             )}
           </div>
         </div>

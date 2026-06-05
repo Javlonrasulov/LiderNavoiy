@@ -4,20 +4,37 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { DistributorProfile } from '../../distributors/entities/distributor-profile.entity';
 
-@Entity('clients')
-@Index(['companyId'])
-export class Client {
+export enum ClientRequestStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
+@Entity('client_requests')
+@Index(['status'])
+@Index(['inn'])
+export class ClientRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  code: string;
+  @Column({ type: 'varchar', default: ClientRequestStatus.PENDING })
+  status: ClientRequestStatus;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributorId: string | null;
+
+  @ManyToOne(() => DistributorProfile, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'distributorId' })
+  distributor: DistributorProfile | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  companyId: string | null;
 
   @Column()
   name: string;
@@ -32,9 +49,6 @@ export class Client {
   address: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  companyId: string | null;
-
-  @Column({ type: 'varchar', nullable: true })
   lineCode: string | null;
 
   @Column({ type: 'double precision', nullable: true })
@@ -43,18 +57,8 @@ export class Client {
   @Column({ type: 'double precision', nullable: true })
   longitude: number | null;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
-  balance: number;
-
   @Column({ type: 'varchar', nullable: true })
   category: string | null;
-
-  @Column({ type: 'uuid', nullable: true })
-  distributorId: string | null;
-
-  @ManyToOne(() => DistributorProfile, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'distributorId' })
-  distributor: DistributorProfile | null;
 
   @Column({ type: 'varchar', nullable: true })
   inn: string | null;
@@ -74,8 +78,20 @@ export class Client {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
-  @Column({ default: true })
-  isActive: boolean;
+  @Column({ type: 'varchar', nullable: true })
+  agentName: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  note: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  approvedClientId: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

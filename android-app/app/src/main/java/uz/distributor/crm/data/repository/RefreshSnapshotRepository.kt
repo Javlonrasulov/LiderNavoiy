@@ -1,0 +1,89 @@
+package uz.distributor.crm.data.repository
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
+import javax.inject.Inject
+import javax.inject.Singleton
+
+private val Context.refreshDataStore by preferencesDataStore("refresh_snapshot")
+
+data class RefreshSnapshot(
+    val clientIds: Set<String> = emptySet(),
+    val productStock: Map<String, Double> = emptyMap(),
+    val unreadMessages: Int = 0,
+    val unreadNotifications: Int = 0,
+    val totalClients: Int = 0,
+    val visitedClients: Int = 0,
+    val totalSales: Double = 0.0,
+    val productCount: Int = 0,
+    /** conversationId -> lastMessageId */
+    val conversationLastMessages: Map<String, String> = emptyMap(),
+)
+
+private data class RefreshSnapshotPersisted(
+    val clientIds: List<String> = emptyList(),
+    val productStock: List<StockEntry> = emptyList(),
+    val unreadMessages: Int = 0,
+    val unreadNotifications: Int = 0,
+    val totalClients: Int = 0,
+    val visitedClients: Int = 0,
+    val totalSales: Double = 0.0,
+    val productCount: Int = 0,
+    val conversationLastMessages: List<ConversationMessageEntry> = emptyList(),
+) {
+    fun toSnapshot() = RefreshSnapshot(
+        clientIds = clientIds.toSet(),
+        productStock = productStock.associate { it.id to it.stock },
+        unreadMessages = unreadMessages,
+        unreadNotifications = unreadNotifications,
+        totalClients = totalClients,
+        visitedClients = visitedClients,
+        totalSales = totalSales,
+        productCount = productCount,
+        conversationLastMessages = conversationLastMessages.associate { it.conversationId to it.lastMessageId },
+    )
+
+    companion object {
+        fun from(snapshot: RefreshSnapshot) = RefreshSnapshotPersisted(
+            clientIds = snapshot.clientIds.toList(),
+            productStock = snapshot.productStock.map { StockEntry(it.key, it.value) },
+            unreadMessages = snapshot.unreadMessages,
+            unreadNotifications = snapshot.unreadNotifications,
+            totalClients = snapshot.totalClients,
+            visitedClients = snapshot.visitedClients,
+            totalSales = snapshot.totalSales,
+            productCount = snapshot.productCount,
+            conversationLastMessages = snapshot.conversationLastMessages.map {
+                ConversationMessageEntry(it.key, it.value)
+            },
+        )
+    }
+}
+
+private data class StockEntry(val id: String, val stock: Double)
+private data class ConversationMessageEntry(val conversationId: String, val lastMessageId: String)
+
+@Singleton
+class RefreshSnapshotRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val gson: Gson,
+) {
+    private val snapshotKey = stringPreferencesKey("last_snapshot_v2")
+
+    suspend fun load(): RefreshSnapshot? {
+        val json = context.refreshDataStore.data.first()[snapshotKey] ?: return null
+        return runCatching {
+            gson.fromJson(json, RefreshSnapshotPersisted::class.java).toSnapshot()
+        }.getOrNull()
+    }
+
+    suspend fun save(snapshot: RefreshSnapshot) {
+        val json = gson.toJson(RefreshSnapshotPersisted.from(snapshot))
+        context.refreshDataStore.edit { it[snapshotKey] = json }
+    }
+}

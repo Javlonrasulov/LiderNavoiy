@@ -16,13 +16,17 @@ import uz.distributor.crm.data.repository.MessageRepository
 import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import javax.inject.Inject
 
+enum class MessagesListTab { CHATS, CONTACTS }
+
 data class MessagesUiState(
     val isLoading: Boolean = true,
     val conversations: List<ConversationDto> = emptyList(),
     val contacts: List<ChatContactDto> = emptyList(),
+    val contactsLoading: Boolean = false,
+    val contactsLoaded: Boolean = false,
+    val selectedTab: MessagesListTab = MessagesListTab.CHATS,
     val myUserId: String? = null,
     val error: String? = null,
-    val showContactPicker: Boolean = false,
 )
 
 @HiltViewModel
@@ -65,26 +69,40 @@ class MessagesViewModel @Inject constructor(
         realtime.refresh()
     }
 
-    fun openContactPicker() {
-        viewModelScope.launch {
-            try {
-                val contacts = messageRepository.getContacts()
-                _uiState.update { it.copy(contacts = contacts, showContactPicker = true) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
-            }
+    fun selectTab(tab: MessagesListTab) {
+        _uiState.update { it.copy(selectedTab = tab) }
+        if (tab == MessagesListTab.CONTACTS) {
+            loadContacts()
         }
     }
 
-    fun dismissContactPicker() {
-        _uiState.update { it.copy(showContactPicker = false) }
+    fun loadContacts() {
+        if (_uiState.value.contactsLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(contactsLoading = true) }
+            try {
+                val contacts = messageRepository.getContacts()
+                _uiState.update {
+                    it.copy(
+                        contacts = contacts,
+                        contactsLoaded = true,
+                        contactsLoading = false,
+                        error = null,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(contactsLoading = false, error = e.message)
+                }
+            }
+        }
     }
 
     fun startConversation(userId: String, onReady: (String) -> Unit) {
         viewModelScope.launch {
             try {
                 val conv = messageRepository.startConversation(userId)
-                dismissContactPicker()
+                _uiState.update { it.copy(selectedTab = MessagesListTab.CHATS) }
                 realtime.refresh()
                 onReady(conv.id)
             } catch (e: Exception) {

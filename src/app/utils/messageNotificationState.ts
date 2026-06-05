@@ -19,6 +19,16 @@ export function registerOpenConversationHandler(fn: ((convId: string) => void) |
   openConversationHandler = fn;
 }
 
+let unreadRefreshHandler: (() => void) | null = null;
+
+export function registerUnreadRefresh(fn: (() => void) | null) {
+  unreadRefreshHandler = fn;
+}
+
+export function triggerUnreadRefresh() {
+  unreadRefreshHandler?.();
+}
+
 let pendingOpenConversationId: string | null = null;
 
 export function setPendingOpenConversation(id: string) {

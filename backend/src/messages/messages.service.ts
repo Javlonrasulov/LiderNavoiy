@@ -97,30 +97,14 @@ export class MessagesService {
     return conv;
   }
 
-  async getContacts(userId: string, companyId?: string): Promise<ChatUserDto[]> {
-    const me = await this.userRepo.findOne({ where: { id: userId } });
-    if (!me) throw new NotFoundException('User not found');
-
-    if (me.role === UserRole.DISTRIBUTOR) {
-      const users = await this.userRepo.find({
-        where: { role: In([UserRole.ADMIN, UserRole.MANAGER]), isActive: true },
-        order: { fullName: 'ASC' },
-      });
-      return users.map((u) => this.toUserDto(u));
-    }
-
-    const qb = this.userRepo
-      .createQueryBuilder('u')
-      .leftJoinAndSelect('u.distributorProfile', 'p')
-      .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
-      .andWhere('u.isActive = true');
-
-    if (companyId) {
-      qb.andWhere('p.companyId = :companyId', { companyId });
-    }
-
-    const users = await qb.orderBy('u.fullName', 'ASC').getMany();
-    return users.map((u) => this.toUserDto(u));
+  async getContacts(userId: string, _companyId?: string): Promise<ChatUserDto[]> {
+    const users = await this.userRepo.find({
+      where: { isActive: true },
+      order: { fullName: 'ASC' },
+    });
+    return users
+      .filter((u) => u.id !== userId)
+      .map((u) => this.toUserDto(u));
   }
 
   async findOrCreateConversation(userId: string, otherUserId: string): Promise<ConversationDto> {

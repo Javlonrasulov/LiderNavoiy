@@ -14,8 +14,10 @@ import {
   COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES, ORG_EMPLOYEES,
   UZ_CENTER, catPie, weeklyData,
   fmt,
-  type Tab, type AgentRow, type ChartRow, type LangAdmin,
+  allClients,
+  type Tab, type AgentRow, type ChartRow, type ClientRow, type LangAdmin,
 } from '../data/adminData';
+import { ClientRequestProvider } from '../components/ClientRequestContext';
 
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { AdminNavbar } from '../components/admin/AdminNavbar';
@@ -32,6 +34,7 @@ import { AdminTaroziTab } from '../components/admin/tabs/AdminTaroziTab';
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
 import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
+import { useMessagesUnreadCount } from '../hooks/useMessagesUnread';
 
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
@@ -52,6 +55,8 @@ export default function AdminPanel() {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const messagesUnread = useMessagesUnreadCount(isLoggedIn && !!selectedCompany);
+  const [clientsForBell, setClientsForBell] = useState<ClientRow[]>([]);
 
   const companyBtnRef = useRef<HTMLButtonElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -250,6 +255,7 @@ export default function AdminPanel() {
   }
 
   return (
+    <ClientRequestProvider>
     <div
       className={`flex min-h-screen overflow-x-hidden ${bg} ${text}`}
       style={{
@@ -273,7 +279,7 @@ export default function AdminPanel() {
         showBalances={showBalances} setShowBalances={setShowBalances}
         t={t} selectedCompany={selectedCompany}
         clearCompany={clearCompany} navigate={navigate} logout={logout}
-        setIsDark={setIsDark} navItems={NAV_ITEMS}
+        setIsDark={setIsDark} messagesUnread={messagesUnread} navItems={NAV_ITEMS}
       />
 
       {/* Main content */}
@@ -296,6 +302,7 @@ export default function AdminPanel() {
           showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu}
           companyBtnRef={companyBtnRef} langBtnRef={langBtnRef}
           setTab={setTab}
+          existingClients={clientsForBell.length > 0 ? clientsForBell : allClients}
         />
         </div>
 
@@ -382,6 +389,7 @@ export default function AdminPanel() {
               D={D} card={card} divider={divider} text={text} sub={sub} t={t}
               showBalances={showBalances}
               selectedCompanyIds={selectedCompanyIds}
+              onClientsChange={setClientsForBell}
             />
           )}
 
@@ -507,5 +515,6 @@ export default function AdminPanel() {
         <MessageNotificationHost onGoToMessages={() => setTab('messages')} />
       )}
     </div>
+    </ClientRequestProvider>
   );
 }

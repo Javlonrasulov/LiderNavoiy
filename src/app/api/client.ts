@@ -248,6 +248,40 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // ─── Client requests (agent → admin approval) ───
+  getClientRequests: (companyId?: string) =>
+    request<Array<{
+      id: string;
+      status: string;
+      name: string;
+      fullName?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      companyId?: string | null;
+      lineCode?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      category?: string | null;
+      inn?: string | null;
+      contactPerson?: string | null;
+      territory?: string | null;
+      clientClass?: string | null;
+      priceCategory?: string | null;
+      photoUrl?: string | null;
+      agentName?: string | null;
+      note?: string | null;
+      createdAt: string;
+      distributor?: { id: string; user?: { fullName: string } } | null;
+    }>>(`/client-requests${companyId ? `?companyId=${companyId}` : ''}`),
+
+  approveClientRequest: (id: string) =>
+    request<{ request: unknown; client: Client }>(`/client-requests/${id}/approve`, {
+      method: 'POST',
+    }),
+
+  rejectClientRequest: (id: string) =>
+    request<unknown>(`/client-requests/${id}/reject`, { method: 'POST' }),
+
   // ─── Health ───
   health: () => request<{ status: string }>('/health'),
 

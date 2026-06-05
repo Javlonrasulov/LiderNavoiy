@@ -1,5 +1,7 @@
 package uz.distributor.crm.util
 
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -10,7 +12,10 @@ object AppForegroundTracker : DefaultLifecycleObserver {
         private set
 
     fun init() {
-        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        // Application.onCreate da darhol chaqirilsa ba'zi qurilmalarda crash beradi
+        Handler(Looper.getMainLooper()).post {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        }
     }
 
     override fun onStart(owner: LifecycleOwner) {

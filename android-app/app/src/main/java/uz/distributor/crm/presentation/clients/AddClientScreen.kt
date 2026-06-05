@@ -1,0 +1,409 @@
+package uz.distributor.crm.presentation.clients
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.rememberAsyncImagePainter
+import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.theme.SherinColors
+import uz.distributor.crm.presentation.theme.SherinSubpageHeader
+import uz.distributor.crm.presentation.theme.sherinPageBackground
+import java.io.File
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddClientScreen(
+    onBack: () -> Unit,
+    onSaved: () -> Unit,
+    viewModel: AddClientViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsState()
+    val lang = LocalAppLanguage.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val cardBg = if (isDark) SherinColors.CardDark else Color.White
+    val context = LocalContext.current
+
+    var showFullScreenMap by remember { mutableStateOf(false) }
+    var showPhotoSource by remember { mutableStateOf(false) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    val galleryPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        viewModel.onPhotoSelected(uri)
+        showPhotoSource = false
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture(),
+    ) { success ->
+        if (success) {
+            pendingCameraUri?.let { viewModel.onPhotoSelected(it) }
+        }
+        showPhotoSource = false
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            val uri = createCameraImageUri(context)
+            pendingCameraUri = uri
+            cameraLauncher.launch(uri)
+        }
+    }
+
+    fun launchCamera() {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            val uri = createCameraImageUri(context)
+            pendingCameraUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(state.saved) {
+        if (state.saved) onSaved()
+    }
+
+    if (showFullScreenMap) {
+        FullScreenMapDialog(
+            latitude = state.latitude,
+            longitude = state.longitude,
+            isDark = isDark,
+            lang = lang,
+            onLocationSelected = viewModel::onLocationSelected,
+            onDismiss = { showFullScreenMap = false },
+        )
+    }
+
+    if (showPhotoSource) {
+        ModalBottomSheet(onDismissRequest = { showPhotoSource = false }) {
+            ListItem(
+                headlineContent = { Text(AppStrings.takePhoto(lang)) },
+                leadingContent = {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null)
+                },
+                modifier = Modifier.clickable {
+                    showPhotoSource = false
+                    launchCamera()
+                },
+            )
+            ListItem(
+                headlineContent = { Text(AppStrings.chooseFromGallery(lang)) },
+                leadingContent = {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                },
+                modifier = Modifier.clickable {
+                    galleryPicker.launch("image/*")
+                },
+            )
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(sherinPageBackground(isDark)),
+    ) {
+        SherinSubpageHeader(
+            title = AppStrings.addClientTitle(lang),
+            isDark = isDark,
+            onBack = onBack,
+        )
+
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            OutlinedTextField(
+                value = state.name,
+                onValueChange = viewModel::onNameChange,
+                label = { Text(AppStrings.clientName(lang)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+            )
+            OutlinedTextField(
+                value = state.inn,
+                onValueChange = viewModel::onInnChange,
+                label = { Text(AppStrings.clientInn(lang)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                shape = RoundedCornerShape(14.dp),
+            )
+            OutlinedTextField(
+                value = state.phoneDigits,
+                onValueChange = viewModel::onPhoneChange,
+                label = { Text(AppStrings.clientPhone(lang)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                prefix = { Text("+998 ", fontWeight = FontWeight.Medium) },
+                placeholder = { Text("90 123 45 67") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                shape = RoundedCornerShape(14.dp),
+            )
+
+            Surface(shape = RoundedCornerShape(20.dp), color = cardBg) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            AppStrings.clientLocation(lang),
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDark) Color.White else Color.Black,
+                        )
+                        Row {
+                            TextButton(onClick = { showFullScreenMap = true }) {
+                                Icon(Icons.Default.Fullscreen, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(AppStrings.fullScreenMap(lang), fontSize = 13.sp)
+                            }
+                            TextButton(onClick = viewModel::useMyLocation) {
+                                Icon(Icons.Default.MyLocation, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(AppStrings.useMyLocation(lang), fontSize = 13.sp)
+                            }
+                        }
+                    }
+                    Text(
+                        AppStrings.tapMapHint(lang),
+                        fontSize = 12.sp,
+                        color = Color(0xFF9CA3AF),
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                    ) {
+                        LocationPickerMap(
+                            latitude = state.latitude,
+                            longitude = state.longitude,
+                            isDark = isDark,
+                            onLocationSelected = viewModel::onLocationSelected,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(36.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.Black.copy(alpha = 0.45f),
+                        ) {
+                            Icon(
+                                Icons.Default.Fullscreen,
+                                contentDescription = AppStrings.fullScreenMap(lang),
+                                tint = Color.White,
+                                modifier = Modifier.padding(8.dp),
+                            )
+                        }
+                    }
+                    state.latitude?.let { lat ->
+                        state.longitude?.let { lng ->
+                            Text(
+                                "${String.format("%.6f", lat)}, ${String.format("%.6f", lng)}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF6366F1),
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            Surface(shape = RoundedCornerShape(20.dp), color = cardBg) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        AppStrings.clientPhoto(lang),
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDark) Color.White else Color.Black,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6))
+                            .border(
+                                1.dp,
+                                if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB),
+                                RoundedCornerShape(16.dp),
+                            )
+                            .clickable { showPhotoSource = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (state.photoUri != null) {
+                            Image(
+                                painter = rememberAsyncImagePainter(state.photoUri),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.CameraAlt, null, tint = Color(0xFF9CA3AF))
+                                Text(AppStrings.selectPhoto(lang), color = Color(0xFF9CA3AF), fontSize = 13.sp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = { showPhotoSource = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text(AppStrings.selectPhoto(lang))
+                    }
+                }
+            }
+
+            state.error?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            }
+        }
+
+        Button(
+            onClick = viewModel::save,
+            enabled = !state.isSaving,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = SherinColors.Primary),
+        ) {
+            if (state.isSaving) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White)
+            } else {
+                Text(AppStrings.saveClient(lang), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullScreenMapDialog(
+    latitude: Double?,
+    longitude: Double?,
+    isDark: Boolean,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    onLocationSelected: (Double, Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(if (isDark) Color(0xFF111827) else Color.White),
+        ) {
+            LocationPickerMap(
+                latitude = latitude,
+                longitude = longitude,
+                isDark = isDark,
+                onLocationSelected = onLocationSelected,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                }
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black.copy(alpha = 0.55f),
+                ) {
+                    Text(
+                        AppStrings.clientLocation(lang),
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        fontSize = 14.sp,
+                    )
+                }
+                Spacer(Modifier.width(48.dp))
+            }
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(20.dp)
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SherinColors.Primary),
+            ) {
+                Text(AppStrings.done(lang), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+private fun createCameraImageUri(context: android.content.Context): Uri {
+    val file = File(context.cacheDir, "client_photo_${System.currentTimeMillis()}.jpg")
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+}

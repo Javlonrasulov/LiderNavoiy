@@ -7,12 +7,19 @@ import {
   Post,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { ClientsService } from './clients.service';
+import { ClientsUploadService } from './clients-upload.service';
+import { ClientRequestsService } from './client-requests.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
 
@@ -21,7 +28,11 @@ import { UserRole } from '../common/enums';
 @UseGuards(JwtAuthGuard)
 @Controller('clients')
 export class ClientsController {
-  constructor(private readonly service: ClientsService) {}
+  constructor(
+    private readonly service: ClientsService,
+    private readonly uploadService: ClientsUploadService,
+    private readonly requestsService: ClientRequestsService,
+  ) {}
 
   private scopeDistributorId(user: User): string | undefined {
     if (user.role === UserRole.DISTRIBUTOR) {
@@ -52,10 +63,43 @@ export class ClientsController {
     return this.service.findOne(id, this.scopeDistributorId(req.user));
   }
 
+  @Post('upload-photo')
+  @ApiOperation({ summary: 'Upload client storefront photo' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  uploadPhoto(@UploadedFile() file: Express.Multer.File) {
+    return this.uploadService.savePhoto(file);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create client' })
-  create(@Body() dto: CreateClientDto) {
-    return this.service.create(dto);
+  create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
+    const distributorId = this.scopeDistributorId(req.user);
+    if (req.user.role === UserRole.DISTRIBUTOR) {
+      const agentName = req.user.fullName ?? req.user.username;
+      const requestDto: CreateClientRequestDto = {
+        name: dto.name,
+        fullName: dto.fullName,
+        phone: dto.phone,
+        address: dto.address,
+        companyId: dto.companyId,
+        lineCode: dto.lineCode,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        category: dto.category,
+        inn: dto.inn,
+        contactPerson: dto.contactPerson,
+        territory: dto.territory,
+        clientClass: dto.clientClass,
+        priceCategory: dto.priceCategory,
+        photoUrl: dto.photoUrl,
+      };
+      return this.requestsService.create(requestDto, distributorId, agentName);
+    }
+    return this.service.create({
+      ...dto,
+      distributorId: dto.distributorId ?? distributorId,
+    });
   }
 
   @Patch(':id')

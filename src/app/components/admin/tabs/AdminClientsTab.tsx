@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
-import { fmtFull, type ClientRow } from '../../../data/adminData';
+import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
+import { loadApprovedDemoClients } from '../../../data/clientRequests';
 import { api } from '../../../api/client';
 import {
   apiClientToRow,
@@ -47,9 +48,10 @@ interface Props {
   t: Record<string, string>;
   showBalances: boolean;
   selectedCompanyIds: Set<string>;
+  onClientsChange?: (clients: ClientRow[]) => void;
 }
 
-export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds }: Props) {
+export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds, onClientsChange }: Props) {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string; lineCode: string }[]>([]);
   const [lines, setLines] = useState<string[]>([]);
@@ -84,7 +86,8 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const refreshClients = useCallback(async () => {
     if (!hasApiToken()) {
-      setClients([]);
+      const demo = [...allClients, ...loadApprovedDemoClients()];
+      setClients(demo);
       setAgents([]);
       setLines([]);
       setBackendReady(false);
@@ -123,6 +126,16 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   }, [companyId]);
 
   useEffect(() => { refreshClients(); }, [refreshClients]);
+
+  useEffect(() => {
+    const handler = () => { refreshClients(); };
+    window.addEventListener('lider:client-approved', handler);
+    return () => window.removeEventListener('lider:client-approved', handler);
+  }, [refreshClients]);
+
+  useEffect(() => {
+    onClientsChange?.(clients);
+  }, [clients, onClientsChange]);
 
   const handleSaveClient = async (data: Partial<ClientRow> & { id: string }) => {
     setSaveError(null);
@@ -587,7 +600,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             onClick={() => setShowAddClient(true)}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors
               ${D ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
-            <Plus size={13} /> {t.addClientBtn ?? "+"}
+            <Plus size={13} /> {t.addClientBtn ?? "Mijoz qo'shish"}
           </button>
         </div>
       </div>

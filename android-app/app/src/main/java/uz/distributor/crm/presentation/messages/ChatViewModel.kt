@@ -14,6 +14,7 @@ import uz.distributor.crm.data.remote.dto.ChatMessageDto
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.MessageRepository
+import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import javax.inject.Inject
 
 data class ChatUiState(
@@ -32,6 +33,7 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val messageRepository: MessageRepository,
     private val authRepository: AuthRepository,
+    private val realtime: MessagesRealtimeCoordinator,
 ) : ViewModel() {
 
     private val conversationId: String = savedStateHandle.get<String>("conversationId") ?: ""
@@ -92,6 +94,7 @@ class ChatViewModel @Inject constructor(
                 val convs = messageRepository.getConversations()
                 val conv = convs.find { it.id == conversationId }
                 messageRepository.markRead(conversationId)
+                realtime.refresh()
                 _uiState.update {
                     it.copy(
                         isLoading = false,

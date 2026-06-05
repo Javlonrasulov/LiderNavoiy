@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.presentation.auth.LoginScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
+import uz.distributor.crm.presentation.clients.AddClientScreen
 import uz.distributor.crm.presentation.clients.ClientsScreen
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
@@ -94,14 +95,25 @@ fun AppNavHost(
             DashboardScreen(
                 onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
                 onClientsClick = { navController.navigate("clients") },
+                onAddClientClick = { navController.navigate("add_client") },
                 onProfileClick = { navController.navigate("profile") },
                 onOrderSummaryClick = { navController.navigate("order/cart") },
+            )
+        }
+        composable("add_client") {
+            AddClientScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = {
+                    navController.popBackStack()
+                    navController.navigate("clients")
+                },
             )
         }
         composable("clients") {
             ClientsScreen(
                 onBack = { navController.popBackStack() },
                 onClientClick = { id -> navController.navigate("client/$id") },
+                onAddClientClick = { navController.navigate("add_client") },
                 onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
             )
         }

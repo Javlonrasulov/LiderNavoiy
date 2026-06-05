@@ -1,9 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown } from 'lucide-react';
 import { type SotrudnikRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
 import { api } from '../../../api/client';
-import { appUserToSotrudnikRow } from '../../../utils/appUserCreds';
+import {
+  appUserToSotrudnikRow,
+  getSotrDeptOptions,
+  getSotrPosOptions,
+  sotrudnikDeptLabel,
+  sotrudnikPosLabel,
+} from '../../../utils/appUserCreds';
 
 interface Props {
   D: boolean;
@@ -23,33 +30,126 @@ function hasApiToken(): boolean {
   return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
 }
 
-function deptOptions(t: Record<string, string>) {
-  return [
-    { value: '', label: t.empDeptNone || '— tanlanmagan —' },
-    { value: t.sotrDeptSales || 'Savdo', label: t.sotrDeptSales || 'Savdo' },
-    { value: t.sotrDeptDelivery || 'Yetkazish', label: t.sotrDeptDelivery || 'Yetkazish' },
-    { value: t.sotrDeptSalesDept || "Sotuv bo'limi", label: t.sotrDeptSalesDept || "Sotuv bo'limi" },
-    { value: t.sotrDeptOffice || 'Bosh ofis', label: t.sotrDeptOffice || 'Bosh ofis' },
-    { value: t.sotrDeptCash || 'Kassa', label: t.sotrDeptCash || 'Kassa' },
-    { value: t.sotrDeptWarehouse || 'Ombor', label: t.sotrDeptWarehouse || 'Ombor' },
-    { value: t.sotrDeptAccounting || 'Buxgalteriya', label: t.sotrDeptAccounting || 'Buxgalteriya' },
-  ];
-}
+function PortalSelect({
+  value, onChange, options, placeholder, D, border, txt, muted,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  D: boolean;
+  border: string;
+  txt: string;
+  muted: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 220, openUp: false });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.value === value);
 
-function posOptions(t: Record<string, string>) {
-  return [
-    t.sotrPosDirector || 'Direktor',
-    t.sotrPosSalesAgent || 'Savdo agenti',
-    t.sotrPosDelivery || 'Yetkazib beruvchi',
-    t.sotrPosDeptHead || "Bo'lim boshlig'i",
-    t.sotrPosChef || 'Oshpaz',
-    t.sotrPosCashier || 'Kassir',
-    t.sotrPosWarehouse || 'Omborchi',
-    t.sotrPosOperator || 'Operator',
-    t.sotrPosAccountant || 'Buxgalter',
-    t.sotrPosPromoter || 'Reklamachi',
-    t.sotrPosManager || 'Menejer',
-  ];
+  const reposition = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const itemH = 36;
+    const listH = Math.min(options.length * itemH + 8, 220);
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < listH && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(listH, openUp ? spaceAbove : spaceBelow);
+    setPos({
+      top: openUp ? r.top - 4 : r.bottom + 4,
+      left: r.left,
+      width: r.width,
+      maxHeight: Math.max(maxHeight, 80),
+      openUp,
+    });
+  }, [options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        dropRef.current && !dropRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  const dropdown = open ? ReactDOM.createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 10050,
+        transform: pos.openUp ? 'translateY(-100%)' : undefined,
+        background: D ? '#1e1e1e' : '#fff',
+        border: `1px solid ${border}`,
+        borderRadius: 10,
+        boxShadow: D ? '0 12px 40px rgba(0,0,0,0.7)' : '0 12px 40px rgba(0,0,0,0.13)',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ maxHeight: pos.maxHeight, overflowY: 'auto' }}>
+        {options.map(opt => (
+          <button
+            key={opt.value || '__empty'}
+            type="button"
+            onClick={() => { onChange(opt.value); setOpen(false); }}
+            style={{
+              width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none',
+              background: value === opt.value ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
+              color: value === opt.value ? '#6366f1' : txt,
+              fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            {value === opt.value ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '9px 12px', borderRadius: 10, border: `1px solid ${border}`,
+          background: D ? 'rgba(255,255,255,0.04)' : '#f9fafb',
+          color: selected?.label ? txt : muted, fontSize: 13, cursor: 'pointer',
+          textAlign: 'left', boxSizing: 'border-box',
+        }}
+      >
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selected?.label || placeholder || '—'}
+        </span>
+        <ChevronDown size={13} style={{ flexShrink: 0, marginLeft: 6, opacity: 0.5 }} />
+      </button>
+      {dropdown}
+    </div>
+  );
 }
 
 export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
@@ -62,7 +162,10 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [editDraft, setEditDraft] = useState<SotrudnikRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<SotrudnikRow | null>(null);
   const [showAdd, setShowAdd]     = useState(false);
-  const [addDraft, setAddDraft]   = useState<SotrudnikRow>({ tabel: 0, name: '', department: '', position: '', phone: '', orgId: '' });
+  const [addDraft, setAddDraft]   = useState<SotrudnikRow>({
+    tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
+    deptKey: 'sales', posKey: 'salesAgent',
+  });
 
   const [isSmall, setIsSmall] = useState(false);
 
@@ -110,8 +213,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
   useEffect(() => { refreshEmployees(); }, [refreshEmployees]);
 
-  const departments = deptOptions(t);
-  const positions = posOptions(t);
+  const deptOptions = getSotrDeptOptions(t);
+  const posOptions = getSotrPosOptions(t);
   const listEmptyMessage = !backendReady
     ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
     : loadingRows
@@ -135,10 +238,12 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const employees = rows.filter(e => {
     const orgMatch = selectedIds.length === 0 || selectedIds.includes(e.orgId);
     const q = search.trim().toLowerCase();
+    const dept = sotrudnikDeptLabel(e, t).toLowerCase();
+    const pos = sotrudnikPosLabel(e, t).toLowerCase();
     return orgMatch && (!q ||
       e.name.toLowerCase().includes(q) ||
-      e.position.toLowerCase().includes(q) ||
-      e.department.toLowerCase().includes(q)
+      pos.includes(q) ||
+      dept.includes(q)
     );
   });
 
@@ -168,10 +273,16 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     setRows(r => [...r, {
       ...addDraft,
       orgId,
-      position: addDraft.position || positions[0] || '',
+      deptKey: addDraft.deptKey || 'sales',
+      posKey: addDraft.posKey || 'salesAgent',
+      department: '',
+      position: '',
     }]);
     setShowAdd(false);
-    setAddDraft({ tabel: 0, name: '', department: '', position: '', phone: '', orgId: '' });
+    setAddDraft({
+      tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
+      deptKey: 'sales', posKey: 'salesAgent',
+    });
   };
 
   // ── shared input style ────────────────────────────────────────────────────
@@ -181,7 +292,6 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     color: txt, fontSize: 13, outline: 'none',
     boxSizing: 'border-box',
   };
-  const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: muted, marginBottom: 5, display: 'block' };
 
   // ── overlay modal ─────────────────────────────────────────────────────────
@@ -263,24 +373,24 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
           <div>
             <label style={labelStyle}>{t.empDeptCol || "Bo'linma"}</label>
-            <select
-              style={selectStyle}
-              value={draft.department}
-              onChange={e => onChangeDraft({ ...draft, department: e.target.value })}
-            >
-              {departments.map(d => <option key={d.value || 'none'} value={d.value}>{d.label}</option>)}
-            </select>
+            <PortalSelect
+              value={draft.deptKey ?? ''}
+              onChange={v => onChangeDraft({ ...draft, deptKey: v, department: '' })}
+              options={deptOptions}
+              placeholder={t.empDeptNone || '— tanlanmagan —'}
+              D={D} border={border} txt={txt} muted={muted}
+            />
           </div>
 
           <div>
             <label style={labelStyle}>{t.empPositionCol || 'Lavozim'}</label>
-            <select
-              style={selectStyle}
-              value={draft.position}
-              onChange={e => onChangeDraft({ ...draft, position: e.target.value })}
-            >
-              {positions.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <PortalSelect
+              value={draft.posKey ?? 'salesAgent'}
+              onChange={v => onChangeDraft({ ...draft, posKey: v, position: '' })}
+              options={posOptions}
+              placeholder={t.sotrPosSalesAgent || 'Savdo agenti'}
+              D={D} border={border} txt={txt} muted={muted}
+            />
           </div>
         </div>
 
@@ -420,16 +530,16 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {emp.department && (
+                    {sotrudnikDeptLabel(emp, t) && (
                       <span style={{
                         fontSize: 9.5, padding: '2px 6px', borderRadius: 5,
                         background: D ? 'rgba(255,255,255,0.07)' : '#f3f4f6', color: muted, fontWeight: 500,
-                      }}>{emp.department}</span>
+                      }}>{sotrudnikDeptLabel(emp, t)}</span>
                     )}
                     <span style={{
                       fontSize: 9.5, padding: '2px 6px', borderRadius: 5,
                       background: `${indigo}15`, color: indigo, fontWeight: 600,
-                    }}>{emp.position}</span>
+                    }}>{sotrudnikPosLabel(emp, t)}</span>
                   </div>
                 </div>
               </div>
@@ -617,13 +727,13 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
                     {/* Department */}
                     <td style={{ padding: '9px 14px' }}>
-                      {emp.department && (
+                      {sotrudnikDeptLabel(emp, t) && (
                         <span style={{
                           fontSize: 11.5, padding: '3px 9px', borderRadius: 7,
                           background: D ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
                           color: muted, fontWeight: 500,
                         }}>
-                          {emp.department}
+                          {sotrudnikDeptLabel(emp, t)}
                         </span>
                       )}
                     </td>
@@ -634,7 +744,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                         fontSize: 11.5, padding: '3px 9px', borderRadius: 7,
                         background: `${indigo}14`, color: indigo, fontWeight: 600,
                       }}>
-                        {emp.position}
+                        {sotrudnikPosLabel(emp, t)}
                       </span>
                     </td>
 

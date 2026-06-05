@@ -3,11 +3,13 @@ package uz.distributor.crm.presentation.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.CartRepository
+import uz.distributor.crm.data.repository.DashboardRefreshRepository
 import uz.distributor.crm.data.repository.DashboardRepository
 import uz.distributor.crm.domain.model.AuthUser
 import uz.distributor.crm.domain.model.DashboardStats
@@ -16,6 +18,8 @@ import uz.distributor.crm.localization.AppStrings
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+
+enum class RefreshButtonState { IDLE, LOADING, SUCCESS }
 
 data class DashboardUiState(
     val isLoading: Boolean = true,
@@ -26,13 +30,18 @@ data class DashboardUiState(
     val formattedDate: String = "",
     val cartTotal: Double = 0.0,
     val cartItemsCount: Int = 0,
+    val productCount: Int = 0,
     val error: String? = null,
+    val refreshButtonState: RefreshButtonState = RefreshButtonState.IDLE,
+    val refreshUpdates: List<String> = emptyList(),
+    val showRefreshResult: Boolean = false,
 )
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val dashboardRepository: DashboardRepository,
+    private val dashboardRefreshRepository: DashboardRefreshRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val cartRepository: CartRepository,
 ) : ViewModel() {
@@ -71,8 +80,64 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(showAll = !it.showAll) }
     }
 
+    fun dismissRefreshResult() {
+        _uiState.update { it.copy(showRefreshResult = false) }
+    }
+
     fun refresh() {
-        loadDashboard()
+        if (_uiState.value.refreshButtonState == RefreshButtonState.LOADING) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    refreshButtonState = RefreshButtonState.LOADING,
+                    showRefreshResult = false,
+                )
+            }
+
+            val user = authRepository.getUserFlow().first()
+            val lang = appSettingsRepository.language.first()
+            val today = formatToday(lang)
+            val cart = cartRepository.getCart()
+            val cartTotal = cart.sumOf { it.price * it.quantity }
+            val cartItemsCount = cart.size
+
+            try {
+                val result = dashboardRefreshRepository.refreshAndDetectChanges(lang)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        user = user,
+                        formattedDate = today,
+                        stats = result.stats,
+                        productCount = result.productCount,
+                        cartTotal = cartTotal,
+                        cartItemsCount = cartItemsCount,
+                        refreshButtonState = RefreshButtonState.SUCCESS,
+                        refreshUpdates = result.updates,
+                        showRefreshResult = true,
+                        error = null,
+                    )
+                }
+                delay(2500)
+                _uiState.update {
+                    if (it.refreshButtonState == RefreshButtonState.SUCCESS) {
+                        it.copy(refreshButtonState = RefreshButtonState.IDLE)
+                    } else it
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        user = user,
+                        formattedDate = today,
+                        cartTotal = cartTotal,
+                        cartItemsCount = cartItemsCount,
+                        refreshButtonState = RefreshButtonState.IDLE,
+                        error = e.message,
+                    )
+                }
+            }
+        }
     }
 
     private fun loadDashboard() {
@@ -88,12 +153,14 @@ class DashboardViewModel @Inject constructor(
 
             try {
                 val stats = dashboardRepository.getStats()
+                val productCount = dashboardRefreshRepository.syncSessionBaseline()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         user = user,
                         formattedDate = today,
                         stats = stats,
+                        productCount = productCount,
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
                     )

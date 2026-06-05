@@ -7,8 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,11 +25,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import uz.distributor.crm.BuildConfig
+import uz.distributor.crm.data.remote.dto.ChatContactDto
+import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.components.SherinGlassButton
 import uz.distributor.crm.presentation.components.SherinPageHeader
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
@@ -49,7 +49,6 @@ fun MessagesScreen(
     val listBg = if (isDark) Color(0xFF0E1621) else sherinPageBackground(isDark)
     var search by remember { mutableStateOf("") }
     val state by viewModel.uiState.collectAsState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -60,20 +59,23 @@ fun MessagesScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val filtered = remember(search, state.conversations) {
+    val filteredChats = remember(search, state.conversations) {
         state.conversations.filter { conv ->
             conv.otherUser.fullName.contains(search, ignoreCase = true)
         }.sortedByDescending { it.updatedAt }
     }
 
-    fun previewLast(conv: uz.distributor.crm.data.remote.dto.ConversationDto): String {
-        val last = conv.lastMessage ?: return ""
-        if (last.text.isNotBlank()) return last.text
-        return when (last.messageType) {
-            "image" -> "📷 ${AppStrings.previewImage(lang)}"
-            "document" -> "📎 ${last.fileName ?: AppStrings.previewFile(lang)}"
-            else -> last.text
-        }
+    val filteredContacts = remember(search, state.contacts) {
+        state.contacts
+            .filter { contact ->
+                contact.fullName.contains(search, ignoreCase = true) ||
+                    contact.username.contains(search, ignoreCase = true)
+            }
+            .sortedBy { it.fullName.lowercase() }
+    }
+
+    val contactSections = remember(filteredContacts) {
+        groupContactsByLetter(filteredContacts)
     }
 
     val totalUnread = state.conversations.sumOf { it.unreadCount }
@@ -81,70 +83,18 @@ fun MessagesScreen(
         BuildConfig.API_BASE_URL.removePrefix("http://").substringBefore(":").ifBlank { "?" }
     }
 
-    if (state.showContactPicker) {
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.dismissContactPicker() },
-            sheetState = sheetState,
-            containerColor = if (isDark) Color(0xFF17212B) else Color.White,
-        ) {
-            Text(
-                AppStrings.selectContact(lang),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-                color = if (isDark) Color.White else Color.Black,
-            )
-            LazyColumn(Modifier.padding(bottom = 24.dp)) {
-                items(state.contacts, key = { it.id }) { contact ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.startConversation(contact.id, onChatClick)
-                            }
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val color = avatarColorForId(contact.id)
-                        Box(
-                            Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(color),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                initialsFromName(contact.fullName),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                contact.fullName,
-                                fontWeight = FontWeight.Medium,
-                                color = if (isDark) Color.White else Color.Black,
-                            )
-                            Text(contact.role, fontSize = 12.sp, color = Color(0xFF9CA3AF))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     Box(Modifier.fillMaxSize().background(listBg)) {
         Column(Modifier.fillMaxSize()) {
+            val onContactsTab = state.selectedTab == MessagesListTab.CONTACTS
             SherinPageHeader(
-                title = AppStrings.messagesTitle(lang),
+                title = if (onContactsTab) AppStrings.contactsTab(lang) else AppStrings.messagesTitle(lang),
                 isDark = isDark,
                 onBack = { onNavigate(NavTab.HOME) },
                 searchQuery = search,
                 onSearchChange = { search = it },
-                searchPlaceholder = AppStrings.search(lang),
+                searchPlaceholder = if (onContactsTab) AppStrings.searchContacts(lang) else AppStrings.search(lang),
                 centerBadge = {
-                    if (totalUnread > 0) {
+                    if (!onContactsTab && totalUnread > 0) {
                         Box(
                             Modifier
                                 .background(Color(0xFFEF4444), CircleShape)
@@ -155,153 +105,454 @@ fun MessagesScreen(
                         }
                     }
                 },
-                trailing = {
-                    SherinGlassButton(
-                        onClick = { viewModel.openContactPicker() },
-                        icon = Icons.Default.Edit,
-                        size = 40.dp,
-                    )
-                },
             )
 
-            when {
-                state.isLoading -> {
-                    Box(Modifier.fillMaxSize().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFF6AB2F2))
-                    }
-                }
-                filtered.isEmpty() -> {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .weight(1f)
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            if (state.error != null) AppStrings.msgLoadError(lang) else AppStrings.noChats(lang),
-                            color = Color(0xFF9CA3AF),
-                            textAlign = TextAlign.Center,
-                        )
-                        state.error?.let { err ->
-                            Spacer(Modifier.height(8.dp))
-                            Text(err, color = Color(0xFFEF4444), fontSize = 13.sp, textAlign = TextAlign.Center)
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                AppStrings.serverHint(lang, apiHost),
-                                color = Color(0xFF9CA3AF),
-                                fontSize = 12.sp,
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                        Spacer(Modifier.height(20.dp))
-                        Button(
-                            onClick = { viewModel.load() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
-                        ) {
-                            Text(AppStrings.reload(lang))
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedButton(onClick = { viewModel.openContactPicker() }) {
-                            Text(AppStrings.startChat(lang))
-                        }
-                    }
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f).padding(bottom = 88.dp),
-                    ) {
-                        items(filtered, key = { it.id }) { conv ->
-                            val last = conv.lastMessage
-                            val unread = conv.unreadCount
-                            val fromMe = last?.senderId == state.myUserId
-                            val user = conv.otherUser
-                            val color = avatarColorForId(user.id)
+            MessagesTabRow(
+                selected = state.selectedTab,
+                onSelect = { viewModel.selectTab(it) },
+                isDark = isDark,
+                lang = lang,
+            )
 
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onChatClick(conv.id) }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(contentAlignment = Alignment.TopEnd) {
-                                    Box(
-                                        Modifier
-                                            .size(56.dp)
-                                            .clip(CircleShape)
-                                            .background(color),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text(
-                                            initialsFromName(user.fullName),
-                                            color = Color.White,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                    if (unread > 0) {
-                                        Box(
-                                            Modifier
-                                                .offset(x = 4.dp, y = (-2).dp)
-                                                .size(20.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF3B82F6))
-                                                .border(2.dp, if (isDark) Color.Black else Color.White, CircleShape),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text("$unread", color = Color.White, fontSize = 10.sp)
-                                        }
-                                    }
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(
-                                            user.fullName,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isDark) Color.White else Color.Black,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        last?.let {
-                                            Text(
-                                                formatListTime(it.createdAt),
-                                                fontSize = 12.sp,
-                                                color = if (unread > 0) Color(0xFF60A5FA) else Color(0xFF9CA3AF),
-                                            )
-                                        }
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (fromMe) {
-                                            Text("✓✓ ", fontSize = 12.sp, color = Color(0xFF9CA3AF))
-                                        }
-                                        Text(
-                                            previewLast(conv),
-                                            fontSize = 14.sp,
-                                            color = when {
-                                                unread > 0 -> if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
-                                                else -> Color(0xFF9CA3AF)
-                                            },
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 80.dp),
-                                color = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
-                            )
-                        }
+            when (state.selectedTab) {
+                MessagesListTab.CHATS -> ChatsTabContent(
+                    modifier = Modifier.weight(1f),
+                    isLoading = state.isLoading,
+                    filtered = filteredChats,
+                    error = state.error,
+                    myUserId = state.myUserId,
+                    isDark = isDark,
+                    lang = lang,
+                    apiHost = apiHost,
+                    onReload = { viewModel.load() },
+                    onOpenContacts = { viewModel.selectTab(MessagesListTab.CONTACTS) },
+                    onChatClick = onChatClick,
+                    previewLast = { previewLast(it, lang) },
+                )
+                MessagesListTab.CONTACTS -> ContactsTabContent(
+                    modifier = Modifier.weight(1f),
+                    isLoading = state.contactsLoading,
+                    sections = contactSections,
+                    totalCount = state.contacts.size,
+                    error = state.error,
+                    isDark = isDark,
+                    lang = lang,
+                    onReload = { viewModel.loadContacts() },
+                    onContactClick = { viewModel.startConversation(it, onChatClick) },
+                )
+            }
+        }
+        BottomNavBar(NavTab.MESSAGES, onNavigate, isDark, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+@Composable
+private fun MessagesTabRow(
+    selected: MessagesListTab,
+    onSelect: (MessagesListTab) -> Unit,
+    isDark: Boolean,
+    lang: uz.distributor.crm.localization.AppLanguage,
+) {
+    val bg = if (isDark) Color(0xFF17212B) else Color.White
+    val activeColor = Color(0xFF6AB2F2)
+    val inactiveColor = if (isDark) Color(0xFF8E9BA7) else Color(0xFF9CA3AF)
+    val divider = if (isDark) Color(0xFF0E1621) else Color(0xFFE8E8E8)
+    val tabs = listOf(
+        MessagesListTab.CHATS to AppStrings.chatsTab(lang),
+        MessagesListTab.CONTACTS to AppStrings.contactsTab(lang),
+    )
+
+    Column(Modifier.fillMaxWidth().background(bg)) {
+        Row(Modifier.fillMaxWidth().height(48.dp)) {
+            tabs.forEach { (tab, label) ->
+                val isSelected = selected == tab
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onSelect(tab) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        label,
+                        fontSize = 15.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) activeColor else inactiveColor,
+                    )
+                    if (isSelected) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth(0.55f)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                .background(activeColor),
+                        )
                     }
                 }
             }
         }
-        BottomNavBar(NavTab.MESSAGES, onNavigate, isDark, Modifier.align(Alignment.BottomCenter))
+        HorizontalDivider(color = divider, thickness = 0.5.dp)
+    }
+}
+
+@Composable
+private fun ChatsTabContent(
+    modifier: Modifier = Modifier,
+    isLoading: Boolean,
+    filtered: List<ConversationDto>,
+    error: String?,
+    myUserId: String?,
+    isDark: Boolean,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    apiHost: String,
+    onReload: () -> Unit,
+    onOpenContacts: () -> Unit,
+    onChatClick: (String) -> Unit,
+    previewLast: (ConversationDto) -> String,
+) {
+    when {
+        isLoading -> {
+            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color(0xFF6AB2F2))
+            }
+        }
+        filtered.isEmpty() -> {
+            Column(
+                modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    if (error != null) AppStrings.msgLoadError(lang) else AppStrings.noChats(lang),
+                    color = Color(0xFF9CA3AF),
+                    textAlign = TextAlign.Center,
+                )
+                error?.let { err ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(err, color = Color(0xFFEF4444), fontSize = 13.sp, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        AppStrings.serverHint(lang, apiHost),
+                        color = Color(0xFF9CA3AF),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = onReload,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                ) {
+                    Text(AppStrings.reload(lang))
+                }
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onOpenContacts) {
+                    Text(AppStrings.startChat(lang))
+                }
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = modifier.fillMaxSize().padding(bottom = 88.dp),
+            ) {
+                items(filtered, key = { it.id }) { conv ->
+                    ConversationRow(
+                        conv = conv,
+                        myUserId = myUserId,
+                        isDark = isDark,
+                        preview = previewLast(conv),
+                        onClick = { onChatClick(conv.id) },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 80.dp),
+                        color = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContactsTabContent(
+    modifier: Modifier = Modifier,
+    isLoading: Boolean,
+    sections: List<ContactSection>,
+    totalCount: Int,
+    error: String?,
+    isDark: Boolean,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    onReload: () -> Unit,
+    onContactClick: (String) -> Unit,
+) {
+    val listBg = if (isDark) Color(0xFF0E1621) else Color.White
+    val dividerColor = if (isDark) Color(0xFF1A2634) else Color(0xFFE8EDF2)
+
+    when {
+        isLoading -> {
+            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Color(0xFF6AB2F2))
+            }
+        }
+        sections.isEmpty() -> {
+            Column(
+                modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    if (error != null) AppStrings.msgLoadError(lang) else AppStrings.noContacts(lang),
+                    color = Color(0xFF9CA3AF),
+                    textAlign = TextAlign.Center,
+                )
+                error?.let { err ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(err, color = Color(0xFFEF4444), fontSize = 13.sp, textAlign = TextAlign.Center)
+                }
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = onReload,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6AB2F2)),
+                ) {
+                    Text(AppStrings.reload(lang))
+                }
+            }
+        }
+        else -> {
+            LazyColumn(
+                modifier = modifier
+                    .fillMaxSize()
+                    .background(listBg)
+                    .padding(bottom = 88.dp),
+            ) {
+                item(key = "contacts_summary") {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                    ) {
+                        Text(
+                            AppStrings.contactsCount(lang, totalCount),
+                            fontSize = 14.sp,
+                            color = Color(0xFF6AB2F2),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                sections.forEach { section ->
+                    item(key = "header_${section.letter}") {
+                        TelegramContactSectionHeader(
+                            letter = section.letter,
+                            isDark = isDark,
+                        )
+                    }
+                    items(section.contacts, key = { it.id }) { contact ->
+                        TelegramContactRow(
+                            contact = contact,
+                            isDark = isDark,
+                            lang = lang,
+                            onClick = { onContactClick(contact.id) },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 78.dp),
+                            color = dividerColor,
+                            thickness = 0.5.dp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class ContactSection(val letter: String, val contacts: List<ChatContactDto>)
+
+private fun groupContactsByLetter(contacts: List<ChatContactDto>): List<ContactSection> {
+    return contacts
+        .groupBy { sectionLetter(it.fullName) }
+        .map { (letter, list) -> ContactSection(letter, list.sortedBy { it.fullName.lowercase() }) }
+        .sortedWith(compareBy { if (it.letter == "#") "ZZ" else it.letter })
+}
+
+private fun sectionLetter(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "#"
+    val ch = trimmed.first().uppercaseChar()
+    return if (ch.isLetter()) ch.toString() else "#"
+}
+
+@Composable
+private fun TelegramContactSectionHeader(letter: String, isDark: Boolean) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(if (isDark) Color(0xFF17212B) else Color(0xFFF4F8FB)),
+    ) {
+        Text(
+            letter,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF6AB2F2),
+        )
+    }
+}
+
+@Composable
+private fun TelegramContactRow(
+    contact: ChatContactDto,
+    isDark: Boolean,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    onClick: () -> Unit,
+) {
+    val nameColor = if (isDark) Color(0xFFFFFFFF) else Color(0xFF000000)
+    val subtitleColor = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7C8F)
+    val avatarColor = avatarColorForId(contact.id)
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(avatarColor),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                initialsFromName(contact.fullName),
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                contact.fullName,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = nameColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "@${contact.username} · ${AppStrings.userRoleLabel(lang, contact.role)}",
+                fontSize = 14.sp,
+                color = subtitleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConversationRow(
+    conv: ConversationDto,
+    myUserId: String?,
+    isDark: Boolean,
+    preview: String,
+    onClick: () -> Unit,
+) {
+    val last = conv.lastMessage
+    val unread = conv.unreadCount
+    val fromMe = last?.senderId == myUserId
+    val user = conv.otherUser
+    val color = avatarColorForId(user.id)
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(contentAlignment = Alignment.TopEnd) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(color),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    initialsFromName(user.fullName),
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (unread > 0) {
+                Box(
+                    Modifier
+                        .offset(x = 4.dp, y = (-2).dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF3B82F6))
+                        .border(2.dp, if (isDark) Color.Black else Color.White, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$unread", color = Color.White, fontSize = 10.sp)
+                }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    user.fullName,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isDark) Color.White else Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                last?.let {
+                    Text(
+                        formatListTime(it.createdAt),
+                        fontSize = 12.sp,
+                        color = if (unread > 0) Color(0xFF60A5FA) else Color(0xFF9CA3AF),
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (fromMe) {
+                    Text("✓✓ ", fontSize = 12.sp, color = Color(0xFF9CA3AF))
+                }
+                Text(
+                    preview,
+                    fontSize = 14.sp,
+                    color = when {
+                        unread > 0 -> if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151)
+                        else -> Color(0xFF9CA3AF)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+private fun previewLast(conv: ConversationDto, lang: uz.distributor.crm.localization.AppLanguage): String {
+    val last = conv.lastMessage ?: return ""
+    if (last.text.isNotBlank()) return last.text
+    return when (last.messageType) {
+        "image" -> "📷 ${AppStrings.previewImage(lang)}"
+        "document" -> "📎 ${last.fileName ?: AppStrings.previewFile(lang)}"
+        else -> last.text
     }
 }
 

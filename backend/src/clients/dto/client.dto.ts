@@ -9,10 +9,10 @@ import {
 } from 'class-validator';
 
 export class CreateClientDto {
-  @ApiProperty({ example: 'C001' })
+  @ApiPropertyOptional({ example: 'C001' })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  code: string;
+  code?: string;
 
   @ApiProperty({ example: 'Ahmad Market' })
   @IsString()
@@ -88,6 +88,11 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   priceCategory?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }
 
 export class UpdateClientDto {
@@ -172,4 +177,9 @@ export class UpdateClientDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }

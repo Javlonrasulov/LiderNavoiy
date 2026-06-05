@@ -22,6 +22,7 @@ interface AdminSidebarProps {
   navigate: (path: string) => void;
   logout: () => void;
   setIsDark: (v: boolean) => void;
+  messagesUnread?: number;
   navItems: (NavEntry & { label: string; children?: (NavEntry['children'] extends infer C ? C extends any[] ? (C[number] & { label: string })[] : never : never) })[];
 }
 
@@ -32,6 +33,7 @@ export function AdminSidebar({
   sidebarOpen, setSidebarOpen,
   showBalances, setShowBalances,
   t, selectedCompany, clearCompany, navigate, logout, setIsDark,
+  messagesUnread = 0,
   navItems,
 }: AdminSidebarProps) {
 
@@ -144,6 +146,8 @@ export function AdminSidebar({
 
           /* ── Regular item ── */
           const active = tab === item.id;
+          const showBadge = item.id === 'messages' && messagesUnread > 0;
+          const badgeLabel = messagesUnread > 99 ? '99+' : String(messagesUnread);
           return (
             <button key={item.id}
               onClick={() => { setTab(item.id as Tab); setSidebarOpen(false); }}
@@ -153,14 +157,26 @@ export function AdminSidebar({
                   ? D ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
                   : D ? `${sub} hover:bg-gray-800 hover:text-white` : `${sub} hover:bg-gray-100 hover:text-gray-900`
               }`}>
-              <Icon size={17} className="flex-shrink-0" />
+              <span className="relative flex-shrink-0">
+                <Icon size={17} />
+                {showBadge && sidebarCollapsed && !mobile && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#3b82f6] text-white text-[10px] font-bold flex items-center justify-center">
+                    {badgeLabel}
+                  </span>
+                )}
+              </span>
               {(!sidebarCollapsed || mobile) && (
                 item.id === 'dashboard'
-                  ? <span className="flex flex-col leading-tight">
+                  ? <span className="flex flex-col leading-tight flex-1">
                       <span>{item.label}</span>
                       <span className="text-[10px] font-normal opacity-60">{t.navDashboardSub}</span>
                     </span>
-                  : <span>{item.label}</span>
+                  : <span className="flex-1 text-left">{item.label}</span>
+              )}
+              {showBadge && (!sidebarCollapsed || mobile) && (
+                <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#3b82f6] text-white text-xs font-bold flex items-center justify-center">
+                  {badgeLabel}
+                </span>
               )}
             </button>
           );

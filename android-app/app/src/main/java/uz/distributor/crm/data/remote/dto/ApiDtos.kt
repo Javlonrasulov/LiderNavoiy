@@ -54,6 +54,25 @@ data class ClientDto(
     @JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
     val latitude: Double?,
     val longitude: Double?,
+    val inn: String? = null,
+    val photoUrl: String? = null,
+)
+
+data class CreateClientRequest(
+    val name: String,
+    val inn: String? = null,
+    val phone: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val photoUrl: String? = null,
+    val distributorId: String? = null,
+)
+
+data class ClientPhotoUploadDto(
+    val url: String,
+    val fullUrl: String,
+    val mimeType: String,
+    val fileSize: Int,
 )
 
 data class ProductDto(
@@ -93,6 +112,8 @@ data class CreateVisitRequest(
 
 data class BatchVisitsRequest(val visits: List<CreateVisitRequest>)
 data class BatchOrdersRequest(val orders: List<CreateOrderRequest>)
+
+data class UnreadCountDto(val count: Int)
 
 data class ChatContactDto(
     val id: String,

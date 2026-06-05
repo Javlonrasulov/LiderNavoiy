@@ -15,6 +15,51 @@ object AppStrings {
     fun sumCurrency(lang: AppLanguage) = "сум"
     fun add(lang: AppLanguage) = tr(lang, "Qo'shish", "Қўшиш", "Добавить")
     fun refresh(lang: AppLanguage) = tr(lang, "Yangilash", "Янгилаш", "Обновить")
+    fun refreshDone(lang: AppLanguage) = tr(lang, "Yangilandi", "Янгиланди", "Обновлено")
+    fun refreshUpdatesTitle(lang: AppLanguage) = tr(lang, "Yangilanish natijasi", "Янгиланиш натижаси", "Результат обновления")
+    fun refreshFirstDone(lang: AppLanguage) = tr(
+        lang,
+        "Ma'lumotlar muvaffaqiyatli yangilandi",
+        "Маълумотлар муваффақиятли янгиланди",
+        "Данные успешно обновлены",
+    )
+    fun noNewUpdates(lang: AppLanguage) = tr(
+        lang,
+        "Yangi o'zgarishlar yo'q — hamma narsa dolzarb",
+        "Янги ўзгаришлар йўқ — ҳамма нарса долзарб",
+        "Новых изменений нет — всё актуально",
+    )
+    fun newClientsAdded(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Sizga $count ta yangi mijoz qo'shildi"
+        AppLanguage.UZ_CYRILLIC -> "Сизга $count та янги мижоз қўшилди"
+        AppLanguage.RUS -> "Вам добавлено клиентов: $count"
+    }
+    fun newProductsInWarehouse(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Omborga $count ta yangi mahsulot kirim bo'ldi"
+        AppLanguage.UZ_CYRILLIC -> "Омборга $count та янги маҳсулот кирим бўлди"
+        AppLanguage.RUS -> "На склад поступило новых товаров: $count"
+    }
+    fun productsStockIncreased(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta mahsulot qoldig'i oshdi"
+        AppLanguage.UZ_CYRILLIC -> "$count та маҳсулот қолдиғи ошди"
+        AppLanguage.RUS -> "У $count товаров увеличился остаток"
+    }
+    fun newMessagesReceived(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta yangi xabar bor"
+        AppLanguage.UZ_CYRILLIC -> "$count та янги хабар бор"
+        AppLanguage.RUS -> "Новых сообщений: $count"
+    }
+    fun newNotificationsReceived(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta yangi bildirishnoma"
+        AppLanguage.UZ_CYRILLIC -> "$count та янги билдиришнома"
+        AppLanguage.RUS -> "Новых уведомлений: $count"
+    }
+    fun visitsUpdated(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta yangi vizit qayd etildi"
+        AppLanguage.UZ_CYRILLIC -> "$count та янги визит қайд етилди"
+        AppLanguage.RUS -> "Зафиксировано новых визитов: $count"
+    }
+    fun salesUpdated(lang: AppLanguage) = tr(lang, "Sotuvlar yangilandi", "Сотувлар янгиланди", "Продажи обновлены")
     fun details(lang: AppLanguage) = tr(lang, "Batafsil", "Батафсил", "Детали")
     fun more(lang: AppLanguage) = tr(lang, "Ko'proq", "Кўпроқ", "Ещё")
     fun clientsList(lang: AppLanguage) = tr(lang, "Klientlar ro'yxati", "Клиентлар рўйхати", "Список клиентов")
@@ -48,6 +93,23 @@ object AppStrings {
     fun msgLoadError(lang: AppLanguage) = tr(lang, "Serverga ulanib bo'lmadi", "Серверга уланиб бўлмади", "Не удалось подключиться к серверу")
     fun startChat(lang: AppLanguage) = tr(lang, "Suhbat boshlash", "Суҳбат бошлаш", "Начать чат")
     fun selectContact(lang: AppLanguage) = tr(lang, "Kontaktni tanlang", "Контактни танланг", "Выберите контакт")
+    fun chatsTab(lang: AppLanguage) = tr(lang, "Suhbatlar", "Суҳбатлар", "Чаты")
+    fun contactsTab(lang: AppLanguage) = tr(lang, "Kontaktlar", "Контактлар", "Контакты")
+    fun noContacts(lang: AppLanguage) = tr(lang, "Kontakt topilmadi", "Контакт топилмади", "Контакты не найдены")
+    fun searchContacts(lang: AppLanguage) = tr(lang, "Kontaktlarni qidirish", "Контактларни қидириш", "Поиск контактов")
+    fun contactsCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta kontakt"
+        AppLanguage.UZ_CYRILLIC -> "$count та контакт"
+        AppLanguage.RUS -> if (count % 10 == 1 && count % 100 != 11) "$count контакт"
+        else if (count % 10 in 2..4 && count % 100 !in 12..14) "$count контакта"
+        else "$count контактов"
+    }
+    fun userRoleLabel(lang: AppLanguage, role: String) = when (role.lowercase()) {
+        "admin" -> tr(lang, "Admin", "Админ", "Админ")
+        "manager" -> tr(lang, "Menejer", "Менежер", "Менеджер")
+        "distributor" -> tr(lang, "Agent", "Агент", "Агент")
+        else -> role
+    }
     fun serverHint(lang: AppLanguage, host: String) = when (lang) {
         AppLanguage.UZ_LATIN -> "Server: $host — telefonda local.properties da api.host=kompyuter IP"
         AppLanguage.UZ_CYRILLIC -> "Сервер: $host — телефонда api.host=компьютер IP"
@@ -98,6 +160,21 @@ object AppStrings {
     fun todaySales(lang: AppLanguage) = tr(lang, "Bugungi savdo", "Бугунги савдо", "Продажи за день")
     fun weekSales(lang: AppLanguage) = tr(lang, "Haftalik savdo", "Ҳафталик савдо", "Продажи за неделю")
     fun monthSales(lang: AppLanguage) = tr(lang, "Oylik savdo", "Ойлик савдо", "Продажи за месяц")
+
+    fun addClientTitle(lang: AppLanguage) = tr(lang, "Yangi mijoz", "Янги мижоз", "Новый клиент")
+    fun clientName(lang: AppLanguage) = tr(lang, "Ism (do'kon nomi)", "Исм (до'кон номи)", "Название")
+    fun clientInn(lang: AppLanguage) = tr(lang, "INN", "ИНН", "ИНН")
+    fun clientPhone(lang: AppLanguage) = tr(lang, "Telefon raqami", "Телефон рақами", "Номер телефона")
+    fun clientLocation(lang: AppLanguage) = tr(lang, "Xaritada joyi", "Харитада жойи", "Место на карте")
+    fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дo'кон расми", "Фото магазина")
+    fun useMyLocation(lang: AppLanguage) = tr(lang, "Mening joyim", "Менинг жойим", "Моё местоположение")
+    fun tapMapHint(lang: AppLanguage) = tr(lang, "Xaritada bosing yoki pinni suring", "Харитада бosing ёки pinni suring", "Нажмите на карту или перетащите метку")
+    fun selectPhoto(lang: AppLanguage) = tr(lang, "Rasm tanlash", "Расм танлаш", "Выбрать фото")
+    fun takePhoto(lang: AppLanguage) = tr(lang, "Kamera", "Камера", "Камера")
+    fun chooseFromGallery(lang: AppLanguage) = tr(lang, "Galereya", "Галерея", "Галерея")
+    fun fullScreenMap(lang: AppLanguage) = tr(lang, "To'liq ekran", "Тўлиқ экран", "Полный экран")
+    fun done(lang: AppLanguage) = tr(lang, "Tayyor", "Тайёр", "Готово")
+    fun saveClient(lang: AppLanguage) = tr(lang, "Saqlash", "Сақлаш", "Сохранить")
 
     fun dayName(dayOfWeek: Int, lang: AppLanguage): String {
         val names = when (lang) {

@@ -39,6 +39,7 @@ import java.text.DecimalFormat
 fun DashboardScreen(
     onNavigate: (NavTab) -> Unit,
     onClientsClick: () -> Unit = {},
+    onAddClientClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onOrderSummaryClick: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
@@ -58,7 +59,7 @@ fun DashboardScreen(
         add(StatItem(AppStrings.clientsList(lang), "${state.stats.totalClients} / ${state.stats.visitedClients} / ${state.stats.pendingClients}", Icons.Default.Person, Color(0xFF10B981), badge = "${String.format("%.1f", state.stats.clientProgressPercent)}%", onClick = onClientsClick))
         add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%"))
         add(StatItem(AppStrings.totalSales(lang), cartValue, Icons.Default.ShoppingCart, Color(0xFF3B82F6), cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null, onClick = onOrderSummaryClick))
-        add(StatItem(AppStrings.products(lang), "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6)))
+        add(StatItem(AppStrings.products(lang), if (state.productCount > 0) "${state.productCount}" else "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6)))
         add(StatItem(AppStrings.returns(lang), "0", Icons.Default.Inventory2, Color(0xFFEF4444)))
         add(StatItem(AppStrings.cashPayments(lang), "0", Icons.Default.Payments, Color(0xFF10B981)))
         add(StatItem(AppStrings.clickPayments(lang), "0", Icons.Default.CreditCard, Color(0xFF6366F1)))
@@ -134,8 +135,19 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        SherinQuickAction(Icons.Default.Add, AppStrings.add(lang)) {}
-                        SherinQuickAction(Icons.Default.Refresh, AppStrings.refresh(lang), viewModel::refresh)
+                        SherinQuickAction(
+                            icon = Icons.Default.Add,
+                            label = AppStrings.add(lang),
+                            onClick = onAddClientClick,
+                        )
+                        SherinRefreshAction(
+                            label = when (state.refreshButtonState) {
+                                RefreshButtonState.SUCCESS -> AppStrings.refreshDone(lang)
+                                else -> AppStrings.refresh(lang)
+                            },
+                            state = state.refreshButtonState,
+                            onClick = viewModel::refresh,
+                        )
                         SherinQuickAction(Icons.Default.Info, AppStrings.details(lang)) {}
                         SherinQuickAction(Icons.Default.MoreHoriz, AppStrings.more(lang)) {}
                     }
@@ -143,6 +155,15 @@ fun DashboardScreen(
             }
 
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                if (state.showRefreshResult && state.refreshUpdates.isNotEmpty()) {
+                    RefreshResultCard(
+                        updates = state.refreshUpdates,
+                        title = AppStrings.refreshUpdatesTitle(lang),
+                        isDark = isDark,
+                        onDismiss = viewModel::dismissRefreshResult,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
@@ -193,6 +214,120 @@ private data class StatItem(
     val cartBadge: String? = null,
     val onClick: () -> Unit = {},
 )
+
+@Composable
+private fun SherinRefreshAction(
+    label: String,
+    state: RefreshButtonState,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(enabled = state != RefreshButtonState.LOADING, onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(
+                    when (state) {
+                        RefreshButtonState.SUCCESS -> Color(0xFF10B981).copy(0.35f)
+                        else -> Color.White.copy(0.10f)
+                    },
+                )
+                .border(
+                    1.dp,
+                    when (state) {
+                        RefreshButtonState.SUCCESS -> Color(0xFF10B981).copy(0.6f)
+                        else -> Color.White.copy(0.20f)
+                    },
+                    CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            when (state) {
+                RefreshButtonState.LOADING -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                }
+                RefreshButtonState.SUCCESS -> {
+                    Icon(Icons.Default.Check, null, tint = Color(0xFF34D399), modifier = Modifier.size(28.dp))
+                }
+                RefreshButtonState.IDLE -> {
+                    Icon(Icons.Default.Refresh, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(label, color = Color.White.copy(0.9f), fontSize = 11.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun RefreshResultCard(
+    updates: List<String>,
+    title: String,
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isDark) Color(0xFF064E3B).copy(0.4f) else Color(0xFFECFDF5),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) Color(0xFF10B981).copy(0.3f) else Color(0xFF10B981).copy(0.25f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = if (isDark) Color.White else Color(0xFF065F46),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            updates.forEach { line ->
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text("•", color = Color(0xFF10B981), fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
+                    Text(
+                        line,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = if (isDark) Color(0xFFD1FAE5) else Color(0xFF047857),
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun SherinQuickAction(icon: ImageVector, label: String, onClick: () -> Unit = {}) {

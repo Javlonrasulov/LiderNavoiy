@@ -2,8 +2,9 @@ import { useRef, useState } from 'react';
 import {
   Check, ChevronDown, Eye, EyeOff, Globe, Menu, Moon, Sun, LayoutGrid, X,
 } from 'lucide-react';
-import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type LangAdmin, type Tab } from '../../data/adminData';
+import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
 import { COMPANIES } from '../AdminAuthContext';
+import { ClientRequestBell } from './ClientRequestBell';
 
 interface AdminNavbarProps {
   D: boolean;
@@ -31,6 +32,7 @@ interface AdminNavbarProps {
   companyBtnRef: React.RefObject<HTMLButtonElement | null>;
   langBtnRef: React.RefObject<HTMLButtonElement | null>;
   setTab: (t: Tab) => void;
+  existingClients?: ClientRow[];
 }
 
 export function AdminNavbar({
@@ -44,6 +46,7 @@ export function AdminNavbar({
   showLangMenu, setShowLangMenu,
   companyBtnRef, langBtnRef,
   setTab,
+  existingClients = [],
 }: AdminNavbarProps) {
   const currentLang = ADMIN_LANGS.find(l => l.id === adminLang)!;
   const [showModuleBar, setShowModuleBar] = useState(false);
@@ -111,6 +114,14 @@ export function AdminNavbar({
             </div>
 
             <div className="ml-auto flex items-center gap-1 md:gap-1.5 lg:gap-2">
+              <ClientRequestBell
+                D={D}
+                sub={sub}
+                text={text}
+                t={t}
+                existingClients={existingClients}
+                companyId={selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined}
+              />
               <button onClick={() => setShowBalances(v => !v)}
                 className={`hidden sm:flex w-8 h-8 md:w-9 md:h-9 rounded-xl items-center justify-center ${D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'} transition-colors`}>
                 {showBalances ? <Eye size={16} /> : <EyeOff size={16} />}

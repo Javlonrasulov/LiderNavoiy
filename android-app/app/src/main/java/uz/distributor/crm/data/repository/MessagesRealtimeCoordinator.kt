@@ -21,6 +21,9 @@ class MessagesRealtimeCoordinator @Inject constructor(
     private val _conversations = MutableStateFlow<List<ConversationDto>>(emptyList())
     val conversations: StateFlow<List<ConversationDto>> = _conversations.asStateFlow()
 
+    private val _totalUnread = MutableStateFlow(0)
+    val totalUnread: StateFlow<Int> = _totalUnread.asStateFlow()
+
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = _loadError.asStateFlow()
 
@@ -43,6 +46,16 @@ class MessagesRealtimeCoordinator @Inject constructor(
                 }
             }
         }
+        scope.launch {
+            messageRepository.readSocketEvents.collect {
+                refresh()
+            }
+        }
+        scope.launch {
+            messageRepository.deletedSocketEvents.collect {
+                refresh()
+            }
+        }
         scope.launch { refresh() }
     }
 
@@ -52,7 +65,7 @@ class MessagesRealtimeCoordinator @Inject constructor(
             _loadError.value = null
             try {
                 val convs = messageRepository.getConversations()
-                _conversations.value = convs.sortedByDescending { it.updatedAt }
+                applyConversations(convs.sortedByDescending { it.updatedAt })
             } catch (e: Exception) {
                 _loadError.value = when (e) {
                     is HttpException -> when (e.code()) {
@@ -71,6 +84,11 @@ class MessagesRealtimeCoordinator @Inject constructor(
         val list = _conversations.value.toMutableList()
         val idx = list.indexOfFirst { it.id == conv.id }
         if (idx >= 0) list[idx] = conv else list.add(0, conv)
-        _conversations.value = list.sortedByDescending { it.updatedAt }
+        applyConversations(list.sortedByDescending { it.updatedAt })
+    }
+
+    private fun applyConversations(list: List<ConversationDto>) {
+        _conversations.value = list
+        _totalUnread.value = list.sumOf { it.unreadCount }
     }
 }

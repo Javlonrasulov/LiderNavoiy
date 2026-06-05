@@ -33,6 +33,7 @@ import java.text.DecimalFormat
 fun ClientsScreen(
     onBack: () -> Unit,
     onClientClick: (String) -> Unit,
+    onAddClientClick: () -> Unit = {},
     onNavigate: (NavTab) -> Unit = {},
     viewModel: ClientsViewModel = hiltViewModel(),
 ) {
@@ -52,7 +53,7 @@ fun ClientsScreen(
                 isDark = isDark,
                 onBack = onBack,
                 trailing = {
-                    SherinGlassIconButton(onClick = {}, icon = Icons.Default.Add, size = 40.dp)
+                    SherinGlassIconButton(onClick = onAddClientClick, icon = Icons.Default.Add, size = 40.dp)
                 },
             )
 

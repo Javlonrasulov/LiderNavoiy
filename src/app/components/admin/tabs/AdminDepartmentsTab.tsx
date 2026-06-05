@@ -317,9 +317,8 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                 background: D ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.022)',
                 borderBottom: `1px solid ${border}`,
               }}>
-                <th style={{ width: 44, padding: '11px 10px 11px 16px' }} />
                 <th style={{
-                  padding: '11px 14px', textAlign: 'left',
+                  padding: '11px 14px 11px 16px', textAlign: 'left',
                   fontSize: 11, fontWeight: 700, color: muted,
                   letterSpacing: '0.04em', textTransform: 'uppercase', width: 80,
                 }}>
@@ -353,25 +352,8 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                     onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = rowHov; }}
                     onMouseLeave={e => { e.currentTarget.style.background = isSel ? selBg : i % 2 === 0 ? bg : rowAlt; }}
                   >
-                    {/* handle */}
-                    <td style={{ padding: '10px 10px 10px 16px', textAlign: 'center' }}>
-                      <div style={{
-                        width: 22, height: 22, borderRadius: 6,
-                        background: isSel
-                          ? `${indigo}25`
-                          : D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <svg width="10" height="10" viewBox="0 0 10 10">
-                          <rect y="1"   width="10" height="1.5" rx="0.75" fill={isSel ? indigo : D ? '#4b5563' : '#d1d5db'} />
-                          <rect y="4.25" width="10" height="1.5" rx="0.75" fill={isSel ? indigo : D ? '#4b5563' : '#d1d5db'} />
-                          <rect y="7.5" width="10" height="1.5" rx="0.75" fill={isSel ? indigo : D ? '#4b5563' : '#d1d5db'} />
-                        </svg>
-                      </div>
-                    </td>
-
                     {/* Code */}
-                    <td style={{ padding: '10px 14px' }}>
+                    <td style={{ padding: '10px 14px 10px 16px' }}>
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         minWidth: 28, height: 28, borderRadius: 8,
@@ -464,7 +446,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
 
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={isMobile ? 3 : 4} style={{ padding: '52px 20px', textAlign: 'center', fontSize: 13, color: muted }}>
+                  <td colSpan={isMobile ? 2 : 3} style={{ padding: '52px 20px', textAlign: 'center', fontSize: 13, color: muted }}>
                     {T.empty}
                   </td>
                 </tr>
