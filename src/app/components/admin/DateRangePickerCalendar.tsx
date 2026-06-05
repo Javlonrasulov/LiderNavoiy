@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTashkentToday } from '../../hooks/useTashkentToday';
 
 interface Props {
   start: string;
@@ -12,8 +13,6 @@ interface Props {
   markedDates?: Set<string>;
   t: Record<string, string>;
 }
-
-const TODAY = '2026-03-10';
 
 function parseDate(d: string): Date | null {
   if (!d) return null;
@@ -32,6 +31,15 @@ function fmtDisplay(d: string) {
   return d ? d.split('-').reverse().join('.') : '—';
 }
 
+function weekStart(d: Date): Date {
+  const dow = (d.getDay() + 6) % 7;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - dow);
+}
+
+function monthStart(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
 export function DateRangePickerCalendar({
   start,
   end,
@@ -43,11 +51,12 @@ export function DateRangePickerCalendar({
   markedDates,
   t,
 }: Props) {
-  const today = parseDate(TODAY)!;
+  const { todayStr, today } = useTashkentToday();
 
   const [viewDate, setViewDate] = useState<Date>(() => {
-    const d = parseDate(start) || today;
-    return new Date(d.getFullYear(), d.getMonth(), 1);
+    const d = parseDate(start);
+    if (d) return new Date(d.getFullYear(), d.getMonth(), 1);
+    return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   });
   const [open, setOpen] = useState(false);
   const [pickStart, setPickStart] = useState<string | null>(null);
@@ -108,6 +117,38 @@ export function DateRangePickerCalendar({
     setPickStart(null);
     setOpen(false);
   };
+
+  const applyPreset = (preset: 'today' | 'week' | 'month') => {
+    if (!today || !todayStr) return;
+    const end = todayStr;
+    let from: string;
+    if (preset === 'today') {
+      from = end;
+    } else if (preset === 'week') {
+      from = toStr(weekStart(today));
+    } else {
+      from = toStr(monthStart(today));
+    }
+    onChange(from, end);
+    setPickStart(null);
+    setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    setOpen(false);
+  };
+
+  const presetBtn = (preset: 'today' | 'week' | 'month', label: string) => (
+    <button
+      key={preset}
+      disabled={!todayStr}
+      onClick={() => applyPreset(preset)}
+      className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40
+        ${D
+          ? 'bg-white/[0.06] text-gray-200 hover:bg-indigo-500/25 hover:text-indigo-300'
+          : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600'
+        }`}
+    >
+      {label}
+    </button>
+  );
 
   const hint = pickStart
     ? (t.calSelectEnd || labelTo)
@@ -181,10 +222,7 @@ export function DateRangePickerCalendar({
               const isStart = dateStr === lo;
               const isEnd = dateStr === hi;
               const isEdge = isStart || isEnd;
-              const tod =
-                today.getFullYear() === year &&
-                today.getMonth() === month &&
-                today.getDate() === day;
+              const tod = todayStr === dateStr;
               const data = markedDates?.has(dateStr);
               const picking = pickStart === dateStr;
 
@@ -216,6 +254,12 @@ export function DateRangePickerCalendar({
                 </button>
               );
             })}
+          </div>
+
+          <div className={`flex items-center gap-1.5 px-3 pb-2.5 border-t ${D ? 'border-gray-700' : 'border-gray-100'}`}>
+            {presetBtn('today', t.calToday || 'Bugun')}
+            {presetBtn('week', t.calWeek || 'Hafta')}
+            {presetBtn('month', t.calMonth || 'Oy')}
           </div>
 
           <div className={`flex items-center gap-4 px-4 py-2.5 border-t text-[11px] ${D ? 'border-gray-700' : 'border-gray-100'} ${sub}`}>

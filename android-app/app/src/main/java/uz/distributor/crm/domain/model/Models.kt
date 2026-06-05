@@ -65,6 +65,7 @@ data class Product(
     val price: Double,
     val unit: String,
     val stockBalance: Double,
+    val imageUrl: String? = null,
 )
 
 data class CartItem(

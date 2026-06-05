@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
@@ -51,7 +51,7 @@ fun PlanScreen(onNavigate: (NavTab) -> Unit) {
     val sortedAgents = remember { planAgents.sortedByDescending { planPct(it.done, it.plan) } }
 
     Box(Modifier.fillMaxSize().background(sherinPageBackground(isDark))) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 88.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = BottomNavHeight + 16.dp)) {
             Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 40.dp),
@@ -84,7 +84,6 @@ fun PlanScreen(onNavigate: (NavTab) -> Unit) {
                 ) { openAgentId = if (openAgentId == it) null else it }
             }
         }
-        BottomNavBar(NavTab.PLAN, onNavigate, isDark, Modifier.align(Alignment.BottomCenter))
     }
 }
 

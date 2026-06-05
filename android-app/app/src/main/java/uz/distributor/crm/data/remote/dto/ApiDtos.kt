@@ -139,6 +139,7 @@ data class ProductDto(
     @JsonAdapter(FlexibleDoubleAdapter::class) val price: Double = 0.0,
     val unit: String,
     @JsonAdapter(FlexibleDoubleAdapter::class) val stockBalance: Double = 0.0,
+    val imageUrl: String? = null,
 )
 
 data class OrderItemDto(
@@ -169,6 +170,7 @@ data class OrderDto(
     val clientId: String,
     val createdAt: String,
     @JsonAdapter(FlexibleDoubleAdapter::class) val totalAmount: Double = 0.0,
+    val items: List<OrderItemDto> = emptyList(),
 )
 
 data class CreateVisitRequest(

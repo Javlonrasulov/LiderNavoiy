@@ -36,8 +36,8 @@ import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
-import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -181,7 +181,7 @@ fun LocationScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(sheetFraction)
-                .padding(bottom = 72.dp)
+                .padding(bottom = BottomNavHeight)
                 .zIndex(5f),
         ) {
             Surface(
@@ -244,13 +244,6 @@ fun LocationScreen(
                 }
             }
         }
-
-        BottomNavBar(
-            selected = NavTab.LOCATION,
-            onTabSelected = onNavigate,
-            isDark = isDark,
-            modifier = Modifier.align(Alignment.BottomCenter).zIndex(20f),
-        )
     }
 }
 

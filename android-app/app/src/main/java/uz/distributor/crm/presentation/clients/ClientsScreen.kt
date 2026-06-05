@@ -27,8 +27,7 @@ import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.components.BottomNavBar
-import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -40,7 +39,6 @@ fun ClientsScreen(
     onBack: () -> Unit,
     onClientClick: (String) -> Unit,
     onAddClientClick: () -> Unit = {},
-    onNavigate: (NavTab) -> Unit = {},
     viewModel: ClientsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -183,7 +181,7 @@ fun ClientsScreen(
                     } else if (state.activeTab != ClientsListTab.SEARCH || state.searchQuery.length >= 2) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(vertical = 4.dp),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = BottomNavHeight + 4.dp),
                         ) {
                             items(state.clients, key = { it.id }) { client ->
                                 ClientListRow(
@@ -215,16 +213,9 @@ fun ClientsScreen(
                 isDark = isDark,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 72.dp),
+                    .padding(bottom = BottomNavHeight),
             )
         }
-
-        BottomNavBar(
-            selected = NavTab.DELIVERY,
-            onTabSelected = onNavigate,
-            isDark = isDark,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 

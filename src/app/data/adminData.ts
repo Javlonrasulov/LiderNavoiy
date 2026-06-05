@@ -527,6 +527,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     supCurrency: 'Valyuta:', supFrom: 'Dan:', supTo: 'Gacha:', supSearch: 'Qidirish...',
     supRateCbu: 'Markaziy bank', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
     supRateBuy: 'Sotib olish', supRateSell: 'Sotish', supRateLoading: 'Kurs yuklanmoqda...',
+    supRateAsOf: 'Kurs sanasi',
     supListTitle: "Yetkazib beruvchilar ro'yxati", supCountSuffix: 'ta yetkazib beruvchi',
     supColName: 'Yetkazib beruvchi', supOpenBal: 'Boshlanish saldosi', supTurnover: 'Aylanma', supCloseBal: 'Oxirgi saldo',
     supDebet: 'Debet', supKredit: 'Kredit', supTotal: 'Jami', supNoBalance: "Saldo yo'q",
@@ -1047,11 +1048,13 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     supCurrency: 'Валюта:', supFrom: 'Дан:', supTo: 'Гача:', supSearch: 'Қидириш...',
     supRateCbu: 'Марказий банк', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
     supRateBuy: 'Сотиб олиш', supRateSell: 'Сотиш', supRateLoading: 'Курс юкланмоқда...',
+    supRateAsOf: 'Курс санаси',
     supListTitle: 'Таъминотчилар рўйхати', supCountSuffix: 'та етказиб берувчи',
     supColName: 'Таъминотчи', supOpenBal: 'Бошланиш қолдиғи', supTurnover: 'Айланма', supCloseBal: 'Охирги қолдиқ',
     supDebet: 'Дебет', supKredit: 'Кредит', supTotal: 'Жами', supNoBalance: 'Қолдиқ йўқ',
     supDebetTurn: 'Дебет айланма', supKreditTurn: 'Кредит айланма', supCloseDebet: 'Охирги дебет', supCloseKredit: 'Охирги кредит',
     calSelectStart: '📅 Бошланиш санани танланг', calSelectEnd: '📅 Охирги санани танланг',
+    calToday: 'Бугун', calWeek: 'Ҳафта', calMonth: 'Ой',
     supTitle2: 'Таъминотчилар',
     supTabVozvrat: 'Қайтариш', vozTitle: 'Товар қайтариш таъминотчига',
     vozDateSend: 'Юк жўнатиш', vozDateAccept: 'Қабул санаси',
@@ -1566,11 +1569,13 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     supCurrency: 'Валюта:', supFrom: 'С:', supTo: 'По:', supSearch: 'Поиск...',
     supRateCbu: 'Центральный банк', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
     supRateBuy: 'Покупка', supRateSell: 'Продажа', supRateLoading: 'Загрузка курса...',
+    supRateAsOf: 'Дата курса',
     supListTitle: 'Список поставщиков', supCountSuffix: 'поставщиков',
     supColName: 'Поставщик', supOpenBal: 'Нач. остаток', supTurnover: 'Оборот', supCloseBal: 'Кон. остаток',
     supDebet: 'Дебет', supKredit: 'Кредит', supTotal: 'Итого', supNoBalance: 'Нет остатка',
     supDebetTurn: 'Дебет оборот', supKreditTurn: 'Кредит оборот', supCloseDebet: 'Кон. дебет', supCloseKredit: 'Кон. кредит',
     calSelectStart: '📅 Выберите дату начала', calSelectEnd: '📅 Выберите дату окончания',
+    calToday: 'Сегодня', calWeek: 'Неделя', calMonth: 'Месяц',
     supTitle2: 'Поставщики',
     supTabVozvrat: 'Возврат', vozTitle: 'Возврат товаров поставщику',
     vozDateSend: 'Дата отгрузки', vozDateAccept: 'Дата принятия',
@@ -2128,4 +2133,8 @@ export function userStatusOpenLabel(t: Record<string, string>): string {
   return t.userStatusOpen || 'Kirish ochiq';
 }
 
-export function userStatusClosedLabel(t: Record<string, string>): str
+export function userStatusClosedLabel(t: Record<string, string>): string {
+  return t.userStatusClosed || 'Kirish yopiq';
+}
+
+

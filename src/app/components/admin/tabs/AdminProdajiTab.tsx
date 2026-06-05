@@ -25,7 +25,6 @@ export function AdminProdajiTab({ D, t }: AdminProdajiTabProps) {
 
   const card  = D ? '#1c1c1e' : '#ffffff';
   const brd   = D ? '#2a2a2e' : '#e5e7eb';
-  const bg    = D ? '#0d0d0d' : '#ffffff';
   const muted = D ? '#6b7280' : '#9ca3af';
   const txt   = D ? '#f2f2f7' : '#111827';
 
@@ -49,10 +48,13 @@ export function AdminProdajiTab({ D, t }: AdminProdajiTabProps) {
   };
 
   return (
-    <div style={{ background: bg, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="space-y-3 flex flex-col flex-1 min-h-0">
 
       {/* ── Tab menu ── */}
-      <div style={{ background: card, borderBottom: `1px solid ${brd}`, flexShrink: 0 }}>
+      <div
+        className={`rounded-2xl border flex-shrink-0 ${D ? 'border-gray-800' : 'border-gray-200'}`}
+        style={{ background: card }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', overflowX: 'auto' }}>
 
           {/* Back arrow — only visible in create mode */}

@@ -29,6 +29,7 @@ import uz.distributor.crm.data.remote.dto.ReconciliationLineDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
@@ -175,7 +176,8 @@ fun ReconciliationScreen(
                     Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = BottomNavHeight),
                 ) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),

@@ -299,9 +299,9 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const totalPostSum   = postRows.reduce((s, r) => s + r.sum, 0);
   const totalPostNetto = postRows.reduce((s, r) => s + r.netto, 0);
 
-  /* Short labels for date range picker */
-  const labelStart = '📅 Dan';
-  const labelEnd   = '📅 Gacha';
+  /* Date range picker labels from translations */
+  const labelStart = `📅 ${(t.supFrom || 'Dan:').replace(/:$/, '')}`;
+  const labelEnd   = `📅 ${(t.supTo || 'Gacha:').replace(/:$/, '')}`;
 
   const handleDateRange = (from: string, to: string) => {
     setDate1(from);
@@ -850,6 +850,12 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                             )}
                           </div>
                         ))}
+                        <span
+                          className={`text-[10px] tabular-nums whitespace-nowrap flex-shrink-0 ${sub}`}
+                          title={`${t.supRateAsOf}: ${exchangeRates.cbu.date}, ${exchangeRates.fetchedAt.time}`}
+                        >
+                          {t.supRateAsOf}: {exchangeRates.cbu.date}, {exchangeRates.fetchedAt?.time ?? ''}
+                        </span>
                       </>
                     )}
                   </div>

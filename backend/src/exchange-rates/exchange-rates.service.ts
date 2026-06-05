@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { getTashkentTime } from '../common/time/tashkent-time';
 
 export interface BankUsdRate {
   buy: number;
@@ -12,6 +13,7 @@ export interface UsdExchangeRates {
     ipoteka: BankUsdRate;
     agrobank: BankUsdRate;
   };
+  fetchedAt: { date: string; time: string; timezone: 'Asia/Tashkent' };
   updatedAt: string;
 }
 
@@ -51,6 +53,15 @@ export class ExchangeRatesService {
     const result: UsdExchangeRates = {
       cbu,
       banks: { hamkorbank, ipoteka, agrobank },
+      fetchedAt: (() => {
+        const tz = getTashkentTime();
+        const [y, m, d] = tz.date.split('-');
+        return {
+          date: `${d}.${m}.${y}`,
+          time: tz.time.slice(0, 5),
+          timezone: 'Asia/Tashkent' as const,
+        };
+      })(),
       updatedAt: new Date().toISOString(),
     };
 

@@ -46,6 +46,7 @@ data class ProductEntity(
     val price: Double,
     val unit: String,
     val stockBalance: Double,
+    val imageUrl: String? = null,
     val cachedAt: Long = System.currentTimeMillis(),
 )
 
@@ -136,7 +137,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 @Database(
     entities = [PendingLocationEntity::class, ClientEntity::class, ProductEntity::class,
         CartItemEntity::class, PendingOrderEntity::class, PendingVisitEntity::class],
-    version = 4, exportSchema = false,
+    version = 5, exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingLocationDao(): PendingLocationDao
@@ -161,5 +162,5 @@ fun ClientEntity.toDomain() = uz.distributor.crm.domain.model.Client(
 
 fun ProductEntity.toDomain() = uz.distributor.crm.domain.model.Product(
     id = id, code = code, name = name, category = category ?: "", brand = brand,
-    price = price, unit = unit, stockBalance = stockBalance,
+    price = price, unit = unit, stockBalance = stockBalance, imageUrl = imageUrl,
 )

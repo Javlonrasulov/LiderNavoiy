@@ -27,8 +27,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
-import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinDashboardHeader
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
@@ -78,7 +78,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 88.dp),
+                .padding(bottom = BottomNavHeight + 16.dp),
         ) {
             SherinDashboardHeader(
                 companyName = state.user?.companyName ?: "OOO \"BORAN LEADERS\"",
@@ -196,13 +196,6 @@ fun DashboardScreen(
                 }
             }
         }
-
-        BottomNavBar(
-            selected = NavTab.HOME,
-            onTabSelected = onNavigate,
-            isDark = isDark,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
     }
 }
 

@@ -1,5 +1,6 @@
 package uz.distributor.crm.data.repository
 
+import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.data.local.*
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.ProductDto
@@ -58,6 +59,13 @@ class ProductRepository @Inject constructor(
 
     private fun ProductDto.toEntity() = ProductEntity(
         id = id, code = code, name = name, category = category, brand = brand,
-        price = price, unit = unit, stockBalance = stockBalance,
+        price = price, unit = unit, stockBalance = stockBalance, imageUrl = imageUrl,
     )
+
+    fun resolveImageUrl(path: String?): String {
+        if (path.isNullOrBlank()) return ""
+        if (path.startsWith("http")) return path
+        val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
+        return "$base$path"
+    }
 }

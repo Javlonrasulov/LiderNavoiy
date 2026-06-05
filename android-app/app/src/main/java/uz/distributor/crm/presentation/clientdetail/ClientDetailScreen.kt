@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -82,7 +83,12 @@ fun ClientDetailScreen(
                         ?: client.category?.takeIf { it.isNotBlank() }
                         ?: "Standart"
 
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = BottomNavHeight),
+                    ) {
                         Box(
                             Modifier
                                 .fillMaxWidth()

@@ -355,7 +355,7 @@ export default function AdminPanel() {
         )}
 
         {/* PAGE CONTENT */}
-        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'prodaji' || tab === 'ombor') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
+        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
 
           {tab === 'dashboard' && (
             <AdminDashboardTab

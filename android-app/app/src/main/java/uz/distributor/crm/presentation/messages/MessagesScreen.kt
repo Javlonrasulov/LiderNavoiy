@@ -29,8 +29,8 @@ import uz.distributor.crm.data.remote.dto.ChatContactDto
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.components.SherinPageHeader
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
@@ -84,7 +84,7 @@ fun MessagesScreen(
     }
 
     Box(Modifier.fillMaxSize().background(listBg)) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(bottom = BottomNavHeight)) {
             val onContactsTab = state.selectedTab == MessagesListTab.CONTACTS
             SherinPageHeader(
                 title = if (onContactsTab) AppStrings.contactsTab(lang) else AppStrings.messagesTitle(lang),
@@ -142,7 +142,6 @@ fun MessagesScreen(
                 )
             }
         }
-        BottomNavBar(NavTab.MESSAGES, onNavigate, isDark, Modifier.align(Alignment.BottomCenter))
     }
 }
 

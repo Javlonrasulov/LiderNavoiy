@@ -129,7 +129,6 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() },
                 onClientClick = { id -> navController.navigate("client/$id") },
                 onAddClientClick = { navController.navigate("add_client") },
-                onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
             )
         }
         composable(
@@ -163,14 +162,28 @@ fun AppNavHost(
                 onOrderSummary = { id -> navController.navigate("order/$id") },
             )
         }
+        composable("order/cart") {
+            OrderSummaryScreen(
+                clientId = "",
+                onBack = { navController.popBackStack() },
+                onDone = { navController.navigate("main") { popUpTo("main") { inclusive = true } } },
+                onEditClient = { id ->
+                    if (id.isNotBlank()) navController.navigate("visit/$id")
+                },
+            )
+        }
         composable(
             route = "order/{clientId}",
             arguments = listOf(navArgument("clientId") { type = NavType.StringType }),
         ) { entry ->
+            val orderClientId = entry.arguments?.getString("clientId") ?: ""
             OrderSummaryScreen(
-                clientId = entry.arguments?.getString("clientId") ?: "",
+                clientId = orderClientId,
                 onBack = { navController.popBackStack() },
                 onDone = { navController.navigate("main") { popUpTo("main") { inclusive = true } } },
+                onEditClient = { id ->
+                    navController.navigate("visit/${id.ifBlank { orderClientId }}")
+                },
             )
         }
         composable("location") {
@@ -205,6 +218,23 @@ fun AppNavHost(
         navController = navController,
         modifier = Modifier.zIndex(1000f),
     )
+
+    if (showBottomNav) {
+        BottomNavBar(
+            selected = selectedTab,
+            onTabSelected = { tab ->
+                navController.navigate(tab.route) {
+                    popUpTo("main") { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            },
+            isDark = isDark,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(100f),
+        )
+    }
     }
 }
 

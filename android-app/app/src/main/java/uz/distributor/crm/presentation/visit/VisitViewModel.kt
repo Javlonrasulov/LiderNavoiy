@@ -46,6 +46,8 @@ data class VisitUiState(
     val refreshUpdates: List<String> = emptyList(),
     val showRefreshResult: Boolean = false,
     val detailCartJustSaved: Boolean = false,
+    val focusDetailQuantity: Boolean = false,
+    val showCartSheet: Boolean = false,
 ) {
     val filteredProducts: List<Product>
         get() = VisitViewModel.filterProducts(products, searchQuery, showAllProducts)
@@ -68,6 +70,10 @@ data class VisitUiState(
 
     val selectedProduct: Product?
         get() = filteredProducts.find { it.id == selectedProductId }
+            ?: allProducts.find { it.id == selectedProductId }
+
+    fun cartCountForCategory(category: String): Int =
+        cart.count { it.category == category }
 
     val selectedProductIndex: Int
         get() = filteredProducts.indexOfFirst { it.id == selectedProductId }
@@ -90,8 +96,11 @@ class VisitViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(VisitUiState())
     val uiState = _uiState.asStateFlow()
 
+    fun resolveProductImageUrl(path: String?): String = productRepository.resolveImageUrl(path)
+
     fun init(clientId: String) {
         _uiState.update { it.copy(clientId = clientId) }
+        viewModelScope.launch { appSettingsRepository.setActiveClientId(clientId) }
         load()
     }
 
@@ -109,6 +118,7 @@ class VisitViewModel @Inject constructor(
                     products = products,
                     searchQuery = "",
                     selectedProductId = null,
+                    showCartSheet = false,
                 )
             }
         }
@@ -126,24 +136,57 @@ class VisitViewModel @Inject constructor(
         }
     }
 
-    fun openProduct(product: Product) {
+    fun openProduct(product: Product, focusQuantity: Boolean = false) {
+        viewModelScope.launch { applyOpenProduct(product, focusQuantity) }
+    }
+
+    fun openProductById(productId: String, focusQuantity: Boolean = false) {
+        viewModelScope.launch {
+            val product = resolveProduct(productId) ?: return@launch
+            applyOpenProduct(product, focusQuantity)
+        }
+    }
+
+    private suspend fun applyOpenProduct(product: Product, focusQuantity: Boolean) {
+        val category = product.category.ifBlank { ALL_CATEGORY }
+        val products = if (category == ALL_CATEGORY) {
+            _uiState.value.allProducts
+        } else {
+            productRepository.getByCategory(category)
+        }
         val cartQty = _uiState.value.cartQtyFor(product.id)
         _uiState.update {
             it.copy(
                 viewLevel = VisitViewLevel.PRODUCT_DETAIL,
+                selectedCategory = category,
+                products = products,
                 selectedProductId = product.id,
                 detailQuantity = cartQty,
                 detailNote = "",
                 detailCartJustSaved = false,
+                focusDetailQuantity = focusQuantity,
+                showCartSheet = false,
             )
         }
     }
 
-    fun openProductById(productId: String) {
-        val product = _uiState.value.allProducts.find { it.id == productId }
-            ?: _uiState.value.filteredProducts.find { it.id == productId }
-            ?: return
-        openProduct(product)
+    fun editCartItem(productId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(showCartSheet = false) }
+            delay(200)
+            val product = resolveProduct(productId) ?: return@launch
+            applyOpenProduct(product, focusQuantity = true)
+        }
+    }
+
+    private suspend fun resolveProduct(productId: String): Product? {
+        _uiState.value.allProducts.find { it.id == productId }?.let { return it }
+        _uiState.value.filteredProducts.find { it.id == productId }?.let { return it }
+        return productRepository.getProduct(productId)
+    }
+
+    fun clearFocusDetailQuantity() {
+        _uiState.update { it.copy(focusDetailQuantity = false) }
     }
 
     fun backFromProductDetail() {
@@ -219,6 +262,14 @@ class VisitViewModel @Inject constructor(
 
     fun toggleAllSection() {
         _uiState.update { it.copy(allSectionExpanded = !it.allSectionExpanded) }
+    }
+
+    fun openCartSheet() {
+        _uiState.update { it.copy(showCartSheet = true) }
+    }
+
+    fun closeCartSheet() {
+        _uiState.update { it.copy(showCartSheet = false) }
     }
 
     fun setSearchQuery(query: String) {

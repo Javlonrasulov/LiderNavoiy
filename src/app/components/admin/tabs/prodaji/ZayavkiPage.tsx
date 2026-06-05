@@ -759,12 +759,15 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
       )}
 
       {/* ══ NORMAL VIEW ══ */}
-      <div style={{ background: bg, minHeight:'100%', display:'flex', flexDirection:'column' }}>
+      <div
+        className={`flex flex-col flex-1 min-h-0 rounded-2xl border overflow-hidden ${D ? 'border-gray-800' : 'border-gray-200'}`}
+        style={{ background: card }}
+      >
         {filterTabsRow}
         {toolbarRow}
 
         {/* DESKTOP TABLE */}
-        <div className="desktop-only" style={{ flex:1, display:'none', flexDirection:'column' }}>
+        <div className="desktop-only" style={{ flex:1, display:'none', flexDirection:'column', minHeight:0 }}>
           {tableInner(tableRef)}
         </div>
 

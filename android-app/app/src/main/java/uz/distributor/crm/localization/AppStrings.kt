@@ -341,9 +341,24 @@ object AppStrings {
     }
     fun productPosition(lang: AppLanguage, current: Int, total: Int) = "$current / $total"
     fun order(lang: AppLanguage) = tr(lang, "Buyurtma", "Буюртма", "Заказ")
+    fun currentOrder(lang: AppLanguage) = tr(lang, "Joriy buyurtma", "Жорiy buyurtma", "Текущий заказ")
+    fun sentOrders(lang: AppLanguage) = tr(lang, "Yuborilgan buyurtmalar", "Юборилган buyurtmalar", "Отправленные заказы")
+    fun noSentOrdersToday(lang: AppLanguage) = tr(
+        lang,
+        "Bugun yuborilgan buyurtmalar yo'q",
+        "Бугун юборилган buyurtmalar йўқ",
+        "Сегодня отправленных заказов нет",
+    )
+    fun sendOrder(lang: AppLanguage) = tr(lang, "Yuborish", "Юбориш", "Отправить")
     fun confirm(lang: AppLanguage) = tr(lang, "Tasdiqlash", "Тасдиқлаш", "Подтвердить")
     fun total(lang: AppLanguage) = tr(lang, "Jami", "Жами", "Итого")
     fun orderSent(lang: AppLanguage) = tr(lang, "Buyurtma yuborildi!", "Буюртма юборилди!", "Заказ отправлен!")
+    fun cartEmptyHint(lang: AppLanguage) = tr(
+        lang,
+        "Savatcha bo'sh — vizitdan mahsulot qo'shing",
+        "Саватча бўш — визитdan mahsulot qo'shing",
+        "Корзина пуста — добавьте товары из визита",
+    )
     fun backToHome(lang: AppLanguage) = tr(lang, "Asosiy sahifaga", "Асосий саҳифага", "На главную")
     fun logout(lang: AppLanguage) = tr(lang, "Chiqish", "Чиқиш", "Выйти")
     fun profileTitle(lang: AppLanguage) = tr(lang, "Profil", "Профил", "Профиль")

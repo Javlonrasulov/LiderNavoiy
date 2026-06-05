@@ -728,13 +728,16 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
       )}
 
       {/* ── NORMAL VIEW ── */}
-      <div style={{ background:bg, minHeight:'100%', display:'flex', flexDirection:'column' }}>
+      <div
+        className={`flex flex-col flex-1 min-h-0 rounded-2xl border overflow-hidden ${D ? 'border-gray-800' : 'border-gray-200'}`}
+        style={{ background: card }}
+      >
         {pageHeader}
         {filterTabsRow}
         {toolbarRow}
 
         {/* Desktop table */}
-        <div className="ty-desktop-only" style={{ flex:1, display:'none', flexDirection:'column', overflow:'hidden' }}>
+        <div className="ty-desktop-only" style={{ flex:1, display:'none', flexDirection:'column', overflow:'hidden', minHeight:0 }}>
           {tableInner(tableRef)}
         </div>
 

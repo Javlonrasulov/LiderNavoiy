@@ -95,7 +95,15 @@ export interface UsdExchangeRates {
     ipoteka: BankUsdRate;
     agrobank: BankUsdRate;
   };
+  fetchedAt: { date: string; time: string; timezone: 'Asia/Tashkent' };
   updatedAt: string;
+}
+
+export interface TashkentTimeInfo {
+  timezone: 'Asia/Tashkent';
+  date: string;
+  time: string;
+  timestamp: string;
 }
 
 function getToken(): string | null {
@@ -148,6 +156,8 @@ export const api = {
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 
   getUsdExchangeRates: () => request<UsdExchangeRates>('/exchange-rates/usd'),
+
+  getTashkentTime: () => request<TashkentTimeInfo>('/health/time'),
 
   // ─── App users (APK login) ───
   listAppUsers: () => request<AppUserRecord[]>('/users/app'),

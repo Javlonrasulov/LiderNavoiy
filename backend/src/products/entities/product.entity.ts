@@ -32,6 +32,9 @@ export class Product {
   @Column({ type: 'decimal', precision: 12, scale: 3, default: 0 })
   stockBalance: number;
 
+  @Column({ type: 'varchar', nullable: true })
+  imageUrl: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 
