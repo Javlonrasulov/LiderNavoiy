@@ -26,6 +26,9 @@ export interface AppUserRecord {
   fullName: string;
   role: string;
   isActive: boolean;
+  lastLoginAt?: string | null;
+  lastActiveAt?: string | null;
+  isOnline?: boolean;
 }
 
 export interface Distributor {
@@ -40,7 +43,7 @@ export interface Distributor {
   lastLongitude: number | null;
   lastLocationAt: string | null;
   isOnline: boolean;
-  user?: { fullName: string; username: string };
+  user?: { fullName: string; username: string; isActive?: boolean };
 }
 
 export interface LocationPoint {
@@ -55,11 +58,30 @@ export interface Client {
   id: string;
   code: string;
   name: string;
+  fullName?: string | null;
+  phone?: string | null;
   address: string | null;
-  balance: string;
+  companyId?: string | null;
+  lineCode?: string | null;
+  balance: string | number;
   latitude: number | null;
   longitude: number | null;
+  category?: string | null;
+  distributorId?: string | null;
+  inn?: string | null;
+  contactPerson?: string | null;
+  territory?: string | null;
+  clientClass?: string | null;
+  priceCategory?: string | null;
+  isActive?: boolean;
+  updatedAt?: string;
+  distributor?: {
+    id: string;
+    user?: { fullName: string };
+  } | null;
 }
+
+export type BackendClient = Client;
 
 function getToken(): string | null {
   return localStorage.getItem('api_access_token');
@@ -171,7 +193,55 @@ export const api = {
   getClients: (companyId?: string) =>
     request<Client[]>(`/clients${companyId ? `?companyId=${companyId}` : ''}`),
 
+  getClient: (id: string) => request<Client>(`/clients/${id}`),
+
   searchClients: (q: string) => request<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`),
+
+  createClient: (body: {
+    code: string;
+    name: string;
+    fullName?: string;
+    phone?: string;
+    address?: string;
+    companyId?: string;
+    lineCode?: string;
+    latitude?: number;
+    longitude?: number;
+    category?: string;
+    distributorId?: string;
+    inn?: string;
+    contactPerson?: string;
+    territory?: string;
+    clientClass?: string;
+    priceCategory?: string;
+  }) =>
+    request<Client>('/clients', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateClient: (id: string, body: {
+    code?: string;
+    name?: string;
+    fullName?: string;
+    phone?: string;
+    address?: string;
+    lineCode?: string;
+    latitude?: number;
+    longitude?: number;
+    category?: string;
+    distributorId?: string | null;
+    inn?: string;
+    contactPerson?: string;
+    territory?: string;
+    clientClass?: string;
+    priceCategory?: string;
+    isActive?: boolean;
+  }) =>
+    request<Client>(`/clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   // ─── Health ───
   health: () => request<{ status: string }>('/health'),

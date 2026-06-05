@@ -1,10 +1,24 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
-import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
+import { fmtFull, type ClientRow } from '../../../data/adminData';
+import { api } from '../../../api/client';
+import {
+  apiClientToRow,
+  rowToUpdatePayload,
+  formToCreatePayload,
+  distributorsToAgents,
+  distributorsToLines,
+  agentNameToId,
+  clientIdHash,
+} from '../../../utils/clientApi';
 import AddClient from '../../AddClient';
 import { ClientStatsPanel } from '../ClientStatsPanel';
 import { demo } from '../../../data/demoLimit';
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
+}
 
 const TODAY = '2026-03-08';
 const INACTIVE_CUTOFF = '2026-03-01';
@@ -27,10 +41,16 @@ interface Props {
   sub: string;
   t: Record<string, string>;
   showBalances: boolean;
+  selectedCompanyIds: Set<string>;
 }
 
-export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }: Props) {
-  const [clients, setClients] = useState<ClientRow[]>(() => [...allClients]);
+export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds }: Props) {
+  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string; lineCode: string }[]>([]);
+  const [lines, setLines] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [clientPage, setClientPage] = useState(1);
   const [showClientFilter, setShowClientFilter] = useState(false);
@@ -48,9 +68,73 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
     if (clientTableRef.current) clientTableRef.current.scrollBy({ left: dir === 'right' ? 220 : -220, behavior: 'smooth' });
   };
 
-  const handleSaveClient = (data: Partial<ClientRow> & { id: number }) => {
-    setClients(prev => prev.map(c => c.id === data.id ? { ...c, ...data } : c));
-    setActiveClient(prev => prev?.id === data.id ? { ...prev, ...data } : prev);
+  const companyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
+
+  const refreshClients = useCallback(async () => {
+    if (!hasApiToken()) {
+      setClients([]);
+      setAgents([]);
+      setLines([]);
+      setBackendReady(false);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setSaveError(null);
+    try {
+      const [rawClients, distributors] = await Promise.all([
+        api.getClients(companyId),
+        api.getDistributors(companyId),
+      ]);
+      const agentList = distributorsToAgents(distributors);
+      setAgents(agentList);
+      setLines(distributorsToLines(distributors));
+      setClients(rawClients.map(apiClientToRow));
+      setBackendReady(true);
+    } catch {
+      setClients([]);
+      setAgents([]);
+      setLines([]);
+      setBackendReady(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => { refreshClients(); }, [refreshClients]);
+
+  const handleSaveClient = async (data: Partial<ClientRow> & { id: string }) => {
+    setSaveError(null);
+    try {
+      const distributorId = data.distributorId
+        ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
+      const updated = await api.updateClient(
+        data.id,
+        rowToUpdatePayload({ ...data, distributorId }),
+      );
+      const row = apiClientToRow(updated);
+      setClients(prev => prev.map(c => c.id === row.id ? row : c));
+      setActiveClient(prev => prev?.id === row.id ? row : prev);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+      throw e;
+    }
+  };
+
+  const handleCreateClient = async (data: Partial<ClientRow>) => {
+    setSaveError(null);
+    try {
+      const distributorId = data.distributorId
+        ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
+      const created = await api.createClient(
+        formToCreatePayload({ ...data, distributorId }, companyId),
+      );
+      const row = apiClientToRow(created);
+      setClients(prev => [...prev, row]);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+      throw e;
+    }
   };
 
   const filtered = clients.filter(c => {
@@ -162,13 +246,26 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
     { l: t.inactiveClientsLabel,     v: clients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
   ];
 
+  const listEmptyMessage = !backendReady
+    ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
+    : loading
+      ? (t.loading || 'Yuklanmoqda...')
+      : (t.noResults || "Ma'lumot topilmadi");
+
   return (
     <div className="space-y-3">
+      {saveError && (
+        <div className={`px-3 py-2 rounded-xl text-sm border ${D ? 'bg-rose-900/30 border-rose-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+          {saveError}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-2 flex-shrink-0">
         <div>
           <h2 className="text-xl font-bold">{t.allClientsTitle}</h2>
-          <p className={`text-sm ${sub} mt-0.5`}>{filtered.length} / {clients.length}</p>
+          <p className={`text-sm ${sub} mt-0.5`}>
+            {loading ? (t.loading || 'Yuklanmoqda...') : `${filtered.length} / ${clients.length}`}
+          </p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {/* Filter button */}
@@ -295,11 +392,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
 
       {/* Add / Edit Client Modal */}
       {showAddClient && (
-        <AddClient onClose={() => setShowAddClient(false)} />
+        <AddClient
+          agents={agents}
+          lines={lines}
+          onSave={handleCreateClient}
+          onClose={() => setShowAddClient(false)}
+        />
       )}
       {editingClient && (
         <AddClient
           client={editingClient}
+          agents={agents}
+          lines={lines}
           onSave={handleSaveClient}
           onClose={() => setEditingClient(null)}
         />
@@ -381,7 +485,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
             );
           })}
           {paginated.length === 0 && (
-            <div className={`text-center py-12 ${sub} text-sm`}>{t.noResults}</div>
+            <div className={`text-center py-12 ${sub} text-sm`}>{listEmptyMessage}</div>
           )}
         </div>
         <Pagination />
@@ -460,7 +564,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
               })}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={16} className={`text-center py-10 text-sm ${sub}`}>{t.noResults}</td>
+                  <td colSpan={16} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
                 </tr>
               )}
             </tbody>
@@ -476,7 +580,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
             const [la, ln] = activeClient.gps.split(',').map(Number);
             if (!isNaN(la) && !isNaN(ln)) return { lat: la, lng: ln };
           }
-          const seed = activeClient.id % 500;
+          const seed = clientIdHash(activeClient.id) % 500;
           return {
             lat: 40.0857 + ((seed * 7 + 13) % 100 - 50) * 0.004,
             lng: 64.4432 + ((seed * 11 + 7)  % 100 - 50) * 0.003,
@@ -538,7 +642,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances }
 
       {/* CLIENT PHOTO MODAL */}
       {clientPhotoOpen && activeClient && (() => {
-        const photo = PHOTOS[activeClient.id % PHOTOS.length];
+        const photo = PHOTOS[clientIdHash(activeClient.id) % PHOTOS.length];
         const balColor = activeClient.balance < 0 ? 'text-rose-400' : activeClient.balance > 0 ? 'text-emerald-400' : (D ? 'text-gray-400' : 'text-gray-500');
         const sign = activeClient.balance < 0 ? '-' : activeClient.balance > 0 ? '+' : '';
         return (

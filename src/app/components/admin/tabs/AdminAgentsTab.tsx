@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2 } from 'lucide-react';
-import { SOTRUDNIKI_LIST, type SotrudnikRow } from '../../../data/adminData';
+import { type SotrudnikRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
+import { api } from '../../../api/client';
+import { appUserToSotrudnikRow } from '../../../utils/appUserCreds';
 
 interface Props {
   D: boolean;
@@ -17,13 +19,45 @@ interface Props {
   setSelectedAgent: (a: any) => void;
 }
 
-const DEPARTMENTS = ['', 'Продавцы', 'Доставка', 'Отдел продаж', 'АУП', 'Касса', 'Склад', 'Бухгалтерия'];
-const POSITIONS   = ['Директор', 'Торговый агент', 'Доставщик', 'Нач отдел', 'Повар', 'Кассир', 'Кладовщик', 'Оператор', 'Бухгалтер', 'Рекламист'];
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
+
+function deptOptions(t: Record<string, string>) {
+  return [
+    { value: '', label: t.empDeptNone || '— tanlanmagan —' },
+    { value: t.sotrDeptSales || 'Savdo', label: t.sotrDeptSales || 'Savdo' },
+    { value: t.sotrDeptDelivery || 'Yetkazish', label: t.sotrDeptDelivery || 'Yetkazish' },
+    { value: t.sotrDeptSalesDept || "Sotuv bo'limi", label: t.sotrDeptSalesDept || "Sotuv bo'limi" },
+    { value: t.sotrDeptOffice || 'Bosh ofis', label: t.sotrDeptOffice || 'Bosh ofis' },
+    { value: t.sotrDeptCash || 'Kassa', label: t.sotrDeptCash || 'Kassa' },
+    { value: t.sotrDeptWarehouse || 'Ombor', label: t.sotrDeptWarehouse || 'Ombor' },
+    { value: t.sotrDeptAccounting || 'Buxgalteriya', label: t.sotrDeptAccounting || 'Buxgalteriya' },
+  ];
+}
+
+function posOptions(t: Record<string, string>) {
+  return [
+    t.sotrPosDirector || 'Direktor',
+    t.sotrPosSalesAgent || 'Savdo agenti',
+    t.sotrPosDelivery || 'Yetkazib beruvchi',
+    t.sotrPosDeptHead || "Bo'lim boshlig'i",
+    t.sotrPosChef || 'Oshpaz',
+    t.sotrPosCashier || 'Kassir',
+    t.sotrPosWarehouse || 'Omborchi',
+    t.sotrPosOperator || 'Operator',
+    t.sotrPosAccountant || 'Buxgalter',
+    t.sotrPosPromoter || 'Reklamachi',
+    t.sotrPosManager || 'Menejer',
+  ];
+}
 
 export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [isMobile, setIsMobile]   = useState(false);
   const [search, setSearch]       = useState('');
-  const [rows, setRows]           = useState<SotrudnikRow[]>(() => [...SOTRUDNIKI_LIST]);
+  const [rows, setRows]           = useState<SotrudnikRow[]>([]);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [loadingRows, setLoadingRows] = useState(true);
   const [editRow, setEditRow]     = useState<SotrudnikRow | null>(null);
   const [editDraft, setEditDraft] = useState<SotrudnikRow | null>(null);
   const [deleteRow, setDeleteRow] = useState<SotrudnikRow | null>(null);
@@ -41,6 +75,48 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  const refreshEmployees = useCallback(async () => {
+    if (!hasApiToken()) {
+      setRows([]);
+      setBackendReady(false);
+      setLoadingRows(false);
+      return;
+    }
+    setLoadingRows(true);
+    try {
+      const [users, distributors] = await Promise.all([
+        api.listAppUsers(),
+        api.getDistributors(),
+      ]);
+      const distByUserId = new Map(distributors.map(d => [d.userId, d]));
+      const companyIds = selectedCompanyIds;
+      const mapped = users
+        .filter(u => {
+          const d = distByUserId.get(u.id);
+          if (companyIds.size > 0 && d?.companyId && !companyIds.has(d.companyId)) return false;
+          return true;
+        })
+        .map((u, i) => appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t));
+      setRows(mapped);
+      setBackendReady(true);
+    } catch {
+      setRows([]);
+      setBackendReady(false);
+    } finally {
+      setLoadingRows(false);
+    }
+  }, [selectedCompanyIds, t]);
+
+  useEffect(() => { refreshEmployees(); }, [refreshEmployees]);
+
+  const departments = deptOptions(t);
+  const positions = posOptions(t);
+  const listEmptyMessage = !backendReady
+    ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
+    : loadingRows
+      ? (t.loading || 'Yuklanmoqda...')
+      : (t.notFound || "Ma'lumot topilmadi");
 
   // ── colors ──────────────────────────────────────────────────────────────
   const txt      = D ? '#f9fafb' : '#111827';
@@ -72,14 +148,28 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     setRows(r => r.map(e => (e === editRow ? editDraft : e)));
     setEditRow(null); setEditDraft(null);
   };
-  const confirmDelete = () => {
-    setRows(r => r.filter(e => e !== deleteRow));
+  const confirmDelete = async () => {
+    if (!deleteRow) return;
+    if (deleteRow.backendUserId) {
+      try {
+        await api.deactivateAppUser(deleteRow.backendUserId);
+        await refreshEmployees();
+      } catch {
+        /* keep list unchanged */
+      }
+    } else {
+      setRows(r => r.filter(e => e !== deleteRow));
+    }
     setDeleteRow(null);
   };
   const saveAdd = () => {
     if (!addDraft.name.trim()) return;
     const orgId = selectedIds[0] || 'boran';
-    setRows(r => [...r, { ...addDraft, orgId }]);
+    setRows(r => [...r, {
+      ...addDraft,
+      orgId,
+      position: addDraft.position || positions[0] || '',
+    }]);
     setShowAdd(false);
     setAddDraft({ tabel: 0, name: '', department: '', position: '', phone: '', orgId: '' });
   };
@@ -141,7 +231,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: isSmall ? '1fr' : '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Tabel №</label>
+              <label style={labelStyle}>{t.empTabelCol || 'Tabel №'}</label>
               <input
                 style={inputStyle}
                 type="number"
@@ -151,45 +241,45 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               />
             </div>
             <div>
-              <label style={labelStyle}>Telefon</label>
+              <label style={labelStyle}>{t.empPhoneCol || 'Telefon'}</label>
               <input
                 style={inputStyle}
                 value={draft.phone}
                 onChange={e => onChangeDraft({ ...draft, phone: e.target.value })}
-                placeholder="(99) 000-00-00"
+                placeholder={t.empPhonePh || '(99) 000-00-00'}
               />
             </div>
           </div>
 
           <div>
-            <label style={labelStyle}>Xodim ismi</label>
+            <label style={labelStyle}>{t.empNameCol || 'Xodim ismi'}</label>
             <input
               style={inputStyle}
               value={draft.name}
               onChange={e => onChangeDraft({ ...draft, name: e.target.value })}
-              placeholder="F.I.Sh."
+              placeholder={t.empNamePh || 'F.I.Sh.'}
             />
           </div>
 
           <div>
-            <label style={labelStyle}>Bo'linma</label>
+            <label style={labelStyle}>{t.empDeptCol || "Bo'linma"}</label>
             <select
               style={selectStyle}
               value={draft.department}
               onChange={e => onChangeDraft({ ...draft, department: e.target.value })}
             >
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{d || '— tanlanmagan —'}</option>)}
+              {departments.map(d => <option key={d.value || 'none'} value={d.value}>{d.label}</option>)}
             </select>
           </div>
 
           <div>
-            <label style={labelStyle}>Lavozim</label>
+            <label style={labelStyle}>{t.empPositionCol || 'Lavozim'}</label>
             <select
               style={selectStyle}
               value={draft.position}
               onChange={e => onChangeDraft({ ...draft, position: e.target.value })}
             >
-              {POSITIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              {positions.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
         </div>
@@ -201,7 +291,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
             background: 'transparent', color: muted, fontSize: 13, fontWeight: 600,
             cursor: 'pointer',
           }}>
-            Bekor
+            {t.cancelBtn || 'Bekor'}
           </button>
           <button onClick={onSave} style={{
             flex: 2, padding: '10px', borderRadius: 11, border: 'none',
@@ -210,7 +300,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
             boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
           }}>
             <Check size={14} />
-            Saqlash
+            {t.empSaveBtn || 'Saqlash'}
           </button>
         </div>
       </div>
@@ -239,24 +329,24 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           <AlertTriangle size={22} color={red} />
         </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: txt, marginBottom: 8 }}>
-          O'chirishni tasdiqlaysizmi?
+          {t.empDeleteTitle || "O'chirishni tasdiqlaysizmi?"}
         </div>
         <div style={{ fontSize: 13, color: muted, marginBottom: 24, lineHeight: 1.5 }}>
-          <strong style={{ color: txt }}>{deleteRow.name}</strong> — bu amalni ortga qaytarib bo'lmaydi.
+          <strong style={{ color: txt }}>{deleteRow.name}</strong> — {t.empDeleteWarn || "bu amalni ortga qaytarib bo'lmaydi."}
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setDeleteRow(null)} style={{
             flex: 1, padding: '10px', borderRadius: 11, border: `1px solid ${border}`,
             background: 'transparent', color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer',
           }}>
-            Bekor
+            {t.cancelBtn || 'Bekor'}
           </button>
           <button onClick={confirmDelete} style={{
             flex: 1, padding: '10px', borderRadius: 11, border: 'none',
             background: red, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             boxShadow: '0 4px 14px rgba(239,68,68,0.35)',
           }}>
-            O'chirish
+            {t.deleteBtn || "O'chirish"}
           </button>
         </div>
       </div>
@@ -268,12 +358,12 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     return (
       <>
         {editRow && editDraft && renderModal(
-          "Xodimni tahrirlash", editDraft,
+          t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
           setEditDraft, saveEdit, () => { setEditRow(null); setEditDraft(null); }
         )}
         {deleteRow && renderDeleteModal()}
         {showAdd && renderModal(
-          "Yangi xodim qo'shish", addDraft,
+          t.empAddTitle || "Yangi xodim qo'shish", addDraft,
           setAddDraft, saveAdd, () => setShowAdd(false)
         )}
 
@@ -288,7 +378,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               <Search size={13} color={muted} />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Qidirish..."
+                placeholder={t.empSearchPh || 'Qidirish...'}
                 style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: txt, outline: 'none' }}
               />
             </div>
@@ -303,7 +393,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           </div>
 
           <div style={{ fontSize: 11.5, color: muted }}>
-            {employees.length} xodim
+            {employees.length} {t.empUnit || 'xodim'}
           </div>
 
           {employees.map((emp, i) => (
@@ -367,7 +457,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                   }}
                 >
                   <Edit2 size={11} />
-                  O'zgartirish
+                  {t.empEditBtn || "O'zgartirish"}
                 </button>
                 <button
                   onClick={() => setDeleteRow(emp)}
@@ -379,7 +469,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                   }}
                 >
                   <Trash2 size={11} />
-                  O'chirish
+                  {t.empDeleteBtn || "O'chirish"}
                 </button>
               </div>
             </div>
@@ -387,7 +477,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
           {employees.length === 0 && (
             <div style={{ textAlign: 'center', padding: '48px 0', color: muted, fontSize: 13 }}>
-              Ma'lumot topilmadi
+              {listEmptyMessage}
             </div>
           )}
         </div>
@@ -399,12 +489,12 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   return (
     <>
       {editRow && editDraft && renderModal(
-        "Xodimni tahrirlash", editDraft,
+        t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
         setEditDraft, saveEdit, () => { setEditRow(null); setEditDraft(null); }
       )}
       {deleteRow && renderDeleteModal()}
       {showAdd && renderModal(
-        "Yangi xodim qo'shish", addDraft,
+        t.empAddTitle || "Yangi xodim qo'shish", addDraft,
         setAddDraft, saveAdd, () => setShowAdd(false)
       )}
 
@@ -416,7 +506,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               {t.navSotrudniki || "Xodimlar ro'yxati"}
             </span>
             <span style={{ fontSize: 12, color: muted, fontWeight: 400, marginLeft: 10 }}>
-              {employees.length} xodim
+              {employees.length} {t.empUnit || 'xodim'}
             </span>
           </div>
 
@@ -430,7 +520,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               <Search size={13} color={muted} />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Qidirish..."
+                placeholder={t.empSearchPh || 'Qidirish...'}
                 style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: txt, outline: 'none' }}
               />
             </div>
@@ -444,7 +534,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
             }}>
               <Plus size={14} />
-              Qo'shish
+              {t.empAddBtn || "Qo'shish"}
             </button>
           </div>
         </div>
@@ -461,12 +551,12 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 borderBottom: `1px solid ${border}`,
               }}>
                 {[
-                  { label: 'Tabel №', w: 80 },
-                  { label: 'Xodim ismi', w: undefined },
-                  { label: "Bo'linma", w: 160 },
-                  { label: 'Lavozim', w: 160 },
-                  { label: 'Telefon', w: 150 },
-                  ...(selectedCompanyIds.size > 1 ? [{ label: 'Tashkilot', w: 110 }] : []),
+                  { label: t.empTabelCol || 'Tabel №', w: 80 },
+                  { label: t.empNameCol || 'Xodim ismi', w: undefined },
+                  { label: t.empDeptCol || "Bo'linma", w: 160 },
+                  { label: t.empPositionCol || 'Lavozim', w: 160 },
+                  { label: t.empPhoneCol || 'Telefon', w: 150 },
+                  ...(selectedCompanyIds.size > 1 ? [{ label: t.empOrgCol || 'Tashkilot', w: 110 }] : []),
                   { label: '', w: 160 },
                 ].map((col, i) => (
                   <th key={i} style={{
@@ -581,7 +671,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                         {/* Edit */}
                         <button
                           onClick={() => { setEditRow(emp); setEditDraft({ ...emp }); }}
-                          title="O'zgartirish"
+                          title={t.empEditBtn || "O'zgartirish"}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 5,
                             padding: '6px 11px', borderRadius: 8,
@@ -599,13 +689,13 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                           }}
                         >
                           <Edit2 size={12} />
-                          O'zgartirish
+                          {t.empEditBtn || "O'zgartirish"}
                         </button>
 
                         {/* Delete */}
                         <button
                           onClick={() => setDeleteRow(emp)}
-                          title="O'chirish"
+                          title={t.empDeleteBtn || "O'chirish"}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 5,
                             padding: '6px 11px', borderRadius: 8,
@@ -623,7 +713,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                           }}
                         >
                           <Trash2 size={12} />
-                          O'chirish
+                          {t.empDeleteBtn || "O'chirish"}
                         </button>
                       </div>
                     </td>
@@ -634,7 +724,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               {employees.length === 0 && (
                 <tr>
                   <td colSpan={8} style={{ padding: '52px 20px', textAlign: 'center', fontSize: 13, color: muted }}>
-                    Ma'lumot topilmadi
+                    {listEmptyMessage}
                   </td>
                 </tr>
               )}

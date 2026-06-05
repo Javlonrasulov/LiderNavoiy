@@ -93,6 +93,7 @@ export default function AdminLogin() {
       login(username.trim(), password.trim(), userData);
       navigate('/admin/select');
     } catch {
+      clearTokens();
       const ok = login(username.trim(), password.trim());
       if (ok) {
         navigate('/admin/select');

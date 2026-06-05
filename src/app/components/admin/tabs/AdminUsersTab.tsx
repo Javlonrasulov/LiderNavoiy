@@ -25,32 +25,14 @@ interface Props {
 
 type UserRow = AppUserListRow;
 
-const INITIAL_USERS: UserRow[] = [
-  { id: 1,  code: '0051', name: 'Abduxakimov Diyorbek',        tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Abduxakimov D...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 2,  code: '0035', name: 'Amriddinov Sardor',           tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Amriddinov S...',   onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
-  { id: 3,  code: '0043', name: 'Baxodirov Utkir',             tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'LEADERS BAR...',  emp: 'Baxodirov Utk...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: true,  consig: false, gps: false },
-  { id: 4,  code: '0053', name: 'Buronov Feruz',               tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Buronov Feruz',     onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 5,  code: '0020', name: 'Buxgalter',                   tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Buxgalter Akb...',  onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: false },
-  { id: 6,  code: '0046', name: 'Juraboev Fayzillo',           tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Juraboev Fa...',    onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 7,  code: '0017', name: 'Tarozi2',                     tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Zaripov Begzod',    onTrade: '',             dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
-  { id: 8,  code: '0018', name: 'Zaripov Begzod',              tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Zaripov Begzod',    onTrade: 'begzod.bld',   dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
-  { id: 9,  code: '0005', name: 'Zaripov Mirjon',              tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Zaripov Mirj...',   onTrade: '',             dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: false },
-  { id: 10, code: '0004', name: 'Zaripov Shaxzod',             tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Zaripov Shaxzod',   onTrade: 'direktor.bld', dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
-  { id: 11, code: '0047', name: 'Ibragimov Sherzod aka',       tg: '', lastAct: '', role: 'Dostavkachi/Shofyor', status: 'open', org: 'OOO "BORAN L..."', emp: 'Ibragimov She...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 12, code: '0015', name: 'Irgashev Azizjon Ilxomovich', tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Irgashev Aziz...',  onTrade: 'azizjon.bld',  dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
-  { id: 13, code: '0026', name: 'Ismatov Asadbek',             tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'LEADERS BAR...',  emp: 'Ismatov Asadb...',  onTrade: '',             dirs: 'SOF IN',          acceptPay: false, consig: false, gps: false },
-  { id: 14, code: '0050', name: 'Ismatullaev Quvonchbek',      tg: '', lastAct: '', role: 'Ofis xodimi',         status: 'open', org: 'OOO "BORAN L..."', emp: 'Ismatullaev K...',  onTrade: '',             dirs: 'SHERIN',          acceptPay: false, consig: false, gps: false },
-  { id: 15, code: '0032', name: 'Patipov Umrzok',              tg: '', lastAct: '', role: 'Savdo agenti',        status: 'open', org: 'OOO "BORAN L..."', emp: 'Patipov Umrzok',    onTrade: '',             dirs: 'SHERIN',          acceptPay: true,  consig: false, gps: false },
-  { id: 16, code: '0002', name: 'Menedjer',                    tg: '', lastAct: '', role: 'Menedjer',            status: 'open', org: 'OOO "BORAN L..."', emp: 'Menedjer',          onTrade: '',             backendUserId: '', dirs: 'SHERIN, SOF IN', acceptPay: false, consig: false, gps: true  },
-];
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
 
-async function fetchUsersFromBackend(): Promise<UserRow[] | null> {
-  const token = typeof localStorage !== 'undefined'
-    ? localStorage.getItem('api_access_token')
-    : null;
-  if (!token) return null;
+async function fetchUsersFromBackend(t: Record<string, string>): Promise<UserRow[]> {
+  if (!hasApiToken()) return [];
   const appUsers = await api.listAppUsers();
-  return appUsers.map((u, i) => appUserToRow(u, i + 1));
+  return appUsers.map((u, i) => appUserToRow(u, i + 1, t));
 }
 
 function formToUserRow(
@@ -256,29 +238,47 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const [isMobile, setIsMobile] = useState<boolean>(
     () => typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
-  const [users, setUsers] = useState<UserRow[]>(() => [...INITIAL_USERS]);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [search,   setSearch]  = useState('');
   const [selected, setSelected] = useState<number | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const refreshUsers = useCallback(async () => {
-    try {
-      const rows = await fetchUsersFromBackend();
-      if (rows && rows.length > 0) {
-        setUsers(rows);
-        setSelected(prev => {
-          if (prev && rows.some(r => r.id === prev)) return prev;
-          return rows[0]?.id ?? null;
-        });
-      }
-    } catch {
-      /* keep current list */
+  const refreshUsers = useCallback(async (): Promise<UserRow[]> => {
+    if (!hasApiToken()) {
+      setUsers([]);
+      setBackendReady(false);
+      setLoadingUsers(false);
+      return [];
     }
-  }, []);
+    setLoadingUsers(true);
+    try {
+      const rows = await fetchUsersFromBackend(t);
+      setUsers(rows);
+      setBackendReady(true);
+      setSelected(prev => {
+        if (prev && rows.some(r => r.id === prev)) return prev;
+        return rows[0]?.id ?? null;
+      });
+      return rows;
+    } catch {
+      setBackendReady(false);
+      return [];
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, [t]);
 
   useEffect(() => {
     refreshUsers();
   }, [refreshUsers]);
+
+  useEffect(() => {
+    if (!backendReady) return;
+    const timer = setInterval(() => { refreshUsers(); }, 30_000);
+    return () => clearInterval(timer);
+  }, [backendReady, refreshUsers]);
 
   const [modalUser, setModalUser] = useState<UserFormRow | null | 'new'>(null);
   const openNew    = () => setModalUser('new');
@@ -293,7 +293,8 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
 
       const login = data.appLogin.trim();
       if (!existingRow?.backendUserId && login) {
-        const dup = users.find(u => u.onTrade.toLowerCase() === login.toLowerCase());
+        const fresh = await fetchUsersFromBackend(t);
+        const dup = fresh.find(u => u.onTrade.toLowerCase() === login.toLowerCase());
         if (dup) {
           throw new Error(t.userErrUsernameExists || 'Bu login band');
         }
@@ -301,14 +302,11 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
 
       await syncAppCredentials(data, t, existingRow);
 
-      const rows = await fetchUsersFromBackend();
-      if (rows && rows.length > 0) {
-        setUsers(rows);
-        const saved = rows.find(
-          u => u.onTrade.toLowerCase() === login.toLowerCase(),
-        );
-        if (saved) setSelected(saved.id);
-      }
+      const rows = await refreshUsers();
+      const saved = rows.find(
+        u => u.onTrade.toLowerCase() === login.toLowerCase(),
+      );
+      if (saved) setSelected(saved.id);
 
       return true;
     } catch (e) {
@@ -324,16 +322,14 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
 
   const handleDelete = async (id: number) => {
     const row = users.find(u => u.id === id);
-    if (row?.backendUserId) {
-      try {
-        await api.deactivateAppUser(row.backendUserId);
-      } catch {
-        /* local delete even if API fails */
-      }
+    if (!row?.backendUserId) return;
+    try {
+      await api.deactivateAppUser(row.backendUserId);
+      if (row.onTrade) removeStoredAppPassword(row.onTrade);
+      await refreshUsers();
+    } catch {
+      /* keep list unchanged on API error */
     }
-    if (row?.onTrade) removeStoredAppPassword(row.onTrade);
-    setUsers(prev => prev.filter(u => u.id !== id));
-    setSelected(prev => (prev === id ? null : prev));
   };
 
   useEffect(() => {
@@ -357,10 +353,17 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
     const q = search.trim().toLowerCase();
     return !q
       || u.name.toLowerCase().includes(q)
+      || u.onTrade.toLowerCase().includes(q)
       || u.code.includes(q)
       || u.role.toLowerCase().includes(q)
       || u.dirs.toLowerCase().includes(q);
   });
+
+  const listEmptyMessage = !backendReady
+    ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
+    : loadingUsers
+      ? (t.loading || 'Yuklanmoqda...')
+      : (t.notFound || "Ma'lumot topilmadi");
 
   const cols: { key: string; label: string; w: number; center?: boolean }[] = [
     { key: 'code',      label: t.userCode      || 'Kod',          w: 54  },
@@ -452,10 +455,10 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
           }}>
             {filtered.length === 0 ? (
               <div style={{ padding: 48, textAlign: 'center', color: muted, fontSize: 13 }}>
-                {t.notFound || "Ma'lumot topilmadi"}
+                {listEmptyMessage}
               </div>
             ) : filtered.map(u => (
-              <div key={u.id} onClick={() => openEdit(u)} style={{ cursor: 'pointer' }}>
+              <div key={u.backendUserId || u.id} onClick={() => openEdit(u)} style={{ cursor: 'pointer' }}>
                 <MobileUserCard
                   u={u} D={D}
                   isSelected={selected === u.id}
@@ -585,7 +588,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={cols.length} style={{ textAlign: 'center', color: muted, fontSize: 13, padding: 32 }}>
-                    {t.notFound || "Ma'lumot topilmadi"}
+                    {listEmptyMessage}
                   </td>
                 </tr>
               )}
@@ -623,7 +626,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
 
                 return (
                   <tr
-                    key={u.id}
+                    key={u.backendUserId || u.id}
                     onClick={() => openEdit(u as unknown as UserFormRow)}
                     style={{ cursor: 'pointer', borderLeft: isSel ? `3px solid ${indigo}` : '3px solid transparent' }}
                     onMouseEnter={e => {
@@ -648,7 +651,14 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
                       {u.code}
                     </td>
                     <TD bold>{u.name}</TD>
-                    <TD><span style={{ color: cellMuted }}>{u.lastAct || '—'}</span></TD>
+                    <TD>
+                      <span style={{
+                        color: u.isOnline ? green : cellMuted,
+                        fontWeight: u.isOnline ? 600 : 400,
+                      }}>
+                        {u.lastAct || '—'}
+                      </span>
+                    </TD>
                     <td style={{
                       padding: '4px 8px', background: rowBg, borderBottom: `1px solid ${border}`,
                       borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`,

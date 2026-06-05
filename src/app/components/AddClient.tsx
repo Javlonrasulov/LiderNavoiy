@@ -4,13 +4,20 @@ import { useTheme } from './ThemeContext';
 import { useLang } from './LangContext';
 import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
-import { demo } from '../data/demoLimit';
 import type { ClientRow } from '../data/adminData';
+
+export interface AgentOption {
+  id: string;
+  name: string;
+  lineCode?: string;
+}
 
 interface AddClientProps {
   onClose: () => void;
   client?: ClientRow;
-  onSave?: (data: Partial<ClientRow> & { id: number }) => void;
+  agents?: AgentOption[];
+  lines?: string[];
+  onSave?: (data: Partial<ClientRow> & { id?: string }) => void | Promise<void>;
 }
 type TabKey = 'rekvizit' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
 
@@ -107,13 +114,10 @@ const TRANS = {
 const NAVOIY = { lat: 40.0843, lng: 65.3791 };
 
 const DIRECTIONS  = ["SHERIN", "SOF IN", "NAVOIY NORTH", "ATLAS", "BORAN", "ZARAFSHON"];
-const LINES       = ["01 - Toshrabot. Xazora. Air.", "02 - Navoiy Shimol", "03 - Karmana", "04 - Konimex", "05 - Markaz"];
 const CLASSES     = ["BM - Bozordagi dukon", "SM - Supermarket", "PM - Premium market", "KS - Kichik savdo"];
 const TYPES       = ["Torgovaya tochka", "Ulgurji", "Distributtor", "Restorant / Kafe"];
-const CHANNELS    = demo(["Retail", "Horeca", "Wholesale", "Online"]);
-const PRICE_ZONES = demo(["Toshrabot. Xazora. Airoport.", "Navoiy Shimol", "Karmana", "Konimex"]);
-const CATEGORIES  = demo(["Standard", "VIP", "Premium"]);
-const AGENTS      = demo(["Alisher Karimov", "Bobur Yusupov", "Dilshod Toshmatov", "Eldor Nazarov"]);
+const CHANNELS    = ["Retail", "Horeca", "Wholesale", "Online"];
+const CATEGORIES  = ["Standard", "VIP", "Premium"];
 
 function clientToForm(client: ClientRow) {
   let lat: number | null = null;
@@ -136,7 +140,7 @@ function clientToForm(client: ClientRow) {
       gps: gpsStr, priceZone: client.priceCat || '',
       budget: '', mainContract: '', note: '',
       inn: client.inn, territory: client.territory, settlement: '', pinfl: '', telegram: '',
-      actDate: '', actSum: '', agent: client.agent || '',
+      actDate: '', actSum: '', agent: client.agent || '', distributorId: client.distributorId || '',
       noDelay: false, routeList: false, sizeW: '', sizeH: '', regDate: '', comment: '',
     },
     contacts: client.contact
@@ -146,7 +150,7 @@ function clientToForm(client: ClientRow) {
   };
 }
 
-export default function AddClient({ onClose, client, onSave }: AddClientProps) {
+export default function AddClient({ onClose, client, agents = [], lines = [], onSave }: AddClientProps) {
   const { isDark } = useTheme();
   const { lang } = useLang();
   const D = isDark;
@@ -170,7 +174,7 @@ export default function AddClient({ onClose, client, onSave }: AddClientProps) {
     director: '', chiefAcc: '', channel: '', gps: '', priceZone: '',
     budget: '', mainContract: '', note: '',
     inn: '', territory: '', settlement: '', pinfl: '', telegram: '',
-    actDate: '', actSum: '', agent: '',
+    actDate: '', actSum: '', agent: '', distributorId: '',
     noDelay: false, routeList: false,
     sizeW: '', sizeH: '', regDate: '', comment: '',
   });
@@ -188,27 +192,39 @@ export default function AddClient({ onClose, client, onSave }: AddClientProps) {
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
-  const handleSave = () => {
-    if (isEdit && client && onSave) {
-      onSave({
-        id: client.id,
-        code: form.kod,
-        name: form.name,
-        fullName: form.officialName || form.name,
-        line: form.liniya,
-        priceCat: form.priceZone,
-        territory: form.territory,
-        inn: form.inn,
-        legalAddr: form.legalAddr,
-        phone: form.phones,
-        contact: contacts[0]?.name || client.contact,
-        cls: form.cls,
-        gps: form.gps,
-        agent: form.agent,
-        category: form.category,
-      });
+  const agentNames = agents.map(a => a.name);
+  const lineOptions = lines.length > 0 ? lines : ['01'];
+  const priceZoneOptions = lineOptions;
+
+  const handleSave = async () => {
+    if (!onSave) { onClose(); return; }
+    const payload: Partial<ClientRow> & { id?: string } = {
+      code: form.kod,
+      name: form.name,
+      fullName: form.officialName || form.name,
+      line: form.liniya,
+      priceCat: form.priceZone,
+      territory: form.territory,
+      inn: form.inn,
+      legalAddr: form.legalAddr,
+      phone: form.phones,
+      contact: contacts[0]?.name || client?.contact || '',
+      cls: form.cls,
+      gps: form.gps,
+      agent: form.agent,
+      distributorId: form.distributorId || agents.find(a => a.name === form.agent)?.id,
+      category: form.category,
+    };
+    try {
+      if (isEdit && client) {
+        await onSave({ ...payload, id: client.id });
+      } else {
+        await onSave(payload);
+      }
+      onClose();
+    } catch {
+      /* xatolik — modal ochiq qoladi */
     }
-    onClose();
   };
 
   useEffect(() => {
@@ -557,7 +573,7 @@ export default function AddClient({ onClose, client, onSave }: AddClientProps) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 240 }}>
             <span style={{ fontSize: 12, color: lblClr, flexShrink: 0 }}>{t.liniya}:</span>
-            <MetaDrop field="liniya" options={LINES} width={160} />
+            <MetaDrop field="liniya" options={lineOptions} width={160} />
           </div>
           <button onClick={() => set('status', form.status === 'active' ? 'inactive' : 'active')}
             style={{
@@ -660,7 +676,53 @@ export default function AddClient({ onClose, client, onSave }: AddClientProps) {
             </Grid2>
             <Grid2>
               <DropCell label={t.channel} field="channel" options={CHANNELS} />
-              <DropCell label={t.agent}   field="agent"   options={AGENTS} />
+              <div style={{
+                padding: '8px 12px', position: 'relative',
+                borderRight: `1px solid ${divClr}`, background: bg,
+              }}>
+                <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.agent}</div>
+                <button
+                  onClick={() => setOpenDrop(openDrop === 'agent' ? null : 'agent')}
+                  style={{
+                    ...inpStyle({ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }),
+                    borderColor: openDrop === 'agent' ? focClr : inpBdr,
+                    boxShadow: openDrop === 'agent' ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
+                  } as React.CSSProperties}
+                >
+                  <span style={{ fontSize: 13, color: form.agent ? valClr : lblClr, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+                    {form.agent || (agents.length === 0 ? '...' : '...')}
+                  </span>
+                  <ChevronDown size={14} color={lblClr} style={{ flexShrink: 0, transform: openDrop === 'agent' ? 'rotate(180deg)' : '', transition: 'transform .15s' }} />
+                </button>
+                {openDrop === 'agent' && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={() => setOpenDrop(null)} />
+                    <div style={{
+                      position: 'absolute', left: 12, right: 12, top: 'calc(100% - 4px)', zIndex: 401,
+                      background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
+                      boxShadow: '0 8px 28px rgba(0,0,0,0.18)', overflow: 'hidden', maxHeight: 220, overflowY: 'auto',
+                    }}>
+                      {agentNames.length === 0 ? (
+                        <div style={{ padding: '10px 14px', fontSize: 12, color: lblClr }}>...</div>
+                      ) : agentNames.map(name => (
+                        <button key={name} onClick={() => {
+                          const picked = agents.find(a => a.name === name);
+                          set('agent', name);
+                          set('distributorId', picked?.id ?? '');
+                          setOpenDrop(null);
+                        }}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13,
+                            background: form.agent === name ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'none',
+                            color: form.agent === name ? focClr : valClr,
+                            border: 'none', borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
+                          }}
+                        >{name}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </Grid2>
 
             <Sec label={t.secGps} />
@@ -683,7 +745,7 @@ export default function AddClient({ onClose, client, onSave }: AddClientProps) {
                   </button>
                 </div>
               </div>
-              <DropCell label={t.priceZone} field="priceZone" options={PRICE_ZONES} />
+              <DropCell label={t.priceZone} field="priceZone" options={priceZoneOptions} />
             </Grid2>
             <Grid2>
               <Cell label={t.budget}       field="budget" />

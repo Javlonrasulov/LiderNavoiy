@@ -5,7 +5,10 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { DistributorProfile } from '../../distributors/entities/distributor-profile.entity';
 
 @Entity('clients')
 @Index(['companyId'])
@@ -45,6 +48,28 @@ export class Client {
 
   @Column({ type: 'varchar', nullable: true })
   category: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  distributorId: string | null;
+
+  @ManyToOne(() => DistributorProfile, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'distributorId' })
+  distributor: DistributorProfile | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  inn: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  contactPerson: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  territory: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  clientClass: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  priceCategory: string | null;
 
   @Column({ default: true })
   isActive: boolean;

@@ -335,12 +335,12 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
               <span style={{ color: roleColors[historyEmp.role] || indigo, flexShrink: 0 }}>{historyEmp.role}</span>
               <span style={{ flexShrink: 0 }}>·</span>
               <CalendarDays size={9} color={muted} style={{ flexShrink: 0 }} />
-              <span style={{ flexShrink: 0 }}>Tarixi</span>
+              <span style={{ flexShrink: 0 }}>{t.histPageTitle || 'Tarixi'}</span>
             </div>
           </div>
         </div>
 
-        <DayHistoryPanel empId={historyEmp.id} empName={historyEmp.name} mode="delivery" D={D} />
+        <DayHistoryPanel empId={historyEmp.id} empName={historyEmp.name} mode="delivery" D={D} t={t} />
       </div>
     );
   }
@@ -497,7 +497,7 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
         </div>
 
         {/* ── DELIVERY LIST ──────────────────────────────────────────────────── */}
-        <DayHistoryPanel empId={viewEmp.id} empName={viewEmp.name} mode="delivery" D={D} />
+        <DayHistoryPanel empId={viewEmp.id} empName={viewEmp.name} mode="delivery" D={D} t={t} />
 
       </div>
     );
@@ -691,7 +691,7 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
                 <button onClick={() => setHistoryEmp(emp)}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center', height: isSmall ? 30 : 32, borderRadius: 8, border: `1px solid ${D ? 'rgba(255,255,255,0.10)' : '#e5e7eb'}`, background: 'transparent', cursor: 'pointer' }}>
                   <CalendarDays size={11} color={indigo} />
-                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>Tarix</span>
+                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>{t.histBtn || 'Tarix'}</span>
                 </button>
                 <button onClick={() => { setViewEmp(emp); setMapKey(k => k + 1); setListFilter('all'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center', height: isSmall ? 30 : 32, borderRadius: 8, border: `1px solid ${emp.online ? 'rgba(16,185,129,0.35)' : border}`, background: emp.online ? 'rgba(16,185,129,0.10)' : (D ? 'rgba(255,255,255,0.05)' : '#f3f4f6'), cursor: 'pointer' }}>
@@ -779,9 +779,9 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
                 style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 7, border: `1px solid ${D ? 'rgba(255,255,255,0.12)' : '#e5e7eb'}`, background: 'transparent', color: muted, fontSize: 11, fontWeight: 500, cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = indigo; (e.currentTarget as HTMLElement).style.color = indigo; (e.currentTarget as HTMLElement).style.background = `${indigo}10`; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = D ? 'rgba(255,255,255,0.12)' : '#e5e7eb'; (e.currentTarget as HTMLElement).style.color = muted; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                title="Tarixni ko'rish">
+                title={t.histBtnTitle || "Tarixni ko'rish"}>
                 <CalendarDays size={11} />
-                <span>Tarix</span>
+                <span>{t.histBtn || 'Tarix'}</span>
               </button>
               <button onClick={() => { setViewEmp(emp); setMapKey(k => k + 1); setListFilter('all'); }}
                 style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 7, border: `1px solid ${emp.online ? 'rgba(16,185,129,0.35)' : border}`, background: emp.online ? 'rgba(16,185,129,0.10)' : (D ? 'rgba(255,255,255,0.05)' : '#f3f4f6'), color: emp.online ? green : muted, fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}

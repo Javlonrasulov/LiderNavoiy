@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users2, Search, Plus, Phone, MapPin, Edit2, Trash2, X,
   AlertTriangle, Check, ChevronLeft, ChevronRight,
@@ -15,6 +15,7 @@ import { DayHistoryPanel } from '../DayHistoryPanel';
 import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
 import { MiniBarChart } from '../../MiniCharts';
+import { api, type Distributor } from '../../../api/client';
 
 interface Props {
   D: boolean;
@@ -79,14 +80,62 @@ const CITY_COORDS: Record<string, [number, number]> = {
   'Uchquduq':  [41.5567, 63.5503],
 };
 
-function toEmployee(a: AgentRow, i: number) {
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
+
+function stableAgentId(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return Math.abs(h) || 1;
+}
+
+function nameInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'AG';
+}
+
+function distributorToAgentRow(d: Distributor): AgentRow {
+  const name = d.user?.fullName?.trim() || d.user?.username || 'Agent';
+  const active = d.user?.isActive !== false;
+  return {
+    id: stableAgentId(d.userId || d.id),
+    name,
+    avatar: nameInitials(name),
+    clients: 0,
+    visits: 0,
+    sales: 0,
+    payments: 0,
+    debt: 0,
+    plan: 0,
+    status: active ? 'active' : 'inactive',
+    orgId: d.companyId || 'boran',
+  };
+}
+
+function distributorToMapEmployee(d: Distributor): EmployeeMarker | null {
+  if (d.lastLatitude == null || d.lastLongitude == null) return null;
+  const name = d.user?.fullName?.trim() || d.user?.username || 'Agent';
+  return {
+    id: stableAgentId(d.userId || d.id),
+    name,
+    avatar: nameInitials(name),
+    role: 'agent',
+    online: d.isOnline,
+    lastSeen: d.lastLocationAt ? new Date(d.lastLocationAt).toLocaleString() : '',
+    lat: d.lastLatitude,
+    lng: d.lastLongitude,
+    orgId: d.companyId || undefined,
+  };
+}
+
+function toEmployee(a: AgentRow, i: number, fromBackend = false) {
   const count = (a.id + i) % 3 === 0 ? 2 : 1;
   const line1 = LINES[(a.id * 3 + i) % LINES.length];
   const line2 = LINES[(a.id * 7 + i + 5) % LINES.length];
   const lines = count === 2 ? [line1, line2] : [line1];
   return {
     ...a,
-    role: ROLES[i % ROLES.length],
+    role: fromBackend ? 'Agent' : ROLES[i % ROLES.length],
     phone: `+998 9${(i % 9) + 1} ${String(30000000 + (i * 1234567) % 90000000).slice(0, 7)}`,
     city: CITIES_LIST[i % CITIES_LIST.length],
     hireDate: `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
@@ -225,13 +274,42 @@ function addDays(dateStr: string, n: number): string {
 const TODAY = '2026-03-08';
 const PER_PAGE = 12;
 
+function tr(t: Record<string, string>, key: string, fallback: string): string {
+  return t[key] || fallback;
+}
+
+function trackPointStatusShort(
+  status: PointStatus,
+  t: Record<string, string>,
+): string {
+  if (status === 'ordered') return tr(t, 'trackOrderTaken', 'Zakaz olindi');
+  if (status === 'remote_ordered') return tr(t, 'trackRemoteShort', 'Bormay zakaz');
+  if (status === 'visited') return tr(t, 'trackNoOrder', "Zakaz yo'q");
+  return tr(t, 'trackNotVisited', 'Borilmadi');
+}
+
+function trackPointStatusLong(
+  status: PointStatus,
+  t: Record<string, string>,
+): string {
+  if (status === 'ordered') return tr(t, 'trackStatusOrdered', '✓ Borildi, zakaz olindi');
+  if (status === 'remote_ordered') return tr(t, 'trackStatusRemote', '📞 Bormay, zakaz olindi');
+  if (status === 'visited') return tr(t, 'trackStatusVisited', '✓ Borildi, zakaz olinmadi');
+  return tr(t, 'trackStatusMissed', '✗ Borilmadi, zakaz olinmadi');
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, selectedCompanyIds, showBalances, activeMapEmployees = [], mapCenterInfo, setShowEmpMap, activeWeekly = [] }: Props) {
+  const [backendAgents, setBackendAgents] = useState<AgentRow[]>([]);
+  const [backendMapEmps, setBackendMapEmps] = useState<EmployeeMarker[]>([]);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [loadingAgents, setLoadingAgents] = useState(true);
   const [localEmps, setLocalEmps] = useState(() => activeAgents.map(toEmployee));
   const [search, setSearch]       = useState('');
   const [page, setPage]           = useState(1);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [editEmp, setEditEmp]     = useState<ReturnType<typeof toEmployee> | null>(null);
+  const [showAdd, setShowAdd]     = useState(false);
   const [deleteEmp, setDeleteEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [trackingEmp, setTrackingEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [saved, setSaved]         = useState(false);
@@ -255,10 +333,62 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  const refreshAgents = useCallback(async () => {
+    if (!hasApiToken()) {
+      setBackendAgents([]);
+      setBackendMapEmps([]);
+      setBackendReady(false);
+      setLoadingAgents(false);
+      return;
+    }
+    setLoadingAgents(true);
+    try {
+      const companyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
+      const distributors = await api.getDistributors(companyId);
+      const filtered = distributors.filter(d => {
+        if (!d.user) return false;
+        if (d.user.isActive === false) return false;
+        if (selectedCompanyIds.size > 0 && d.companyId && !selectedCompanyIds.has(d.companyId)) return false;
+        return true;
+      });
+      setBackendAgents(filtered.map(distributorToAgentRow));
+      setBackendMapEmps(
+        filtered.map(distributorToMapEmployee).filter((m): m is EmployeeMarker => m != null),
+      );
+      setBackendReady(true);
+    } catch {
+      setBackendAgents([]);
+      setBackendMapEmps([]);
+      setBackendReady(false);
+    } finally {
+      setLoadingAgents(false);
+    }
+  }, [selectedCompanyIds]);
+
+  useEffect(() => { refreshAgents(); }, [refreshAgents]);
+
+  const sourceAgents = useMemo(
+    () => (backendReady ? backendAgents : activeAgents),
+    [backendReady, backendAgents, activeAgents],
+  );
+
+  const mapEmployees = useMemo(
+    () => (backendReady && backendMapEmps.length > 0 ? backendMapEmps : activeMapEmployees),
+    [backendReady, backendMapEmps, activeMapEmployees],
+  );
+
   useEffect(() => {
-    setLocalEmps(activeAgents.map(toEmployee));
-    setPage(1);
-  }, [activeAgents]);
+    if (backendReady) {
+      setLocalEmps(sourceAgents.map((a, i) => toEmployee(a, i, true)));
+      return;
+    }
+    setLocalEmps(prev => {
+      const parentIds = new Set(activeAgents.map(a => a.id));
+      const localOnly = prev.filter(e => !parentIds.has(e.id));
+      const fromParent = activeAgents.map((a, i) => toEmployee(a, i));
+      return [...fromParent, ...localOnly];
+    });
+  }, [backendReady, sourceAgents, activeAgents]);
 
   const filtered   = localEmps.filter(e => {
     const matchSearch =
@@ -295,10 +425,48 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     setForm({ name: e.name, role: e.role, phone: e.phone, city: e.city });
     setEditEmp(e);
   };
+  const openAdd = () => {
+    setForm({ name: '', role: ROLES[0], phone: '', city: CITIES_LIST[0] });
+    setShowAdd(true);
+  };
   const saveEdit = () => {
-    setLocalEmps(prev => prev.map(e => e.id === editEmp!.id ? { ...e, ...form } : e));
+    if (!form.name.trim()) return;
+    setLocalEmps(prev => prev.map(e => e.id === editEmp!.id ? { ...e, ...form, name: form.name.trim() } : e));
     setSaved(true);
     setTimeout(() => { setSaved(false); setEditEmp(null); }, 900);
+  };
+  const saveAdd = () => {
+    if (!form.name.trim()) return;
+    const nextId = localEmps.reduce((max, e) => Math.max(max, e.id), 0) + 1;
+    const orgId = selOrgs[0]?.id || activeAgents[0]?.orgId || 'boran';
+    const initials = form.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'AG';
+    const line = LINES[nextId % LINES.length];
+    const newEmp = {
+      id: nextId,
+      name: form.name.trim(),
+      avatar: initials,
+      clients: 0,
+      visits: 0,
+      sales: 0,
+      payments: 0,
+      debt: 0,
+      plan: 0,
+      status: 'active',
+      orgId,
+      role: form.role || ROLES[0],
+      phone: form.phone.trim() || '+998 90 000 0000',
+      city: form.city.trim() || CITIES_LIST[0],
+      hireDate: new Date().toISOString().slice(0, 10),
+      liniyaCount: 1,
+      lines: [line],
+    };
+    setLocalEmps(prev => {
+      const next = [...prev, newEmp];
+      setPage(Math.ceil(next.length / PER_PAGE));
+      return next;
+    });
+    setShowAdd(false);
+    setForm({ name: '', role: ROLES[0], phone: '', city: CITIES_LIST[0] });
   };
   const confirmDelete = () => {
     setLocalEmps(prev => prev.filter(e => e.id !== deleteEmp!.id));
@@ -335,12 +503,12 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               <span style={{ color: '#6366f1', flexShrink: 0 }}>{historyEmp.role}</span>
               <span style={{ flexShrink: 0 }}>·</span>
               <CalendarDays size={9} color={D ? '#6b7280' : '#9ca3af'} style={{ flexShrink: 0 }} />
-              <span style={{ flexShrink: 0 }}>Tarixi</span>
+              <span style={{ flexShrink: 0 }}>{t.histPageTitle || 'Tarixi'}</span>
             </div>
           </div>
         </div>
 
-        <DayHistoryPanel empId={historyEmp.id} empName={historyEmp.name} mode="agent" D={D} />
+        <DayHistoryPanel empId={historyEmp.id} empName={historyEmp.name} mode="agent" D={D} t={t} />
       </div>
     );
   }
@@ -352,18 +520,11 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       ? dayTrack.points.filter(p => p.status === pointFilter)
       : dayTrack.points;
 
-    // Map content JSX — reused in both normal and fullscreen modes
-    const mapContent = (fullscreen: boolean) => (
-      <TrackingMap
-        key={`${dayTrack.date}-${mapKey}-${pointFilter ?? 'all'}-${fullscreen}`}
-        points={filteredPoints}
-        startCity={dayTrack.startCity}
-        endCity={dayTrack.endCity}
-        D={D}
-        height={fullscreen ? window.innerHeight - 80 : 320}
-        empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: dayTrack.empLastSeen }}
-      />
-    );
+    const visitedCount = dayTrack.visited + dayTrack.visitedNoOrder;
+    const completionPct = Math.round((visitedCount / dayTrack.total) * 100);
+    const empLastSeenLabel = dayTrack.empOnline
+      ? tr(t, 'trackOnlineNow', 'Hozir online')
+      : `${dayTrack.lastPointTime} ${tr(t, 'trackLastOnlineSuffix', 'da oxirgi marta online')}`;
 
     return (
       <div style={{ padding: '0 0 40px' }}>
@@ -404,7 +565,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 endCity={dayTrack.endCity}
                 D={D}
                 height={typeof window !== 'undefined' ? window.innerHeight - 52 : 600}
-                empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: dayTrack.empLastSeen }}
+                empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }}
+                t={t}
               />
             </div>
           </div>
@@ -428,15 +590,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               <span style={{ color: roleColors[trackingEmp.role], flexShrink: 0 }}>{trackingEmp.role}</span>
               <span style={{ flexShrink: 0 }}>·</span>
               {dayTrack.empOnline
-                ? <><Wifi size={9} color={green} style={{ flexShrink: 0 }} /><span style={{ color: green, flexShrink: 0 }}>Online</span></>
-                : <><WifiOff size={9} color={muted} style={{ flexShrink: 0 }} /><span style={{ color: muted, flexShrink: 0 }}>Offline</span></>
+                ? <><Wifi size={9} color={green} style={{ flexShrink: 0 }} /><span style={{ color: green, flexShrink: 0 }}>{tr(t, 'trackOnlineNow', 'Online')}</span></>
+                : <><WifiOff size={9} color={muted} style={{ flexShrink: 0 }} /><span style={{ color: muted, flexShrink: 0 }}>{tr(t, 'trackOffline', 'Offline')}</span></>
               }
             </div>
           </div>
           {!isMobile && (
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Route size={15} color={indigo} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: txt }}>Tracking</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: txt }}>{tr(t, 'trackTitle', 'Tracking')}</span>
             </div>
           )}
         </div>
@@ -444,7 +606,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         {/* ── Single date picker ── */}
         <div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 14, padding: isSmall ? '10px 12px' : '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: isSmall ? 5 : 8, flexWrap: 'wrap' }}>
           <CalendarDays size={isSmall ? 13 : 15} color={indigo} />
-          {!isSmall && <span style={{ fontSize: 13, color: muted, fontWeight: 500 }}>Sana:</span>}
+          {!isSmall && <span style={{ fontSize: 13, color: muted, fontWeight: 500 }}>{tr(t, 'trackDateLabel', 'Sana:')}</span>}
 
           {/* Prev day */}
           <button
@@ -475,18 +637,18 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             onClick={() => { setSelectedDate(TODAY); setMapKey(k => k + 1); setPointFilter(null); }}
             style={{ marginLeft: 'auto', padding: '6px 14px', borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', color: muted, fontSize: 12, cursor: 'pointer' }}
           >
-            Bugun
+            {tr(t, 'trackToday', 'Bugun')}
           </button>
         </div>
 
         {/* ── Summary stats (5 cards, no km) ── */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
           {[
-            { icon: Circle,       label: 'Jami nuqtalar',             value: String(dayTrack.total),           color: '#94a3b8', filter: null },
-            { icon: CheckCircle2, label: 'Borildi, zakaz olindi',     value: String(dayTrack.visited),         color: green,     filter: 'ordered' },
-            { icon: PhoneCall,    label: 'Bormay, zakaz olindi',      value: String(dayTrack.remoteOrdered),   color: indigo,    filter: 'remote_ordered' },
-            { icon: ShoppingCart, label: 'Borildi, zakaz olinmadi',   value: String(dayTrack.visitedNoOrder),  color: amber,     filter: 'visited' },
-            { icon: XCircle,      label: 'Borilmadi, zakaz olinmadi', value: String(dayTrack.missed),          color: '#9ca3af', filter: 'missed' },
+            { icon: Circle,       label: tr(t, 'trackTotalPoints', 'Jami nuqtalar'),             value: String(dayTrack.total),           color: '#94a3b8', filter: null },
+            { icon: CheckCircle2, label: tr(t, 'trackOrdered', 'Borildi, zakaz olindi'),         value: String(dayTrack.visited),         color: green,     filter: 'ordered' },
+            { icon: PhoneCall,    label: tr(t, 'trackRemoteOrdered', 'Bormay, zakaz olindi'),    value: String(dayTrack.remoteOrdered),   color: indigo,    filter: 'remote_ordered' },
+            { icon: ShoppingCart, label: tr(t, 'trackVisitedNoOrder', 'Borildi, zakaz olinmadi'),  value: String(dayTrack.visitedNoOrder),  color: amber,     filter: 'visited' },
+            { icon: XCircle,      label: tr(t, 'trackMissed', 'Borilmadi, zakaz olinmadi'),       value: String(dayTrack.missed),          color: '#9ca3af', filter: 'missed' },
           ].map((s, idx) => {
             const isActive = pointFilter === s.filter;
             return (
@@ -540,10 +702,10 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               {/* Row 2: 4 stats in one row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
                 {[
-                  { v: dayTrack.visited,        c: green,     l: 'Zakaz olindi' },
-                  { v: dayTrack.remoteOrdered,  c: indigo,    l: 'Bormay zakaz' },
-                  { v: dayTrack.visitedNoOrder, c: amber,     l: "Zakaz yo'q" },
-                  { v: dayTrack.missed,         c: '#9ca3af', l: 'Borilmadi' },
+                  { v: dayTrack.visited,        c: green,     l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
+                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.visitedNoOrder, c: amber,     l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
+                  { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center', padding: '6px 4px', background: D ? 'rgba(255,255,255,0.03)' : '#f8f9fa', borderRadius: 8 }}>
                     <div style={{ fontSize: 16, fontWeight: 700, color: s.c }}>{s.v}</div>
@@ -554,10 +716,10 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               {/* Row 3: progress bar */}
               <div>
                 <div style={{ height: 5, borderRadius: 3, background: D ? '#333' : '#e5e7eb', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: 3, background: green, width: `${Math.round(((dayTrack.visited + dayTrack.visitedNoOrder) / dayTrack.total) * 100)}%` }} />
+                  <div style={{ height: '100%', borderRadius: 3, background: green, width: `${completionPct}%` }} />
                 </div>
                 <div style={{ fontSize: 9, color: muted, marginTop: 3 }}>
-                  {Math.round(((dayTrack.visited + dayTrack.visitedNoOrder) / dayTrack.total) * 100)}% bajarildi
+                  {completionPct}% {tr(t, 'trackCompleted', 'bajarildi')}
                 </div>
               </div>
             </div>
@@ -576,10 +738,10 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               </div>
               <div style={{ display: 'flex', gap: 14, marginRight: 4 }}>
                 {[
-                  { v: dayTrack.visited,        c: green,     l: 'Zakaz olindi' },
-                  { v: dayTrack.remoteOrdered,  c: indigo,    l: 'Bormay zakaz' },
-                  { v: dayTrack.visitedNoOrder, c: amber,     l: "Zakaz yo'q" },
-                  { v: dayTrack.missed,         c: '#9ca3af', l: 'Borilmadi' },
+                  { v: dayTrack.visited,        c: green,     l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
+                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.visitedNoOrder, c: amber,     l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
+                  { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 15, fontWeight: 700, color: s.c }}>{s.v}</div>
@@ -589,10 +751,10 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               </div>
               <div style={{ width: 72, flexShrink: 0 }}>
                 <div style={{ height: 5, borderRadius: 3, background: D ? '#333' : '#e5e7eb', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: 3, background: green, width: `${Math.round(((dayTrack.visited + dayTrack.visitedNoOrder) / dayTrack.total) * 100)}%` }} />
+                  <div style={{ height: '100%', borderRadius: 3, background: green, width: `${completionPct}%` }} />
                 </div>
                 <div style={{ fontSize: 9, color: muted, marginTop: 2 }}>
-                  {Math.round(((dayTrack.visited + dayTrack.visitedNoOrder) / dayTrack.total) * 100)}% bajarildi
+                  {completionPct}% {tr(t, 'trackCompleted', 'bajarildi')}
                 </div>
               </div>
             </div>
@@ -611,13 +773,14 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                   endCity={dayTrack.endCity}
                   D={D}
                   height={isMobile ? 280 : 560}
-                  empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: dayTrack.empLastSeen }}
+                  empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }}
+                  t={t}
                 />
               </div>
               {/* Button is outside isolated context → always renders on top */}
               <button
                 onClick={() => { setMapFullscreen(true); setMapKey(k => k + 1); }}
-                title="To'liq ekran"
+                title={tr(t, 'trackFullscreen', "To'liq ekran")}
                 style={{
                   position: 'absolute', top: 12, right: 12, zIndex: 2,
                   width: 38, height: 38, borderRadius: 10,
@@ -634,15 +797,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             {/* TIMING INFO PANEL */}
             <div style={{ borderLeft: isMobile ? 'none' : `1px solid ${border}`, borderTop: isMobile ? `1px solid ${border}` : 'none', padding: isMobile ? '16px' : '20px', display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
-                Kun statistikasi
+                {tr(t, 'trackDayStats', 'Kun statistikasi')}
               </div>
 
               {[
-                { icon: LogIn,      color: indigo,    label: "Ilovaga kirgan vaqt",    value: dayTrack.loginTime,      bg: `${indigo}12` },
-                { icon: Flag,       color: green,     label: "Birinchi nuqtaga borgan", value: dayTrack.firstPointTime, bg: `${green}12` },
-                { icon: MapPin,     color: amber,     label: "Oxirgi nuqtaga borgan",   value: dayTrack.lastPointTime,  bg: `${amber}12` },
-                { icon: Hourglass,  color: '#8b5cf6', label: "Online bo'lgan vaqt",     value: dayTrack.onlineHours,    bg: 'rgba(139,92,246,0.10)' },
-                { icon: Navigation, color: '#06b6d4', label: "Bosib o'tilgan yo'l",     value: `${dayTrack.km} km`,     bg: 'rgba(6,182,212,0.10)' },
+                { icon: LogIn,      color: indigo,    label: tr(t, 'trackLoginTime', 'Ilovaga kirgan vaqt'),    value: dayTrack.loginTime,      bg: `${indigo}12` },
+                { icon: Flag,       color: green,     label: tr(t, 'trackFirstPoint', 'Birinchi nuqtaga borgan'), value: dayTrack.firstPointTime, bg: `${green}12` },
+                { icon: MapPin,     color: amber,     label: tr(t, 'trackLastPoint', 'Oxirgi nuqtaga borgan'),   value: dayTrack.lastPointTime,  bg: `${amber}12` },
+                { icon: Hourglass,  color: '#8b5cf6', label: tr(t, 'trackOnlineTime', "Online bo'lgan vaqt"),     value: dayTrack.onlineHours,    bg: 'rgba(139,92,246,0.10)' },
+                { icon: Navigation, color: '#06b6d4', label: tr(t, 'trackDistance', "Bosib o'tilgan yo'l"),     value: `${dayTrack.km} km`,     bg: 'rgba(6,182,212,0.10)' },
               ].map((item, idx) => (
                 <div key={idx} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
@@ -670,21 +833,21 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                   }} />
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 600, color: dayTrack.empOnline ? green : muted }}>
-                      {dayTrack.empOnline ? 'Hozir online' : 'Offline'}
+                      {dayTrack.empOnline ? tr(t, 'trackOnlineNow', 'Hozir online') : tr(t, 'trackOffline', 'Offline')}
                     </div>
-                    <div style={{ fontSize: 10, color: muted }}>{dayTrack.empLastSeen}</div>
+                    <div style={{ fontSize: 10, color: muted }}>{empLastSeenLabel}</div>
                   </div>
                 </div>
               </div>
 
               {/* Route summary */}
               <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: D ? 'rgba(255,255,255,0.03)' : '#f8fafc', border: `1px solid ${border}` }}>
-                <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Marshrut</div>
+                <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tr(t, 'trackRoute', 'Marshrut')}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: green, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: txt }}>{dayTrack.startCity}</span>
                   <div style={{ flex: 1, height: 1.5, background: D ? '#333' : '#e5e7eb', borderRadius: 1 }} />
-                  <span style={{ fontSize: 10, color: muted }}>{dayTrack.visited + dayTrack.visitedNoOrder} nuqta</span>
+                  <span style={{ fontSize: 10, color: muted }}>{visitedCount} {tr(t, 'trackPointsUnit', 'nuqta')}</span>
                   <div style={{ flex: 1, height: 1.5, background: D ? '#333' : '#e5e7eb', borderRadius: 1 }} />
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: red, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: txt }}>{dayTrack.endCity}</span>
@@ -704,10 +867,10 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               {pointFilter && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: D ? 'rgba(255,255,255,0.04)' : '#f8f9fa', border: `1px solid ${border}` }}>
                   <span style={{ fontSize: 11, color: muted, flex: 1 }}>
-                    {filteredPoints.length} ta nuqta ko'rsatilmoqda
+                    {filteredPoints.length} {tr(t, 'trackPointsShowing', "ta nuqta ko'rsatilmoqda")}
                   </span>
                   <button onClick={() => setPointFilter(null)} style={{ fontSize: 10, color: muted, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <XCircle size={11} color={muted} /> Tozalash
+                    <XCircle size={11} color={muted} /> {tr(t, 'trackClear', 'Tozalash')}
                   </button>
                 </div>
               )}
@@ -734,7 +897,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                       background: p.status === 'ordered' ? `${green}18` : p.status === 'remote_ordered' ? `${indigo}18` : p.status === 'visited' ? `${amber}18` : D ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
                       color: p.status === 'ordered' ? green : p.status === 'remote_ordered' ? indigo : p.status === 'visited' ? amber : '#9ca3af',
                     }}>
-                      {p.status === 'ordered' ? 'Zakaz olindi' : p.status === 'remote_ordered' ? 'Bormay zakaz' : p.status === 'visited' ? "Zakaz yo'q" : 'Borilmadi'}
+                      {trackPointStatusShort(p.status, t)}
                     </span>
                   </div>
                 ))}
@@ -746,15 +909,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 {pointFilter && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', borderRadius: 8, background: D ? 'rgba(255,255,255,0.04)' : '#f8f9fa', border: `1px solid ${border}` }}>
                     <span style={{ fontSize: 11, color: muted, flex: 1 }}>
-                      {filteredPoints.length} ta nuqta ko'rsatilmoqda
+                      {filteredPoints.length} {tr(t, 'trackPointsShowing', "ta nuqta ko'rsatilmoqda")}
                     </span>
                     <button onClick={() => setPointFilter(null)} style={{ fontSize: 10, color: muted, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
-                      <XCircle size={11} color={muted} /> Tozalash
+                      <XCircle size={11} color={muted} /> {tr(t, 'trackClear', 'Tozalash')}
                     </button>
                   </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '28px 28px 1fr auto 80px 90px', gap: 10, padding: '6px 8px', borderRadius: 8, background: D ? 'rgba(255,255,255,0.03)' : '#f9fafb', marginBottom: 4 }}>
-                  {['#', '', 'Nuqta', 'Status', 'Vaqt', 'Davomiylik'].map(h => (
+                  {['#', '', tr(t, 'trackColPoint', 'Nuqta'), tr(t, 'trackColStatus', 'Status'), tr(t, 'trackColTime', 'Vaqt'), tr(t, 'trackColDuration', 'Davomiylik')].map(h => (
                     <span key={h} style={{ fontSize: 9, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
                   ))}
                 </div>
@@ -781,13 +944,13 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                         background: p.status === 'ordered' ? `${green}18` : p.status === 'remote_ordered' ? `${indigo}18` : p.status === 'visited' ? `${amber}18` : D ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
                         color: p.status === 'ordered' ? green : p.status === 'remote_ordered' ? indigo : p.status === 'visited' ? amber : '#9ca3af',
                       }}>
-                        {p.status === 'ordered' ? '✓ Borildi, zakaz olindi' : p.status === 'remote_ordered' ? '📞 Bormay, zakaz olindi' : p.status === 'visited' ? "✓ Borildi, zakaz olinmadi" : '✗ Borilmadi, zakaz olinmadi'}
+                        {trackPointStatusLong(p.status, t)}
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={10} color={muted} />
                         <span style={{ fontSize: 11, color: p.time ? txt : muted }}>{p.time ?? '—'}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: muted, textAlign: 'right' }}>{p.duration ? `${p.duration} daq` : '—'}</div>
+                      <div style={{ fontSize: 11, color: muted, textAlign: 'right' }}>{p.duration ? `${p.duration} ${tr(t, 'trackMinutes', 'daq')}` : '—'}</div>
                     </div>
                   ))}
                 </div>
@@ -800,7 +963,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         </div>
 
         {/* ── Order History ── */}
-        <DayHistoryPanel empId={trackingEmp.id} empName={trackingEmp.name} mode="agent" D={D} />
+        <DayHistoryPanel empId={trackingEmp.id} empName={trackingEmp.name} mode="agent" D={D} t={t} />
 
       </div>
     );
@@ -809,6 +972,52 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   // ── LIST VIEW ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '0 0 32px', width: '100%', minWidth: 0, overflowX: 'hidden' }}>
+
+      {/* Add modal */}
+      {showAdd && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowAdd(false)}>
+          <div style={{ background: modalBg, borderRadius: 18, padding: 28, width: 420, maxWidth: '92vw', boxShadow: '0 24px 60px rgba(0,0,0,0.3)', border: `1px solid ${border}` }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>{t.addAgent || t.addEmpBtn || "Agent qo'shish"}</div>
+              <button type="button" onClick={() => setShowAdd(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={14} color={muted} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formName || 'ISM FAMILIYA'}</div>
+                <input style={InputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="F.I.Sh." />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isSmall ? '1fr' : '1fr 1fr', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formRole || 'LAVOZIM'}</div>
+                  <select style={{ ...InputStyle, appearance: 'none' }} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                    {ROLES.map(r => <option key={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formCity || 'SHAHAR'}</div>
+                  <select style={{ ...InputStyle, appearance: 'none' }} value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))}>
+                    {CITIES_LIST.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formPhone || 'TELEFON'}</div>
+                <input style={InputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+998 90 000 0000" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button type="button" onClick={() => setShowAdd(false)} style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${border}`, background: 'transparent', color: txt, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{t.cancelBtn || 'Bekor'}</button>
+              <button type="button" onClick={saveAdd} disabled={!form.name.trim()} style={{ flex: 2, padding: '11px 0', borderRadius: 10, border: 'none', background: form.name.trim() ? indigo : muted, color: '#fff', fontSize: 13, fontWeight: 700, cursor: form.name.trim() ? 'pointer' : 'default', opacity: form.name.trim() ? 1 : 0.6 }}>
+                {t.save || 'Saqlash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit modal */}
       {editEmp && (
@@ -886,8 +1095,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             <div style={{ fontSize: 11, color: muted }}>{t.totalEmpLabel || 'Jami'}: {localEmps.length} {t.empUnit || 'xodim'}</div>
           </div>
         </div>
-        <button style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '8px 12px' : '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: indigo, color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
-          <Plus size={14} />{!isMobile && ` ${t.addEmpBtn || "Xodim qo'shish"}`}
+        <button type="button" onClick={openAdd} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: isMobile ? '8px 12px' : '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', background: indigo, color: '#fff', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+          <Plus size={14} />{!isMobile && ` ${t.addEmpBtn || t.addAgent || "Agent qo'shish"}`}
         </button>
       </div>
 
@@ -1017,7 +1226,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             <div style={{ flex: 1, minHeight: 0 }}>
               {weeklyPanelView === 'map' && (
                 <InlineEmployeeMap
-                  employees={activeMapEmployees}
+                  employees={mapEmployees}
                   centerCoord={mapCenterInfo.center}
                   initialZoom={mapCenterInfo.zoom}
                   dark={D}
@@ -1114,22 +1323,22 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
 
               {/* Row 4: action buttons — pastki qator, to'liq kenglik */}
               <div style={{ display: 'flex', alignItems: 'center', gap: isSmall ? 4 : 6, paddingTop: 4, borderTop: `1px solid ${D ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}` }}>
-                <button onClick={() => setHistoryEmp(emp)}
+                <button type="button" onClick={() => setHistoryEmp(emp)}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center', height: isSmall ? 30 : 32, borderRadius: 8, border: `1px solid ${D ? 'rgba(255,255,255,0.10)' : '#e5e7eb'}`, background: 'transparent', cursor: 'pointer' }}>
                   <CalendarDays size={11} color={indigo} />
-                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>Tarix</span>
+                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>{t.histBtn || 'Tarix'}</span>
                 </button>
-                <button onClick={() => { setTrackingEmp(emp); setSelectedDate(TODAY); setMapKey(k => k + 1); }}
+                <button type="button" onClick={() => { setTrackingEmp(emp); setSelectedDate(TODAY); setMapKey(k => k + 1); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center', height: isSmall ? 30 : 32, borderRadius: 8, border: `1px solid ${D ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)'}`, background: D ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.06)', cursor: 'pointer' }}>
                   <Route size={11} color={indigo} />
                   <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>Track</span>
                 </button>
                 <div style={{ flex: isSmall ? 0 : 1 }} />
-                <button onClick={() => openEdit(emp)}
+                <button type="button" onClick={() => openEdit(emp)}
                   style={{ width: isSmall ? 30 : 32, height: isSmall ? 30 : 32, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.07)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Edit2 size={12} color={indigo} />
                 </button>
-                <button onClick={() => setDeleteEmp(emp)}
+                <button type="button" onClick={() => setDeleteEmp(emp)}
                   style={{ width: isSmall ? 30 : 32, height: isSmall ? 30 : 32, borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Trash2 size={12} color={red} />
                 </button>
@@ -1188,27 +1397,27 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               </div>
               {/* Actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button onClick={() => setHistoryEmp(emp)}
+                <button type="button" onClick={() => setHistoryEmp(emp)}
                   style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 7, border: `1px solid ${D ? 'rgba(255,255,255,0.12)' : '#e5e7eb'}`, background: 'transparent', color: muted, fontSize: 11, fontWeight: 500, cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = indigo; (e.currentTarget as HTMLElement).style.color = indigo; (e.currentTarget as HTMLElement).style.background = `${indigo}10`; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = D ? 'rgba(255,255,255,0.12)' : '#e5e7eb'; (e.currentTarget as HTMLElement).style.color = muted; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                  title="Tarixni ko'rish">
-                  <CalendarDays size={11} /><span>Tarix</span>
+                  title={t.histBtnTitle || "Tarixni ko'rish"}>
+                  <CalendarDays size={11} /><span>{t.histBtn || 'Tarix'}</span>
                 </button>
-                <button onClick={() => { setTrackingEmp(emp); setSelectedDate(TODAY); setMapKey(k => k + 1); }}
+                <button type="button" onClick={() => { setTrackingEmp(emp); setSelectedDate(TODAY); setMapKey(k => k + 1); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 7, border: `1px solid ${D ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.25)'}`, background: D ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)', color: indigo, fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.15)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)'; }}
                   title="Trackingni ko'rish">
                   <Route size={11} />
                 </button>
-                <button onClick={() => openEdit(emp)}
+                <button type="button" onClick={() => openEdit(emp)}
                   style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.07)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.07)' : '#f3f4f6'; }}>
                   <Edit2 size={12} color={indigo} />
                 </button>
-                <button onClick={() => setDeleteEmp(emp)}
+                <button type="button" onClick={() => setDeleteEmp(emp)}
                   style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.18)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.08)'; }}>

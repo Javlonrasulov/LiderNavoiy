@@ -376,6 +376,7 @@ export default function AdminPanel() {
             <AdminClientsTab
               D={D} card={card} divider={divider} text={text} sub={sub} t={t}
               showBalances={showBalances}
+              selectedCompanyIds={selectedCompanyIds}
             />
           )}
 

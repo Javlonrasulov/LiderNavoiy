@@ -11,6 +11,15 @@ interface Props {
   empName: string;
   mode: 'delivery' | 'agent';
   D: boolean;
+  t: Record<string, string>;
+}
+
+function tr(t: Record<string, string>, key: string, fallback: string): string {
+  return t[key] || fallback;
+}
+
+function splitTrList(t: Record<string, string>, key: string, fallback: string): string[] {
+  return (t[key] || fallback).split(',').map(s => s.trim());
 }
 
 // ── Seeded RNG ────────────────────────────────────────────────────────────────
@@ -64,16 +73,18 @@ function generateDayData(empId: number, dateStr: string, mode: 'delivery' | 'age
     const h = 8 + Math.floor(rng2() * 9);
     const m = Math.floor(rng2() * 60);
     const time = status === 'pending' ? null : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    const prodCount = 2 + Math.floor(rng2() * 5);
-    const usedIdx = new Set<number>();
+    const catalog = ADMIN_PRODUCTS;
+    const catalogLen = catalog.length;
     const products: ProductLine[] = [];
-    for (let p = 0; p < prodCount; p++) {
-      let pIdx: number;
-      do { pIdx = Math.floor(rng2() * ADMIN_PRODUCTS.length); } while (usedIdx.has(pIdx));
-      usedIdx.add(pIdx);
-      const prod = ADMIN_PRODUCTS[pIdx];
-      const miqdor = 1 + Math.floor(rng2() * 20);
-      products.push({ no: p + 1, kod: prod.kod, nomi: prod.ismi, miqdor, narx: prod.rtl, summa: miqdor * prod.rtl });
+    if (catalogLen > 0) {
+      const prodCount = Math.min(2 + Math.floor(rng2() * 5), catalogLen);
+      const order = Array.from({ length: catalogLen }, (_, i) => i)
+        .sort(() => rng2() - 0.5);
+      for (let p = 0; p < prodCount; p++) {
+        const prod = catalog[order[p]];
+        const miqdor = 1 + Math.floor(rng2() * 20);
+        products.push({ no: p + 1, kod: prod.kod, nomi: prod.ismi, miqdor, narx: prod.rtl, summa: miqdor * prod.rtl });
+      }
     }
     return {
       id: i,
@@ -108,11 +119,17 @@ function fmtDateLabel(iso: string) {
   return d.toLocaleDateString('uz-Latn', { day: '2-digit', month: 'short' });
 }
 
-const MONTH_NAMES = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
-const WD_LABELS = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
-
 // ── Component ─────────────────────────────────────────────────────────────────
-export function DayHistoryPanel({ empId, mode, D }: Props) {
+export function DayHistoryPanel({ empId, mode, D, t }: Props) {
+  const MONTH_NAMES = splitTrList(t, 'histMonths', 'Yanvar,Fevral,Mart,Aprel,May,Iyun,Iyul,Avgust,Sentabr,Oktabr,Noyabr,Dekabr');
+  const WD_LABELS = splitTrList(t, 'histWeekdays', 'Du,Se,Ch,Pa,Ju,Sh,Ya');
+  const currency = tr(t, 'histCurrency', "so'm");
+  const doneLabel = mode === 'delivery' ? tr(t, 'histDelivered', 'Yetkazildi') : tr(t, 'histOrdered', 'Zakaz berildi');
+  const doneFilterLabel = mode === 'delivery' ? tr(t, 'histDelivered', 'Yetkazildi') : tr(t, 'histDone', 'Bajarildi');
+  const sumLabel = mode === 'delivery' ? tr(t, 'histTotalSum', 'Jami summa') : tr(t, 'histOrderSum', 'Zakaz summasi');
+  const statusDone = mode === 'delivery' ? tr(t, 'histStatusDelivered', '✓ Yetkazildi') : tr(t, 'histStatusOrdered', '✓ Zakaz berildi');
+  const statusPending = tr(t, 'histStatusPending', '⏳ Kutilmoqda');
+  const pendingLabel = tr(t, 'histPending', 'Kutilmoqda');
   const todayIso = new Date().toISOString().slice(0, 10);
   const now = new Date();
 
@@ -336,8 +353,8 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
             {/* Pick hint */}
             <div style={{ fontSize: 11, color: indigo, textAlign: 'center', marginBottom: 10, fontWeight: 600, background: `${indigo}12`, borderRadius: 8, padding: '5px 0' }}>
               {pickStep === 'start'
-                ? '📅 Boshlang\'ich sanani tanlang'
-                : `📅 ${fmtDateLabel(rangeStart)} → tugash sanasini tanlang`}
+                ? `📅 ${tr(t, 'calStartDate', "Boshlang'ich sanani tanlang")}`
+                : `📅 ${fmtDateLabel(rangeStart)} ${tr(t, 'histCalEndHint', "→ tugash sanasini tanlang")}`}
             </div>
 
             {/* Weekday headers */}
@@ -387,11 +404,11 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
             <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: indigo }} />
-                <span style={{ fontSize: 10, color: muted }}>Tanlangan</span>
+                <span style={{ fontSize: 10, color: muted }}>{tr(t, 'calSelected', 'Tanlangan')}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: green }} />
-                <span style={{ fontSize: 10, color: muted }}>Ma'lumot bor</span>
+                <span style={{ fontSize: 10, color: muted }}>{tr(t, 'calHasData', "Ma'lumot bor")}</span>
               </div>
             </div>
           </div>
@@ -403,9 +420,9 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
         {/* Summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: isSmall ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 8 : 10, marginBottom: 14 }}>
           {[
-            { label: mode === 'delivery' ? 'Yetkazildi' : 'Zakaz berildi', value: String(totalDone),    color: green, icon: Check },
-            { label: 'Kutilmoqda',                                           value: String(totalPending), color: amber, icon: Clock },
-            { label: mode === 'delivery' ? 'Jami summa' : 'Zakaz summasi',  value: `${formatNum(totalSum)} so'm`, color: indigo, icon: TrendingUp },
+            { label: doneLabel, value: String(totalDone), color: green, icon: Check },
+            { label: pendingLabel, value: String(totalPending), color: amber, icon: Clock },
+            { label: sumLabel, value: `${formatNum(totalSum)} ${currency}`, color: indigo, icon: TrendingUp },
           ].map((s, idx) => (
             <div key={s.label} style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 10, padding: isMobile ? '8px 10px' : '10px 14px', display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 10, gridColumn: isSmall && idx === 2 ? 'span 2' : undefined }}>
               <div style={{ width: isMobile ? 26 : 30, height: isMobile ? 26 : 30, borderRadius: 8, background: `${s.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -422,9 +439,9 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
         {/* Filter pills */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {([
-            { id: 'all',     label: 'Barchasi',   count: records.length },
-            { id: 'done',    label: mode === 'delivery' ? 'Yetkazildi' : 'Bajarildi', count: totalDone },
-            { id: 'pending', label: 'Kutilmoqda', count: totalPending },
+            { id: 'all',     label: tr(t, 'histAll', 'Barchasi'), count: records.length },
+            { id: 'done',    label: doneFilterLabel, count: totalDone },
+            { id: 'pending', label: pendingLabel, count: totalPending },
           ] as const).map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)} style={{
               padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
@@ -444,7 +461,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
         {isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>Ma'lumot yo'q</div>
+              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>{tr(t, 'histNoData', "Ma'lumot yo'q")}</div>
             ) : filtered.map((rec, ri) => {
               const isOpen = expandedKey === rec.uid;
               return (
@@ -495,7 +512,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                         <span style={{ fontSize: 12, fontWeight: 700, color: rec.status === 'done' ? green : muted }}>
                           {rec.status === 'done' ? `${formatNum(rec.totalSum)}` : '—'}
                         </span>
-                        <span style={{ fontSize: 9, color: muted }}>so'm</span>
+                        <span style={{ fontSize: 9, color: muted }}>{currency}</span>
                       </div>
                       <div style={{ marginLeft: 4 }}>
                         {isOpen ? <ChevronUp size={13} color={indigo} /> : <ChevronDown size={13} color={muted} />}
@@ -508,9 +525,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                         background: rec.status === 'done' ? `${green}15` : `${amber}15`,
                         color: rec.status === 'done' ? green : amber,
                       }}>
-                        {rec.status === 'done'
-                          ? (mode === 'delivery' ? '✓ Yetkazildi' : '✓ Zakaz berildi')
-                          : '⏳ Kutilmoqda'}
+                        {rec.status === 'done' ? statusDone : statusPending}
                       </span>
                     </div>
                   </div>
@@ -519,7 +534,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                   {isOpen && (
                     <div style={{ borderTop: `1px solid ${D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.12)'}`, background: D ? 'rgba(99,102,241,0.06)' : 'rgba(99,102,241,0.025)', padding: '10px 12px' }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: indigo, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                        Mahsulotlar ({rec.products.length} ta)
+                        {tr(t, 'histProducts', 'Mahsulotlar')} ({rec.products.length} {tr(t, 'histCountUnit', 'ta')})
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {rec.products.map((p, pi) => (
@@ -533,7 +548,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                                 <div style={{ fontSize: 11, fontWeight: 600, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nomi}</div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
                                   <span style={{ fontSize: 10, color: indigo, fontFamily: 'monospace', fontWeight: 600 }}>{p.kod}</span>
-                                  <span style={{ fontSize: 10, color: muted }}>{p.miqdor} ta × {formatNum(p.narx)}</span>
+                                  <span style={{ fontSize: 10, color: muted }}>{p.miqdor} {tr(t, 'histCountUnit', 'ta')} × {formatNum(p.narx)}</span>
                                 </div>
                               </div>
                               <div style={{ fontSize: 12, fontWeight: 700, color: green, whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -545,8 +560,8 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                       </div>
                       {/* Total */}
                       <div style={{ marginTop: 8, padding: '8px 10px', background: D ? 'rgba(16,185,129,0.10)' : 'rgba(16,185,129,0.07)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: txt }}>JAMI</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: green }}>{formatNum(rec.totalSum)} so'm</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: txt }}>{tr(t, 'histTotal', 'JAMI')}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: green }}>{formatNum(rec.totalSum)} {currency}</span>
                       </div>
                     </div>
                   )}
@@ -565,14 +580,14 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
               gap: 8, padding: '8px 14px',
               background: D ? 'rgba(255,255,255,0.04)' : '#f3f4f6',
             }}>
-              {['#', ...(isRange ? ['Sana'] : []), 'Mijoz', 'Tuman', 'Vaqt', 'Summa', ''].map((h, i) => (
+              {['#', ...(isRange ? [tr(t, 'histColDate', 'Sana')] : []), tr(t, 'histColClient', 'Mijoz'), tr(t, 'histColDistrict', 'Tuman'), tr(t, 'histColTime', 'Vaqt'), tr(t, 'histColSum', 'Summa'), ''].map((h, i) => (
                 <span key={i} style={{ fontSize: 10, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
               ))}
             </div>
 
             {/* Rows */}
             {filtered.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>Ma'lumot yo'q</div>
+              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>{tr(t, 'histNoData', "Ma'lumot yo'q")}</div>
             ) : filtered.map((rec, ri) => {
               const isOpen = expandedKey === rec.uid;
               return (
@@ -618,7 +633,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                           {rec.name}
                         </div>
                         <div style={{ fontSize: 10, color: rec.status === 'done' ? green : amber, fontWeight: 600 }}>
-                          {rec.status === 'done' ? (mode === 'delivery' ? '✓ Yetkazildi' : '✓ Zakaz berildi') : '⏳ Kutilmoqda'}
+                          {rec.status === 'done' ? statusDone : statusPending}
                         </div>
                       </div>
                     </div>
@@ -636,7 +651,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                     </div>
 
                     <div style={{ fontSize: 11, fontWeight: 600, color: rec.status === 'done' ? txt : muted }}>
-                      {rec.status === 'done' ? `${formatNum(rec.totalSum)} so'm` : '—'}
+                      {rec.status === 'done' ? `${formatNum(rec.totalSum)} ${currency}` : '—'}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -650,7 +665,7 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                       <div style={{ border: `1px solid ${D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.2)'}`, borderRadius: 10, overflow: 'hidden' }}>
                         {/* Excel header */}
                         <div style={{ display: 'grid', gridTemplateColumns: '32px 70px 1fr 60px 90px 100px', background: D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.1)', borderBottom: `1px solid ${D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.15)'}` }}>
-                          {['№', 'Kod', 'Mahsulot nomi', 'Miqdor', 'Narx', 'Summa'].map((col, ci) => (
+                          {['№', tr(t, 'histColCode', 'Kod'), tr(t, 'histColProduct', 'Mahsulot nomi'), tr(t, 'histColQty', 'Miqdor'), tr(t, 'histColPrice', 'Narx'), tr(t, 'histColSum', 'Summa')].map((col, ci) => (
                             <div key={ci} style={{ padding: '7px 10px', fontSize: 10, fontWeight: 700, color: D ? '#a5b4fc' : '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: ci < 5 ? `1px solid ${D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)'}` : 'none' }}>
                               {col}
                             </div>
@@ -662,16 +677,16 @@ export function DayHistoryPanel({ empId, mode, D }: Props) {
                             <div style={{ padding: '7px 10px', fontSize: 11, color: muted, textAlign: 'center', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{p.no}</div>
                             <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 600, color: indigo, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}`, fontFamily: 'monospace' }}>{p.kod}</div>
                             <div style={{ padding: '7px 10px', fontSize: 11, color: txt, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nomi}</div>
-                            <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: txt, textAlign: 'center', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{p.miqdor} <span style={{ fontSize: 9, color: muted, fontWeight: 400 }}>ta</span></div>
+                            <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: txt, textAlign: 'center', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{p.miqdor} <span style={{ fontSize: 9, color: muted, fontWeight: 400 }}>{tr(t, 'histCountUnit', 'ta')}</span></div>
                             <div style={{ padding: '7px 10px', fontSize: 11, color: muted, textAlign: 'right', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{formatNum(p.narx)}</div>
                             <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: green, textAlign: 'right' }}>{formatNum(p.summa)}</div>
                           </div>
                         ))}
                         {/* Total */}
                         <div style={{ display: 'grid', gridTemplateColumns: '32px 70px 1fr 60px 90px 100px', background: D ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.06)', borderTop: `2px solid ${D ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.2)'}` }}>
-                          <div style={{ padding: '7px 10px', gridColumn: '1/5', fontSize: 11, fontWeight: 700, color: txt, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>JAMI</div>
+                          <div style={{ padding: '7px 10px', gridColumn: '1/5', fontSize: 11, fontWeight: 700, color: txt, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{tr(t, 'histTotal', 'JAMI')}</div>
                           <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: txt, textAlign: 'right', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{formatNum(rec.products.reduce((s, p) => s + p.miqdor, 0))}</div>
-                          <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: green, textAlign: 'right' }}>{formatNum(rec.totalSum)} so'm</div>
+                          <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 700, color: green, textAlign: 'right' }}>{formatNum(rec.totalSum)} {currency}</div>
                         </div>
                       </div>
                     </div>

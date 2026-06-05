@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   MapLayerSwitcher,
@@ -25,85 +25,139 @@ interface TrackingMapProps {
   D: boolean;
   height?: number;
   empLocation?: { lat: number; lng: number; online: boolean; lastSeen?: string };
+  t?: Record<string, string>;
 }
 
 const NAVOIY: [number, number] = [40.0843, 65.3791];
 
-function makePointIcon(
-  p: MapPoint,
-  i: number,
-  total: number,
-  D: boolean,
-): L.DivIcon {
-  const isFirst = i === 0;
-  const isLast  = i === total - 1;
-  const markerColor =
-    p.status === 'ordered'        ? '#10b981' :
-    p.status === 'visited'        ? '#f59e0b' :
-    p.status === 'remote_ordered' ? '#6366f1' :
-    '#9ca3af';
+function tr(t: Record<string, string> | undefined, key: string, fallback: string): string {
+  return t?.[key] || fallback;
+}
+
+function isVisitedOnSite(status: PointStatus): boolean {
+  return status === 'ordered' || status === 'visited';
+}
+
+function statusColor(status: PointStatus): string {
+  if (status === 'ordered') return '#10b981';
+  if (status === 'visited') return '#f59e0b';
+  if (status === 'remote_ordered') return '#6366f1';
+  return '#9ca3af';
+}
+
+/** Ekranda ko'rinadigan yo'nalish — xarita proyeksiyasiga mos */
+function screenAngle(map: L.Map, lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const p1 = map.latLngToContainerPoint([lat1, lng1]);
+  const p2 = map.latLngToContainerPoint([lat2, lng2]);
+  return (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
+}
+
+function makeVisitedIcon(p: MapPoint, visitOrder: number, D: boolean): L.DivIcon {
+  const markerColor = statusColor(p.status);
   const borderColor = D ? '#1a1a1a' : '#ffffff';
-  const shortName = p.name.length > 16 ? p.name.slice(0, 15) + '…' : p.name;
+  const shortName = p.name.length > 14 ? `${p.name.slice(0, 13)}…` : p.name;
 
-  if (isFirst) {
-    return L.divIcon({
-      className: '',
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -20],
-      html: `
-        <div style="width:36px;height:36px;border-radius:50%;background:${markerColor};border:3px solid ${borderColor};
-          box-shadow:0 3px 12px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;">
-          <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'>
-            <circle cx='12' cy='12' r='4'/><line x1='12' y1='2' x2='12' y2='5'/><line x1='12' y1='19' x2='12' y2='22'/>
-            <line x1='2' y1='12' x2='5' y2='12'/><line x1='19' y1='12' x2='22' y2='12'/>
-          </svg>
-        </div>`,
-    });
-  }
-
-  if (isLast) {
-    return L.divIcon({
-      className: '',
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -20],
-      html: `
-        <div style="width:36px;height:36px;border-radius:50%;background:${markerColor};border:3px solid ${borderColor};
-          box-shadow:0 3px 12px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;">
-          <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'>
-            <path d='M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'/><circle cx='12' cy='10' r='3'/>
-          </svg>
-        </div>`,
-    });
-  }
-
-  const labelBg  = D ? 'rgba(30,30,30,0.97)' : 'rgba(255,255,255,0.97)';
-  const labelTxt = D ? '#f9fafb' : '#111827';
-  const estW = Math.max(90, shortName.length * 7 + 26);
   return L.divIcon({
     className: '',
-    iconSize: [estW, 26],
-    iconAnchor: [estW / 2, 13],
-    popupAnchor: [0, -16],
+    iconSize: [36, 52],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -20],
     html: `
-      <div style="display:inline-flex;align-items:center;gap:5px;background:${labelBg};
-        border:1.5px solid ${markerColor};border-radius:20px;padding:0 9px 0 7px;height:26px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.22);cursor:pointer;white-space:nowrap;">
-        <div style="width:8px;height:8px;border-radius:50%;background:${markerColor};flex-shrink:0;"></div>
-        <span style="font-size:10.5px;font-weight:600;color:${labelTxt};font-family:system-ui,sans-serif;line-height:1;">${shortName}</span>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
+        <div style="width:34px;height:34px;border-radius:50%;background:${markerColor};border:3px solid ${borderColor};
+          box-shadow:0 3px 12px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
+          <span style="font-size:13px;font-weight:800;color:#fff;font-family:system-ui,sans-serif;line-height:1;">${visitOrder}</span>
+        </div>
+        <div style="max-width:88px;padding:2px 6px;border-radius:6px;background:${D ? 'rgba(30,30,30,0.92)' : 'rgba(255,255,255,0.95)'};
+          border:1px solid ${markerColor}55;box-shadow:0 1px 4px rgba(0,0,0,0.15);">
+          <span style="font-size:9px;font-weight:600;color:${D ? '#f9fafb' : '#111827'};font-family:system-ui,sans-serif;
+            display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">${shortName}</span>
+        </div>
       </div>`,
   });
 }
 
-function statusBadge(p: MapPoint): string {
-  if (p.status === 'ordered')        return `<span style="color:#10b981;font-weight:700">✓ Borildi, zakaz olindi</span>`;
-  if (p.status === 'visited')        return `<span style="color:#f59e0b;font-weight:700">✓ Borildi, zakaz olinmadi</span>`;
-  if (p.status === 'remote_ordered') return `<span style="color:#6366f1;font-weight:700">📞 Bormay, zakaz olindi</span>`;
-  return `<span style="color:#9ca3af">✗ Borilmadi, zakaz olinmadi</span>`;
+function makeMissedIcon(D: boolean): L.DivIcon {
+  const borderColor = D ? '#1a1a1a' : '#ffffff';
+  return L.divIcon({
+    className: '',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -10],
+    html: `
+      <div style="width:14px;height:14px;border-radius:50%;background:#9ca3af;border:2px solid ${borderColor};
+        box-shadow:0 1px 4px rgba(0,0,0,0.25);opacity:0.75;cursor:pointer;"></div>`,
+  });
 }
 
-export function TrackingMap({ points, startCity, endCity, D, height = 280, empLocation }: TrackingMapProps) {
+function makeRemoteIcon(D: boolean): L.DivIcon {
+  const borderColor = D ? '#1a1a1a' : '#ffffff';
+  return L.divIcon({
+    className: '',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -12],
+    html: `
+      <div style="width:22px;height:22px;border-radius:50%;background:#6366f1;border:2px solid ${borderColor};
+        box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.9;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
+      </div>`,
+  });
+}
+
+function makeArrowIcon(angle: number, color: string): L.DivIcon {
+  return L.divIcon({
+    className: '',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    html: `
+      <div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;transform:rotate(${angle}deg);">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8 H13 M10 5 L13 8 L10 11" stroke="${color}" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>`,
+  });
+}
+
+function statusBadge(p: MapPoint, t?: Record<string, string>): string {
+  if (p.status === 'ordered') {
+    return `<span style="color:#10b981;font-weight:700">${tr(t, 'trackMapPopupOrdered', '✓ Borildi, zakaz olindi')}</span>`;
+  }
+  if (p.status === 'visited') {
+    return `<span style="color:#f59e0b;font-weight:700">${tr(t, 'trackMapPopupVisited', '✓ Borildi, zakaz olinmadi')}</span>`;
+  }
+  if (p.status === 'remote_ordered') {
+    return `<span style="color:#6366f1;font-weight:700">${tr(t, 'trackMapPopupRemote', '📞 Bormay, zakaz olindi')}</span>`;
+  }
+  return `<span style="color:#9ca3af">${tr(t, 'trackMapPopupMissed', '✗ Borilmadi, zakaz olinmadi')}</span>`;
+}
+
+function addDirectionArrows(
+  map: L.Map,
+  pathPoints: MapPoint[],
+  color: string,
+  added: L.Layer[],
+) {
+  for (let i = 0; i < pathPoints.length - 1; i++) {
+    const p1 = pathPoints[i];
+    const p2 = pathPoints[i + 1];
+    const midLat = (p1.lat + p2.lat) / 2;
+    const midLng = (p1.lng + p2.lng) / 2;
+    const angle = screenAngle(map, p1.lat, p1.lng, p2.lat, p2.lng);
+    const arrow = L.marker([midLat, midLng], {
+      icon: makeArrowIcon(angle, color),
+      interactive: false,
+      zIndexOffset: 200 + i,
+    });
+    arrow.addTo(map);
+    added.push(arrow);
+  }
+}
+
+export function TrackingMap({ points, D, height = 280, empLocation, t }: TrackingMapProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<L.Map | null>(null);
   const tileLayerRef  = useRef<L.TileLayer | null>(null);
@@ -114,8 +168,12 @@ export function TrackingMap({ points, startCity, endCity, D, height = 280, empLo
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const allCoords: [number, number][] = points.map(p => [p.lat, p.lng]);
-    const visitedCoords = points.filter(p => p.status !== 'missed').map(p => [p.lat, p.lng] as [number, number]);
+    const orderedPoints = [...points].sort((a, b) => a.idx - b.idx);
+    const visitedPath = orderedPoints.filter(p => isVisitedOnSite(p.status));
+    const visitOrderMap = new Map<number, number>();
+    visitedPath.forEach((p, i) => visitOrderMap.set(p.idx, i + 1));
+
+    const allCoords: [number, number][] = orderedPoints.map(p => [p.lat, p.lng]);
 
     let center: [number, number] = NAVOIY;
     if (allCoords.length > 0) {
@@ -135,39 +193,49 @@ export function TrackingMap({ points, startCity, endCity, D, height = 280, empLo
     mapRef.current = map;
 
     const added: L.Layer[] = [];
+    const routeColor = '#6366f1';
 
-    if (allCoords.length > 1) {
-      const route = L.polyline(allCoords, {
-        color: D ? '#4b5563' : '#9ca3af',
-        weight: 2,
-        opacity: 0.5,
-      }).addTo(map);
-      added.push(route);
-    }
-
-    if (visitedCoords.length > 1) {
-      const visitedRoute = L.polyline(visitedCoords, {
-        color: '#6366f1',
-        weight: 3.5,
+    if (visitedPath.length > 1) {
+      const routeCoords = visitedPath.map(p => [p.lat, p.lng] as [number, number]);
+      const visitedRoute = L.polyline(routeCoords, {
+        color: routeColor,
+        weight: 4,
         opacity: 0.95,
       }).addTo(map);
       added.push(visitedRoute);
+      addDirectionArrows(map, visitedPath, routeColor, added);
     }
 
-    points.forEach((p, i) => {
+    orderedPoints.forEach(p => {
+      const visitOrder = visitOrderMap.get(p.idx);
+      const popupTitle = visitOrder
+        ? `#${visitOrder} · ${p.name}`
+        : p.name;
+
       const popupHtml = `
         <div style="padding:6px 2px;min-width:180px;font-family:system-ui,sans-serif;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:3px;color:#111827">${p.name}</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:2px;color:#111827">${popupTitle}</div>
           <div style="font-size:11px;color:#6b7280;margin-bottom:8px">${p.address}</div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-            <div style="font-size:11px">${statusBadge(p)}</div>
+            <div style="font-size:11px">${statusBadge(p, t)}</div>
             ${p.time ? `<div style="font-size:11px;color:#6b7280">🕐 ${p.time}</div>` : ''}
           </div>
         </div>`;
 
-      const marker = L.marker([p.lat, p.lng], {
-        icon: makePointIcon(p, i, points.length, D),
-      });
+      let icon: L.DivIcon;
+      let zIndex = 0;
+      if (visitOrder != null) {
+        icon = makeVisitedIcon(p, visitOrder, D);
+        zIndex = visitOrder;
+      } else if (p.status === 'remote_ordered') {
+        icon = makeRemoteIcon(D);
+        zIndex = -10;
+      } else {
+        icon = makeMissedIcon(D);
+        zIndex = -20;
+      }
+
+      const marker = L.marker([p.lat, p.lng], { icon, zIndexOffset: zIndex });
       marker.bindPopup(popupHtml, { className: 'lider-tracking-popup' });
       marker.addTo(map);
       added.push(marker);
@@ -199,7 +267,7 @@ export function TrackingMap({ points, startCity, endCity, D, height = 280, empLo
         <div style="padding:6px 2px;min-width:160px;font-family:system-ui,sans-serif;">
           <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:4px;display:flex;align-items:center;gap:6px">
             <div style="width:8px;height:8px;border-radius:50%;background:${pulseColor};flex-shrink:0"></div>
-            ${empLocation.online ? 'Online' : 'Offline'}
+            ${empLocation.online ? tr(t, 'trackOnlineNow', 'Hozir online') : tr(t, 'trackOffline', 'Offline')}
           </div>
           <div style="font-size:11px;color:#6b7280">${empLocation.lastSeen ?? ''}</div>
         </div>`, { className: 'lider-tracking-popup' });
@@ -209,8 +277,8 @@ export function TrackingMap({ points, startCity, endCity, D, height = 280, empLo
 
     layersRef.current = added;
 
-    if (allCoords.length > 1) {
-      map.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30], maxZoom: 14 });
+    if (allCoords.length > 0) {
+      map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40], maxZoom: 14 });
     }
 
     return () => {

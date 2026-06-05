@@ -10,6 +10,7 @@ import { AuthService } from '../auth/auth.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { In } from 'typeorm';
 import { DistributorStatus, UserRole } from '../common/enums';
+import { RedisService } from '../common/redis/redis.service';
 import {
   AppUserResponseDto,
   CreateAppUserDto,
@@ -24,10 +25,25 @@ export class UsersService {
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
     private readonly authService: AuthService,
+    private readonly redis: RedisService,
   ) {}
 
   async create(dto: CreateAppUserDto): Promise<AppUserResponseDto> {
-    await this.ensureUsernameAvailable(dto.username);
+    const username = dto.username.trim();
+    const existing = await this.userRepo.findOne({ where: { username } });
+    if (existing) {
+      if (!existing.isActive) {
+        return this.update(existing.id, {
+          username,
+          password: dto.password,
+          fullName: dto.fullName,
+          role: dto.role,
+          isActive: dto.isActive ?? true,
+          companyName: dto.companyName,
+        });
+      }
+      throw new ConflictException('Username already exists');
+    }
 
     const user = this.userRepo.create({
       username: dto.username.trim(),
@@ -87,10 +103,15 @@ export class UsersService {
 
   async findAllApp(): Promise<AppUserResponseDto[]> {
     const users = await this.userRepo.find({
-      where: { role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]) },
+      where: {
+        role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]),
+        isActive: true,
+      },
+      relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
     });
-    return users.map((u) => this.toDto(u));
+    const onlineIds = await this.getOnlineDistributorIds();
+    return users.map((u) => this.toDto(u, onlineIds));
   }
 
   async findByUsername(username: string): Promise<AppUserResponseDto | null> {
@@ -112,13 +133,38 @@ export class UsersService {
     }
   }
 
-  private toDto(user: User): AppUserResponseDto {
+  private async getOnlineDistributorIds(): Promise<Set<string>> {
+    try {
+      const keys = await this.redis.getClient().keys('online:*');
+      return new Set(keys.map((k) => k.replace('online:', '')));
+    } catch {
+      return new Set();
+    }
+  }
+
+  private toDto(user: User, onlineIds: Set<string> = new Set()): AppUserResponseDto {
+    const profile = user.distributorProfile;
+    const distributorId = profile?.id;
+    const isOnline = !!(
+      (distributorId && onlineIds.has(distributorId)) || profile?.isOnline
+    );
+
+    let lastActiveAt: Date | null = user.lastLoginAt ?? null;
+    if (profile?.lastLocationAt) {
+      if (!lastActiveAt || profile.lastLocationAt > lastActiveAt) {
+        lastActiveAt = profile.lastLocationAt;
+      }
+    }
+
     return {
       id: user.id,
       username: user.username,
       fullName: user.fullName,
       role: user.role,
       isActive: user.isActive,
+      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+      lastActiveAt: lastActiveAt?.toISOString() ?? null,
+      isOnline,
     };
   }
 }

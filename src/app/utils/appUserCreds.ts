@@ -32,7 +32,8 @@ export function removeStoredAppPassword(username: string) {
   }
 }
 
-import type { AppUserRecord } from '../api/client';
+import type { AppUserRecord, Distributor } from '../api/client';
+import type { SotrudnikRow } from '../data/adminData';
 
 export interface AppUserListRow {
   id: number;
@@ -50,6 +51,7 @@ export interface AppUserListRow {
   acceptPay: boolean;
   consig: boolean;
   gps: boolean;
+  isOnline?: boolean;
 }
 
 export function mapBackendRoleToDisplay(role: string): string {
@@ -57,13 +59,41 @@ export function mapBackendRoleToDisplay(role: string): string {
   return 'Savdo agenti';
 }
 
-export function appUserToRow(app: AppUserRecord, localId: number): AppUserListRow {
+export function formatLastActive(
+  app: Pick<AppUserRecord, 'isOnline' | 'lastActiveAt' | 'lastLoginAt'>,
+  t?: Record<string, string>,
+): string {
+  if (app.isOnline) return t?.userLastActOnline || 'Hozir online';
+  const at = app.lastActiveAt || app.lastLoginAt;
+  if (!at) return '';
+
+  const diffMs = Date.now() - new Date(at).getTime();
+  if (diffMs < 0) return t?.userLastActJustNow || 'Hozirgina';
+
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return t?.userLastActJustNow || 'Hozirgina';
+  if (mins < 60) return `${mins} ${t?.userLastActMinAgo || 'daqiqa oldin'}`;
+
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ${t?.userLastActHourAgo || 'soat oldin'}`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${t?.userLastActDayAgo || 'kun oldin'}`;
+
+  return new Date(at).toLocaleString();
+}
+
+export function appUserToRow(
+  app: AppUserRecord,
+  localId: number,
+  t?: Record<string, string>,
+): AppUserListRow {
   return {
     id: localId,
     code: String(localId).padStart(4, '0'),
     name: app.fullName,
     tg: '',
-    lastAct: '',
+    lastAct: formatLastActive(app, t),
     role: mapBackendRoleToDisplay(app.role),
     status: app.isActive ? 'open' : 'closed',
     org: '',
@@ -74,6 +104,34 @@ export function appUserToRow(app: AppUserRecord, localId: number): AppUserListRo
     acceptPay: true,
     consig: false,
     gps: true,
+    isOnline: app.isOnline,
+  };
+}
+
+export function appUserToSotrudnikRow(
+  app: AppUserRecord,
+  distributor: Distributor | undefined,
+  index: number,
+  t: Record<string, string>,
+): SotrudnikRow {
+  let position = t.sotrPosSalesAgent || 'Savdo agenti';
+  let department = t.sotrDeptSales || 'Savdo';
+  if (app.role === 'manager') {
+    position = t.sotrPosManager || 'Menejer';
+    department = t.sotrDeptOffice || 'Bosh ofis';
+  } else if (app.role === 'admin') {
+    position = t.sotrPosDirector || 'Direktor';
+    department = t.sotrDeptOffice || 'Bosh ofis';
+  }
+
+  return {
+    tabel: index,
+    name: app.fullName,
+    department,
+    position,
+    phone: distributor?.phone || '',
+    orgId: distributor?.companyId || 'boran',
+    backendUserId: app.id,
   };
 }
 

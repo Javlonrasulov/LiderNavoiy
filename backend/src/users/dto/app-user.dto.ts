@@ -79,4 +79,7 @@ export class AppUserResponseDto {
   fullName: string;
   role: UserRole;
   isActive: boolean;
+  lastLoginAt?: string | null;
+  lastActiveAt?: string | null;
+  isOnline?: boolean;
 }

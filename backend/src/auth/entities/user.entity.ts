@@ -32,6 +32,9 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   fcmToken: string | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  lastLoginAt: Date | null;
+
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })
   distributorProfile?: DistributorProfile;
 

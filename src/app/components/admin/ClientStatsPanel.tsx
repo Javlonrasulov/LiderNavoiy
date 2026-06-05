@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { ClientRow } from '../../data/adminData';
 import { demo, demoRecKeys } from '../../data/demoLimit';
+import { clientIdHash } from '../../utils/clientApi';
 
 /* ── Types ─────────────────────────────────────────── */
 interface CategoryData {
@@ -400,10 +401,11 @@ export function ClientStatsPanel({ client, D, sub, text, onClose, t }: Props) {
   const [customFrom,  setCustomFrom]  = useState('2026-01-01');
   const [customTo,    setCustomTo]    = useState('2026-03-08');
 
-  const categories = useMemo(() => genCategories(client.id, period), [client.id, period]);
+  const numericClientId = clientIdHash(client.id);
+  const categories = useMemo(() => genCategories(numericClientId, period), [numericClientId, period]);
   const products   = useMemo(
-    () => selectedCat ? genProducts(client.id, selectedCat.id, period) : [],
-    [client.id, selectedCat, period]
+    () => selectedCat ? genProducts(numericClientId, selectedCat.id, period) : [],
+    [numericClientId, selectedCat, period]
   );
 
   const filteredProducts = products.filter(p =>
@@ -592,7 +594,7 @@ export function ClientStatsPanel({ client, D, sub, text, onClose, t }: Props) {
 
                 {/* Monthly trend — main overview */}
                 <div className={`rounded-2xl border ${card2} overflow-hidden`}>
-                  <MonthlyTrendChart clientId={client.id} D={D} sub={sub} />
+                  <MonthlyTrendChart clientId={numericClientId} D={D} sub={sub} />
                 </div>
 
                 {/* Category cards */}
@@ -695,7 +697,7 @@ export function ClientStatsPanel({ client, D, sub, text, onClose, t }: Props) {
 
                 {/* Monthly trend chart */}
                 <div className={`rounded-2xl border ${card2} overflow-hidden`}>
-                  <MonthlyTrendChart clientId={client.id} D={D} sub={sub} />
+                  <MonthlyTrendChart clientId={numericClientId} D={D} sub={sub} />
                 </div>
 
                 {/* Weekly bars chart */}
@@ -703,7 +705,7 @@ export function ClientStatsPanel({ client, D, sub, text, onClose, t }: Props) {
                   <p className={`text-[10px] font-semibold uppercase tracking-wider ${sub} mb-2`}>
                     {t.statWeekly ?? 'Haftalik trend'}
                   </p>
-                  <WeeklyBars clientId={client.id} catId={selectedCat.id} color={selectedCat.color} D={D} />
+                  <WeeklyBars clientId={numericClientId} catId={selectedCat.id} color={selectedCat.color} D={D} />
                 </div>
 
                 {/* Buy filter pills */}

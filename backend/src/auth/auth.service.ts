@@ -39,6 +39,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    user.lastLoginAt = new Date();
+    await this.userRepo.save(user);
+
     return this.buildAuthResponse(user);
   }
 
@@ -52,6 +55,8 @@ export class AuthService {
         relations: ['distributorProfile'],
       });
       if (!user) throw new UnauthorizedException();
+      user.lastLoginAt = new Date();
+      await this.userRepo.save(user);
       return this.buildAuthResponse(user);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
