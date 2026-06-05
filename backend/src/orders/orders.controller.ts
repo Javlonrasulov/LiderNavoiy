@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateOrderDto, BatchOrdersDto } from './dto/order.dto';
 import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -25,9 +26,15 @@ export class OrdersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get my orders' })
-  findMine(@Request() req: { user: User }) {
-    return this.service.findByDistributor(req.user.distributorProfile!.id);
+  @ApiOperation({ summary: 'List orders (admin: all, agent: own)' })
+  findAll(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    if (req.user.role === UserRole.DISTRIBUTOR) {
+      return this.service.findByDistributor(req.user.distributorProfile!.id);
+    }
+    return this.service.findForAdmin(companyId);
   }
 
   @Get(':id')

@@ -101,8 +101,8 @@ fun VisitScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize().background(pageBg).padding(bottom = BottomNavHeight)) {
+    Box(modifier = Modifier.fillMaxSize().padding(bottom = BottomNavHeight)) {
+    Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
         when (state.viewLevel) {
             VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
                 isDark = isDark,

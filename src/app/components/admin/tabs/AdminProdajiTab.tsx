@@ -10,9 +10,10 @@ interface AdminProdajiTabProps {
   D: boolean;
   sub: string;
   t: Record<string, string>;
+  selectedCompanyIds?: Set<string>;
 }
 
-export function AdminProdajiTab({ D, t }: AdminProdajiTabProps) {
+export function AdminProdajiTab({ D, t, selectedCompanyIds }: AdminProdajiTabProps) {
   const [active,        setActive]        = useState<ProdajiSub>('zayavki');
   const [showCreate,    setShowCreate]    = useState(false);
   const [pendingOrders, setPendingOrders] = useState<ConfirmedOrder[]>([]);
@@ -129,7 +130,7 @@ export function AdminProdajiTab({ D, t }: AdminProdajiTabProps) {
 
         {/* ── List views ── */}
         {!showCreate && active === 'zayavki' && (
-          <ZayavkiPage D={D} t={t} />
+          <ZayavkiPage D={D} t={t} selectedCompanyIds={selectedCompanyIds} />
         )}
         {!showCreate && active === 'tovarYuklash' && (
           <TovarYuklashPage

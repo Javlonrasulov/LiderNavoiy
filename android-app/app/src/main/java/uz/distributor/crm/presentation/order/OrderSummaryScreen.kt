@@ -94,12 +94,15 @@ fun OrderSummaryScreen(
             )
             OrderSummaryTab.SENT -> SentOrdersContent(
                 orders = state.sentOrders,
+                expandedOrders = state.expandedSentOrders,
                 isLoading = state.isLoadingSent,
                 fmt = fmt,
+                stockFmt = stockFmt,
                 lang = lang,
                 isDark = isDark,
                 cardBg = cardBg,
                 titleColor = titleColor,
+                onToggleOrder = viewModel::toggleSentOrderExpanded,
             )
         }
     }
@@ -260,73 +263,88 @@ private fun CurrentOrderContent(
     }
 
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                ClientOrderCard(
-                    clientCode = state.clientCode,
-                    clientName = state.clientName,
-                    items = state.items,
-                    productBrands = state.productBrands,
-                    expanded = state.clientExpanded,
-                    expandedItems = state.expandedItems,
-                    fmt = fmt,
-                    stockFmt = stockFmt,
-                    lang = lang,
-                    isDark = isDark,
-                    cardBg = cardBg,
-                    titleColor = titleColor,
-                    onToggleClient = onToggleClient,
-                    onToggleItem = onToggleItem,
-                    onUpdateQty = onUpdateQty,
-                    onRemoveItem = onRemoveItem,
-                    onEditClient = onEditClient,
-                )
-            }
-        }
-
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            TotalSummaryBar(
-                total = state.total,
-                fmt = fmt,
-                lang = lang,
-                isDark = isDark,
-            )
-            Button(
-                onClick = onSubmit,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                enabled = !state.isSubmitting && state.clientId.isNotBlank(),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 16.dp,
+                    bottom = 140.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                if (state.isSubmitting) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
+                item {
+                    ClientOrderCard(
+                        clientCode = state.clientCode,
+                        clientName = state.clientName,
+                        items = state.items,
+                        productBrands = state.productBrands,
+                        expanded = state.clientExpanded,
+                        expandedItems = state.expandedItems,
+                        fmt = fmt,
+                        stockFmt = stockFmt,
+                        lang = lang,
+                        isDark = isDark,
+                        cardBg = cardBg,
+                        titleColor = titleColor,
+                        onToggleClient = onToggleClient,
+                        onToggleItem = onToggleItem,
+                        onUpdateQty = onUpdateQty,
+                        onRemoveItem = onRemoveItem,
+                        onEditClient = onEditClient,
                     )
-                } else {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                color = if (isDark) SherinColors.CardDark else Color.White,
+                shadowElevation = 12.dp,
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TotalSummaryBar(
+                        total = state.total,
+                        fmt = fmt,
+                        lang = lang,
+                        isDark = isDark,
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        AppStrings.sendOrder(lang),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Button(
+                        onClick = onSubmit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        enabled = !state.isSubmitting && state.clientId.isNotBlank(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                    ) {
+                        if (state.isSubmitting) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                AppStrings.sendOrder(lang),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -600,6 +618,8 @@ private fun TotalSummaryBar(
     fmt: DecimalFormat,
     lang: AppLanguage,
     isDark: Boolean,
+    label: String = AppStrings.total(lang),
+    modifier: Modifier = Modifier,
 ) {
     val bg = if (isDark) Color(0xFF1E3A5F) else TotalBarBg
     val border = if (isDark) Color(0xFF2563EB) else TotalBarBorder
@@ -608,7 +628,7 @@ private fun TotalSummaryBar(
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = bg,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .border(1.dp, border, RoundedCornerShape(14.dp)),
     ) {
@@ -620,7 +640,7 @@ private fun TotalSummaryBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                AppStrings.total(lang),
+                label,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = textColor,
@@ -638,13 +658,19 @@ private fun TotalSummaryBar(
 @Composable
 private fun SentOrdersContent(
     orders: List<SentOrderUi>,
+    expandedOrders: Set<String>,
     isLoading: Boolean,
     fmt: DecimalFormat,
+    stockFmt: DecimalFormat,
     lang: AppLanguage,
     isDark: Boolean,
     cardBg: Color,
     titleColor: Color,
+    onToggleOrder: (String) -> Unit,
 ) {
+    val borderColor = if (isDark) Color(0xFF374151) else CardBorder
+    val pageBg = if (isDark) SherinColors.PageBgDark else Color(0xFFF3F4F6)
+
     when {
         isLoading -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -655,54 +681,100 @@ private fun SentOrdersContent(
             Box(
                 Modifier
                     .fillMaxSize()
+                    .background(pageBg)
                     .padding(16.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = cardBg,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(
-                            1.dp,
-                            if (isDark) Color(0xFF374151) else CardBorder,
-                            RoundedCornerShape(16.dp),
-                        ),
+                        .fillMaxHeight(0.72f)
+                        .border(1.dp, borderColor, RoundedCornerShape(20.dp)),
                 ) {
                     Column(
-                        Modifier.padding(48.dp),
+                        Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(
-                            Icons.Outlined.CheckCircle,
-                            contentDescription = null,
-                            tint = SubText,
-                            modifier = Modifier.size(56.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Outlined.CheckCircle,
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFF6B7280) else Color(0xFFD1D5DB),
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(20.dp))
                         Text(
                             AppStrings.noSentOrdersToday(lang),
                             color = SubText,
-                            fontSize = 14.sp,
+                            fontSize = 15.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp),
                         )
                     }
                 }
             }
         }
         else -> {
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(orders, key = { it.id }) { order ->
-                    SentOrderCard(
-                        order = order,
+            val todayTotal = orders.sumOf { it.total }
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 16.dp,
+                        bottom = 100.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item {
+                        Text(
+                            AppStrings.sentOrdersTodayCount(lang, orders.size),
+                            color = SubText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                    items(orders, key = { it.id }) { order ->
+                        SentOrderCard(
+                            order = order,
+                            expanded = order.id in expandedOrders,
+                            fmt = fmt,
+                            stockFmt = stockFmt,
+                            lang = lang,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            titleColor = titleColor,
+                            onToggle = { onToggleOrder(order.id) },
+                        )
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(),
+                    color = if (isDark) SherinColors.CardDark else Color.White,
+                    shadowElevation = 12.dp,
+                ) {
+                    TotalSummaryBar(
+                        total = todayTotal,
                         fmt = fmt,
                         lang = lang,
                         isDark = isDark,
-                        cardBg = cardBg,
-                        titleColor = titleColor,
+                        label = AppStrings.sentOrdersTodayTotal(lang),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     )
                 }
             }
@@ -713,11 +785,14 @@ private fun SentOrdersContent(
 @Composable
 private fun SentOrderCard(
     order: SentOrderUi,
+    expanded: Boolean,
     fmt: DecimalFormat,
+    stockFmt: DecimalFormat,
     lang: AppLanguage,
     isDark: Boolean,
     cardBg: Color,
     titleColor: Color,
+    onToggle: () -> Unit,
 ) {
     val borderColor = if (isDark) Color(0xFF374151) else CardBorder
 
@@ -728,45 +803,180 @@ private fun SentOrderCard(
             .fillMaxWidth()
             .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            if (order.clientCode.isNotBlank()) {
-                Text(order.clientCode, color = SubText, fontSize = 12.sp)
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (order.clientCode.isNotBlank()) {
+                            Text(order.clientCode, color = SubText, fontSize = 12.sp)
+                        }
+                        if (order.timeLabel.isNotBlank()) {
+                            Text("·", color = SubText, fontSize = 12.sp)
+                            Text(order.timeLabel, color = SubText, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        order.clientName.ifBlank { "—" },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = titleColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                SentStatusBadge(lang = lang)
+                Spacer(Modifier.width(6.dp))
+                if (!expanded) {
+                    Text(
+                        fmt.format(order.total.toLong()),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = PrimaryBlue,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = SubText,
+                    modifier = Modifier.size(24.dp),
+                )
             }
-            Text(
-                order.clientName.ifBlank { "—" },
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = titleColor,
+
+            if (expanded) {
+                HorizontalDivider(color = borderColor, thickness = 1.dp)
+                order.items.forEachIndexed { index, item ->
+                    SentOrderItemRow(
+                        item = item,
+                        brand = order.productBrands[item.productId].orEmpty(),
+                        fmt = fmt,
+                        stockFmt = stockFmt,
+                        titleColor = titleColor,
+                        showDivider = index < order.items.lastIndex,
+                        borderColor = borderColor,
+                    )
+                }
+                TotalSummaryBar(
+                    total = order.total,
+                    fmt = fmt,
+                    lang = lang,
+                    isDark = isDark,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SentStatusBadge(lang: AppLanguage) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFFECFDF5),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF22C55E),
+                modifier = Modifier.size(14.dp),
             )
-            Spacer(Modifier.height(8.dp))
-            order.items.forEach { item ->
+            Text(
+                AppStrings.orderSentBadge(lang),
+                color = Color(0xFF16A34A),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SentOrderItemRow(
+    item: CartItem,
+    brand: String,
+    fmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    titleColor: Color,
+    showDivider: Boolean,
+    borderColor: Color,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f)) {
+                if (brand.isNotBlank()) {
+                    Text(
+                        brand.uppercase(),
+                        color = SubText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                }
                 Text(
-                    "${item.productCode} · ${item.productName} — ${formatQty(item.quantity, DecimalFormat("#,##0.##"))} ${item.unit}",
-                    fontSize = 13.sp,
-                    color = if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151),
-                    maxLines = 1,
+                    "${item.productCode} — ${item.productName}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = titleColor,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF22C55E),
-                    modifier = Modifier.size(20.dp),
-                )
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF0F7FF),
+                ) {
+                    Text(
+                        "${formatQty(item.quantity, stockFmt)} ${item.unit}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        color = PrimaryBlue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "${fmt.format(order.total.toLong())} ${AppStrings.productSomShort(lang)}",
+                    fmt.format((item.price * item.quantity).toLong()),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     color = PrimaryBlue,
                 )
+                Text(
+                    "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}",
+                    color = SubText,
+                    fontSize = 11.sp,
+                )
             }
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 12.dp),
+                color = borderColor,
+                thickness = 1.dp,
+            )
         }
     }
 }

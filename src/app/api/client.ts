@@ -83,6 +83,39 @@ export interface Client {
 
 export type BackendClient = Client;
 
+export interface BackendOrderItem {
+  productId: string;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  unit: string;
+}
+
+export interface BackendOrder {
+  id: string;
+  clientId: string;
+  distributorId: string;
+  visitId?: string | null;
+  status: string;
+  totalAmount: number;
+  items: BackendOrderItem[];
+  isOfflineCreated: boolean;
+  offlineId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  client?: {
+    code: string;
+    name: string;
+    companyId: string | null;
+    lineCode: string | null;
+    clientClass: string | null;
+    category: string | null;
+  } | null;
+  agentName?: string | null;
+  companyName?: string | null;
+}
+
 export interface BankUsdRate {
   buy: number;
   sell: number;
@@ -357,6 +390,10 @@ export const api = {
 
   rejectClientRequest: (id: string) =>
     request<unknown>(`/client-requests/${id}/reject`, { method: 'POST' }),
+
+  // ─── Orders (agent APK → admin Sotuvlar) ───
+  getOrders: (companyId?: string) =>
+    request<BackendOrder[]>(`/orders${companyId ? `?companyId=${companyId}` : ''}`),
 
   // ─── Health ───
   health: () => request<{ status: string }>('/health'),

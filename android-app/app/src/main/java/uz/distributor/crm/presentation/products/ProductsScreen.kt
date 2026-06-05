@@ -14,13 +14,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -32,6 +34,7 @@ import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.navigation.BottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
@@ -55,14 +58,15 @@ fun ProductsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageBg),
+            .background(pageBg)
+            .padding(bottom = BottomNavHeight),
     ) {
-        Surface(color = headerBg, shadowElevation = if (isDark) 0.dp else 2.dp) {
+        Surface(color = headerBg, shadowElevation = if (isDark) 0.dp else 1.dp) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 36.dp, bottom = 12.dp),
+                    .padding(horizontal = 14.dp)
+                    .padding(top = 28.dp, bottom = 6.dp),
             ) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -71,15 +75,15 @@ fun ProductsScreen(
                     IconButton(
                         onClick = onBack,
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)),
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = null,
                             tint = titleColor,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     Column(
@@ -89,19 +93,21 @@ fun ProductsScreen(
                         Text(
                             AppStrings.products(lang),
                             color = titleColor,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
+                            lineHeight = 18.sp,
                         )
                         Text(
                             AppStrings.productsTotalCount(lang, state.totalCount),
                             color = subColor,
-                            fontSize = 13.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
                         )
                     }
                     IconButton(
                         onClick = viewModel::toggleViewMode,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
                             .background(
                                 if (state.viewMode == ProductsViewMode.TABLE) SherinColors.Primary.copy(0.15f)
@@ -118,53 +124,46 @@ fun ProductsScreen(
                             Icons.AutoMirrored.Filled.ViewList,
                             null,
                             tint = if (state.viewMode == ProductsViewMode.TABLE) SherinColors.Primary else titleColor,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    IconButton(
-                        onClick = { /* filter panel — keyingi versiya */ },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6))
-                            .border(
-                                1.dp,
-                                if (isDark) Color(0xFF4B5563) else Color(0xFFE5E7EB),
-                                CircleShape,
-                            ),
-                    ) {
-                        Icon(
-                            Icons.Default.Tune,
-                            null,
-                            tint = titleColor,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(8.dp))
 
-                OutlinedTextField(
-                    value = state.searchQuery,
-                    onValueChange = viewModel::onSearchChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text(AppStrings.search(lang), color = subColor) },
-                    leadingIcon = { Icon(Icons.Default.Search, null, tint = subColor) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
-                        unfocusedContainerColor = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        cursorColor = SherinColors.Primary,
-                        focusedTextColor = titleColor,
-                        unfocusedTextColor = titleColor,
-                    ),
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
+                    modifier = Modifier.fillMaxWidth().height(38.dp),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Search, null, tint = subColor, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.weight(1f)) {
+                            if (state.searchQuery.isEmpty()) {
+                                Text(AppStrings.search(lang), color = subColor, fontSize = 14.sp)
+                            }
+                            BasicTextField(
+                                value = state.searchQuery,
+                                onValueChange = viewModel::onSearchChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(
+                                    color = titleColor,
+                                    fontSize = 14.sp,
+                                ),
+                                cursorBrush = SolidColor(SherinColors.Primary),
+                            )
+                        }
+                    }
+                }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(4.dp))
 
                 Row(
                     Modifier.fillMaxWidth(),
@@ -173,6 +172,7 @@ fun ProductsScreen(
                     Switch(
                         checked = state.stockOnly,
                         onCheckedChange = viewModel::setStockOnly,
+                        modifier = Modifier.scale(0.82f),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = SherinColors.Primary,
@@ -180,36 +180,36 @@ fun ProductsScreen(
                             uncheckedTrackColor = if (isDark) Color(0xFF4B5563) else Color(0xFFD1D5DB),
                         ),
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(4.dp))
                     Text(
                         AppStrings.productAvailable(lang),
                         color = titleColor,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                     )
                 }
-            }
-        }
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(headerBg)
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ProductCategoryChip(
-                label = AppStrings.allProducts(lang),
-                selected = state.selectedCategory == null,
-                onClick = { viewModel.selectCategory(null) },
-            )
-            state.categories.forEach { category ->
-                ProductCategoryChip(
-                    label = category,
-                    selected = state.selectedCategory == category,
-                    onClick = { viewModel.selectCategory(category) },
-                )
+                Spacer(Modifier.height(6.dp))
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ProductCategoryChip(
+                        label = AppStrings.allProducts(lang),
+                        selected = state.selectedCategory == null,
+                        onClick = { viewModel.selectCategory(null) },
+                    )
+                    state.categories.forEach { category ->
+                        ProductCategoryChip(
+                            label = category,
+                            selected = state.selectedCategory == category,
+                            onClick = { viewModel.selectCategory(category) },
+                        )
+                    }
+                }
             }
         }
 
@@ -277,14 +277,14 @@ private fun ProductCategoryChip(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selected) SherinColors.Primary else Color(0xFFF3F4F6),
     ) {
         Text(
             label,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
             color = if (selected) Color.White else Color(0xFF4B5563),
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

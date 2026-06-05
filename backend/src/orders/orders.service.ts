@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto } from './dto/order.dto';
 import { OrderStatus } from '../common/enums';
@@ -76,6 +76,60 @@ export class OrdersService {
       order: { createdAt: 'DESC' },
       take: 100,
     });
+  }
+
+  async findForAdmin(companyId?: string, limit = 500) {
+    const orders = await this.repo.find({
+      order: { createdAt: 'DESC' },
+      take: limit,
+    });
+    if (orders.length === 0) return [];
+
+    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const distributorIds = [...new Set(orders.map((o) => o.distributorId))];
+
+    const [clients, profiles] = await Promise.all([
+      this.clientRepo.find({ where: { id: In(clientIds) } }),
+      this.profileRepo.find({
+        where: { id: In(distributorIds) },
+        relations: ['user'],
+      }),
+    ]);
+
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+    const profileMap = new Map(profiles.map((p) => [p.id, p]));
+
+    return orders
+      .map((order) => {
+        const client = clientMap.get(order.clientId);
+        const profile = profileMap.get(order.distributorId);
+        return {
+          id: order.id,
+          clientId: order.clientId,
+          distributorId: order.distributorId,
+          visitId: order.visitId,
+          status: order.status,
+          totalAmount: Number(order.totalAmount),
+          items: order.items,
+          isOfflineCreated: order.isOfflineCreated,
+          offlineId: order.offlineId,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          client: client
+            ? {
+                code: client.code,
+                name: client.name,
+                companyId: client.companyId,
+                lineCode: client.lineCode,
+                clientClass: client.clientClass,
+                category: client.category,
+              }
+            : null,
+          agentName: profile?.user?.fullName ?? null,
+          companyName: profile?.companyName ?? null,
+        };
+      })
+      .filter((o) => !companyId || o.client?.companyId === companyId);
   }
 
   findOne(id: string) {

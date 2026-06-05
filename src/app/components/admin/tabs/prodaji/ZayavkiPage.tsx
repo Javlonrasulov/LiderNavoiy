@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Plus, Search, ChevronDown, ChevronUp,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, X, CalendarDays,
@@ -7,20 +7,18 @@ import type { ConfirmedOrder } from './TovarYuklashCreateModal';
 import { ZayavkaDetailModal } from './ZayavkaDetailModal';
 import type { ZayavkaInfo } from './ZayavkaDetailModal';
 import { demo } from '../../../../data/demoLimit';
+import { api } from '../../../../api/client';
+import { backendOrderToZayavka, type ZayavkaRow } from '../../../../utils/orderApi';
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
+}
 
 /* ─── Types ────────────────────────────────────────────────── */
 type Status    = 'pri' | 'otr' | 'cancelled';
 type FilterTab = 'all' | 'notShipped' | 'notProcessed' | 'deleted';
 
-export interface Zayavka {
-  id: number;
-  orderDate: string; shipDate: string; num: number; code: string;
-  client: string;    org: string;      agent: string; liniya: string;
-  direction: string; fort: string;     vs: string;    source: string;
-  amount: number;    klass: string;    otgr: string;  status: Status;
-  konsDate: string;  note: string;
-  deleted: boolean; shipped: boolean; processed: boolean;
-}
+export type Zayavka = ZayavkaRow & { id: string | number };
 
 /* ─── Module-level pure helpers (no state) ──────────────────── */
 function parseDateStr(s: string): Date | null {
@@ -53,8 +51,8 @@ function fmtSum(n: number) {
   return n.toLocaleString('ru-RU') + ' сум';
 }
 
-/* ─── Mock data ─────────────────────────────────────────────── */
-const DATA: Zayavka[] = demo([
+/* ─── Demo fallback (backend yo'q bo'lsa) ───────────────────── */
+const DEMO_DATA: Zayavka[] = demo([
   { id:1,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18580, code:'28720', client:'GAYBIYEV MUXRIDDIN',          org:'OOO "BOLG\'ORI"', agent:'Эргашева Д.',  liniya:'13 - Эскиюрт', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:600508,  klass:'MM-1', otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true  },
   { id:2,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18581, code:'28050', client:'XUMO GULI MCHJ',              org:'OOO "BOLG\'ORI"', agent:'Норова Н.',    liniya:'14 - Янгийўл', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'SM-',  otgr:'1 040', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
   { id:3,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18584, code:'28742', client:'7-OSHXONA',                   org:'OOO "BOLG\'ORI"', agent:'Назаров Ш.',   liniya:'27 - Хасан',   direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'OST',  otgr:'1 039', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
@@ -80,19 +78,64 @@ const DATA: Zayavka[] = demo([
 ]);
 
 /* ─── Props ─────────────────────────────────────────────────── */
-interface Props { D: boolean; t: Record<string, string>; pendingOrders?: ConfirmedOrder[]; }
+interface Props {
+  D: boolean;
+  t: Record<string, string>;
+  pendingOrders?: ConfirmedOrder[];
+  selectedCompanyIds?: Set<string>;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    COMPONENT
 ════════════════════════════════════════════════════════════════ */
-export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
+export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Props) {
 
   /* ── UI state ── */
   const [tab,          setTab]          = useState<FilterTab>('all');
   const [search,       setSearch]       = useState('');
-  const [expanded,     setExpanded]     = useState<number | null>(null);
+  const [expanded,     setExpanded]     = useState<string | number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [detailZayavka, setDetailZayavka] = useState<ZayavkaInfo | null>(null);
+  const [apiOrders,    setApiOrders]    = useState<Zayavka[]>([]);
+  const [loading,      setLoading]      = useState(false);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+
+  const companyId = selectedCompanyIds?.size === 1
+    ? [...selectedCompanyIds][0]
+    : undefined;
+
+  const refreshOrders = useCallback(async () => {
+    if (!hasApiToken()) {
+      setApiOrders([]);
+      setBackendReady(false);
+      setLoadError(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const raw = await api.getOrders(companyId);
+      setApiOrders(raw.map(backendOrderToZayavka));
+      setBackendReady(true);
+    } catch (e) {
+      setApiOrders([]);
+      setBackendReady(false);
+      const msg = e instanceof Error ? e.message : String(e);
+      setLoadError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => { refreshOrders(); }, [refreshOrders]);
+
+  useEffect(() => {
+    const handler = () => { refreshOrders(); };
+    window.addEventListener('lider:order-created', handler);
+    return () => window.removeEventListener('lider:order-created', handler);
+  }, [refreshOrders]);
 
   /* ── Tooltip state ── */
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -130,6 +173,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
     fort: row.fort, vs: row.vs, source: row.source,
     amount: row.amount, klass: row.klass, otgr: row.otgr,
     status: row.status, note: row.note, code: row.code, konsDate: row.konsDate,
+    items: row.items,
   });
 
   /* ── Theme colours ── */
@@ -211,13 +255,14 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
       deleted:   false,
       shipped:   false,
       processed: false,
+      items:     [],
     }))
   , [pendingOrders]);
 
   /* ── Filtered rows ── */
   const rows = useMemo(() => {
-    // pending (red) rows always shown at top, not filtered by tab/date/search
-    let d = DATA;
+    const base = backendReady ? apiOrders : DEMO_DATA;
+    let d = base;
     if (tab === 'notShipped')   d = d.filter(r => !r.shipped);
     if (tab === 'notProcessed') d = d.filter(r => !r.processed);
     if (tab === 'deleted')      d = d.filter(r => r.deleted);
@@ -241,7 +286,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
       );
     }
     return [...pendingRows, ...d];
-  }, [tab, search, dateStart, dateEnd, pendingRows]);
+  }, [tab, search, dateStart, dateEnd, pendingRows, apiOrders, backendReady]);
 
   /* ── Desktop columns ── */
   const COLS = [
@@ -458,7 +503,9 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
 
       {/* Row count */}
       <span style={{ fontSize:12, color: muted, marginLeft:'auto' }}>
-        {rows.length} {t.zRowCount ?? 'ta'}
+        {loading
+          ? (t.loading ?? 'Yuklanmoqda...')
+          : `${rows.length} ${t.zRowCount ?? 'ta'}`}
       </span>
     </div>
   );
@@ -763,6 +810,16 @@ export function ZayavkiPage({ D, t, pendingOrders = [] }: Props) {
         className={`flex flex-col flex-1 min-h-0 rounded-2xl border overflow-hidden ${D ? 'border-gray-800' : 'border-gray-200'}`}
         style={{ background: card }}
       >
+        {loadError && (
+          <div style={{
+            padding: '8px 12px', fontSize: 12,
+            background: D ? 'rgba(239,68,68,0.12)' : '#fef2f2',
+            color: D ? '#fca5a5' : '#b91c1c',
+            borderBottom: `1px solid ${brd}`,
+          }}>
+            {loadError}
+          </div>
+        )}
         {filterTabsRow}
         {toolbarRow}
 

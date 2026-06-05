@@ -39,7 +39,7 @@ object NotificationHelper {
             "$appName — bildirishnomalar",
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "Buyurtma, vizit va boshqa bildirishnomalar"
+            description = "Buyurtma, tashrif va boshqa bildirishnomalar"
             enableVibration(true)
         }
         manager.createNotificationChannel(defaultChannel)

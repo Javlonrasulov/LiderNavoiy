@@ -429,7 +429,7 @@ export default function AdminPanel() {
           )}
 
           {tab === 'prodaji' && (
-            <AdminProdajiTab D={D} sub={sub} t={t} />
+            <AdminProdajiTab D={D} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
           )}
 
           {tab === 'ombor' && (

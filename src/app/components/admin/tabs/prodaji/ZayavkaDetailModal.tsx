@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { X, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import type { BackendOrderItem } from '../../../api/client';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ZayavkaInfo {
-  id: number;
+  id: string | number;
   num: number;
   orderDate: string;
   shipDate: string;
@@ -22,6 +23,7 @@ export interface ZayavkaInfo {
   note: string;
   code: string;
   konsDate: string;
+  items?: BackendOrderItem[];
 }
 
 interface ZProduct {
@@ -64,9 +66,26 @@ const SET_C: ZProduct[] = [
   { id:7, n:7, brand:'TIM',    group:'Тим (Склад)',    tovar:'п/к Покон Шодлик Мини 0.5кг',    ostatok:15200, kolvo:120, tsenaPreys:72000,  pctSkid:8,  tsenaProd:66240,  summa:7948800  },
 ];
 
-function getProducts(id: number): ZProduct[] {
+function getProducts(id: string | number): ZProduct[] {
+  const numId = typeof id === 'number' ? id : parseInt(String(id).replace(/-/g, '').slice(0, 8), 16);
   const sets = [SET_A, SET_B, SET_C];
-  return sets[Math.abs(id) % 3];
+  return sets[Math.abs(numId) % 3];
+}
+
+function itemsToProducts(items: BackendOrderItem[]): ZProduct[] {
+  return items.map((item, i) => ({
+    id: i + 1,
+    n: i + 1,
+    brand: item.productCode || '—',
+    group: item.unit || '—',
+    tovar: item.productName,
+    ostatok: 0,
+    kolvo: item.quantity,
+    tsenaPreys: item.price,
+    pctSkid: 0,
+    tsenaProd: item.price,
+    summa: item.quantity * item.price,
+  }));
 }
 function fmtN(n: number) { return n.toLocaleString('ru-RU'); }
 function fmtS(n: number) { return n ? n.toLocaleString('ru-RU') : '—'; }
@@ -83,7 +102,10 @@ interface Props {
    COMPONENT
 ══════════════════════════════════════════════════════════ */
 export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
-  const products = getProducts(zayavka.id);
+  const products = useMemo(
+    () => (zayavka.items?.length ? itemsToProducts(zayavka.items) : getProducts(zayavka.id)),
+    [zayavka.items, zayavka.id],
+  );
   const tableRef = useRef<HTMLDivElement>(null);
 
   const [expanded,    setExpanded]    = useState<number | null>(null);

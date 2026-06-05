@@ -85,15 +85,15 @@ object AppStrings {
         AppLanguage.RUS -> "Новых уведомлений: $count"
     }
     fun visitsUpdated(lang: AppLanguage, count: Int) = when (lang) {
-        AppLanguage.UZ_LATIN -> "$count ta yangi vizit qayd etildi"
-        AppLanguage.UZ_CYRILLIC -> "$count та янги визит қайд етилди"
+        AppLanguage.UZ_LATIN -> "$count ta yangi tashrif qayd etildi"
+        AppLanguage.UZ_CYRILLIC -> "$count та янги ташриф қайд етилди"
         AppLanguage.RUS -> "Зафиксировано новых визитов: $count"
     }
     fun salesUpdated(lang: AppLanguage) = tr(lang, "Sotuvlar yangilandi", "Сотувлар янгиланди", "Продажи обновлены")
     fun details(lang: AppLanguage) = tr(lang, "Batafsil", "Батафсил", "Детали")
     fun more(lang: AppLanguage) = tr(lang, "Ko'proq", "Кўпроқ", "Ещё")
     fun clientsList(lang: AppLanguage) = tr(lang, "Klientlar ro'yxati", "Клиентлар рўйхати", "Список клиентов")
-    fun visitCount(lang: AppLanguage) = tr(lang, "Vizitlar soni", "Ташрифлар сони", "Количество визитов")
+    fun visitCount(lang: AppLanguage) = tr(lang, "Tashriflar soni", "Ташрифлар сони", "Количество визитов")
     fun products(lang: AppLanguage) = tr(lang, "Mahsulotlar", "Маҳсулотлар", "Товары")
     fun returns(lang: AppLanguage) = tr(lang, "Jami qayt.olish", "Жами қайт.олиш", "Общий возврат")
     fun cashPayments(lang: AppLanguage) = tr(lang, "To'lovlar - naqd", "Тўловлар - нақд", "Платежи - наличные")
@@ -251,8 +251,8 @@ object AppStrings {
     fun profileError(lang: AppLanguage, key: String): String = apiError(lang, key)
     fun clientTitle(lang: AppLanguage) = tr(lang, "Klient", "Клиент", "Клиент")
     fun balance(lang: AppLanguage) = tr(lang, "Balans", "Баланс", "Баланс")
-    fun startVisit(lang: AppLanguage) = tr(lang, "Vizit boshlash", "Ташриф бошлаш", "Начать визит")
-    fun visitShort(lang: AppLanguage) = tr(lang, "Vizit", "Ташриф", "Визит")
+    fun startVisit(lang: AppLanguage) = tr(lang, "Tashrif boshlash", "Ташриф бошлаш", "Начать визит")
+    fun visitShort(lang: AppLanguage) = tr(lang, "Tashrif", "Ташриф", "Визит")
     fun reconciliation(lang: AppLanguage) = tr(lang, "Sverka", "Сверка", "Сверка")
     fun reconciliationDocTitle(lang: AppLanguage) = tr(
         lang,
@@ -297,7 +297,7 @@ object AppStrings {
         "Перевод скоро будет доступен",
     )
     fun clientNotFound(lang: AppLanguage) = tr(lang, "Klient topilmadi", "Клиент топилмади", "Клиент не найден")
-    fun visitProducts(lang: AppLanguage) = tr(lang, "Vizit — Mahsulotlar", "Ташриф — Маҳсулотлар", "Визит — Товары")
+    fun visitProducts(lang: AppLanguage) = tr(lang, "Tashrif — Mahsulotlar", "Ташриф — Маҳсулотлар", "Визит — Товары")
     fun visitTabProduct(lang: AppLanguage) = tr(lang, "Mahsulot", "Маҳсулот", "Товар")
     fun visitTabPromotion(lang: AppLanguage) = tr(lang, "Aksiya", "Акция", "Акция")
     fun visitTabAddons(lang: AppLanguage) = tr(lang, "Qo'shimchalar", "Қўшимчалар", "Дополнения")
@@ -341,7 +341,7 @@ object AppStrings {
     }
     fun productPosition(lang: AppLanguage, current: Int, total: Int) = "$current / $total"
     fun order(lang: AppLanguage) = tr(lang, "Buyurtma", "Буюртма", "Заказ")
-    fun currentOrder(lang: AppLanguage) = tr(lang, "Joriy buyurtma", "Жорiy buyurtma", "Текущий заказ")
+    fun currentOrder(lang: AppLanguage) = tr(lang, "Joriy buyurtma", "Жорий buyurtma", "Текущий заказ")
     fun sentOrders(lang: AppLanguage) = tr(lang, "Yuborilgan buyurtmalar", "Юборилган buyurtmalar", "Отправленные заказы")
     fun noSentOrdersToday(lang: AppLanguage) = tr(
         lang,
@@ -350,13 +350,20 @@ object AppStrings {
         "Сегодня отправленных заказов нет",
     )
     fun sendOrder(lang: AppLanguage) = tr(lang, "Yuborish", "Юбориш", "Отправить")
+    fun orderSentBadge(lang: AppLanguage) = tr(lang, "Yuborildi", "Юборилди", "Отправлено")
+    fun sentOrdersTodayCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Bugun · $count ta buyurtma"
+        AppLanguage.UZ_CYRILLIC -> "Бугун · $count ta buyurtma"
+        AppLanguage.RUS -> "Сегодня · $count зак."
+    }
+    fun sentOrdersTodayTotal(lang: AppLanguage) = tr(lang, "Bugun jami", "Бугун жами", "Итого за день")
     fun confirm(lang: AppLanguage) = tr(lang, "Tasdiqlash", "Тасдиқлаш", "Подтвердить")
     fun total(lang: AppLanguage) = tr(lang, "Jami", "Жами", "Итого")
     fun orderSent(lang: AppLanguage) = tr(lang, "Buyurtma yuborildi!", "Буюртма юборилди!", "Заказ отправлен!")
     fun cartEmptyHint(lang: AppLanguage) = tr(
         lang,
-        "Savatcha bo'sh — vizitdan mahsulot qo'shing",
-        "Саватча бўш — визитdan mahsulot qo'shing",
+        "Savatcha bo'sh — tashrifdan mahsulot qo'shing",
+        "Саватча бўш — ташрифдан маҳсулот қўшинг",
         "Корзина пуста — добавьте товары из визита",
     )
     fun backToHome(lang: AppLanguage) = tr(lang, "Asosiy sahifaga", "Асосий саҳифага", "На главную")

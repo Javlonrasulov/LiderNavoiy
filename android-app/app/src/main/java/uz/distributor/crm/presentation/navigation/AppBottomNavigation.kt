@@ -1,16 +1,20 @@
 package uz.distributor.crm.presentation.navigation
 
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.components.route
 
-val BottomNavHeight = 72.dp
+val BottomNavHeight = 90.dp
 
 private val bottomNavRoutes = setOf(
     "main",
     "clients",
+    "products",
     "location",
     "plan",
     "messages",
+    "profile",
 )
 
 private val bottomNavPrefixRoutes = listOf(
@@ -35,19 +39,25 @@ fun showsBottomNav(route: String?): Boolean {
 }
 
 fun bottomNavSelectedTab(route: String?): NavTab? = when (route) {
-    "main" -> NavTab.HOME
-    "clients", "client/{clientId}", "visit/{clientId}", "order/{clientId}", "order/cart",
-    "reconciliation/{clientId}" -> NavTab.DELIVERY
+    "main", "products", "profile" -> NavTab.HOME
     "location" -> NavTab.LOCATION
     "plan" -> NavTab.PLAN
     "messages" -> NavTab.MESSAGES
-    else -> if (route?.startsWith("client/") == true ||
-        route?.startsWith("visit/") == true ||
-        route?.startsWith("order/") == true ||
-        route?.startsWith("reconciliation/") == true
-    ) {
-        NavTab.DELIVERY
-    } else {
-        null
+    else -> null
+}
+
+fun NavHostController.navigateBottomTab(tab: NavTab) {
+    if (tab == NavTab.HOME) {
+        navigate(NavTab.HOME.route) {
+            popUpTo(NavTab.HOME.route) { inclusive = false }
+            launchSingleTop = true
+            restoreState = true
+        }
+        return
+    }
+    navigate(tab.route) {
+        popUpTo(NavTab.HOME.route) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }

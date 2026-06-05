@@ -23,7 +23,9 @@ data class SentOrderUi(
     val clientName: String,
     val total: Double,
     val createdAt: String,
+    val timeLabel: String,
     val items: List<CartItem>,
+    val productBrands: Map<String, String> = emptyMap(),
 )
 
 data class OrderUiState(
@@ -37,6 +39,7 @@ data class OrderUiState(
     val clientExpanded: Boolean = true,
     val expandedItems: Set<String> = emptySet(),
     val sentOrders: List<SentOrderUi> = emptyList(),
+    val expandedSentOrders: Set<String> = emptySet(),
     val isLoadingSent: Boolean = false,
     val isSubmitting: Boolean = false,
     val submitted: Boolean = false,
@@ -85,6 +88,14 @@ class OrderViewModel @Inject constructor(
             val next = state.expandedItems.toMutableSet()
             if (productId in next) next.remove(productId) else next.add(productId)
             state.copy(expandedItems = next)
+        }
+    }
+
+    fun toggleSentOrderExpanded(orderId: String) {
+        _uiState.update { state ->
+            val next = state.expandedSentOrders.toMutableSet()
+            if (orderId in next) next.remove(orderId) else next.add(orderId)
+            state.copy(expandedSentOrders = next)
         }
     }
 
@@ -160,12 +171,34 @@ class OrderViewModel @Inject constructor(
                 emptyList()
             }
             val sent = orders.map { order -> order.toSentOrderUi() }
-            _uiState.update { it.copy(sentOrders = sent, isLoadingSent = false) }
+            _uiState.update {
+                it.copy(
+                    sentOrders = sent,
+                    isLoadingSent = false,
+                    expandedSentOrders = if (sent.size == 1) setOf(sent.first().id) else it.expandedSentOrders,
+                )
+            }
         }
     }
 
     private suspend fun OrderDto.toSentOrderUi(): SentOrderUi {
         val client = clientRepository.getClient(clientId)
+        val cartItems = items.map {
+            CartItem(
+                productId = it.productId,
+                productCode = it.productCode,
+                productName = it.productName,
+                price = it.price,
+                quantity = it.quantity,
+                unit = it.unit,
+                category = null,
+            )
+        }
+        val brands = cartItems.associate { item ->
+            val brand = productRepository.getProduct(item.productId)?.brand
+                ?: item.category.orEmpty()
+            item.productId to brand
+        }
         return SentOrderUi(
             id = id,
             clientId = clientId,
@@ -173,18 +206,25 @@ class OrderViewModel @Inject constructor(
             clientName = client?.name.orEmpty(),
             total = totalAmount,
             createdAt = createdAt,
-            items = items.map {
-                CartItem(
-                    productId = it.productId,
-                    productCode = it.productCode,
-                    productName = it.productName,
-                    price = it.price,
-                    quantity = it.quantity,
-                    unit = it.unit,
-                    category = null,
-                )
-            },
+            timeLabel = formatOrderTime(createdAt),
+            items = cartItems,
+            productBrands = brands,
         )
+    }
+
+    private fun formatOrderTime(isoDate: String): String {
+        return try {
+            val tz = java.util.TimeZone.getTimeZone("Asia/Tashkent")
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val parsed = parser.parse(isoDate.substringBefore('.')) ?: return ""
+            java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).apply {
+                timeZone = tz
+            }.format(parsed)
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun isTodayInTashkent(isoDate: String): Boolean {

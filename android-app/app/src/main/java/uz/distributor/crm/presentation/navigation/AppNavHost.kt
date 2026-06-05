@@ -104,7 +104,7 @@ fun AppNavHost(
         }
         composable("main") {
             DashboardScreen(
-                onNavigate = { tab -> navController.navigate(tab.route) { launchSingleTop = true } },
+                onNavigate = { tab -> navController.navigateBottomTab(tab) },
                 onClientsClick = { navController.navigate("clients") },
                 onAddClientClick = { navController.navigate("add_client") },
                 onProfileClick = { navController.navigate("profile") },
@@ -187,14 +187,14 @@ fun AppNavHost(
             )
         }
         composable("location") {
-            LocationScreen(onNavigate = { navController.navigate(it.route) { launchSingleTop = true } })
+            LocationScreen(onNavigate = { tab -> navController.navigateBottomTab(tab) })
         }
         composable("plan") {
-            PlanScreen(onNavigate = { navController.navigate(it.route) { launchSingleTop = true } })
+            PlanScreen(onNavigate = { tab -> navController.navigateBottomTab(tab) })
         }
         composable("messages") {
             MessagesScreen(
-                onNavigate = { navController.navigate(it.route) { launchSingleTop = true } },
+                onNavigate = { tab -> navController.navigateBottomTab(tab) },
                 onChatClick = { id -> navController.navigate("chat/$id") },
             )
         }
@@ -222,13 +222,7 @@ fun AppNavHost(
     if (showBottomNav) {
         BottomNavBar(
             selected = selectedTab,
-            onTabSelected = { tab ->
-                navController.navigate(tab.route) {
-                    popUpTo("main") { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
+            onTabSelected = { tab -> navController.navigateBottomTab(tab) },
             isDark = isDark,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
