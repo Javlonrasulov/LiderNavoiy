@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.dto.ChatContactDto
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.data.repository.AuthRepository
@@ -92,7 +93,7 @@ class MessagesViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(contactsLoading = false, error = e.message)
+                    it.copy(contactsLoading = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }
@@ -106,7 +107,7 @@ class MessagesViewModel @Inject constructor(
                 realtime.refresh()
                 onReady(conv.id)
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = ApiErrorMapper.toKey(e)) }
             }
         }
     }

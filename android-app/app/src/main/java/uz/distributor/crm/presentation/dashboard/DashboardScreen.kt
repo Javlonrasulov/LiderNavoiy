@@ -42,6 +42,7 @@ fun DashboardScreen(
     onAddClientClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
     onOrderSummaryClick: () -> Unit = {},
+    onProductsClick: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -59,7 +60,7 @@ fun DashboardScreen(
         add(StatItem(AppStrings.clientsList(lang), "${state.stats.totalClients} / ${state.stats.visitedClients} / ${state.stats.pendingClients}", Icons.Default.Person, Color(0xFF10B981), badge = "${String.format("%.1f", state.stats.clientProgressPercent)}%", onClick = onClientsClick))
         add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%"))
         add(StatItem(AppStrings.totalSales(lang), cartValue, Icons.Default.ShoppingCart, Color(0xFF3B82F6), cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null, onClick = onOrderSummaryClick))
-        add(StatItem(AppStrings.products(lang), if (state.productCount > 0) "${state.productCount}" else "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6)))
+        add(StatItem(AppStrings.products(lang), if (state.productCount > 0) "${state.productCount}" else "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))
         add(StatItem(AppStrings.returns(lang), "0", Icons.Default.Inventory2, Color(0xFFEF4444)))
         add(StatItem(AppStrings.cashPayments(lang), "0", Icons.Default.Payments, Color(0xFF10B981)))
         add(StatItem(AppStrings.clickPayments(lang), "0", Icons.Default.CreditCard, Color(0xFF6366F1)))

@@ -57,8 +57,7 @@ class ProductRepository @Inject constructor(
     }
 
     private fun ProductDto.toEntity() = ProductEntity(
-        id = id, code = code, name = name, category = category,
-        price = price, unit = unit,
-        stockBalance = stockBalance,
+        id = id, code = code, name = name, category = category, brand = brand,
+        price = price, unit = unit, stockBalance = stockBalance,
     )
 }

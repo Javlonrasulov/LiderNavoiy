@@ -196,7 +196,7 @@ fun ChatScreen(
                         color = Color(0xFFFEE2E2),
                     ) {
                         Text(
-                            err,
+                            AppStrings.apiError(lang, err),
                             modifier = Modifier.padding(12.dp),
                             color = Color(0xFFB91C1C),
                             fontSize = 13.sp,

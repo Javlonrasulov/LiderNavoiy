@@ -166,11 +166,13 @@ export function AdminSidebar({
                 )}
               </span>
               {(!sidebarCollapsed || mobile) && (
-                item.id === 'dashboard'
-                  ? <span className="flex flex-col leading-tight flex-1">
+                item.id === 'dashboard' && t.navDashboardSub
+                  ? (
+                    <span className="flex flex-col leading-tight flex-1 text-left items-start">
                       <span>{item.label}</span>
                       <span className="text-[10px] font-normal opacity-60">{t.navDashboardSub}</span>
                     </span>
+                  )
                   : <span className="flex-1 text-left">{item.label}</span>
               )}
               {showBadge && (!sidebarCollapsed || mobile) && (

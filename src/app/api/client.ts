@@ -83,6 +83,21 @@ export interface Client {
 
 export type BackendClient = Client;
 
+export interface BankUsdRate {
+  buy: number;
+  sell: number;
+}
+
+export interface UsdExchangeRates {
+  cbu: { rate: number; date: string };
+  banks: {
+    hamkorbank: BankUsdRate;
+    ipoteka: BankUsdRate;
+    agrobank: BankUsdRate;
+  };
+  updatedAt: string;
+}
+
 function getToken(): string | null {
   return localStorage.getItem('api_access_token');
 }
@@ -131,6 +146,8 @@ export const api = {
     }),
 
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
+
+  getUsdExchangeRates: () => request<UsdExchangeRates>('/exchange-rates/usd'),
 
   // ─── App users (APK login) ───
   listAppUsers: () => request<AppUserRecord[]>('/users/app'),

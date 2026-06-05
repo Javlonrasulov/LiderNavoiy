@@ -37,6 +37,8 @@ object ApiErrorMapper {
     }
 
     private fun mapServerMessage(msg: String): String = when {
+        msg.contains("Invalid credentials", ignoreCase = true) ->
+            "invalid_credentials"
         msg.contains("Invalid current password", ignoreCase = true) ->
             "invalid_current_password"
         msg.contains("kutilayotgan", ignoreCase = true) && msg.contains("INN", ignoreCase = true) ->

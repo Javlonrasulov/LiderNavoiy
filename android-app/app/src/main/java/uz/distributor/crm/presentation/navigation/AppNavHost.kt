@@ -3,9 +3,11 @@ package uz.distributor.crm.presentation.navigation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -13,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +26,7 @@ import uz.distributor.crm.presentation.auth.LoginScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
 import uz.distributor.crm.presentation.clients.AddClientScreen
 import uz.distributor.crm.presentation.clients.ClientsScreen
+import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
@@ -32,6 +36,7 @@ import uz.distributor.crm.presentation.messages.IncomingMessageBannerOverlay
 import uz.distributor.crm.presentation.messages.MessagesScreen
 import uz.distributor.crm.presentation.order.OrderSummaryScreen
 import uz.distributor.crm.presentation.plan.PlanScreen
+import uz.distributor.crm.presentation.products.ProductsScreen
 import uz.distributor.crm.presentation.profile.ProfileScreen
 import uz.distributor.crm.presentation.reconciliation.ReconciliationScreen
 import uz.distributor.crm.presentation.visit.VisitScreen
@@ -61,6 +66,11 @@ fun AppNavHost(
     navViewModel: AppNavigationViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val showBottomNav = showsBottomNav(currentRoute)
+    val selectedTab = bottomNavSelectedTab(currentRoute)
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
@@ -99,6 +109,7 @@ fun AppNavHost(
                 onAddClientClick = { navController.navigate("add_client") },
                 onProfileClick = { navController.navigate("profile") },
                 onOrderSummaryClick = { navController.navigate("order/cart") },
+                onProductsClick = { navController.navigate("products") },
             )
         }
         composable("add_client") {
@@ -109,6 +120,9 @@ fun AppNavHost(
                     navController.navigate("clients")
                 },
             )
+        }
+        composable("products") {
+            ProductsScreen(onBack = { navController.popBackStack() })
         }
         composable("clients") {
             ClientsScreen(

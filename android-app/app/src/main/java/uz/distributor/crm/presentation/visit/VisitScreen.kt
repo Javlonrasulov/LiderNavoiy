@@ -1,28 +1,61 @@
 package uz.distributor.crm.presentation.visit
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.ui.text.style.TextAlign
+import uz.distributor.crm.domain.model.CartItem
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.distributor.crm.domain.model.Product
+import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.theme.SherinColors
-import uz.distributor.crm.presentation.theme.SherinSubpageHeader
+import uz.distributor.crm.presentation.theme.SherinGlassIconButton
+import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
 
@@ -34,7 +67,9 @@ fun VisitScreen(
     viewModel: VisitViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val fmt = remember { DecimalFormat("#,###") }
+    val priceFmt = remember { DecimalFormat("#,###") }
+    val stockFmt = remember { DecimalFormat("#,##0.###") }
+    val totalFmt = remember { DecimalFormat("#,##0.00") }
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
@@ -42,27 +77,94 @@ fun VisitScreen(
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
     val subColor = Color(0xFF9CA3AF)
+    val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
     val cartBarBg = if (isDark) SherinColors.CardDark else Color.White
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(clientId) { viewModel.init(clientId) }
 
-    Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
-        SherinSubpageHeader(
-            title = AppStrings.visitProducts(lang),
-            isDark = isDark,
-            onBack = onBack,
-            trailing = { Spacer(Modifier.width(40.dp)) },
-        )
+    LaunchedEffect(state.detailCartJustSaved) {
+        if (state.detailCartJustSaved) {
+            snackbarHostState.showSnackbar(AppStrings.addedToCart(lang))
+        }
+    }
 
-        state.clientName?.let { name ->
-            Text(
-                name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                color = titleColor,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
+    val handleBack = {
+        when (state.viewLevel) {
+            VisitViewLevel.PRODUCT_DETAIL -> viewModel.backFromProductDetail()
+            VisitViewLevel.PRODUCTS -> viewModel.backToCategories()
+            VisitViewLevel.CATEGORIES -> onBack()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
+        when (state.viewLevel) {
+            VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
+                isDark = isDark,
+                onBack = handleBack,
+            )
+            VisitViewLevel.PRODUCT_DETAIL -> {
+                val product = state.selectedProduct
+                if (product != null) {
+                    VisitProductDetailHeader(
+                        categoryLabel = when (state.selectedCategory) {
+                            VisitViewModel.ALL_CATEGORY -> AppStrings.allGoods(lang)
+                            else -> state.selectedCategory.orEmpty()
+                        },
+                        product = product,
+                        isDark = isDark,
+                        onBack = handleBack,
+                    )
+                }
+            }
+            VisitViewLevel.PRODUCTS -> VisitProductsHeader(
+                categoryName = when (state.selectedCategory) {
+                    VisitViewModel.ALL_CATEGORY -> AppStrings.allGoods(lang)
+                    else -> state.selectedCategory.orEmpty()
+                },
+                subtitle = AppStrings.productsCount(
+                    lang,
+                    state.filteredProducts.size,
+                    state.totalProductCount,
+                ),
+                searchQuery = state.searchQuery,
+                showAllProducts = state.showAllProducts,
+                cartTotal = state.cartTotal,
+                isDark = isDark,
+                onBack = handleBack,
+                onSearchChange = viewModel::setSearchQuery,
+                onToggleAll = viewModel::toggleShowAllProducts,
+            )
+        }
+
+        if (state.viewLevel == VisitViewLevel.CATEGORIES) {
+            VisitSummaryBar(
+                cartTotal = state.cartTotal,
+                totalFmt = totalFmt,
+                isDark = isDark,
+                refreshState = state.refreshButtonState,
+                onRefresh = viewModel::refresh,
+            )
+        }
+
+        if (state.showRefreshResult && state.refreshUpdates.isNotEmpty()) {
+            VisitRefreshResultCard(
+                updates = state.refreshUpdates,
+                title = AppStrings.refreshUpdatesTitle(lang),
+                isDark = isDark,
+                onDismiss = viewModel::dismissRefreshResult,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        if (state.viewLevel == VisitViewLevel.CATEGORIES) {
+            VisitSearchSection(
+                searchQuery = state.searchQuery,
+                showAllProducts = state.showAllProducts,
+                isDark = isDark,
+                onSearchChange = viewModel::setSearchQuery,
+                onToggleAll = viewModel::toggleShowAllProducts,
             )
         }
 
@@ -76,7 +178,6 @@ fun VisitScreen(
                 }
             }
             state.error != null -> {
-                val message = state.error!!
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -85,7 +186,7 @@ fun VisitScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(message, color = subColor, fontSize = 14.sp)
+                    Text(AppStrings.apiError(lang, state.error!!), color = subColor, fontSize = 14.sp)
                     Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = viewModel::retry,
@@ -97,33 +198,18 @@ fun VisitScreen(
                     }
                 }
             }
-            else -> {
-                if (state.categories.isNotEmpty()) {
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(state.categories) { cat ->
-                            val selected = cat == state.selectedCategory
-                            val label = if (cat == VisitViewModel.ALL_CATEGORY) {
-                                AppStrings.allProducts(lang)
-                            } else cat
-                            FilterChip(
-                                selected = selected,
-                                onClick = { viewModel.selectCategory(cat) },
-                                label = { Text(label) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    containerColor = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
-                                    labelColor = if (isDark) Color(0xFFD1D5DB) else Color(0xFF374151),
-                                    selectedContainerColor = SherinColors.Primary,
-                                    selectedLabelColor = Color.White,
-                                ),
-                            )
-                        }
-                    }
+            state.viewLevel == VisitViewLevel.CATEGORIES -> {
+                val stockByCategory = state.allProducts
+                    .groupBy { it.category }
+                    .mapValues { (_, items) -> items.any { it.stockBalance > 0 } }
+                val filteredCategories = state.categoryCounts.filter { category ->
+                    val hasStock = stockByCategory[category.name] == true
+                    val matchesStock = state.showAllProducts || hasStock
+                    val q = state.searchQuery.trim().lowercase()
+                    val matchesQuery = q.isEmpty() || category.name.lowercase().contains(q)
+                    matchesStock && matchesQuery
                 }
-
-                if (state.products.isEmpty()) {
+                if (filteredCategories.isEmpty()) {
                     Box(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -133,43 +219,94 @@ fun VisitScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(state.products, key = { it.id }) { product ->
-                            Card(
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = cardBg),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(product.code, fontSize = 10.sp, color = Color(0xFF3B82F6))
-                                        Text(
-                                            product.name,
-                                            fontWeight = FontWeight.Medium,
-                                            fontSize = 13.sp,
-                                            color = titleColor,
-                                        )
-                                        Text(
-                                            "${fmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)} / ${product.unit}",
-                                            fontSize = 12.sp,
-                                            color = SherinColors.Primary,
-                                        )
-                                    }
-                                    IconButton(onClick = { viewModel.addProduct(product) }) {
-                                        Icon(Icons.Default.Add, null, tint = SherinColors.Primary)
-                                    }
-                                }
-                            }
+                        items(filteredCategories, key = { it.name }) { category ->
+                            VisitCategoryCard(
+                                name = category.name,
+                                count = category.count,
+                                cardBg = cardBg,
+                                borderColor = borderColor,
+                                titleColor = titleColor,
+                                subColor = subColor,
+                                onClick = { viewModel.openCategory(category.name) },
+                            )
+                        }
+                        item {
+                            VisitSeeAllCard(
+                                cardBg = cardBg,
+                                borderColor = borderColor,
+                                label = AppStrings.seeAllGoods(lang),
+                                onClick = { viewModel.openCategory(VisitViewModel.ALL_CATEGORY) },
+                            )
                         }
                     }
                 }
             }
+            state.viewLevel == VisitViewLevel.PRODUCT_DETAIL -> {
+                val product = state.selectedProduct
+                if (product != null) {
+                    VisitProductDetailContent(
+                        product = product,
+                        quantity = state.detailQuantity,
+                        note = state.detailNote,
+                        lineTotal = state.detailLineTotal,
+                        currentIndex = state.selectedProductIndex,
+                        totalCount = state.filteredProducts.size,
+                        prevProduct = state.filteredProducts.getOrNull(state.selectedProductIndex - 1),
+                        nextProduct = state.filteredProducts.getOrNull(state.selectedProductIndex + 1),
+                        priceFmt = priceFmt,
+                        stockFmt = stockFmt,
+                        isDark = isDark,
+                        lang = lang,
+                        onDecrement = { viewModel.decrementDetailQty() },
+                        onIncrement = { viewModel.incrementDetailQty() },
+                        onPresetQty = viewModel::setDetailQuantity,
+                        onQuantityChange = viewModel::setDetailQuantity,
+                        onNoteChange = viewModel::setDetailNote,
+                        onPrev = { viewModel.navigateProduct(-1) },
+                        onNext = { viewModel.navigateProduct(1) },
+                        onAddToCart = viewModel::addDetailToCart,
+                        cart = state.cart,
+                        cartJustSaved = state.detailCartJustSaved,
+                        onCartItemClick = viewModel::openProductById,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            state.filteredProducts.isEmpty() -> {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(AppStrings.noProductsInCategory(lang), color = subColor)
+                }
+            }
+            else -> {
+                VisitProductsListContent(
+                    selectedProducts = state.selectedInList,
+                    allProducts = state.unselectedInList,
+                    cart = state.cart,
+                    selectedExpanded = state.selectedSectionExpanded,
+                    allExpanded = state.allSectionExpanded,
+                    priceFmt = priceFmt,
+                    stockFmt = stockFmt,
+                    cardBg = cardBg,
+                    borderColor = borderColor,
+                    titleColor = titleColor,
+                    subColor = subColor,
+                    lang = lang,
+                    onToggleSelected = viewModel::toggleSelectedSection,
+                    onToggleAll = viewModel::toggleAllSection,
+                    onProductClick = viewModel::openProduct,
+                    onRemoveFromCart = viewModel::removeFromCart,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
+        if (state.viewLevel != VisitViewLevel.PRODUCT_DETAIL) {
         Surface(shadowElevation = 8.dp, color = cartBarBg) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -182,7 +319,7 @@ fun VisitScreen(
                         color = subColor,
                     )
                     Text(
-                        "${fmt.format(state.cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
+                        "${priceFmt.format(state.cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = titleColor,
@@ -201,5 +338,1491 @@ fun VisitScreen(
                 }
             }
         }
+        }
+    }
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 80.dp),
+    )
     }
 }
+
+@Composable
+private fun VisitProductDetailHeader(
+    categoryLabel: String,
+    product: Product,
+    isDark: Boolean,
+    onBack: () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 36.dp, bottom = 20.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SherinGlassIconButton(
+                    onClick = onBack,
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    size = 40.dp,
+                )
+                Column(modifier = Modifier.padding(start = 12.dp)) {
+                    Text(
+                        categoryLabel.uppercase(),
+                        color = Color.White.copy(0.75f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 1.sp,
+                    )
+                    Text(
+                        "${product.code} — ${product.name}",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitProductDetailContent(
+    product: Product,
+    quantity: Double,
+    note: String,
+    lineTotal: Double,
+    currentIndex: Int,
+    totalCount: Int,
+    prevProduct: Product?,
+    nextProduct: Product?,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    isDark: Boolean,
+    lang: AppLanguage,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit,
+    onPresetQty: (Double) -> Unit,
+    onQuantityChange: (Double) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onAddToCart: () -> Unit,
+    cart: List<CartItem>,
+    cartJustSaved: Boolean,
+    onCartItemClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
+    val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    val titleColor = if (isDark) Color.White else Color(0xFF111827)
+    val presets = listOf(1.0, 5.0, 10.0, 25.0, 50.0)
+    val hasQty = quantity > 0.0
+
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            VisitDetailInfoCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.Inventory2,
+                iconTint = Color(0xFF22C55E),
+                iconBg = if (isDark) Color(0xFF064E3B) else Color(0xFFF0FDF4),
+                label = AppStrings.stock(lang),
+                value = stockFmt.format(product.stockBalance),
+                unit = product.unit,
+                valueColor = Color(0xFF22C55E),
+                cardBg = cardBg,
+                borderColor = borderColor,
+                labelColor = subColor,
+            )
+            VisitDetailInfoCard(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Default.ShoppingCart,
+                iconTint = Color(0xFF3B82F6),
+                iconBg = if (isDark) Color(0xFF1E3A8A) else Color(0xFFEFF6FF),
+                label = AppStrings.priceLabel(lang),
+                value = priceFmt.format(product.price.toLong()),
+                unit = AppStrings.pricePerUnit(lang, product.unit),
+                valueColor = titleColor,
+                cardBg = cardBg,
+                borderColor = borderColor,
+                labelColor = subColor,
+            )
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = cardBg,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    AppStrings.quantityLabel(lang),
+                    color = subColor,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    VisitQtyButton(
+                        icon = Icons.Default.Remove,
+                        enabled = quantity > 0,
+                        tint = if (quantity > 0) titleColor else subColor,
+                        bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
+                        onClick = onDecrement,
+                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        VisitEditableQuantity(
+                            quantity = quantity,
+                            unit = product.unit,
+                            stockFmt = stockFmt,
+                            titleColor = titleColor,
+                            onQuantityChange = onQuantityChange,
+                        )
+                    }
+                    VisitQtyButton(
+                        icon = Icons.Default.Add,
+                        enabled = true,
+                        tint = Color.White,
+                        bg = Color(0xFF3B82F6),
+                        onClick = onIncrement,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    presets.forEach { preset ->
+                        val selected = quantity == preset
+                        Surface(
+                            onClick = { onPresetQty(preset) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = when {
+                                selected -> Color(0xFF3B82F6)
+                                isDark -> Color(0xFF374151)
+                                else -> Color(0xFFF3F4F6)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                preset.toInt().toString(),
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                textAlign = TextAlign.Center,
+                                color = if (selected) Color.White else titleColor,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hasQty) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (isDark) Color(0xFF1E3A8A).copy(0.4f) else Color(0xFFEBF3FF),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        AppStrings.total(lang),
+                        color = Color(0xFF2563EB),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        "${priceFmt.format(lineTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
+                        color = Color(0xFF2563EB),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                    )
+                }
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = cardBg,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+        ) {
+            BasicTextField(
+                value = note,
+                onValueChange = onNoteChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                textStyle = LocalTextStyle.current.copy(
+                    color = titleColor,
+                    fontSize = 14.sp,
+                ),
+                decorationBox = { inner ->
+                    if (note.isEmpty()) {
+                        Text(AppStrings.commentPlaceholder(lang), color = subColor, fontSize = 14.sp)
+                    }
+                    inner()
+                },
+            )
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            VisitNavProductButton(
+                label = prevProduct?.name,
+                enabled = prevProduct != null,
+                isDark = isDark,
+                isPrev = true,
+                onClick = onPrev,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                AppStrings.productPosition(lang, currentIndex + 1, totalCount),
+                color = subColor,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            VisitNavProductButton(
+                label = nextProduct?.name,
+                enabled = nextProduct != null,
+                isDark = isDark,
+                isPrev = false,
+                onClick = onNext,
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        VisitDetailCartPreview(
+            cart = cart,
+            currentProductId = product.id,
+            priceFmt = priceFmt,
+            stockFmt = stockFmt,
+            lang = lang,
+            cardBg = cardBg,
+            borderColor = borderColor,
+            titleColor = titleColor,
+            onItemClick = onCartItemClick,
+        )
+
+        val buttonColor = if (cartJustSaved) Color(0xFF10B981) else Color(0xFF3B82F6)
+        Button(
+            onClick = onAddToCart,
+            enabled = hasQty,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = buttonColor,
+                disabledContainerColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB),
+                disabledContentColor = subColor,
+            ),
+        ) {
+            if (cartJustSaved) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    AppStrings.addedToCart(lang),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Icon(
+                    Icons.Default.ShoppingCart,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    AppStrings.addToCart(lang),
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (hasQty) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White.copy(0.2f),
+                ) {
+                    Text(
+                        "${formatQuantityDisplay(quantity, stockFmt)} ${product.unit}",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun VisitDetailCartPreview(
+    cart: List<CartItem>,
+    currentProductId: String,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    lang: AppLanguage,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    onItemClick: (String) -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = cardBg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
+    ) {
+        if (cart.isEmpty()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.ShoppingCart,
+                        contentDescription = null,
+                        tint = subColor.copy(0.45f),
+                        modifier = Modifier.size(36.dp),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(AppStrings.cartEmpty(lang), color = subColor, fontSize = 13.sp)
+                }
+            }
+        } else {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    AppStrings.cartPreviewTitle(lang, cart.size),
+                    color = Color(0xFF059669),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                cart.forEach { item ->
+                    val isCurrent = item.productId == currentProductId
+                    val qtyDisplay = if (item.quantity % 1.0 == 0.0) {
+                        item.quantity.toInt().toString()
+                    } else {
+                        stockFmt.format(item.quantity)
+                    }
+                    Surface(
+                        onClick = { onItemClick(item.productId) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isCurrent) Color(0xFFD1FAE5) else Color(0xFFF0FDF4),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .border(
+                                width = if (isCurrent) 1.dp else 0.dp,
+                                color = if (isCurrent) Color(0xFF10B981) else Color.Transparent,
+                                shape = RoundedCornerShape(10.dp),
+                            ),
+                    ) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    item.productCode,
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF059669),
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    item.productName,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = titleColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    "${priceFmt.format((item.price * item.quantity).toLong())} ${AppStrings.sumCurrency(lang)}",
+                                    fontSize = 11.sp,
+                                    color = subColor,
+                                )
+                            }
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF10B981),
+                            ) {
+                                Text(
+                                    "$qtyDisplay ${item.unit}",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitDetailInfoCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    label: String,
+    value: String,
+    unit: String,
+    valueColor: Color,
+    cardBg: Color,
+    borderColor: Color,
+    labelColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = cardBg,
+        modifier = modifier.border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(iconBg),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, null, tint = iconTint, modifier = Modifier.size(16.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(label, color = labelColor, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                value,
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                color = valueColor,
+            )
+            Text(unit, color = labelColor, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun VisitEditableQuantity(
+    quantity: Double,
+    unit: String,
+    stockFmt: DecimalFormat,
+    titleColor: Color,
+    onQuantityChange: (Double) -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    var isEditing by remember { mutableStateOf(false) }
+    var inputText by remember { mutableStateOf("") }
+
+    LaunchedEffect(quantity) {
+        if (!isEditing) {
+            inputText = formatQuantityInput(quantity, stockFmt)
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable {
+                if (!isEditing) {
+                    isEditing = true
+                    inputText = if (quantity > 0.0) formatQuantityInput(quantity, stockFmt) else ""
+                }
+            },
+    ) {
+        if (isEditing) {
+            LaunchedEffect(Unit) {
+                focusRequester.requestFocus()
+            }
+            BasicTextField(
+                value = inputText,
+                onValueChange = { raw ->
+                    val normalized = raw.replace(',', '.')
+                    if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
+                        inputText = normalized
+                        val parsed = parseQuantityInput(normalized)
+                        if (parsed != null) {
+                            onQuantityChange(parsed)
+                        }
+                    }
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor,
+                    textAlign = TextAlign.Center,
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() },
+                ),
+                modifier = Modifier
+                    .widthIn(min = 72.dp)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            isEditing = true
+                        } else {
+                            isEditing = false
+                            val finalQty = parseQuantityInput(inputText) ?: 0.0
+                            onQuantityChange(finalQty)
+                            inputText = formatQuantityInput(finalQty, stockFmt)
+                        }
+                    },
+            )
+        } else {
+            Text(
+                formatQuantityDisplay(quantity, stockFmt),
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (quantity > 0.0) titleColor else subColor,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Text(unit, color = subColor, fontSize = 13.sp)
+    }
+}
+
+private fun formatQuantityDisplay(quantity: Double, stockFmt: DecimalFormat): String =
+    if (quantity % 1.0 == 0.0) quantity.toInt().toString() else stockFmt.format(quantity)
+
+private fun formatQuantityInput(quantity: Double, stockFmt: DecimalFormat): String =
+    if (quantity <= 0.0) "" else formatQuantityDisplay(quantity, stockFmt)
+
+private fun parseQuantityInput(input: String): Double? {
+    val normalized = input.trim().replace(',', '.')
+    if (normalized.isEmpty() || normalized == ".") return 0.0
+    return normalized.toDoubleOrNull()
+}
+
+@Composable
+private fun VisitQtyButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    tint: Color,
+    bg: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        modifier = Modifier.size(52.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun VisitNavProductButton(
+    label: String?,
+    enabled: Boolean,
+    isDark: Boolean,
+    isPrev: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
+    val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        color = if (enabled) cardBg else cardBg.copy(alpha = 0.5f),
+        modifier = modifier.border(1.dp, borderColor, RoundedCornerShape(12.dp)),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (isPrev) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    null,
+                    tint = if (enabled) subColor else subColor.copy(0.4f),
+                    modifier = Modifier.size(16.dp),
+                )
+                if (label != null) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 11.sp,
+                        color = if (enabled) Color(0xFF374151) else subColor,
+                    )
+                }
+            } else {
+                if (label != null) {
+                    Text(
+                        label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 11.sp,
+                        color = if (enabled) Color(0xFF374151) else subColor,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    null,
+                    tint = if (enabled) subColor else subColor.copy(0.4f),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitProductsListContent(
+    selectedProducts: List<Product>,
+    allProducts: List<Product>,
+    cart: List<CartItem>,
+    selectedExpanded: Boolean,
+    allExpanded: Boolean,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+    lang: AppLanguage,
+    onToggleSelected: () -> Unit,
+    onToggleAll: () -> Unit,
+    onProductClick: (Product) -> Unit,
+    onRemoveFromCart: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (selectedProducts.isNotEmpty()) {
+            item {
+                VisitSectionHeader(
+                    title = AppStrings.selectedProducts(lang),
+                    countLabel = AppStrings.selectedCount(lang, selectedProducts.size),
+                    expanded = selectedExpanded,
+                    bgColor = Color(0xFFECFDF5),
+                    titleColor = Color(0xFF059669),
+                    onClick = onToggleSelected,
+                )
+            }
+            if (selectedExpanded) {
+                items(selectedProducts, key = { "sel-${it.id}" }) { product ->
+                    val qty = cart.find { it.productId == product.id }?.quantity ?: 0.0
+                    VisitSelectedProductCard(
+                        product = product,
+                        quantity = qty,
+                        priceFmt = priceFmt,
+                        stockFmt = stockFmt,
+                        lang = lang,
+                        onClick = { onProductClick(product) },
+                        onRemove = { onRemoveFromCart(product.id) },
+                    )
+                }
+            }
+        }
+
+        if (allProducts.isNotEmpty()) {
+            item {
+                VisitSectionHeader(
+                    title = AppStrings.allGoods(lang),
+                    countLabel = AppStrings.allGoodsCount(lang, allProducts.size),
+                    expanded = allExpanded,
+                    bgColor = Color(0xFFF3F4F6),
+                    titleColor = Color(0xFF374151),
+                    onClick = onToggleAll,
+                )
+            }
+            if (allExpanded) {
+                items(allProducts, key = { "all-${it.id}" }) { product ->
+                    VisitProductCard(
+                        product = product,
+                        priceFmt = priceFmt,
+                        stockFmt = stockFmt,
+                        cardBg = cardBg,
+                        borderColor = borderColor,
+                        titleColor = titleColor,
+                        subColor = subColor,
+                        lang = lang,
+                        onClick = { onProductClick(product) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitSectionHeader(
+    title: String,
+    countLabel: String,
+    expanded: Boolean,
+    bgColor: Color,
+    titleColor: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = bgColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "$title $countLabel",
+                color = titleColor,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+            )
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = titleColor,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisitSelectedProductCard(
+    product: Product,
+    quantity: Double,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    lang: AppLanguage,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val qtyDisplay = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else stockFmt.format(quantity)
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFECFDF5),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF10B981).copy(0.35f), RoundedCornerShape(14.dp)),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFD1FAE5)) {
+                        Text(
+                            product.code,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
+                            color = Color(0xFF059669),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        product.name,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF065F46),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
+                        fontSize = 12.sp,
+                        color = subColor,
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            qtyDisplay,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        stockFmt.format(product.stockBalance),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color(0xFF10B981),
+                    )
+                    Text(product.unit, fontSize = 11.sp, color = subColor)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitCategoriesHeader(
+    isDark: Boolean,
+    onBack: () -> Unit,
+) {
+    val lang = LocalAppLanguage.current
+    Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 36.dp, bottom = 12.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SherinGlassIconButton(
+                    onClick = onBack,
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    size = 40.dp,
+                )
+                Text(
+                    AppStrings.visitShort(lang),
+                    modifier = Modifier.padding(start = 12.dp),
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            VisitTabRow(activeTab = 0)
+        }
+    }
+}
+
+@Composable
+private fun VisitProductsHeader(
+    categoryName: String,
+    subtitle: String,
+    searchQuery: String,
+    showAllProducts: Boolean,
+    cartTotal: Double,
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onSearchChange: (String) -> Unit,
+    onToggleAll: () -> Unit,
+) {
+    val lang = LocalAppLanguage.current
+    val priceFmt = remember { DecimalFormat("#,###") }
+    Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 36.dp, bottom = 16.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SherinGlassIconButton(
+                    onClick = onBack,
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    size = 40.dp,
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        categoryName.uppercase(),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        subtitle,
+                        color = Color.White.copy(0.85f),
+                        fontSize = 13.sp,
+                    )
+                }
+                Spacer(Modifier.width(40.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(AppStrings.search(lang), color = Color.White.copy(0.6f))
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, null, tint = Color.White.copy(0.8f))
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White.copy(0.15f),
+                    unfocusedContainerColor = Color.White.copy(0.12f),
+                    focusedBorderColor = Color.White.copy(0.3f),
+                    unfocusedBorderColor = Color.White.copy(0.2f),
+                    cursorColor = Color.White,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                ),
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        AppStrings.allGoods(lang),
+                        color = Color.White.copy(0.9f),
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Switch(
+                        checked = showAllProducts,
+                        onCheckedChange = { onToggleAll() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF3B82F6),
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = Color.White.copy(0.3f),
+                        ),
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White.copy(0.15f),
+                ) {
+                    Text(
+                        "${priceFmt.format(cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitTabRow(activeTab: Int) {
+    val lang = LocalAppLanguage.current
+    val tabs = listOf(
+        AppStrings.visitTabProduct(lang),
+        AppStrings.visitTabPromotion(lang),
+        AppStrings.visitTabAddons(lang),
+        AppStrings.visitTabCart(lang),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        tabs.forEachIndexed { index, label ->
+            Column(
+                modifier = Modifier.clickable(enabled = index == 0) {},
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    label,
+                    color = if (index == activeTab) Color.White else Color.White.copy(0.55f),
+                    fontSize = 14.sp,
+                    fontWeight = if (index == activeTab) FontWeight.SemiBold else FontWeight.Normal,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (index == activeTab) {
+                    Box(
+                        Modifier
+                            .width(36.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White),
+                    )
+                } else {
+                    Spacer(Modifier.height(3.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitSummaryBar(
+    cartTotal: Double,
+    totalFmt: DecimalFormat,
+    isDark: Boolean,
+    refreshState: VisitRefreshButtonState,
+    onRefresh: () -> Unit,
+) {
+    val barBg = if (isDark) SherinColors.CardDark else Color.White
+    val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    val titleColor = if (isDark) Color.White else Color(0xFF111827)
+
+    Surface(color = barBg, shadowElevation = 1.dp) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderColor)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VisitSummaryIcon(Icons.Default.Inventory2, Color(0xFF22C55E), if (isDark) Color(0xFF1F2937) else Color(0xFFF0FDF4))
+            Spacer(Modifier.width(8.dp))
+            VisitSummaryIcon(Icons.Default.ShoppingCart, Color(0xFF3B82F6), if (isDark) Color(0xFF1F2937) else Color(0xFFEFF6FF))
+            Text(
+                totalFmt.format(cartTotal),
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = titleColor,
+            )
+            VisitRefreshIconButton(
+                state = refreshState,
+                onClick = onRefresh,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisitRefreshIconButton(
+    state: VisitRefreshButtonState,
+    onClick: () -> Unit,
+) {
+    val tint = when (state) {
+        VisitRefreshButtonState.SUCCESS -> Color(0xFF10B981)
+        else -> subColor
+    }
+    IconButton(
+        onClick = onClick,
+        enabled = state != VisitRefreshButtonState.LOADING,
+    ) {
+        when (state) {
+            VisitRefreshButtonState.LOADING -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    color = SherinColors.Primary,
+                    strokeWidth = 2.dp,
+                )
+            }
+            VisitRefreshButtonState.SUCCESS -> {
+                Icon(Icons.Default.Check, null, tint = tint, modifier = Modifier.size(24.dp))
+            }
+            VisitRefreshButtonState.IDLE -> {
+                Icon(Icons.Default.Sync, null, tint = tint, modifier = Modifier.size(22.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitRefreshResultCard(
+    updates: List<String>,
+    title: String,
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isDark) Color(0xFF064E3B).copy(0.4f) else Color(0xFFECFDF5),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) Color(0xFF10B981).copy(0.3f) else Color(0xFF10B981).copy(0.25f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    color = if (isDark) Color.White else Color(0xFF065F46),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            updates.forEach { line ->
+                Row(
+                    modifier = Modifier.padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text("• ", color = Color(0xFF10B981), fontSize = 13.sp)
+                    Text(
+                        line,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = if (isDark) Color(0xFFD1FAE5) else Color(0xFF047857),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitSummaryIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    bg: Color,
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun VisitSearchSection(
+    searchQuery: String,
+    showAllProducts: Boolean,
+    isDark: Boolean,
+    onSearchChange: (String) -> Unit,
+    onToggleAll: () -> Unit,
+) {
+    val lang = LocalAppLanguage.current
+    val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
+    val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    val titleColor = if (isDark) Color.White else Color(0xFF111827)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(AppStrings.search(lang), color = subColor) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = subColor) },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg,
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                cursorColor = SherinColors.Primary,
+                focusedTextColor = titleColor,
+                unfocusedTextColor = titleColor,
+            ),
+        )
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = cardBg,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    AppStrings.allGoods(lang),
+                    color = titleColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Switch(
+                    checked = showAllProducts,
+                    onCheckedChange = { onToggleAll() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFF3B82F6),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitCategoryCard(
+    name: String,
+    count: Int,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = cardBg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(if (cardBg == Color.White) Color(0xFFF3F4F6) else Color(0xFF374151)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Add, null, tint = subColor, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                name.uppercase(),
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = titleColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "$count",
+                color = subColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = subColor,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisitSeeAllCard(
+    cardBg: Color,
+    borderColor: Color,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = cardBg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                color = Color(0xFF3B82F6),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = Color(0xFF3B82F6),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VisitProductCard(
+    product: Product,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+    lang: AppLanguage,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = cardBg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFEFF6FF),
+                ) {
+                    Text(
+                        product.code,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize = 10.sp,
+                        color = Color(0xFF3B82F6),
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    product.name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = titleColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
+                    fontSize = 12.sp,
+                    color = subColor,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    null,
+                    tint = subColor,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stockFmt.format(product.stockBalance),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = Color(0xFF10B981),
+                )
+                Text(
+                    product.unit,
+                    fontSize = 11.sp,
+                    color = subColor,
+                )
+            }
+        }
+    }
+}
+
+private val subColor = Color(0xFF9CA3AF)

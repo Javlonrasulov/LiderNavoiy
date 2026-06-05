@@ -173,15 +173,8 @@ export function appUserToSotrudnikRow(
   index: number,
   _t: Record<string, string>,
 ): SotrudnikRow {
-  let deptKey = 'sales';
-  let posKey = 'salesAgent';
-  if (app.role === 'manager') {
-    deptKey = 'office';
-    posKey = 'manager';
-  } else if (app.role === 'admin') {
-    deptKey = 'office';
-    posKey = 'director';
-  }
+  const posKey = mapBackendRoleToPosKey(app.role);
+  const deptKey = posKey === 'salesAgent' ? 'sales' : 'office';
 
   return {
     tabel: index,
@@ -193,7 +186,20 @@ export function appUserToSotrudnikRow(
     phone: distributor?.phone || '',
     orgId: distributor?.companyId || 'boran',
     backendUserId: app.id,
+    username: app.username,
   };
+}
+
+export function mapPosKeyToBackend(posKey?: string): 'distributor' | 'manager' | 'admin' {
+  if (posKey === 'manager') return 'manager';
+  if (posKey === 'director') return 'admin';
+  return 'distributor';
+}
+
+export function mapBackendRoleToPosKey(role: string): string {
+  if (role === 'manager') return 'manager';
+  if (role === 'admin') return 'director';
+  return 'salesAgent';
 }
 
 export function mapAdminRoleToBackend(role: string): 'distributor' | 'manager' | 'admin' {

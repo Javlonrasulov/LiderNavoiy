@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.dto.ClientReconciliationDto
 import uz.distributor.crm.data.repository.ClientRepository
 import java.text.SimpleDateFormat
@@ -102,7 +103,7 @@ class ReconciliationViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         refreshState = RefreshUiState.IDLE,
-                        error = e.message ?: "Xatolik",
+                        error = ApiErrorMapper.toKey(e),
                     )
                 }
             }

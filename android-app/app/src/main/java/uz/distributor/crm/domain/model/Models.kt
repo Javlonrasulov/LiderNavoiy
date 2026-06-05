@@ -61,6 +61,7 @@ data class Product(
     val code: String,
     val name: String,
     val category: String,
+    val brand: String? = null,
     val price: Double,
     val unit: String,
     val stockBalance: Double,

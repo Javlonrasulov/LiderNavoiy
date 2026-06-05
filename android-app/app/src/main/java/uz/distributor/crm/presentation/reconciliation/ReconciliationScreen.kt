@@ -166,7 +166,7 @@ fun ReconciliationScreen(
             }
             state.error != null && state.data == null -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(state.error!!, color = subColor)
+                    Text(AppStrings.apiError(lang, state.error!!), color = subColor)
                 }
             }
             state.data != null -> {

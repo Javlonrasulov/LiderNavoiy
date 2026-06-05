@@ -226,13 +226,11 @@ private fun ChatsTabContent(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    if (error != null) AppStrings.msgLoadError(lang) else AppStrings.noChats(lang),
+                    if (error != null) AppStrings.apiError(lang, error) else AppStrings.noChats(lang),
                     color = Color(0xFF9CA3AF),
                     textAlign = TextAlign.Center,
                 )
-                error?.let { err ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(err, color = Color(0xFFEF4444), fontSize = 13.sp, textAlign = TextAlign.Center)
+                error?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         AppStrings.serverHint(lang, apiHost),
@@ -306,14 +304,10 @@ private fun ContactsTabContent(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    if (error != null) AppStrings.msgLoadError(lang) else AppStrings.noContacts(lang),
+                    if (error != null) AppStrings.apiError(lang, error) else AppStrings.noContacts(lang),
                     color = Color(0xFF9CA3AF),
                     textAlign = TextAlign.Center,
                 )
-                error?.let { err ->
-                    Spacer(Modifier.height(8.dp))
-                    Text(err, color = Color(0xFFEF4444), fontSize = 13.sp, textAlign = TextAlign.Center)
-                }
                 Spacer(Modifier.height(20.dp))
                 Button(
                     onClick = onReload,

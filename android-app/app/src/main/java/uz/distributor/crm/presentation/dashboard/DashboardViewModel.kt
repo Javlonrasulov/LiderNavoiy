@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.CartRepository
@@ -133,7 +134,7 @@ class DashboardViewModel @Inject constructor(
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
                         refreshButtonState = RefreshButtonState.IDLE,
-                        error = e.message,
+                        error = ApiErrorMapper.toKey(e),
                     )
                 }
             }
@@ -180,7 +181,7 @@ class DashboardViewModel @Inject constructor(
                         ),
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
-                        error = e.message,
+                        error = ApiErrorMapper.toKey(e),
                     )
                 }
             }

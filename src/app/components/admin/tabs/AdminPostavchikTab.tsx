@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { fmt } from '../../../data/adminData';
 import { demo } from '../../../data/demoLimit';
-import { DatePickerCalendar } from '../DatePickerCalendar';
+import { api, type UsdExchangeRates } from '../../../api/client';
+import { DateRangePickerCalendar } from '../DateRangePickerCalendar';
 import { PostupleniyaModal } from '../PostupleniyaModal';
 import { PostupleniyaDetailModal, type PostRowRef } from '../PostupleniyaDetailModal';
 import { VozvratDetailModal, type VozRowRef } from '../VozvratDetailModal';
@@ -131,7 +132,9 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const [date1, setDate1] = useState('2026-01-01');
   const [date2, setDate2] = useState('2026-03-10');
   const [currency, setCurrency] = useState('UZS');
-  const [usdtRate, setUsdtRate] = useState('12200');
+  const [usdtRate, setUsdtRate] = useState('');
+  const [exchangeRates, setExchangeRates] = useState<UsdExchangeRates | null>(null);
+  const [ratesLoading, setRatesLoading] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const currencyRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
@@ -161,6 +164,39 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [currencyOpen]);
+
+  const formatRateInput = (rate: number) =>
+    rate > 0 ? rate.toFixed(2) : '';
+
+  useEffect(() => {
+    let cancelled = false;
+    setRatesLoading(true);
+    api.getUsdExchangeRates()
+      .then(data => {
+        if (cancelled) return;
+        setExchangeRates(data);
+        if (currency === 'USDT') {
+          setUsdtRate(formatRateInput(data.cbu.rate));
+        }
+      })
+      .catch(() => { /* rates strip stays empty; input remains editable */ })
+      .finally(() => { if (!cancelled) setRatesLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (currency === 'USDT' && exchangeRates) {
+      setUsdtRate(formatRateInput(exchangeRates.cbu.rate));
+    }
+  }, [currency, exchangeRates]);
+
+  const selectCurrency = (opt: string) => {
+    setCurrency(opt);
+    setCurrencyOpen(false);
+  };
+
+  const fmtRate = (v: number) =>
+    v > 0 ? v.toLocaleString('ru-RU') : '—';
 
   const MARKED: Set<string> = new Set([
     '2026-01-05','2026-01-12','2026-01-19','2026-01-26',
@@ -263,9 +299,14 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const totalPostSum   = postRows.reduce((s, r) => s + r.sum, 0);
   const totalPostNetto = postRows.reduce((s, r) => s + r.netto, 0);
 
-  /* Short labels for DatePickerCalendar so they don't overflow on 320px screens */
+  /* Short labels for date range picker */
   const labelStart = '📅 Dan';
   const labelEnd   = '📅 Gacha';
+
+  const handleDateRange = (from: string, to: string) => {
+    setDate1(from);
+    setDate2(to);
+  };
 
   const navBtnCls = (active: boolean) =>
     `w-full flex items-center gap-1 px-2 py-2 rounded-xl text-xs font-semibold transition-all justify-center min-w-0 overflow-hidden ${
@@ -742,7 +783,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                       {['UZS', 'USDT'].map(opt => (
                         <button
                           key={opt}
-                          onClick={() => { setCurrency(opt); setCurrencyOpen(false); }}
+                          onClick={() => selectCurrency(opt)}
                           className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold transition-colors ${
                             currency === opt
                               ? D ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-50 text-indigo-600'
@@ -763,63 +804,72 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                     <span className={`text-xs font-medium ${sub} whitespace-nowrap`}>1$ =</span>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
                       value={usdtRate}
                       onChange={e => setUsdtRate(e.target.value)}
                       className={`bg-transparent outline-none text-sm font-semibold tabular-nums ${D ? 'text-white' : 'text-gray-900'}`}
-                      style={{ width: 72 }}
-                      placeholder="12200"
+                      style={{ width: 88 }}
+                      placeholder={exchangeRates ? formatRateInput(exchangeRates.cbu.rate) : '12200.00'}
                     />
                     <span className={`text-xs ${sub}`}>UZS</span>
                   </div>
                 )}
 
-                {/* Date pickers — only inline on sm+ (≥640px) screens */}
-                <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
-                  <DatePickerCalendar
-                    value={date1}
-                    onChange={setDate1}
-                    label={labelStart}
-                    D={D}
-                    sub={sub}
-                    markedDates={MARKED}
-                    t={t}
-                  />
-                  <span className={`text-xs ${sub} flex-shrink-0`}>—</span>
-                  <DatePickerCalendar
-                    value={date2}
-                    onChange={setDate2}
-                    label={labelEnd}
-                    D={D}
-                    sub={sub}
-                    markedDates={MARKED}
-                    t={t}
-                  />
-                </div>
-              </div>
+                {/* Bank rates strip */}
+                {currency === 'USDT' && (
+                  <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                    {ratesLoading && !exchangeRates ? (
+                      <span className={`text-[11px] ${sub}`}>{t.supRateLoading}</span>
+                    ) : exchangeRates && (
+                      <>
+                        {([
+                          { key: 'cbu', label: t.supRateCbu, buy: exchangeRates.cbu.rate, sell: exchangeRates.cbu.rate, official: true },
+                          { key: 'hamkor', label: t.supRateHamkor, ...exchangeRates.banks.hamkorbank },
+                          { key: 'ipoteka', label: t.supRateIpoteka, ...exchangeRates.banks.ipoteka },
+                          { key: 'agro', label: t.supRateAgro, ...exchangeRates.banks.agrobank },
+                        ] as const).map(bank => (
+                          <div
+                            key={bank.key}
+                            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] flex-shrink-0 ${
+                              D ? 'border-gray-700/80 bg-white/[0.03]' : 'border-gray-200 bg-gray-50'
+                            }`}
+                            title={'official' in bank && bank.official
+                              ? `${bank.label}: ${fmtRate(bank.sell)}`
+                              : `${bank.label} — ${t.supRateBuy}: ${fmtRate(bank.buy)}, ${t.supRateSell}: ${fmtRate(bank.sell)}`}
+                          >
+                            <span className={`font-semibold whitespace-nowrap ${D ? 'text-gray-300' : 'text-gray-600'}`}>{bank.label}</span>
+                            {'official' in bank && bank.official ? (
+                              <span className={`font-bold tabular-nums ${D ? 'text-indigo-300' : 'text-indigo-600'}`}>{fmtRate(bank.sell)}</span>
+                            ) : (
+                              <>
+                                <span className={`tabular-nums ${D ? 'text-emerald-400' : 'text-emerald-600'}`}>{fmtRate(bank.buy)}</span>
+                                <span className={sub}>/</span>
+                                <span className={`tabular-nums ${D ? 'text-rose-400' : 'text-rose-500'}`}>{fmtRate(bank.sell)}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
 
-              {/* Row 2 (mobile only, < 640px): Date pickers stacked vertically */}
-              <div className="flex flex-col gap-2 sm:hidden">
-                <DatePickerCalendar
-                  value={date1}
-                  onChange={setDate1}
-                  label={labelStart}
+                {/* Date range picker — single calendar */}
+                <DateRangePickerCalendar
+                  start={date1}
+                  end={date2}
+                  onChange={handleDateRange}
+                  labelFrom={labelStart}
+                  labelTo={labelEnd}
                   D={D}
                   sub={sub}
                   markedDates={MARKED}
                   t={t}
                 />
-                <DatePickerCalendar
-                  value={date2}
-                  onChange={setDate2}
-                  label={labelEnd}
-                  D={D}
-                  sub={sub}
-                  markedDates={MARKED}
-                  t={t}
-                />
               </div>
 
-              {/* Row 3: Search — always full width */}
+              {/* Row 2: Search — always full width */}
               <div
                 style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
                 className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${D ? 'border-gray-700 bg-[#1a1a1a]' : 'border-gray-200 bg-white'}`}

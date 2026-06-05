@@ -44,6 +44,36 @@ object AppStrings {
         AppLanguage.UZ_CYRILLIC -> "$count та маҳсулот қолдиғи ошди"
         AppLanguage.RUS -> "У $count товаров увеличился остаток"
     }
+
+    fun productsAddedNames(lang: AppLanguage, names: List<String>) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Yangi mahsulotlar qo'shildi: ${formatProductNames(names)}"
+        AppLanguage.UZ_CYRILLIC -> "Янги маҳсулотлар қўшилди: ${formatProductNames(names)}"
+        AppLanguage.RUS -> "Добавлены товары: ${formatProductNames(names)}"
+    }
+
+    fun productsRemovedNames(lang: AppLanguage, names: List<String>) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Mahsulotlar kamaydi: ${formatProductNames(names)}"
+        AppLanguage.UZ_CYRILLIC -> "Маҳсулотлар камайди: ${formatProductNames(names)}"
+        AppLanguage.RUS -> "Товары убраны: ${formatProductNames(names)}"
+    }
+
+    fun productsStockIncreasedNames(lang: AppLanguage, names: List<String>) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Qoldiq oshdi: ${formatProductNames(names)}"
+        AppLanguage.UZ_CYRILLIC -> "Қолдиқ ошди: ${formatProductNames(names)}"
+        AppLanguage.RUS -> "Остаток увеличился: ${formatProductNames(names)}"
+    }
+
+    fun productsStockDecreasedNames(lang: AppLanguage, names: List<String>) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Qoldiq kamaydi: ${formatProductNames(names)}"
+        AppLanguage.UZ_CYRILLIC -> "Қолдиқ камайди: ${formatProductNames(names)}"
+        AppLanguage.RUS -> "Остаток уменьшился: ${formatProductNames(names)}"
+    }
+
+    private fun formatProductNames(names: List<String>, max: Int = 5): String {
+        if (names.isEmpty()) return ""
+        val head = names.take(max).joinToString(", ")
+        return if (names.size > max) "$head, +${names.size - max}" else head
+    }
     fun newMessagesReceived(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "$count ta yangi xabar bor"
         AppLanguage.UZ_CYRILLIC -> "$count та янги хабар бор"
@@ -74,6 +104,15 @@ object AppStrings {
     fun hide(lang: AppLanguage) = tr(lang, "Yashirish", "Яшириш", "Скрыть")
     fun items(lang: AppLanguage) = tr(lang, "mahsulot", "маҳсулот", "товар")
     fun clientsListTitle(lang: AppLanguage) = clientsList(lang)
+    fun tabSchedule(lang: AppLanguage) = tr(lang, "Grafik", "График", "График")
+    fun tabRouteDrops(lang: AppLanguage) = tr(lang, "Graf tashlari", "Граф ташлари", "Граф точки")
+    fun tabSearchClients(lang: AppLanguage) = tr(lang, "Qidiruv", "Қидирув", "Поиск")
+    fun searchClientHint(lang: AppLanguage) = tr(
+        lang,
+        "Klient nomi yoki kodi...",
+        "Клиент номи ёки kodi...",
+        "Имя или код клиента...",
+    )
 
     fun planTitle(lang: AppLanguage) = navLabel(NavTab.PLAN, lang)
     fun myPlan(lang: AppLanguage) = tr(lang, "Mening rejam", "Менинг режам", "Мой план")
@@ -133,6 +172,24 @@ object AppStrings {
     fun todayClients(lang: AppLanguage) = tr(lang, "Bugungi klientlar", "Бугунги клиентлар", "Сегодняшние клиенты")
     fun allClients(lang: AppLanguage) = tr(lang, "Barchasi", "Барчаси", "Все")
     fun allProducts(lang: AppLanguage) = tr(lang, "Barchasi", "Барчаси", "Все")
+    fun productsTotalCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta mahsulot"
+        AppLanguage.UZ_CYRILLIC -> "$count та маҳсулот"
+        AppLanguage.RUS -> if (count % 10 == 1 && count % 100 != 11) "$count товар"
+        else if (count % 10 in 2..4 && count % 100 !in 12..14) "$count товара"
+        else "$count товаров"
+    }
+    fun productAvailable(lang: AppLanguage) = tr(lang, "Mavjud", "Mavjud", "В наличии")
+    fun productColCode(lang: AppLanguage) = tr(lang, "Kod", "Kod", "Код")
+    fun productColName(lang: AppLanguage) = tr(lang, "Mahsulot", "Mahsulot", "Товар")
+    fun productColBrand(lang: AppLanguage) = tr(lang, "Brend", "Brend", "Бренд")
+    fun productColPrice(lang: AppLanguage) = tr(lang, "Narx", "Narx", "Цена")
+    fun productColUnit(lang: AppLanguage) = tr(lang, "O'lchov", "O'lchov", "Ед.")
+    fun productUnitsPerPack(lang: AppLanguage) = tr(lang, "sht. up", "шт.уп", "шт.уп")
+    fun productNetto(lang: AppLanguage) = "Netto"
+    fun productBrutto(lang: AppLanguage) = "Brutto"
+    fun productStockBalance(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
+    fun productSomShort(lang: AppLanguage) = tr(lang, "so'm", "сўм", "сум")
     fun debt(lang: AppLanguage) = tr(lang, "Qarz", "Қарз", "Долг")
     fun lastVisit(lang: AppLanguage) = tr(lang, "Oxirgi tashrif", "Охирги ташриф", "Последний визит")
     fun lastOrder(lang: AppLanguage) = tr(lang, "Oxirgi buyurtma", "Охирги буюртма", "Последний заказ")
@@ -146,6 +203,52 @@ object AppStrings {
     fun showPassword(lang: AppLanguage) = tr(lang, "Parolni ko'rish", "Паролни кўриш", "Показать пароль")
     fun loginButton(lang: AppLanguage) = tr(lang, "Kirish", "Кириш", "Войти")
     fun loginError(lang: AppLanguage) = tr(lang, "Kirish xatosi", "Кириш хатоси", "Ошибка входа")
+    fun errorInvalidCredentials(lang: AppLanguage) = tr(
+        lang,
+        "Login yoki parol noto'g'ri",
+        "Логин ёки парол нотўғри",
+        "Неверный логин или пароль",
+    )
+    fun errorCredentialsRequired(lang: AppLanguage) = tr(
+        lang,
+        "Login va parolni kiriting",
+        "Логин ва паролни киритинг",
+        "Введите логин и пароль",
+    )
+    fun errorProductsLoadFailed(lang: AppLanguage) = tr(
+        lang,
+        "Mahsulotlar yuklanmadi. Internet yoki serverni tekshiring",
+        "Маҳсулотлар юкланмади. Инternet ёки серверни текширинг",
+        "Не удалось загрузить товары. Проверьте интернет или сервер",
+    )
+    fun errorProductsNotFound(lang: AppLanguage) = tr(
+        lang,
+        "Mahsulotlar topilmadi",
+        "Маҳсулотлар топилмади",
+        "Товары не найдены",
+    )
+
+    fun apiError(lang: AppLanguage, key: String): String = when (key) {
+        "invalid_credentials" -> errorInvalidCredentials(lang)
+        "credentials_required" -> errorCredentialsRequired(lang)
+        "invalid_current_password" -> errorInvalidCurrentPassword(lang)
+        "password_mismatch" -> errorPasswordMismatch(lang)
+        "password_too_short" -> errorPasswordTooShort(lang)
+        "current_password_required" -> errorCurrentPasswordRequired(lang)
+        "network_error" -> msgLoadError(lang)
+        "server_error" -> errorServer(lang)
+        "unauthorized" -> errorUnauthorized(lang)
+        "location_failed" -> errorLocationFailed(lang)
+        "save_failed" -> errorSaveFailed(lang)
+        "inn_client_exists" -> errorInnClientExists(lang)
+        "inn_request_exists" -> errorInnRequestExists(lang)
+        "lines_load_failed" -> errorLinesLoadFailed(lang)
+        "products_load_failed" -> errorProductsLoadFailed(lang)
+        "products_not_found" -> errorProductsNotFound(lang)
+        else -> errorSaveFailed(lang)
+    }
+
+    fun profileError(lang: AppLanguage, key: String): String = apiError(lang, key)
     fun clientTitle(lang: AppLanguage) = tr(lang, "Klient", "Клиент", "Клиент")
     fun balance(lang: AppLanguage) = tr(lang, "Balans", "Баланс", "Баланс")
     fun startVisit(lang: AppLanguage) = tr(lang, "Vizit boshlash", "Ташриф бошлаш", "Начать визит")
@@ -195,8 +298,48 @@ object AppStrings {
     )
     fun clientNotFound(lang: AppLanguage) = tr(lang, "Klient topilmadi", "Клиент топилмади", "Клиент не найден")
     fun visitProducts(lang: AppLanguage) = tr(lang, "Vizit — Mahsulotlar", "Ташриф — Маҳсулотлар", "Визит — Товары")
+    fun visitTabProduct(lang: AppLanguage) = tr(lang, "Mahsulot", "Маҳсулот", "Товар")
+    fun visitTabPromotion(lang: AppLanguage) = tr(lang, "Aksiya", "Акция", "Акция")
+    fun visitTabAddons(lang: AppLanguage) = tr(lang, "Qo'shimchalar", "Қўшимчалар", "Дополнения")
+    fun visitTabCart(lang: AppLanguage) = tr(lang, "Savatcha", "Саватча", "Корзина")
+    fun allGoods(lang: AppLanguage) = tr(lang, "Barcha tovarlar", "Барча товарлар", "Все товары")
+    fun seeAllGoods(lang: AppLanguage) = tr(lang, "Hammasini ko'rish", "Ҳаммасини кўриш", "Смотреть все")
+    fun productsCount(lang: AppLanguage, shown: Int, total: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$shown / $total mahsulot"
+        AppLanguage.UZ_CYRILLIC -> "$shown / $total маҳсулот"
+        AppLanguage.RUS -> "$shown / $total товаров"
+    }
     fun reload(lang: AppLanguage) = tr(lang, "Qayta yuklash", "Қайта юклаш", "Перезагрузить")
     fun noProductsInCategory(lang: AppLanguage) = tr(lang, "Bu kategoriyada mahsulot yo'q", "Бу категорияда маҳсулот йўқ", "В этой категории нет товаров")
+    fun stock(lang: AppLanguage) = tr(lang, "Sklad", "Склад", "Склад")
+    fun priceLabel(lang: AppLanguage) = tr(lang, "Narx", "Нarx", "Цена")
+    fun quantityLabel(lang: AppLanguage) = tr(lang, "Miqdor", "Мiqdor", "Количество")
+    fun commentPlaceholder(lang: AppLanguage) = tr(lang, "Izoh...", "Izoh...", "Комментарий...")
+    fun addToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shish", "Саватга қўшиш", "В корзину")
+    fun addedToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shildi", "Саватга қўшилди", "Добавлено в корзину")
+    fun cartPreviewTitle(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Savatcha · $count ta"
+        AppLanguage.UZ_CYRILLIC -> "Саватча · $count ta"
+        AppLanguage.RUS -> "Корзина · $count шт."
+    }
+    fun cartEmpty(lang: AppLanguage) = tr(lang, "Savatcha bo'sh", "Саватча бўш", "Корзина пуста")
+    fun selectedProducts(lang: AppLanguage) = tr(lang, "Tanlanganlar", "Танланганлар", "Выбранные")
+    fun selectedCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta"
+        AppLanguage.UZ_CYRILLIC -> "$count ta"
+        AppLanguage.RUS -> "$count шт."
+    }
+    fun allGoodsCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta"
+        AppLanguage.UZ_CYRILLIC -> "$count ta"
+        AppLanguage.RUS -> "$count шт."
+    }
+    fun pricePerUnit(lang: AppLanguage, unit: String) = when (lang) {
+        AppLanguage.UZ_LATIN -> "so'm/$unit"
+        AppLanguage.UZ_CYRILLIC -> "so'm/$unit"
+        AppLanguage.RUS -> "сум/$unit"
+    }
+    fun productPosition(lang: AppLanguage, current: Int, total: Int) = "$current / $total"
     fun order(lang: AppLanguage) = tr(lang, "Buyurtma", "Буюртма", "Заказ")
     fun confirm(lang: AppLanguage) = tr(lang, "Tasdiqlash", "Тасдиқлаш", "Подтвердить")
     fun total(lang: AppLanguage) = tr(lang, "Jami", "Жами", "Итого")
@@ -239,15 +382,6 @@ object AppStrings {
         "Введите текущий пароль",
     )
 
-    fun profileError(lang: AppLanguage, key: String): String = when (key) {
-        "invalid_current_password" -> errorInvalidCurrentPassword(lang)
-        "password_mismatch" -> errorPasswordMismatch(lang)
-        "password_too_short" -> errorPasswordTooShort(lang)
-        "current_password_required" -> errorCurrentPasswordRequired(lang)
-        "network_error" -> errorNetwork(lang)
-        "unauthorized" -> errorUnauthorized(lang)
-        else -> errorSaveFailed(lang)
-    }
     fun todaySales(lang: AppLanguage) = tr(lang, "Bugungi savdo", "Бугунги савдо", "Продажи за день")
     fun weekSales(lang: AppLanguage) = tr(lang, "Haftalik savdo", "Ҳафталик савдо", "Продажи за неделю")
     fun monthSales(lang: AppLanguage) = tr(lang, "Oylik savdo", "Ойлик савдо", "Продажи за месяц")
@@ -256,7 +390,7 @@ object AppStrings {
     fun clientName(lang: AppLanguage) = tr(lang, "Ism (do'kon nomi)", "Исм (до'кон номи)", "Название")
     fun clientInn(lang: AppLanguage) = tr(lang, "INN", "ИНН", "ИНН")
     fun clientPhone(lang: AppLanguage) = tr(lang, "Telefon raqami", "Телефон рақами", "Номер телефона")
-    fun clientAddress(lang: AppLanguage) = tr(lang, "Yuridik manzil", "Юридик манзил", "Юридический адрес")
+    fun clientAddress(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
     fun clientLine(lang: AppLanguage) = tr(lang, "Liniya", "Линия", "Линия")
     fun selectLine(lang: AppLanguage) = tr(lang, "Liniyani tanlang", "Линияни танланг", "Выберите линию")
     fun clientLocation(lang: AppLanguage) = tr(lang, "Xaritada joyi", "Харитада жойи", "Место на карте")
@@ -297,9 +431,9 @@ object AppStrings {
     fun errorLineRequired(lang: AppLanguage) = tr(lang, "Liniyani tanlang", "Линияни танланг", "Выберите линию")
     fun errorAddressRequired(lang: AppLanguage) = tr(
         lang,
-        "Yuridik manzilni kiriting",
-        "Юридик манзилни киритинг",
-        "Введите юридический адрес",
+        "Manzilni kiriting",
+        "Манзилни киритинг",
+        "Введите адрес",
     )
     fun errorLinesLoadFailed(lang: AppLanguage) = tr(
         lang,
@@ -353,17 +487,7 @@ object AppStrings {
         "Заявка с таким ИНН уже ожидает рассмотрения",
     )
 
-    fun addClientError(lang: AppLanguage, key: String): String = when (key) {
-        "location_failed" -> errorLocationFailed(lang)
-        "save_failed" -> errorSaveFailed(lang)
-        "network_error" -> errorNetwork(lang)
-        "server_error" -> errorServer(lang)
-        "unauthorized" -> errorUnauthorized(lang)
-        "inn_client_exists" -> errorInnClientExists(lang)
-        "inn_request_exists" -> errorInnRequestExists(lang)
-        "lines_load_failed" -> errorLinesLoadFailed(lang)
-        else -> errorSaveFailed(lang)
-    }
+    fun addClientError(lang: AppLanguage, key: String): String = apiError(lang, key)
 
     fun dayName(dayOfWeek: Int, lang: AppLanguage): String {
         val names = when (lang) {

@@ -35,11 +35,29 @@ class CartRepository @Inject constructor(
     suspend fun getCart(): List<CartItem> = db.cartDao().getAll().map { it.toDomain() }
 
     suspend fun addToCart(product: uz.distributor.crm.domain.model.Product, qty: Double) {
-        db.cartDao().insert(CartItemEntity(
-            productId = product.id, productCode = product.code,
-            productName = product.name, price = product.price,
-            quantity = qty, unit = product.unit, category = product.category,
-        ))
+        setCartQty(product, qty)
+    }
+
+    suspend fun setCartQty(product: uz.distributor.crm.domain.model.Product, qty: Double) {
+        if (qty <= 0) {
+            db.cartDao().delete(product.id)
+        } else {
+            db.cartDao().insert(
+                CartItemEntity(
+                    productId = product.id,
+                    productCode = product.code,
+                    productName = product.name,
+                    price = product.price,
+                    quantity = qty,
+                    unit = product.unit,
+                    category = product.category,
+                ),
+            )
+        }
+    }
+
+    suspend fun removeFromCart(productId: String) {
+        db.cartDao().delete(productId)
     }
 
     suspend fun updateQty(productId: String, qty: Double) {

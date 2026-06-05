@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.domain.model.CartItem
 import javax.inject.Inject
@@ -44,7 +45,7 @@ class OrderViewModel @Inject constructor(
                     onSuccess()
                 },
                 onFailure = { e ->
-                    _uiState.update { it.copy(isSubmitting = false, error = e.message) }
+                    _uiState.update { it.copy(isSubmitting = false, error = ApiErrorMapper.toKey(e)) }
                 },
             )
         }

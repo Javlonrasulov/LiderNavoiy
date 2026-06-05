@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.dto.ChatMessageDto
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.data.repository.AuthRepository
@@ -103,7 +104,7 @@ class ChatViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update { it.copy(isLoading = false, error = ApiErrorMapper.toKey(e)) }
             }
         }
     }
@@ -119,7 +120,7 @@ class ChatViewModel @Inject constructor(
                     state.copy(messages = appendMessage(state.messages, msg))
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = ApiErrorMapper.toKey(e)) }
             } finally {
                 _uiState.update { it.copy(sending = false) }
             }
@@ -135,7 +136,7 @@ class ChatViewModel @Inject constructor(
                     state.copy(messages = appendMessage(state.messages, msg))
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = ApiErrorMapper.toKey(e)) }
             } finally {
                 _uiState.update { it.copy(sending = false) }
             }
@@ -188,7 +189,7 @@ class ChatViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(deleting = false, error = e.message) }
+                _uiState.update { it.copy(deleting = false, error = ApiErrorMapper.toKey(e)) }
             }
         }
     }

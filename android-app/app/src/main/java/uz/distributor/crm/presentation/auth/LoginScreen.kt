@@ -161,9 +161,14 @@ fun LoginScreen(
                     colors = loginFieldColors,
                 )
 
-                state.error?.let {
+                state.errorKey?.let { key ->
                     Spacer(Modifier.height(8.dp))
-                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    Text(
+                        AppStrings.apiError(lang, key),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                    )
                 }
 
                 Spacer(Modifier.height(24.dp))

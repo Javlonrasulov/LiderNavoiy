@@ -367,6 +367,8 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     totalEmpLabel: 'Jami', empUnit: 'xodim',
     empTabelCol: 'Tabel №', empNameCol: 'Xodim ismi', empDeptCol: "Bo'linma",
     empPositionCol: 'Lavozim', empPhoneCol: 'Telefon', empOrgCol: 'Tashkilot',
+    empActionsCol: 'Amallar', empAppLoginCol: 'Ilova login', empAppPasswordCol: 'Parol',
+    empAppLoginPh: 'javlon', empAppPasswordPh: 'parol123',
     empEditBtn: "O'zgartirish", empDeleteBtn: "O'chirish", empAddBtn: "Qo'shish",
     empSearchPh: 'Qidirish...', empSaveBtn: 'Saqlash', empAddTitle: "Yangi xodim qo'shish",
     empDeleteTitle: "O'chirishni tasdiqlaysizmi?", empDeleteWarn: "bu amalni ortga qaytarib bo'lmaydi.",
@@ -523,11 +525,14 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     postAll: 'Hammasi', postWholesale: 'Ulgurji', postRetail: 'Chakana', postProd: 'Ishlab chiqarish',
     postTotal: 'Jami', postCount: 'ta hujjat',
     supCurrency: 'Valyuta:', supFrom: 'Dan:', supTo: 'Gacha:', supSearch: 'Qidirish...',
+    supRateCbu: 'Markaziy bank', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
+    supRateBuy: 'Sotib olish', supRateSell: 'Sotish', supRateLoading: 'Kurs yuklanmoqda...',
     supListTitle: "Yetkazib beruvchilar ro'yxati", supCountSuffix: 'ta yetkazib beruvchi',
     supColName: 'Yetkazib beruvchi', supOpenBal: 'Boshlanish saldosi', supTurnover: 'Aylanma', supCloseBal: 'Oxirgi saldo',
     supDebet: 'Debet', supKredit: 'Kredit', supTotal: 'Jami', supNoBalance: "Saldo yo'q",
     supDebetTurn: 'Debet aylanma', supKreditTurn: 'Kredit aylanma', supCloseDebet: 'Oxirgi debet', supCloseKredit: 'Oxirgi kredit',
     calSelectStart: "📅 Boshlang'ich sanani tanlang", calSelectEnd: '📅 Oxirgi sanani tanlang',
+    calToday: 'Bugun', calWeek: 'Hafta', calMonth: 'Oy',
     supTitle2: 'Yetkazib beruvchilar',
     supTabVozvrat: 'Qaytarish', vozTitle: "Tovar qaytarish postavchikka",
     vozDateSend: "Yuk jo'natish", vozDateAccept: 'Qabul sanasi',
@@ -882,6 +887,8 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     totalEmpLabel: 'Жами', empUnit: 'ходим',
     empTabelCol: 'Табел №', empNameCol: 'Ходим исми', empDeptCol: 'Бўлим',
     empPositionCol: 'Лавозим', empPhoneCol: 'Телефон', empOrgCol: 'Ташкилот',
+    empActionsCol: 'Амаллар', empAppLoginCol: 'Илова логин', empAppPasswordCol: 'Парол',
+    empAppLoginPh: 'javlon', empAppPasswordPh: 'parol123',
     empEditBtn: 'Ўзгартириш', empDeleteBtn: 'Ўчириш', empAddBtn: 'Қўшиш',
     empSearchPh: 'Қидириш...', empSaveBtn: 'Сақлаш', empAddTitle: 'Янги ходим қўшиш',
     empDeleteTitle: 'Ўчиришни тасдиқлайсизми?', empDeleteWarn: 'бу амални ортга қайтариб бўлмайди.',
@@ -1038,6 +1045,8 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     postAll: 'Ҳаммаси', postWholesale: 'Улгурги', postRetail: 'Чакана', postProd: 'Ишлаб чиқариш',
     postTotal: 'Жами', postCount: 'та ҳужжат',
     supCurrency: 'Валюта:', supFrom: 'Дан:', supTo: 'Гача:', supSearch: 'Қидириш...',
+    supRateCbu: 'Марказий банк', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
+    supRateBuy: 'Сотиб олиш', supRateSell: 'Сотиш', supRateLoading: 'Курс юкланмоқда...',
     supListTitle: 'Таъминотчилар рўйхати', supCountSuffix: 'та етказиб берувчи',
     supColName: 'Таъминотчи', supOpenBal: 'Бошланиш қолдиғи', supTurnover: 'Айланма', supCloseBal: 'Охирги қолдиқ',
     supDebet: 'Дебет', supKredit: 'Кредит', supTotal: 'Жами', supNoBalance: 'Қолдиқ йўқ',
@@ -1397,6 +1406,8 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     totalEmpLabel: 'Всего', empUnit: 'сотрудник',
     empTabelCol: 'Табель №', empNameCol: 'Имя сотрудника', empDeptCol: 'Отдел',
     empPositionCol: 'Должность', empPhoneCol: 'Телефон', empOrgCol: 'Организация',
+    empActionsCol: 'Действия', empAppLoginCol: 'Логин приложения', empAppPasswordCol: 'Пароль',
+    empAppLoginPh: 'javlon', empAppPasswordPh: 'parol123',
     empEditBtn: 'Изменить', empDeleteBtn: 'Удалить', empAddBtn: 'Добавить',
     empSearchPh: 'Поиск...', empSaveBtn: 'Сохранить', empAddTitle: 'Новый сотрудник',
     empDeleteTitle: 'Подтвердить удаление?', empDeleteWarn: 'это действие нельзя отменить.',
@@ -1553,6 +1564,8 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     postAll: 'Все', postWholesale: 'Оптовая', postRetail: 'Розничная', postProd: 'Производство',
     postTotal: 'Итого', postCount: 'документов',
     supCurrency: 'Валюта:', supFrom: 'С:', supTo: 'По:', supSearch: 'Поиск...',
+    supRateCbu: 'Центральный банк', supRateHamkor: 'Hamkorbank', supRateIpoteka: 'Ipoteka bank', supRateAgro: 'Agrobank',
+    supRateBuy: 'Покупка', supRateSell: 'Продажа', supRateLoading: 'Загрузка курса...',
     supListTitle: 'Список поставщиков', supCountSuffix: 'поставщиков',
     supColName: 'Поставщик', supOpenBal: 'Нач. остаток', supTurnover: 'Оборот', supCloseBal: 'Кон. остаток',
     supDebet: 'Дебет', supKredit: 'Кредит', supTotal: 'Итого', supNoBalance: 'Нет остатка',
@@ -1684,6 +1697,7 @@ export type SotrudnikRow = {
   phone: string;
   orgId: string;
   backendUserId?: string;
+  username?: string;
   deptKey?: string;
   posKey?: string;
 };
@@ -2114,8 +2128,4 @@ export function userStatusOpenLabel(t: Record<string, string>): string {
   return t.userStatusOpen || 'Kirish ochiq';
 }
 
-export function userStatusClosedLabel(t: Record<string, string>): string {
-  return t.userStatusClosed || 'Kirish yopiq';
-}
-
-
+export function userStatusClosedLabel(t: Record<string, string>): str

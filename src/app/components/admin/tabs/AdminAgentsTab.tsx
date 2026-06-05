@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown } from 'lucide-react';
 import { type SotrudnikRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
-import { api } from '../../../api/client';
+import { api, type AppUserRecord, type Distributor } from '../../../api/client';
 import {
   appUserToSotrudnikRow,
   getSotrDeptOptions,
   getSotrPosOptions,
+  mapPosKeyToBackend,
   sotrudnikDeptLabel,
   sotrudnikPosLabel,
+  translateApiError,
 } from '../../../utils/appUserCreds';
 
 interface Props {
@@ -155,7 +157,8 @@ function PortalSelect({
 export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [isMobile, setIsMobile]   = useState(false);
   const [search, setSearch]       = useState('');
-  const [rows, setRows]           = useState<SotrudnikRow[]>([]);
+  const [apiUsers, setApiUsers]   = useState<AppUserRecord[]>([]);
+  const [apiDistributors, setApiDistributors] = useState<Distributor[]>([]);
   const [backendReady, setBackendReady] = useState(hasApiToken());
   const [loadingRows, setLoadingRows] = useState(true);
   const [editRow, setEditRow]     = useState<SotrudnikRow | null>(null);
@@ -166,6 +169,10 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
     deptKey: 'sales', posKey: 'salesAgent',
   });
+  const [addLogin, setAddLogin]   = useState('');
+  const [addPassword, setAddPassword] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
 
   const [isSmall, setIsSmall] = useState(false);
 
@@ -181,7 +188,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
   const refreshEmployees = useCallback(async () => {
     if (!hasApiToken()) {
-      setRows([]);
+      setApiUsers([]);
+      setApiDistributors([]);
       setBackendReady(false);
       setLoadingRows(false);
       return;
@@ -192,26 +200,37 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         api.listAppUsers(),
         api.getDistributors(),
       ]);
-      const distByUserId = new Map(distributors.map(d => [d.userId, d]));
-      const companyIds = selectedCompanyIds;
-      const mapped = users
-        .filter(u => {
-          const d = distByUserId.get(u.id);
-          if (companyIds.size > 0 && d?.companyId && !companyIds.has(d.companyId)) return false;
-          return true;
-        })
-        .map((u, i) => appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t));
-      setRows(mapped);
+      setApiUsers(users);
+      setApiDistributors(distributors);
       setBackendReady(true);
     } catch {
-      setRows([]);
+      setApiUsers([]);
+      setApiDistributors([]);
       setBackendReady(false);
     } finally {
       setLoadingRows(false);
     }
-  }, [selectedCompanyIds, t]);
+  }, []);
 
   useEffect(() => { refreshEmployees(); }, [refreshEmployees]);
+
+  useEffect(() => {
+    if (!backendReady) return;
+    const timer = setInterval(() => { refreshEmployees(); }, 30_000);
+    return () => clearInterval(timer);
+  }, [backendReady, refreshEmployees]);
+
+  const rows = useMemo(() => {
+    const distByUserId = new Map(apiDistributors.map(d => [d.userId, d]));
+    const companyIds = selectedCompanyIds;
+    return apiUsers
+      .filter(u => {
+        const d = distByUserId.get(u.id);
+        if (companyIds.size > 0 && d?.companyId && !companyIds.has(d.companyId)) return false;
+        return true;
+      })
+      .map((u, i) => appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t));
+  }, [apiUsers, apiDistributors, selectedCompanyIds, t]);
 
   const deptOptions = getSotrDeptOptions(t);
   const posOptions = getSotrPosOptions(t);
@@ -248,41 +267,67 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   });
 
   // ── actions ──────────────────────────────────────────────────────────────
-  const saveEdit = () => {
-    if (!editDraft) return;
-    setRows(r => r.map(e => (e === editRow ? editDraft : e)));
-    setEditRow(null); setEditDraft(null);
+  const saveEdit = async () => {
+    if (!editDraft?.backendUserId || !editDraft.name.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.updateAppUser(editDraft.backendUserId, {
+        fullName: editDraft.name.trim(),
+        role: mapPosKeyToBackend(editDraft.posKey),
+      });
+      await refreshEmployees();
+      setEditRow(null);
+      setEditDraft(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      setSaveError(translateApiError(msg, t));
+    } finally {
+      setSaving(false);
+    }
   };
+
   const confirmDelete = async () => {
-    if (!deleteRow) return;
-    if (deleteRow.backendUserId) {
-      try {
-        await api.deactivateAppUser(deleteRow.backendUserId);
-        await refreshEmployees();
-      } catch {
-        /* keep list unchanged */
-      }
-    } else {
-      setRows(r => r.filter(e => e !== deleteRow));
+    if (!deleteRow?.backendUserId) return;
+    try {
+      await api.deactivateAppUser(deleteRow.backendUserId);
+      await refreshEmployees();
+    } catch {
+      /* keep list unchanged */
     }
     setDeleteRow(null);
   };
-  const saveAdd = () => {
-    if (!addDraft.name.trim()) return;
-    const orgId = selectedIds[0] || 'boran';
-    setRows(r => [...r, {
-      ...addDraft,
-      orgId,
-      deptKey: addDraft.deptKey || 'sales',
-      posKey: addDraft.posKey || 'salesAgent',
-      department: '',
-      position: '',
-    }]);
-    setShowAdd(false);
-    setAddDraft({
-      tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
-      deptKey: 'sales', posKey: 'salesAgent',
-    });
+
+  const saveAdd = async () => {
+    if (!addDraft.name.trim() || !addLogin.trim() || !addPassword.trim()) {
+      setSaveError(t.userErrPasswordRequired || 'Login va parol kiriting');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const orgId = selectedIds[0] || 'boran';
+      await api.createAppUser({
+        username: addLogin.trim(),
+        password: addPassword.trim(),
+        fullName: addDraft.name.trim(),
+        role: mapPosKeyToBackend(addDraft.posKey),
+        companyId: orgId,
+      });
+      await refreshEmployees();
+      setShowAdd(false);
+      setAddLogin('');
+      setAddPassword('');
+      setAddDraft({
+        tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
+        deptKey: 'sales', posKey: 'salesAgent',
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      setSaveError(translateApiError(msg, t));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── shared input style ────────────────────────────────────────────────────
@@ -301,6 +346,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     onChangeDraft: (d: SotrudnikRow) => void,
     onSave: () => void,
     onClose: () => void,
+    isAdd = false,
   ) => (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 400,
@@ -337,30 +383,19 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           </button>
         </div>
 
+        {saveError && (
+          <div style={{
+            marginBottom: 14, padding: '10px 12px', borderRadius: 10,
+            background: D ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+            border: `1px solid ${D ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.2)'}`,
+            color: '#ef4444', fontSize: 12,
+          }}>
+            {saveError}
+          </div>
+        )}
+
         {/* Fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: isSmall ? '1fr' : '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>{t.empTabelCol || 'Tabel №'}</label>
-              <input
-                style={inputStyle}
-                type="number"
-                value={draft.tabel || ''}
-                onChange={e => onChangeDraft({ ...draft, tabel: +e.target.value })}
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>{t.empPhoneCol || 'Telefon'}</label>
-              <input
-                style={inputStyle}
-                value={draft.phone}
-                onChange={e => onChangeDraft({ ...draft, phone: e.target.value })}
-                placeholder={t.empPhonePh || '(99) 000-00-00'}
-              />
-            </div>
-          </div>
-
           <div>
             <label style={labelStyle}>{t.empNameCol || 'Xodim ismi'}</label>
             <input
@@ -368,6 +403,47 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               value={draft.name}
               onChange={e => onChangeDraft({ ...draft, name: e.target.value })}
               placeholder={t.empNamePh || 'F.I.Sh.'}
+            />
+          </div>
+
+          {isAdd ? (
+            <>
+              <div>
+                <label style={labelStyle}>{t.empAppLoginCol || 'Ilova login'}</label>
+                <input
+                  style={inputStyle}
+                  value={addLogin}
+                  onChange={e => setAddLogin(e.target.value)}
+                  placeholder={t.empAppLoginPh || 'javlon'}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>{t.empAppPasswordCol || 'Parol'}</label>
+                <input
+                  style={inputStyle}
+                  type="password"
+                  value={addPassword}
+                  onChange={e => setAddPassword(e.target.value)}
+                  placeholder={t.empAppPasswordPh || 'parol123'}
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          ) : draft.username ? (
+            <div>
+              <label style={labelStyle}>{t.empAppLoginCol || 'Ilova login'}</label>
+              <input style={{ ...inputStyle, opacity: 0.7 }} value={draft.username} readOnly />
+            </div>
+          ) : null}
+
+          <div>
+            <label style={labelStyle}>{t.empPhoneCol || 'Telefon'}</label>
+            <input
+              style={inputStyle}
+              value={draft.phone}
+              onChange={e => onChangeDraft({ ...draft, phone: e.target.value })}
+              placeholder={t.empPhonePh || '(99) 000-00-00'}
             />
           </div>
 
@@ -403,14 +479,20 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           }}>
             {t.cancelBtn || 'Bekor'}
           </button>
-          <button onClick={onSave} style={{
-            flex: 2, padding: '10px', borderRadius: 11, border: 'none',
-            background: indigo, color: '#fff', fontSize: 13, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-            boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-          }}>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            style={{
+              flex: 2, padding: '10px', borderRadius: 11, border: 'none',
+              background: saving ? (D ? '#374151' : '#d1d5db') : indigo,
+              color: '#fff', fontSize: 13, fontWeight: 700,
+              cursor: saving ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+              boxShadow: saving ? 'none' : '0 4px 14px rgba(99,102,241,0.35)',
+            }}
+          >
             <Check size={14} />
-            {t.empSaveBtn || 'Saqlash'}
+            {saving ? (t.loading || 'Yuklanmoqda...') : (t.empSaveBtn || 'Saqlash')}
           </button>
         </div>
       </div>
@@ -469,12 +551,14 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       <>
         {editRow && editDraft && renderModal(
           t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
-          setEditDraft, saveEdit, () => { setEditRow(null); setEditDraft(null); }
+          setEditDraft, () => { void saveEdit(); }, () => { setEditRow(null); setEditDraft(null); setSaveError(null); },
         )}
         {deleteRow && renderDeleteModal()}
         {showAdd && renderModal(
           t.empAddTitle || "Yangi xodim qo'shish", addDraft,
-          setAddDraft, saveAdd, () => setShowAdd(false)
+          setAddDraft, () => { void saveAdd(); },
+          () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); },
+          true,
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', minWidth: 0, overflowX: 'hidden' }}>
@@ -492,12 +576,17 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, color: txt, outline: 'none' }}
               />
             </div>
-            <button onClick={() => setShowAdd(true)} style={{
-              padding: '8px 14px', borderRadius: 12, border: 'none',
-              background: indigo, color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 13,
-              boxShadow: '0 4px 12px rgba(99,102,241,0.35)',
-            }}>
+            <button
+              onClick={() => { setSaveError(null); setShowAdd(true); }}
+              disabled={!backendReady}
+              style={{
+                padding: '8px 14px', borderRadius: 12, border: 'none',
+                background: backendReady ? indigo : (D ? '#374151' : '#d1d5db'),
+                color: '#fff', cursor: backendReady ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, fontSize: 13,
+                boxShadow: backendReady ? '0 4px 12px rgba(99,102,241,0.35)' : 'none',
+              }}
+            >
               <Plus size={14} />
             </button>
           </div>
@@ -600,12 +689,14 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     <>
       {editRow && editDraft && renderModal(
         t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
-        setEditDraft, saveEdit, () => { setEditRow(null); setEditDraft(null); }
+        setEditDraft, () => { void saveEdit(); }, () => { setEditRow(null); setEditDraft(null); setSaveError(null); },
       )}
       {deleteRow && renderDeleteModal()}
       {showAdd && renderModal(
         t.empAddTitle || "Yangi xodim qo'shish", addDraft,
-        setAddDraft, saveAdd, () => setShowAdd(false)
+        setAddDraft, () => { void saveAdd(); },
+        () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); },
+        true,
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -636,13 +727,18 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
             </div>
 
             {/* Add button */}
-            <button onClick={() => setShowAdd(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              padding: '8px 16px', borderRadius: 11, border: 'none',
-              background: indigo, color: '#fff', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-            }}>
+            <button
+              onClick={() => { setSaveError(null); setShowAdd(true); }}
+              disabled={!backendReady}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '8px 16px', borderRadius: 11, border: 'none',
+                background: backendReady ? indigo : (D ? '#374151' : '#d1d5db'),
+                color: '#fff', fontSize: 13, fontWeight: 600,
+                cursor: backendReady ? 'pointer' : 'not-allowed',
+                boxShadow: backendReady ? '0 4px 14px rgba(99,102,241,0.35)' : 'none',
+              }}
+            >
               <Plus size={14} />
               {t.empAddBtn || "Qo'shish"}
             </button>
@@ -667,7 +763,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                   { label: t.empPositionCol || 'Lavozim', w: 160 },
                   { label: t.empPhoneCol || 'Telefon', w: 150 },
                   ...(selectedCompanyIds.size > 1 ? [{ label: t.empOrgCol || 'Tashkilot', w: 110 }] : []),
-                  { label: '', w: 160 },
+                  { label: t.empActionsCol || 'Amallar', w: 160 },
                 ].map((col, i) => (
                   <th key={i} style={{
                     padding: '11px 14px', textAlign: 'left',
@@ -685,7 +781,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 const orgInfo = COMPANIES.find(c => c.id === emp.orgId);
                 return (
                   <tr
-                    key={`${emp.orgId}-${emp.tabel}-${i}`}
+                    key={emp.backendUserId || `${emp.orgId}-${emp.tabel}-${i}`}
                     style={{
                       background: i % 2 === 0 ? bg : rowAlt,
                       borderBottom: i < employees.length - 1

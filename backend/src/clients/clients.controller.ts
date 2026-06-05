@@ -16,6 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiConsumes } from '@nestjs/swagg
 import { memoryStorage } from 'multer';
 import { ClientsService } from './clients.service';
 import { ClientsUploadService } from './clients-upload.service';
+import { ClientRequestsService } from './client-requests.service';
 import { ClientReconciliationService } from './client-reconciliation.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';

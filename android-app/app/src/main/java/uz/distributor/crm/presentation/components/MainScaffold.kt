@@ -9,7 +9,7 @@ import androidx.compose.ui.graphics.luminance
 
 @Composable
 fun MainScaffold(
-    currentTab: NavTab,
+    currentTab: NavTab?,
     onTabSelected: (NavTab) -> Unit,
     content: @Composable (PaddingValues) -> Unit,
 ) {

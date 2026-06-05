@@ -58,7 +58,7 @@ val NavTab.route: String
 
 @Composable
 fun BottomNavBar(
-    selected: NavTab,
+    selected: NavTab?,
     onTabSelected: (NavTab) -> Unit,
     isDark: Boolean,
     modifier: Modifier = Modifier,
@@ -86,18 +86,15 @@ fun BottomNavBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             tabs.forEach { (tab, icon, label) ->
-                val active = selected == tab
+                val active = selected != null && selected == tab
                 val activeColor = SherinColors.Primary
                 val inactiveColor = if (isDark) SherinColors.NavInactiveDark else SherinColors.NavInactiveLight
-                val enabled = tab != NavTab.DELIVERY
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(enabled = enabled) {
-                            if (enabled) onTabSelected(tab)
-                        }
+                        .clickable(onClick = { onTabSelected(tab) })
                         .padding(vertical = 8.dp),
                 ) {
                     Box(contentAlignment = Alignment.TopCenter) {
