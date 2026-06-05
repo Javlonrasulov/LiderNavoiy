@@ -18,25 +18,29 @@ export class ClientsService {
       .leftJoinAndSelect('distributor.user', 'agentUser');
   }
 
-  findAll(companyId?: string, lineCode?: string) {
+  findAll(companyId?: string, lineCode?: string, distributorId?: string) {
     const qb = this.baseQuery().where('c.isActive = true');
     if (companyId) qb.andWhere('c.companyId = :companyId', { companyId });
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
+    if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
     return qb.orderBy('c.name', 'ASC').getMany();
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, distributorId?: string) {
     const client = await this.baseQuery().where('c.id = :id', { id }).getOne();
     if (!client) throw new NotFoundException('Client not found');
+    if (distributorId && client.distributorId !== distributorId) {
+      throw new NotFoundException('Client not found');
+    }
     return client;
   }
 
-  search(query: string) {
-    return this.baseQuery()
+  search(query: string, distributorId?: string) {
+    const qb = this.baseQuery()
       .where('c.isActive = true')
-      .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` })
-      .limit(50)
-      .getMany();
+      .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
+    if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
+    return qb.limit(50).getMany();
   }
 
   async create(dto: CreateClientDto) {

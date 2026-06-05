@@ -22,6 +22,7 @@ const T: Record<Lang, Record<string, string>> = {
     loading:     'Tekshirilmoqda...',
     errEmpty:    "Login va parolni kiriting",
     errWrong:    "Login yoki parol noto'g'ri",
+    errBackend:  "Backend ulanmagan. Avval backend ni ishga tushiring (localhost:3000)",
     demo:        'Demo',
     footer:      'Lider CRM tizimi — v2.0 · Barcha huquqlar himoyalangan',
   },
@@ -34,6 +35,7 @@ const T: Record<Lang, Record<string, string>> = {
     loading:     'Текширилмоқда...',
     errEmpty:    "Логин ва паролни киритинг",
     errWrong:    "Логин ёки парол нотўғри",
+    errBackend:  "Backend уланмаган. Аввал backend ни ишга туширинг (localhost:3000)",
     demo:        'Демо',
     footer:      'Lider CRM тизими — v2.0 · Барча ҳуқуқлар ҳимояланган',
   },
@@ -46,6 +48,7 @@ const T: Record<Lang, Record<string, string>> = {
     loading:     'Проверяем...',
     errEmpty:    "Введите логин и пароль",
     errWrong:    "Неверный логин или пароль",
+    errBackend:  "Backend недоступен. Сначала запустите backend (localhost:3000)",
     demo:        'Демо',
     footer:      'Lider CRM система — v2.0 · Все права защищены',
   },
@@ -92,16 +95,13 @@ export default function AdminLogin() {
       const userData = { name: res.user.fullName, role: res.user.role };
       login(username.trim(), password.trim(), userData);
       navigate('/admin/select');
-    } catch {
+    } catch (err) {
       clearTokens();
-      const ok = login(username.trim(), password.trim());
-      if (ok) {
-        navigate('/admin/select');
-      } else {
-        setError(t.errWrong);
-        setShake(true);
-        setTimeout(() => setShake(false), 500);
-      }
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      const isNetwork = msg.includes('fetch') || msg.includes('network') || msg.includes('failed') || msg.includes('refused') || msg.includes('http');
+      setError(isNetwork ? t.errBackend : (err instanceof Error ? err.message : t.errWrong));
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
     } finally {
       setLoading(false);
     }

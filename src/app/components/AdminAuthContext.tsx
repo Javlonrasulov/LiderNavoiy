@@ -95,7 +95,15 @@ const ADMIN_CREDENTIALS = [
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('admin_logged_in') === 'true';
+    const logged = localStorage.getItem('admin_logged_in') === 'true';
+    const hasToken = !!localStorage.getItem('api_access_token');
+    if (logged && !hasToken) {
+      localStorage.removeItem('admin_logged_in');
+      localStorage.removeItem('admin_user');
+      localStorage.removeItem('admin_company');
+      return false;
+    }
+    return logged;
   });
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(() => {
     const saved = localStorage.getItem('admin_company');

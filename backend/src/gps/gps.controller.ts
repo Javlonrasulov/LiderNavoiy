@@ -58,11 +58,15 @@ export class GpsController {
 
   @Get('nearby-clients')
   @ApiOperation({ summary: 'Find clients within radius (PostGIS)' })
-  nearbyClients(@Query() query: NearbyClientsQueryDto) {
+  nearbyClients(
+    @Request() req: { user: User },
+    @Query() query: NearbyClientsQueryDto,
+  ) {
     return this.gpsService.findNearbyClients(
       query.latitude,
       query.longitude,
       query.radiusMeters ?? 500,
+      req.user.distributorProfile?.id,
     );
   }
 }

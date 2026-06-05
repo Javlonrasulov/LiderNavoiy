@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
 import { fmtFull, type ClientRow } from '../../../data/adminData';
@@ -23,6 +23,11 @@ function hasApiToken(): boolean {
 const TODAY = '2026-03-08';
 const INACTIVE_CUTOFF = '2026-03-01';
 const PER_PAGE = 20;
+const NO_AGENT_KEY = '__none__';
+
+function uniqueField(clients: ClientRow[], pick: (c: ClientRow) => string) {
+  return [...new Set(clients.map(pick).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
 
 const PHOTOS = demo([
   'https://images.unsplash.com/photo-1717233464702-090e655f7a4f?w=900&q=80',
@@ -50,11 +55,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [lines, setLines] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [clientPage, setClientPage] = useState(1);
   const [showClientFilter, setShowClientFilter] = useState(false);
   const [clientCatFilter, setClientCatFilter] = useState<Set<string>>(new Set());
+  const [clientAgentFilter, setClientAgentFilter] = useState<Set<string>>(new Set());
+  const [clientLineFilter, setClientLineFilter] = useState<Set<string>>(new Set());
+  const [clientTerritoryFilter, setClientTerritoryFilter] = useState<Set<string>>(new Set());
+  const [clientClsFilter, setClientClsFilter] = useState<Set<string>>(new Set());
+  const [clientPriceCatFilter, setClientPriceCatFilter] = useState<Set<string>>(new Set());
+  const [clientGpsFilter, setClientGpsFilter] = useState<'all' | 'with_gps' | 'no_gps'>('all');
   const [clientStatusFilter, setClientStatusFilter] = useState<'all' | 'debtors' | 'inactive' | 'surplus'>('all');
   const [activeClient, setActiveClient] = useState<ClientRow | null>(null);
   const [clientMapOpen, setClientMapOpen] = useState(false);
@@ -76,11 +88,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       setAgents([]);
       setLines([]);
       setBackendReady(false);
+      setLoadError(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     setSaveError(null);
+    setLoadError(null);
     try {
       const [rawClients, distributors] = await Promise.all([
         api.getClients(companyId),
@@ -91,11 +105,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       setLines(distributorsToLines(distributors));
       setClients(rawClients.map(apiClientToRow));
       setBackendReady(true);
-    } catch {
+    } catch (e) {
       setClients([]);
       setAgents([]);
       setLines([]);
       setBackendReady(false);
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNetwork = /fetch|network|failed|refused|ulanmagan/i.test(msg);
+      setLoadError(
+        isNetwork
+          ? (t.userErrBackendDown || "Backend ishlamayapti. Terminalda: cd backend && npm run start:dev")
+          : msg,
+      );
     } finally {
       setLoading(false);
     }
@@ -137,15 +158,46 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     }
   };
 
+  const agentOptions = useMemo(() => {
+    const names = new Set(agents.map(a => a.name));
+    clients.forEach(c => { if (c.agent) names.add(c.agent); });
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [agents, clients]);
+
+  const lineOptions = useMemo(() => {
+    const codes = new Set(lines);
+    clients.forEach(c => { if (c.line) codes.add(c.line); });
+    return [...codes].sort((a, b) => a.localeCompare(b));
+  }, [lines, clients]);
+
+  const territoryOptions = useMemo(() => uniqueField(clients, c => c.territory), [clients]);
+  const clsOptions = useMemo(() => uniqueField(clients, c => c.cls), [clients]);
+  const priceCatOptions = useMemo(() => uniqueField(clients, c => c.priceCat), [clients]);
+  const hasUnassignedAgents = useMemo(() => clients.some(c => !c.agent), [clients]);
+
   const filtered = clients.filter(c => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       c.name.toLowerCase().includes(q) ||
       c.code.includes(q) ||
       c.phone.replace(/\s/g,'').includes(q.replace(/\s/g,'')) ||
+      c.agent.toLowerCase().includes(q) ||
+      c.territory.toLowerCase().includes(q) ||
+      c.line.toLowerCase().includes(q) ||
       String(c.id).includes(q);
     if (!matchSearch) return false;
     if (clientCatFilter.size > 0 && !clientCatFilter.has(c.category)) return false;
+    if (clientAgentFilter.size > 0) {
+      const noAgentSelected = clientAgentFilter.has(NO_AGENT_KEY);
+      const agentSelected = c.agent && clientAgentFilter.has(c.agent);
+      if (!agentSelected && !(noAgentSelected && !c.agent)) return false;
+    }
+    if (clientLineFilter.size > 0 && !clientLineFilter.has(c.line)) return false;
+    if (clientTerritoryFilter.size > 0 && !clientTerritoryFilter.has(c.territory)) return false;
+    if (clientClsFilter.size > 0 && !clientClsFilter.has(c.cls)) return false;
+    if (clientPriceCatFilter.size > 0 && !clientPriceCatFilter.has(c.priceCat)) return false;
+    if (clientGpsFilter === 'with_gps' && !c.gps) return false;
+    if (clientGpsFilter === 'no_gps' && c.gps) return false;
     if (clientStatusFilter === 'debtors'  && c.balance >= 0) return false;
     if (clientStatusFilter === 'surplus'  && c.balance <= 0) return false;
     if (clientStatusFilter === 'inactive' && c.lastVisit >= INACTIVE_CUTOFF) return false;
@@ -178,16 +230,43 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     XLSX.writeFile(wb, `mijozlar_${TODAY}.xlsx`);
   };
 
-  const toggleCat = (cat: string) => {
-    setClientCatFilter(prev => {
+  const toggleSet = (
+    setter: Dispatch<SetStateAction<Set<string>>>,
+    value: string,
+  ) => {
+    setter(prev => {
       const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
+      next.has(value) ? next.delete(value) : next.add(value);
       return next;
     });
     setClientPage(1);
   };
 
-  const hasActiveFilter = clientCatFilter.size > 0 || clientStatusFilter !== 'all';
+  const toggleCat = (cat: string) => toggleSet(setClientCatFilter, cat);
+
+  const clearAllFilters = () => {
+    setClientCatFilter(new Set());
+    setClientAgentFilter(new Set());
+    setClientLineFilter(new Set());
+    setClientTerritoryFilter(new Set());
+    setClientClsFilter(new Set());
+    setClientPriceCatFilter(new Set());
+    setClientGpsFilter('all');
+    setClientStatusFilter('all');
+    setClientPage(1);
+  };
+
+  const activeFilterCount =
+    clientCatFilter.size +
+    clientAgentFilter.size +
+    clientLineFilter.size +
+    clientTerritoryFilter.size +
+    clientClsFilter.size +
+    clientPriceCatFilter.size +
+    (clientGpsFilter !== 'all' ? 1 : 0) +
+    (clientStatusFilter !== 'all' ? 1 : 0);
+
+  const hasActiveFilter = activeFilterCount > 0;
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const safePage   = Math.min(clientPage, totalPages);
   const paginated  = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
@@ -246,17 +325,19 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     { l: t.inactiveClientsLabel,     v: clients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
   ];
 
-  const listEmptyMessage = !backendReady
-    ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
-    : loading
-      ? (t.loading || 'Yuklanmoqda...')
-      : (t.noResults || "Ma'lumot topilmadi");
+  const listEmptyMessage = loading
+    ? (t.loading || 'Yuklanmoqda...')
+    : loadError
+      ? loadError
+      : !hasApiToken()
+        ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
+        : (t.noResults || "Ma'lumot topilmadi");
 
   return (
     <div className="space-y-3">
-      {saveError && (
+      {(saveError || loadError) && (
         <div className={`px-3 py-2 rounded-xl text-sm border ${D ? 'bg-rose-900/30 border-rose-800 text-rose-300' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-          {saveError}
+          {saveError || loadError}
         </div>
       )}
       {/* Header */}
@@ -281,15 +362,59 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               <Filter size={12} /> {t.filterBtn}
               {hasActiveFilter && (
                 <span className="ml-0.5 bg-white/30 rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold">
-                  {clientCatFilter.size + (clientStatusFilter !== 'all' ? 1 : 0)}
+                  {activeFilterCount}
                 </span>
               )}
             </button>
             {showClientFilter && (
               <>
                 <div className="fixed inset-0 z-[90]" onClick={() => setShowClientFilter(false)} />
-                <div className={`absolute right-0 top-full mt-2 z-[91] w-56 rounded-2xl border shadow-2xl p-4 space-y-4
+                <div className={`absolute right-0 top-full mt-2 z-[91] w-80 max-h-[min(80vh,520px)] overflow-y-auto rounded-2xl border shadow-2xl p-4 space-y-4
                   ${D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-100'}`}>
+                  {/* Agent */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.agentFilterLabel || t.colAgent}</p>
+                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                      {hasUnassignedAgents && (
+                        <button onClick={() => toggleSet(setClientAgentFilter, NO_AGENT_KEY)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                            ${clientAgentFilter.has(NO_AGENT_KEY) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                          <span className={clientAgentFilter.has(NO_AGENT_KEY) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}>{t.noAgentLabel || 'Agentsiz'}</span>
+                          {clientAgentFilter.has(NO_AGENT_KEY) && <Check size={11} className="ml-auto text-indigo-400" />}
+                        </button>
+                      )}
+                      {agentOptions.map(name => (
+                        <button key={name} onClick={() => toggleSet(setClientAgentFilter, name)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                            ${clientAgentFilter.has(name) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                          <span className={`truncate ${clientAgentFilter.has(name) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{name}</span>
+                          {clientAgentFilter.has(name) && <Check size={11} className="ml-auto text-indigo-400 flex-shrink-0" />}
+                        </button>
+                      ))}
+                      {agentOptions.length === 0 && !hasUnassignedAgents && (
+                        <p className={`text-xs px-2 ${sub}`}>{t.noResults}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Yo'nalish / Liniya */}
+                  {lineOptions.length > 0 && (
+                    <div>
+                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.lineFilterLabel || t.colLine}</p>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {lineOptions.map(line => (
+                          <button key={line} onClick={() => toggleSet(setClientLineFilter, line)}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                              ${clientLineFilter.has(line) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                            <span className={clientLineFilter.has(line) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}>{line}</span>
+                            {clientLineFilter.has(line) && <Check size={11} className="ml-auto text-indigo-400" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Kategoriya */}
                   <div>
                     <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.catFilterLabel}</p>
                     <div className="space-y-1.5">
@@ -311,12 +436,88 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                       })}
                     </div>
                   </div>
+
+                  {/* Hudud */}
+                  {territoryOptions.length > 0 && (
+                    <div>
+                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.territoryFilterLabel || t.colTerritory}</p>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {territoryOptions.map(ter => (
+                          <button key={ter} onClick={() => toggleSet(setClientTerritoryFilter, ter)}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                              ${clientTerritoryFilter.has(ter) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                            <span className={`truncate ${clientTerritoryFilter.has(ter) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{ter}</span>
+                            {clientTerritoryFilter.has(ter) && <Check size={11} className="ml-auto text-indigo-400 flex-shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sinf */}
+                  {clsOptions.length > 0 && (
+                    <div>
+                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.classFilterLabel || t.colClass}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {clsOptions.map(cls => (
+                          <button key={cls} onClick={() => toggleSet(setClientClsFilter, cls)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
+                              ${clientClsFilter.has(cls)
+                                ? 'bg-indigo-500 text-white'
+                                : D ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
+                            {cls}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Narx zonasi */}
+                  {priceCatOptions.length > 0 && (
+                    <div>
+                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.priceCatFilterLabel || t.colPriceCat}</p>
+                      <div className="space-y-1 max-h-28 overflow-y-auto">
+                        {priceCatOptions.map(pc => (
+                          <button key={pc} onClick={() => toggleSet(setClientPriceCatFilter, pc)}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                              ${clientPriceCatFilter.has(pc) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                            <span className={`truncate ${clientPriceCatFilter.has(pc) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{pc}</span>
+                            {clientPriceCatFilter.has(pc) && <Check size={11} className="ml-auto text-indigo-400 flex-shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GPS */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.gpsFilterLabel || t.colGPS}</p>
+                    <div className="space-y-1">
+                      {[
+                        { key: 'all', label: t.allLabel || 'Barchasi' },
+                        { key: 'with_gps', label: t.withGpsLabel || 'GPS bor' },
+                        { key: 'no_gps', label: t.noGpsLabel || "GPS yo'q" },
+                      ].map(({ key, label }) => (
+                        <button key={key}
+                          onClick={() => { setClientGpsFilter(key as typeof clientGpsFilter); setClientPage(1); }}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
+                            ${clientGpsFilter === key
+                              ? D ? 'bg-white/10 text-white font-medium' : 'bg-indigo-50 text-indigo-700 font-medium'
+                              : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                          <span>{label}</span>
+                          {clientGpsFilter === key && <Check size={11} className="ml-auto text-indigo-400" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Balans holati */}
                   <div>
                     <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.statusLabel}</p>
                     <div className="space-y-1">
                       {statusOptions.map(({ key, label }) => (
                         <button key={key}
-                          onClick={() => { setClientStatusFilter(key as any); setClientPage(1); }}
+                          onClick={() => { setClientStatusFilter(key as typeof clientStatusFilter); setClientPage(1); }}
                           className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
                             ${clientStatusFilter === key
                               ? D ? 'bg-white/10 text-white font-medium' : 'bg-indigo-50 text-indigo-700 font-medium'
@@ -327,10 +528,11 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                       ))}
                     </div>
                   </div>
+
                   {hasActiveFilter && (
-                    <button onClick={() => { setClientCatFilter(new Set()); setClientStatusFilter('all'); setClientPage(1); }}
-                      className={`w-full text-xs py-1.5 rounded-xl border transition-colors
-                        ${D ? 'border-gray-700 hover:bg-gray-800 text-gray-400' : 'border-gray-200 hover:bg-gray-50 text-gray-500'}`}>
+                    <button onClick={clearAllFilters}
+                      className={`w-full text-xs py-1.5 rounded-xl border transition-colors sticky bottom-0
+                        ${D ? 'border-gray-700 bg-[#1a1a1a] hover:bg-gray-800 text-gray-400' : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-500'}`}>
                       {t.clearFilter}
                     </button>
                   )}

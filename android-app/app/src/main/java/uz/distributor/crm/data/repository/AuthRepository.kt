@@ -37,6 +37,7 @@ class AuthRepository @Inject constructor(
     private val userIdHolder: UserIdHolder,
     private val trackingSocket: TrackingSocketManager,
     private val messagesSocket: MessagesSocketManager,
+    private val clientRepository: ClientRepository,
 ) {
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
@@ -63,6 +64,7 @@ class AuthRepository @Inject constructor(
                 companyName = response.user.companyName,
             ),
         )
+        clientRepository.clearCache()
         saveTokens(tokens)
         return tokens
     }
@@ -75,6 +77,7 @@ class AuthRepository @Inject constructor(
             userIdHolder.userId = gson.fromJson(it, AuthUser::class.java).id
         }
         if (token != null) {
+            clientRepository.clearCache()
             trackingSocket.connect()
             messagesSocket.connect()
         }
@@ -118,6 +121,7 @@ class AuthRepository @Inject constructor(
     suspend fun logout() {
         trackingSocket.disconnect()
         messagesSocket.disconnect()
+        clientRepository.clearCache()
         tokenHolder.setToken(null)
         userIdHolder.userId = null
         context.dataStore.edit { it.clear() }

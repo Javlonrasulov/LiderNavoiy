@@ -24,7 +24,7 @@ class ClientsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ClientsUiState())
     val uiState = _uiState.asStateFlow()
 
-    init { loadClients() }
+    init { loadClients(force = true) }
 
     fun onSearchChange(q: String) {
         _uiState.update { it.copy(searchQuery = q) }

@@ -108,7 +108,19 @@ export class GpsService {
     };
   }
 
-  async findNearbyClients(latitude: number, longitude: number, radiusMeters = 500) {
+  async findNearbyClients(
+    latitude: number,
+    longitude: number,
+    radiusMeters = 500,
+    distributorId?: string,
+  ) {
+    const params: Array<number | string> = [longitude, latitude, radiusMeters];
+    let distributorFilter = '';
+    if (distributorId) {
+      params.push(distributorId);
+      distributorFilter = `AND c.distributor_id = $${params.length}`;
+    }
+
     const result = await this.locationRepo.query(
       `
       SELECT c.id, c.code, c.name, c.address, c.balance,
@@ -120,6 +132,7 @@ export class GpsService {
       WHERE c.latitude IS NOT NULL
         AND c.longitude IS NOT NULL
         AND c.is_active = true
+        ${distributorFilter}
         AND ST_DWithin(
           ST_SetSRID(ST_MakePoint(c.longitude, c.latitude), 4326)::geography,
           ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
@@ -128,7 +141,7 @@ export class GpsService {
       ORDER BY distance_meters ASC
       LIMIT 50
       `,
-      [longitude, latitude, radiusMeters],
+      params,
     );
 
     return result;

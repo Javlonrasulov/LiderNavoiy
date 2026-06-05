@@ -35,8 +35,13 @@ class ClientRepository @Inject constructor(
         }
     }
 
+    suspend fun clearCache() {
+        db.clientDao().clearAll()
+    }
+
     private suspend fun refreshFromApi() {
         try {
+            db.clientDao().clearAll()
             val dtos = api.getClients()
             db.clientDao().insertAll(dtos.map { it.toEntity() })
         } catch (_: Exception) { /* use cache */ }

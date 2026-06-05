@@ -106,7 +106,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new Error(`Backend ulanmagan (${API_BASE})`);
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     const msg = err.message;

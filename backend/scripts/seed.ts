@@ -86,7 +86,11 @@ async function seed() {
     await profileRepo.save(profile);
   }
 
-  // Clients
+  const agentProfile = await profileRepo.findOne({
+    where: { userId: agent.id },
+  });
+
+  // Clients — agent001 ga biriktirilgan
   for (const c of CLIENTS) {
     const exists = await clientRepo.findOne({ where: { code: c.code } });
     if (!exists) {
@@ -100,8 +104,12 @@ async function seed() {
         companyId: 'boran',
         lineCode: '01',
         category: 'Standard',
+        distributorId: agentProfile?.id ?? null,
         isActive: true,
       }));
+    } else if (agentProfile?.id && !exists.distributorId) {
+      exists.distributorId = agentProfile.id;
+      await clientRepo.save(exists);
     }
   }
 

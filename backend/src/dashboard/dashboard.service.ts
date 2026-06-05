@@ -19,7 +19,9 @@ export class DashboardService {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    const totalClients = await this.clientRepo.count({ where: { isActive: true } });
+    const totalClients = await this.clientRepo.count({
+      where: { isActive: true, distributorId },
+    });
 
     const visitsToday = await this.visitRepo.count({
       where: {

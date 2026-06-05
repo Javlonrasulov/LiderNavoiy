@@ -97,6 +97,11 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!isLoggedIn) { navigate('/admin/login'); return; }
+    if (!localStorage.getItem('api_access_token')) {
+      logout();
+      navigate('/admin/login');
+      return;
+    }
     if (!selectedCompany) { navigate('/admin/select'); return; }
   }, [isLoggedIn, selectedCompany]);
 

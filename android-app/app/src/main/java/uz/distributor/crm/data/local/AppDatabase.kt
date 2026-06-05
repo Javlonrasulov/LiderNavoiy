@@ -89,6 +89,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 
 @Dao interface ClientDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(clients: List<ClientEntity>)
+    @Query("DELETE FROM clients_cache") suspend fun clearAll()
     @Query("SELECT * FROM clients_cache ORDER BY name ASC") suspend fun getAll(): List<ClientEntity>
     @Query("SELECT * FROM clients_cache WHERE id = :id") suspend fun getById(id: String): ClientEntity?
     @Query("SELECT * FROM clients_cache WHERE name LIKE '%' || :q || '%' OR code LIKE '%' || :q || '%'")
