@@ -121,40 +121,65 @@ export class ClientsController {
     return this.uploadService.savePhoto(file);
   }
 
+  private async applyAppCredentials(
+    clientId: string,
+    dto: { appUsername?: string; appPassword?: string },
+    user: User,
+  ) {
+    const username = dto.appUsername?.trim().toLowerCase();
+    const password = dto.appPassword;
+    if (!username || !password) return;
+    await this.credentialsService.setCredentials(
+      clientId,
+      { username, password },
+      user,
+    );
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create client' })
-  create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
+  async create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
+    const { appUsername, appPassword, ...clientDto } = dto;
     const distributorId = this.scopeDistributorId(req.user);
     if (req.user.role === UserRole.DISTRIBUTOR) {
       const agentName = req.user.fullName ?? req.user.username;
       const requestDto: CreateClientRequestDto = {
-        name: dto.name,
-        fullName: dto.fullName,
-        phone: dto.phone,
-        address: dto.address,
-        companyId: dto.companyId ?? req.user.distributorProfile?.companyId ?? undefined,
-        lineCode: dto.lineCode,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
-        category: dto.category,
-        inn: dto.inn,
-        contactPerson: dto.contactPerson,
-        territory: dto.territory,
-        clientClass: dto.clientClass,
-        priceCategory: dto.priceCategory,
-        photoUrl: dto.photoUrl,
+        name: clientDto.name,
+        fullName: clientDto.fullName,
+        phone: clientDto.phone,
+        address: clientDto.address,
+        companyId: clientDto.companyId ?? req.user.distributorProfile?.companyId ?? undefined,
+        lineCode: clientDto.lineCode,
+        latitude: clientDto.latitude,
+        longitude: clientDto.longitude,
+        category: clientDto.category,
+        inn: clientDto.inn,
+        contactPerson: clientDto.contactPerson,
+        territory: clientDto.territory,
+        clientClass: clientDto.clientClass,
+        priceCategory: clientDto.priceCategory,
+        photoUrl: clientDto.photoUrl,
       };
       return this.requestsService.create(requestDto, distributorId, agentName);
     }
-    return this.service.create({
-      ...dto,
-      distributorId: dto.distributorId ?? distributorId,
+    const client = await this.service.create({
+      ...clientDto,
+      distributorId: clientDto.distributorId ?? distributorId,
     });
+    await this.applyAppCredentials(client.id, { appUsername, appPassword }, req.user);
+    return client;
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update client' })
-  update(@Param('id') id: string, @Body() dto: UpdateClientDto) {
-    return this.service.update(id, dto);
+  async update(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: UpdateClientDto,
+  ) {
+    const { appUsername, appPassword, ...clientDto } = dto;
+    const client = await this.service.update(id, clientDto);
+    await this.applyAppCredentials(id, { appUsername, appPassword }, req.user);
+    return client;
   }
 }

@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
 import { ClientRequestsService } from './client-requests.service';
+import { ClientCredentialsService } from './client-credentials.service';
 import { CreateClientRequestDto } from './dto/client-request.dto';
 
 @ApiTags('Client Requests')
@@ -20,7 +21,10 @@ import { CreateClientRequestDto } from './dto/client-request.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('client-requests')
 export class ClientRequestsController {
-  constructor(private readonly service: ClientRequestsService) {}
+  constructor(
+    private readonly service: ClientRequestsService,
+    private readonly credentialsService: ClientCredentialsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List pending client requests (admin)' })
@@ -63,9 +67,11 @@ export class ClientRequestsController {
 
   @Post(':id/approve')
   @ApiOperation({ summary: 'Admin approves client request' })
-  approve(@Request() req: { user: User }, @Param('id') id: string) {
+  async approve(@Request() req: { user: User }, @Param('id') id: string) {
     const reviewer = req.user.fullName ?? req.user.username;
-    return this.service.approve(id, reviewer);
+    const result = await this.service.approve(id, reviewer);
+    await this.credentialsService.ensureDefaultCredentials(result.client.id, req.user);
+    return result;
   }
 
   @Post(':id/reject')

@@ -279,6 +279,8 @@ export const api = {
     territory?: string;
     clientClass?: string;
     priceCategory?: string;
+    appUsername?: string;
+    appPassword?: string;
   }) =>
     request<Client>('/clients', {
       method: 'POST',
@@ -302,6 +304,8 @@ export const api = {
     clientClass?: string;
     priceCategory?: string;
     isActive?: boolean;
+    appUsername?: string;
+    appPassword?: string;
   }) =>
     request<Client>(`/clients/${id}`, {
       method: 'PATCH',

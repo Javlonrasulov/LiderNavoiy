@@ -31,8 +31,9 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
+    const username = dto.username.trim().toLowerCase();
     const user = await this.userRepo.findOne({
-      where: { username: dto.username, isActive: true },
+      where: { username, isActive: true },
       relations: ['distributorProfile', 'client'],
     });
 

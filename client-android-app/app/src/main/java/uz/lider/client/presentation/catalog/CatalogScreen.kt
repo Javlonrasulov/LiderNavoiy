@@ -53,6 +53,7 @@ import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.clientCard
+import uz.lider.client.presentation.components.clientPageBackground
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.rememberClientPalette
@@ -70,7 +71,7 @@ fun CatalogScreen(
     val products = viewModel.filteredProducts()
     val categories = listOf(localized("cat_all")) + state.categories
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().clientPageBackground()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(localized("cat_title"), color = palette.text, fontWeight = FontWeight.Bold, fontSize = 22.sp)
@@ -138,9 +139,16 @@ fun CatalogScreen(
                     ) {
                         Icon(Icons.Default.Sort, null, tint = palette.primary)
                     }
-                    DropdownMenu(expanded = state.sortMenuOpen, onDismissRequest = { viewModel.toggleSortMenu() }) {
+                    DropdownMenu(
+                        expanded = state.sortMenuOpen,
+                        onDismissRequest = { viewModel.toggleSortMenu() },
+                        containerColor = palette.card,
+                    ) {
                         sortOptions().forEach { (sort, label) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { viewModel.onSortChange(sort) })
+                            DropdownMenuItem(
+                                text = { Text(label, color = palette.text) },
+                                onClick = { viewModel.onSortChange(sort) },
+                            )
                         }
                     }
                 }

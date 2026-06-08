@@ -21,7 +21,8 @@ import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientTabScaffold(
-    title: String,
+    title: String? = null,
+    titleContent: (@Composable () -> Unit)? = null,
     bottomPadding: Boolean = false,
     actions: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
@@ -32,7 +33,10 @@ fun ClientTabScaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(title, fontWeight = FontWeight.Bold, color = palette.text)
+                    when {
+                        titleContent != null -> titleContent()
+                        title != null -> Text(title, fontWeight = FontWeight.Bold, color = palette.text)
+                    }
                 },
                 actions = { actions() },
                 colors = TopAppBarDefaults.topAppBarColors(

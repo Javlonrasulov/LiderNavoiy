@@ -5,9 +5,12 @@ import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ClientOrderDto
 import uz.lider.client.data.remote.dto.CreateOrderRequest
 import uz.lider.client.data.remote.dto.OrderItemDto
+import uz.lider.client.data.remote.dto.OrderTrackingDto
 import uz.lider.client.domain.model.CartItem
 import uz.lider.client.domain.model.ClientOrder
+import uz.lider.client.domain.model.CourierTracking
 import uz.lider.client.domain.model.OrderItem
+import uz.lider.client.domain.model.OrderTrackingDetails
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,6 +47,33 @@ class OrderRepository @Inject constructor(
     suspend fun getOrder(id: String): ClientOrder? {
         return getOrders().firstOrNull { it.id == id }
     }
+
+    suspend fun getOrderTracking(orderId: String): OrderTrackingDetails? {
+        return try {
+            api.getOrderTracking(orderId).toDomain()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun OrderTrackingDto.toDomain() = OrderTrackingDetails(
+        orderId = orderId,
+        status = status,
+        totalAmount = totalAmount,
+        deliveryAddress = deliveryAddress,
+        deliveryLatitude = deliveryLatitude,
+        deliveryLongitude = deliveryLongitude,
+        distanceKm = distanceKm,
+        etaMinutes = etaMinutes,
+        courier = courier?.let {
+            CourierTracking(
+                name = it.name,
+                isOnline = it.isOnline,
+                latitude = it.latitude,
+                longitude = it.longitude,
+            )
+        },
+    )
 
     private fun ClientOrderDto.toDomain() = ClientOrder(
         id = id,

@@ -45,6 +45,7 @@ import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientBackButton
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.clientCard
+import uz.lider.client.presentation.components.clientPageBackground
 import uz.lider.client.presentation.components.formatQty
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
@@ -63,7 +64,7 @@ fun ProductDetailScreen(
 
     LaunchedEffect(productId) { viewModel.load(productId) }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().clientPageBackground()) {
         Row(
             Modifier
                 .fillMaxWidth()

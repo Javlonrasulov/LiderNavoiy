@@ -6,6 +6,7 @@ import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 import type { ClientRow } from '../data/adminData';
 import { api } from '../api/client';
+import { clientNameToLogin, DEFAULT_CLIENT_APP_PASSWORD } from '../utils/clientApi';
 
 export interface AgentOption {
   id: string;
@@ -18,15 +19,21 @@ interface AddClientProps {
   client?: ClientRow;
   agents?: AgentOption[];
   lines?: string[];
-  onSave?: (data: Partial<ClientRow> & { id?: string }) => Promise<string | void> | void | Promise<void>;
+  onSave?: (data: Partial<ClientRow> & {
+    id?: string;
+    appUsername?: string;
+    appPassword?: string;
+    appLoginChanged?: boolean;
+    hasAppLogin?: boolean;
+  }) => Promise<string | void> | void | Promise<void>;
 }
-type TabKey = 'rekvizit' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
+type TabKey = 'rekvizit' | 'kirish' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
 
 const TRANS = {
   uz_latn: {
     saveClose: "Saqlash va yopish", close: "Yopish",
     addNew: "Yangi mijoz qo'shish", editNew: "Mijozni tahrirlash",
-    tabs: ["Rekvizitlar", "Kontaktlar", "Yo'nalishlar", "Xarita", "Foto", "Holat"],
+    tabs: ["Rekvizitlar", "Kirish", "Kontaktlar", "Yo'nalishlar", "Xarita", "Foto", "Holat"],
     secNomi: "NOMI", secBank: "BANK", secOrg: "TASHKILOT",
     secGps: "GPS / MANZIL", secInn: "INN / JSHSHIR",
     secAkt: "TASDIQLANGAN AKT-SVERKA", secSizes: "O'LCHAMLAR",
@@ -61,11 +68,14 @@ const TRANS = {
     appPasswordRequired: "Parol kamida 6 ta belgi bo'lishi kerak",
     appCredentialsSaved: "APK login saqlandi",
     appCredentialsError: "APK login saqlab bo'lmadi",
+    appNotSaved: "Saqlanmagan — «Saqlash va yopish» bosing",
+    appSaved: "Saqlangan",
+    appSaveLogin: "Login saqlash",
   },
   uz_cyrl: {
     saveClose: "Сақлаш ва ёпиш", close: "Ёпиш",
     addNew: "Янги мижоз қўшиш", editNew: "Мижозни таҳрирлаш",
-    tabs: ["Реквизитлар", "Контактлар", "Йўналишлар", "Харита", "Фото", "Ҳолат"],
+    tabs: ["Реквизитлар", "Кириш", "Контактлар", "Йўналишлар", "Харита", "Фото", "Ҳолат"],
     secNomi: "НОМИ", secBank: "БАНК", secOrg: "ТАШКИЛОТ",
     secGps: "GPS / МАНЗИЛ", secInn: "ИНН / ЖШШИР",
     secAkt: "ТАСДИҚЛАНГАН АКТ-СВЕРКА", secSizes: "ЎЛЧАМЛАР",
@@ -100,11 +110,14 @@ const TRANS = {
     appPasswordRequired: "Парол kamida 6 ta belgi bo'lishi kerak",
     appCredentialsSaved: "APK login saqlandi",
     appCredentialsError: "APK login saqlab bo'lmadi",
+    appNotSaved: "Сақланмаган — «Сақлаш ва ёпиш» босинг",
+    appSaved: "Сақланган",
+    appSaveLogin: "Логинни сақлаш",
   },
   ru: {
     saveClose: "Записать и закрыть", close: "Закрыть",
     addNew: "Новый клиент", editNew: "Редактировать клиента",
-    tabs: ["Реквизиты", "Контакты", "Направления", "Карта", "Фото", "Статус"],
+    tabs: ["Реквизиты", "Вход", "Контакты", "Направления", "Карта", "Фото", "Статус"],
     secNomi: "НАИМЕНОВАНИЕ", secBank: "БАНК", secOrg: "ОРГАНИЗАЦИЯ",
     secGps: "GPS / АДРЕС", secInn: "ИНН / ПИНФЛ",
     secAkt: "ПОДТВЕРЖДЁННЫЙ АКТ СВЕРКИ", secSizes: "РАЗМЕРЫ",
@@ -139,6 +152,9 @@ const TRANS = {
     appPasswordRequired: "Пароль — минимум 6 символов",
     appCredentialsSaved: "APK логин сохранён",
     appCredentialsError: "Не удалось сохранить APK логин",
+    appNotSaved: "Не сохранено — нажмите «Записать и закрыть»",
+    appSaved: "Сохранено",
+    appSaveLogin: "Сохранить логин",
   },
 };
 
@@ -220,6 +236,14 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const markerRef       = useRef<L.Marker | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
+  const [appLogin, setAppLogin] = useState('');
+  const [appPassword, setAppPassword] = useState(DEFAULT_CLIENT_APP_PASSWORD);
+  const [showAppPassword, setShowAppPassword] = useState(false);
+  const [hasAppLogin, setHasAppLogin] = useState(false);
+  const [savedAppUsername, setSavedAppUsername] = useState<string | null>(null);
+  const [appCredLoading, setAppCredLoading] = useState(false);
+  const [appCredError, setAppCredError] = useState<string | null>(null);
+  const [appLoginTouched, setAppLoginTouched] = useState(false);
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
@@ -227,9 +251,69 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const lineOptions = lines.length > 0 ? lines : ['01'];
   const priceZoneOptions = lineOptions;
 
+  const resolveCredentialPayload = (force = false) => {
+    const loginTrim = appLogin.trim().toLowerCase();
+    const loginChanged = !!(
+      hasAppLogin && savedAppUsername && loginTrim !== savedAppUsername.toLowerCase()
+    );
+    const passwordForSave = appPassword.length >= 6
+      ? appPassword
+      : (!hasAppLogin && loginTrim.length >= 3 ? DEFAULT_CLIENT_APP_PASSWORD : '');
+    const shouldSave = force
+      ? loginTrim.length >= 3 && passwordForSave.length >= 6
+      : loginTrim.length >= 3
+        && passwordForSave.length >= 6
+        && (!hasAppLogin || loginChanged || appPassword.length >= 6);
+    return { loginTrim, loginChanged, passwordForSave, shouldSave };
+  };
+
+  const markCredentialsSaved = (loginTrim: string) => {
+    setHasAppLogin(true);
+    setSavedAppUsername(loginTrim);
+    setAppLogin(loginTrim);
+    setAppPassword('');
+    setAppCredError(null);
+  };
+
+  const handleSaveAppCredentialsOnly = async () => {
+    const clientId = client?.id;
+    if (!clientId) {
+      setAppCredError(t.appCredentialsError);
+      return;
+    }
+    const { loginTrim, passwordForSave } = resolveCredentialPayload(true);
+    if (loginTrim.length < 3) {
+      setAppCredError(t.appLoginRequired);
+      return;
+    }
+    if (passwordForSave.length < 6) {
+      setAppCredError(t.appPasswordRequired);
+      return;
+    }
+    setAppCredError(null);
+    try {
+      await api.updateClient(clientId, {
+        appUsername: loginTrim,
+        appPassword: passwordForSave,
+      });
+      markCredentialsSaved(loginTrim);
+    } catch (e) {
+      setAppCredError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleSave = async () => {
     if (!onSave) { onClose(); return; }
-    const payload: Partial<ClientRow> & { id?: string } = {
+    setAppCredError(null);
+    const { loginTrim, loginChanged, passwordForSave, shouldSave } = resolveCredentialPayload();
+
+    const payload: Partial<ClientRow> & {
+      id?: string;
+      appUsername?: string;
+      appPassword?: string;
+      appLoginChanged?: boolean;
+      hasAppLogin?: boolean;
+    } = {
       code: form.kod,
       name: form.name,
       fullName: form.officialName || form.name,
@@ -245,6 +329,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       agent: form.agent,
       distributorId: form.distributorId || agents.find(a => a.name === form.agent)?.id,
       category: form.category,
+      hasAppLogin,
+      appLoginChanged: loginChanged,
+      appUsername: shouldSave ? loginTrim : undefined,
+      appPassword: shouldSave ? passwordForSave : undefined,
     };
     try {
       if (isEdit && client) {
@@ -252,11 +340,53 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       } else {
         await onSave(payload);
       }
+      if (shouldSave) markCredentialsSaved(loginTrim);
       onClose();
-    } catch {
-      /* xatolik — modal ochiq qoladi */
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAppCredError(msg);
+      setActiveTab('kirish');
     }
   };
+
+  useEffect(() => {
+    if (!client?.id || !localStorage.getItem('api_access_token')) return;
+    let cancelled = false;
+    setAppCredLoading(true);
+    api.getClientAppCredentials(client.id)
+      .then(cred => {
+        if (cancelled) return;
+        if (cred.hasCredentials) {
+          setHasAppLogin(true);
+          setSavedAppUsername(cred.username);
+          setAppLogin(cred.username);
+          setAppPassword('');
+        } else {
+          setHasAppLogin(false);
+          setSavedAppUsername(null);
+          setAppLoginTouched(false);
+          setAppLogin(clientNameToLogin(client.name, client.code));
+          setAppPassword(DEFAULT_CLIENT_APP_PASSWORD);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAppLogin(clientNameToLogin(client.name, client.code));
+          setAppPassword(DEFAULT_CLIENT_APP_PASSWORD);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAppCredLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [client?.id, client?.code, client?.name]);
+
+  useEffect(() => {
+    if (hasAppLogin || appLoginTouched || appCredLoading) return;
+    const name = form.name.trim();
+    if (!name) return;
+    setAppLogin(clientNameToLogin(name, form.kod || client?.code));
+  }, [form.name, form.kod, client?.code, hasAppLogin, appLoginTouched, appCredLoading]);
 
   useEffect(() => {
     if (activeTab !== 'xarita' || !mapContainerRef.current || mapRef.current) return;
@@ -353,7 +483,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const dropBdr = D ? '#2d3748' : '#e5e7eb';
 
   const TABS: { key: TabKey; label: string }[] = (t.tabs as string[]).map((lbl, i) => ({
-    key: (['rekvizit', 'kontakt', 'yonalish', 'xarita', 'foto', 'status'] as TabKey[])[i],
+    key: (['rekvizit', 'kirish', 'kontakt', 'yonalish', 'xarita', 'foto', 'status'] as TabKey[])[i],
     label: lbl,
   }));
 
@@ -801,6 +931,94 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               <div style={{ padding: '8px 12px', background: bg }} />
             </Grid2>
 
+          </>)}
+
+          {/* ════ KIRISH (APK) ════ */}
+          {activeTab === 'kirish' && (<>
+            <Sec label={t.appLoginTitle.toUpperCase()} />
+            <div style={{
+              margin: '0 12px 12px',
+              padding: '14px 16px',
+              borderRadius: 12,
+              background: D ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)',
+              border: `1px solid ${D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.2)'}`,
+            }}>
+              <div style={{ marginBottom: 10 }}>
+                <span style={{
+                  fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 20,
+                  background: hasAppLogin ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.1)',
+                  color: hasAppLogin ? '#10b981' : '#ef4444',
+                }}>
+                  {hasAppLogin ? `✓ ${t.appSaved}` : t.appNotSaved}
+                </span>
+              </div>
+              {appCredLoading ? (
+                <p style={{ fontSize: 12, color: lblClr, margin: 0 }}>...</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ minWidth: 72, fontSize: 12, color: lblClr }}>{t.appLogin}:</span>
+                    <input
+                      value={appLogin}
+                      onChange={e => { setAppLogin(e.target.value); setAppLoginTouched(true); setAppCredError(null); }}
+                      placeholder="sherinmarket"
+                      style={{ ...inpStyle({ flex: 1, minWidth: 140 }), fontFamily: 'monospace' }}
+                      onFocus={onFoc} onBlur={onBlr}
+                    />
+                    {hasAppLogin && savedAppUsername && (
+                      <span style={{ fontSize: 10, color: '#10b981', fontWeight: 600 }}>
+                        ✓ {savedAppUsername}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ minWidth: 72, fontSize: 12, color: lblClr }}>{t.appPassword}:</span>
+                    <div style={{ flex: 1, minWidth: 140, position: 'relative' }}>
+                      <input
+                        type={showAppPassword ? 'text' : 'password'}
+                        value={appPassword}
+                        onChange={e => { setAppPassword(e.target.value); setAppCredError(null); }}
+                        placeholder={hasAppLogin ? t.appPasswordNew : '••••••••'}
+                        style={{ ...inpStyle({ width: '100%', paddingRight: 36 }), fontFamily: 'monospace' }}
+                        onFocus={onFoc} onBlur={onBlr}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAppPassword(v => !v)}
+                        style={{
+                          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                          background: 'none', border: 'none', cursor: 'pointer', color: lblClr, padding: 2,
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        {showAppPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, color: lblClr, margin: 0, lineHeight: 1.45 }}>
+                    {t.appHint}
+                    {hasAppLogin && (
+                      <span style={{ display: 'block', marginTop: 4 }}>{t.appPasswordKeep}</span>
+                    )}
+                  </p>
+                  {appCredError && (
+                    <p style={{ fontSize: 11, color: '#ef4444', margin: 0 }}>{appCredError}</p>
+                  )}
+                  {isEdit && client?.id && (
+                    <button
+                      type="button"
+                      onClick={handleSaveAppCredentialsOnly}
+                      style={{
+                        marginTop: 4, padding: '9px 14px', borderRadius: 10, border: 'none',
+                        background: focClr, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}
+                    >
+                      {t.appSaveLogin}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </>)}
 
           {/* ════ KONTAKTLAR ════ */}

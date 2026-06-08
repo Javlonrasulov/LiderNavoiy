@@ -20,9 +20,11 @@ class ProfileRepository @Inject constructor(
         }
     }
 
+    suspend fun getAllOrders() = orderRepository.getOrders()
+
     suspend fun getDashboardData(): DashboardData? {
         val profile = getProfile() ?: return null
-        val orders = orderRepository.getOrders()
+        val orders = getAllOrders()
         return DashboardData(
             profile = profile,
             recentOrders = orders.take(5),

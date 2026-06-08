@@ -1,5 +1,6 @@
 package uz.lider.client.presentation.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -84,7 +85,11 @@ fun ClientNavHost(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         NavHost(navController = navController, startDestination = ClientRoutes.SPLASH) {
             composable(ClientRoutes.SPLASH) {
                 SplashRoute(

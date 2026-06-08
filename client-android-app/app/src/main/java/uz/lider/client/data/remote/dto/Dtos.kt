@@ -87,6 +87,32 @@ data class ClientOrderDto(
     val updatedAt: String,
 )
 
+data class CourierTrackingDto(
+    val name: String,
+    val isOnline: Boolean = false,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val latitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val longitude: Double? = null,
+    val lastLocationAt: String? = null,
+)
+
+data class OrderTrackingDto(
+    val orderId: String,
+    val status: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val totalAmount: Double = 0.0,
+    val deliveryAddress: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val deliveryLatitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val deliveryLongitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val distanceKm: Double? = null,
+    val etaMinutes: Int? = null,
+    val courier: CourierTrackingDto? = null,
+)
+
 data class CreateOrderRequest(
     val items: List<OrderItemDto>,
 )

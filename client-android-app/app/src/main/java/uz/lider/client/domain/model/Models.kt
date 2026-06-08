@@ -122,6 +122,25 @@ data class OrderTrackingInfo(
     val statusColorArgb: Long,
 )
 
+data class CourierTracking(
+    val name: String,
+    val isOnline: Boolean,
+    val latitude: Double?,
+    val longitude: Double?,
+)
+
+data class OrderTrackingDetails(
+    val orderId: String,
+    val status: String,
+    val totalAmount: Double,
+    val deliveryAddress: String?,
+    val deliveryLatitude: Double?,
+    val deliveryLongitude: Double?,
+    val distanceKm: Double?,
+    val etaMinutes: Int?,
+    val courier: CourierTracking?,
+)
+
 enum class OrderStatus(val key: String) {
     PENDING("pending"),
     CONFIRMED("confirmed"),

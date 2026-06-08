@@ -151,6 +151,12 @@ fun formatMoney(value: Double): String {
     return DecimalFormat("#,##0", symbols).format(value)
 }
 
+fun formatOrderId(id: String): String =
+    "#${id.replace("-", "").take(8).uppercase()}"
+
+fun orderDisplayLabel(lang: AppLanguage, id: String): String =
+    "${AppStrings.t(lang, "dash_order")} ${formatOrderId(id)}"
+
 fun orderStatusKey(status: String): String = when (OrderStatus.fromKey(status)) {
     OrderStatus.PENDING, OrderStatus.CONFIRMED -> "ord_status_received"
     OrderStatus.PACKING -> "ord_status_packing"
@@ -189,3 +195,7 @@ fun Modifier.clientCard(palette: ClientPalette): Modifier = this
     .clip(RoundedCornerShape(16.dp))
     .background(palette.card)
     .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+
+@Composable
+fun Modifier.clientPageBackground(): Modifier =
+    background(MaterialTheme.colorScheme.background)

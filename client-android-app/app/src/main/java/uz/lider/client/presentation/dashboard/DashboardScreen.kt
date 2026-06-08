@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DarkMode
@@ -32,11 +33,16 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,6 +56,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -61,6 +68,7 @@ import uz.lider.client.presentation.components.ClientScreenBox
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
+import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
@@ -68,8 +76,7 @@ import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.settings.SettingsViewModel
 
-private val weekChart = listOf(2400f, 3800f, 2200f, 5100f, 3900f, 6800f, 4200f)
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onNavigate: (String) -> Unit,
@@ -80,9 +87,65 @@ fun DashboardScreen(
     val lang = LocalAppLanguage.current
     val palette = rememberClientPalette()
     val t = remember(lang) { { key: String -> AppStrings.t(lang, key) } }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val filtered = state.filtered
+    val periodLabel = if (state.dateRange.isCustom) {
+        DashboardDateFilter.formatRange(state.dateRange)
+    } else {
+        "${t("dash_last_month")} • ${DashboardDateFilter.formatRange(state.dateRange)}"
+    }
+
+    if (showDatePicker) {
+        val pickerState = rememberDateRangePickerState(
+            initialSelectedStartDateMillis = DashboardDateFilter.toStartMillis(state.dateRange.start),
+            initialSelectedEndDateMillis = DashboardDateFilter.toStartMillis(state.dateRange.end),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val start = pickerState.selectedStartDateMillis
+                        val end = pickerState.selectedEndDateMillis ?: start
+                        if (start != null && end != null) {
+                            viewModel.setDateRange(start, end)
+                        }
+                        showDatePicker = false
+                    },
+                ) {
+                    Text(t("dash_apply_dates"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(t("com_cancel"))
+                }
+            },
+        ) {
+            DateRangePicker(
+                state = pickerState,
+                title = {
+                    Text(
+                        t("dash_select_dates"),
+                        modifier = Modifier.padding(start = 24.dp, top = 16.dp),
+                    )
+                },
+            )
+        }
+    }
 
     ClientTabScaffold(
-        title = t("nav_home"),
+        titleContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(t("nav_home"), fontWeight = FontWeight.Bold, color = palette.text)
+                IconButton(
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = t("dash_select_dates"), tint = palette.primary)
+                }
+            }
+        },
         bottomPadding = true,
         actions = { DashboardHeaderActions(settingsViewModel) },
     ) { padding ->
@@ -96,6 +159,20 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                item {
+                    Text(
+                        periodLabel,
+                        color = palette.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(palette.primary.copy(alpha = 0.1f))
+                            .clickable { showDatePicker = true }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+
                 item {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -147,18 +224,17 @@ fun DashboardScreen(
                         Column {
                             Text(t("dash_total_purchases"), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
                             Text(
-                                "${formatMoney(state.data?.totalPurchases ?: 48_750_000.0)} ${t("com_som")}",
+                                "${formatMoney(filtered.totalPurchases)} ${t("com_som")}",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 28.sp,
                             )
                             Spacer(Modifier.height(8.dp))
                             SimpleAreaChart(
-                                weekChart,
+                                filtered.chartValues,
                                 strokeColor = Color.White,
                                 fillColor = Color.White.copy(alpha = 0.35f),
                             )
-                            Text("+12.5%", color = Color.White, fontSize = 12.sp)
                         }
                     }
                 }
@@ -170,7 +246,7 @@ fun DashboardScreen(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard(Icons.Default.ShoppingBag, t("dash_active_orders"), "${state.data?.orderCount ?: 3}", "ta", palette.secondary, Modifier.weight(1f))
+                        StatCard(Icons.Default.ShoppingBag, t("dash_active_orders"), "${filtered.activeOrderCount}", "ta", palette.secondary, Modifier.weight(1f))
                         StatCard(Icons.Default.Star, t("dash_discount_level"), "VIP", "Gold", palette.warning, Modifier.weight(1f))
                     }
                 }
@@ -206,7 +282,7 @@ fun DashboardScreen(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                val orders = state.data?.recentOrders.orEmpty().ifEmpty { mockRecentOrders() }
+                val orders = filtered.recentOrders
                 items(orders.take(3), key = { it.id }) { order ->
                     RecentOrderRow(order, lang, palette) { onNavigate(ClientRoutes.orderTracking(order.id)) }
                 }
@@ -329,9 +405,21 @@ private fun RecentOrderRow(order: ClientOrder, lang: AppLanguage, palette: uz.li
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(order.id, color = palette.text, fontWeight = FontWeight.SemiBold)
-            Text(status, color = color, fontSize = 12.sp)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                orderDisplayLabel(lang, order.id),
+                color = palette.text,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(status, color = color, fontSize = 12.sp, maxLines = 1)
         }
         Text(product, color = palette.textMuted, fontSize = 13.sp)
         Text("${formatMoney(order.totalAmount)} ${AppStrings.t(lang, "com_som")}", color = palette.text, fontWeight = FontWeight.Bold)
@@ -360,4 +448,3 @@ private fun promoDesc(lang: AppLanguage, index: Int) = when (index) {
     }
 }
 
-private fun mockRecentOrders(): List<ClientOrder> = emptyList()

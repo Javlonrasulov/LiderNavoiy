@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../auth/entities/user.entity';
@@ -29,6 +29,12 @@ export class ClientPortalController {
   @ApiOperation({ summary: 'Client order history' })
   orders(@Request() req: { user: User }) {
     return this.service.getOrders(req.user);
+  }
+
+  @Get('orders/:orderId/tracking')
+  @ApiOperation({ summary: 'Live order tracking map data for client app' })
+  orderTracking(@Request() req: { user: User }, @Param('orderId') orderId: string) {
+    return this.service.getOrderTracking(req.user, orderId);
   }
 
   @Post('orders')

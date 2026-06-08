@@ -1,6 +1,7 @@
 package uz.lider.client.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -53,6 +54,7 @@ fun AddToCartQuantityDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(palette.input)
+                        .border(1.dp, palette.border, RoundedCornerShape(12.dp))
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -110,5 +112,7 @@ fun AddToCartQuantityDialog(
         containerColor = palette.card,
         titleContentColor = palette.text,
         textContentColor = palette.text,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 0.dp,
     )
 }

@@ -9,6 +9,7 @@ import { OrdersService } from '../orders/orders.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
 import { Client } from './entities/client.entity';
+import { GpsService } from '../gps/gps.service';
 
 @Injectable()
 export class ClientPortalService {
@@ -19,6 +20,7 @@ export class ClientPortalService {
     private readonly orderRepo: Repository<Order>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
+    private readonly gpsService: GpsService,
   ) {}
 
   private clientId(user: User): string {
@@ -73,6 +75,86 @@ export class ClientPortalService {
       createdAt: o.createdAt,
       updatedAt: o.updatedAt,
     }));
+  }
+
+  async getOrderTracking(user: User, orderId: string) {
+    const clientId = this.clientId(user);
+    const order = await this.orderRepo.findOne({ where: { id: orderId, clientId } });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId },
+      relations: ['distributor', 'distributor.user'],
+    });
+    if (!client) throw new NotFoundException('Client not found');
+
+    let courierLat: number | null = null;
+    let courierLng: number | null = null;
+    let courierLastAt: string | null = null;
+    const distributor = client.distributor;
+    const courierName = distributor?.user?.fullName ?? null;
+    const courierOnline = distributor?.isOnline ?? false;
+
+    if (client.distributorId) {
+      try {
+        const live = await this.gpsService.getLastLocation(client.distributorId);
+        courierLat = live.latitude;
+        courierLng = live.longitude;
+        courierLastAt = live.recordedAt ?? null;
+      } catch {
+        if (distributor?.lastLatitude != null && distributor?.lastLongitude != null) {
+          courierLat = distributor.lastLatitude;
+          courierLng = distributor.lastLongitude;
+          courierLastAt = distributor.lastLocationAt?.toISOString() ?? null;
+        }
+      }
+    }
+
+    const deliveryLat = client.latitude;
+    const deliveryLng = client.longitude;
+    let distanceKm: number | null = null;
+    let etaMinutes: number | null = null;
+
+    if (
+      deliveryLat != null &&
+      deliveryLng != null &&
+      courierLat != null &&
+      courierLng != null
+    ) {
+      distanceKm = this.haversineKm(deliveryLat, deliveryLng, courierLat, courierLng);
+      etaMinutes = Math.max(5, Math.round((distanceKm / 30) * 60));
+    }
+
+    return {
+      orderId: order.id,
+      status: order.status,
+      totalAmount: Number(order.totalAmount),
+      deliveryAddress: client.address,
+      deliveryLatitude: deliveryLat,
+      deliveryLongitude: deliveryLng,
+      distanceKm,
+      etaMinutes,
+      courier: courierName
+        ? {
+            name: courierName,
+            isOnline: courierOnline,
+            latitude: courierLat,
+            longitude: courierLng,
+            lastLocationAt: courierLastAt,
+          }
+        : null,
+    };
+  }
+
+  private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(c * 6371 * 10) / 10;
   }
 
   async createOrder(user: User, dto: CreateOrderDto) {

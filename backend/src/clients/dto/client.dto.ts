@@ -93,6 +93,18 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ example: 'sherinmarket' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  appUsername?: string;
+
+  @ApiPropertyOptional({ example: '123456' })
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  appPassword?: string;
 }
 
 export class UpdateClientDto {
@@ -182,4 +194,16 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ example: 'sherinmarket' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  appUsername?: string;
+
+  @ApiPropertyOptional({ example: '123456' })
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  appPassword?: string;
 }

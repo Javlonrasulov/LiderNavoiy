@@ -23,10 +23,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,20 +32,29 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import uz.lider.client.localization.AppLanguage
-import uz.lider.client.localization.LocalAppLanguage
+import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.clientCard
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.rememberClientPalette
 
-private data class NotifItem(val id: String, val title: String, val body: String, val time: String, val icon: ImageVector, val read: Boolean)
+private data class NotifItem(
+    val id: String,
+    val title: String,
+    val body: String,
+    val time: String,
+    val icon: ImageVector,
+    val read: Boolean,
+)
 
 @Composable
-fun NotificationsScreen(onBack: () -> Unit) {
-    val lang = LocalAppLanguage.current
+fun NotificationsScreen(
+    onBack: () -> Unit,
+    viewModel: NotificationsViewModel = hiltViewModel(),
+) {
     val palette = rememberClientPalette()
-    var items by remember { mutableStateOf(mockNotifications(lang)) }
+    val readIds by viewModel.readIds.collectAsState()
+    val items = buildNotifications(readIds)
 
     ClientStackScaffold(title = localized("notif_title"), onBack = onBack) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -61,7 +68,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .background(palette.primary.copy(alpha = 0.12f))
-                        .clickableNoRipple { items = items.map { it.copy(read = true) } }
+                        .clickableNoRipple { viewModel.markAllRead() }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -75,9 +82,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
                 if (unread.isNotEmpty()) {
                     item { Text(localized("notif_unread"), color = palette.textMuted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
                     items(unread, key = { it.id }) { notif ->
-                        NotificationRow(notif) { id ->
-                            items = items.map { if (it.id == id) it.copy(read = true) else it }
-                        }
+                        NotificationRow(notif) { id -> viewModel.markRead(id) }
                     }
                 }
                 if (read.isNotEmpty()) {
@@ -121,10 +126,32 @@ private fun NotificationRow(notif: NotifItem, onRead: (String) -> Unit) {
     }
 }
 
-private fun mockNotifications(lang: AppLanguage): List<NotifItem> = listOf(
-    NotifItem("1", if (lang == AppLanguage.RU) "Заказ в пути" else "Order on the way", "#ORD-2846", "10:30", Icons.Default.LocalShipping, false),
-    NotifItem("2", if (lang == AppLanguage.RU) "Новая акция" else "New promo", "20% Coca Cola", "09:15", Icons.Default.Star, false),
-    NotifItem("3", if (lang == AppLanguage.RU) "Платёж получен" else "Payment received", "1,500,000", "Kecha", Icons.Default.Payments, true),
+@Composable
+private fun buildNotifications(readIds: Set<String>): List<NotifItem> = listOf(
+    NotifItem(
+        MockNotificationIds.ORDER,
+        localized("notif_mock_order_title"),
+        "#ORD-2846",
+        "10:30",
+        Icons.Default.LocalShipping,
+        MockNotificationIds.ORDER in readIds,
+    ),
+    NotifItem(
+        MockNotificationIds.PROMO,
+        localized("notif_mock_promo_title"),
+        "20% Coca Cola",
+        "09:15",
+        Icons.Default.Star,
+        MockNotificationIds.PROMO in readIds,
+    ),
+    NotifItem(
+        MockNotificationIds.PAYMENT,
+        localized("notif_mock_payment_title"),
+        "1,500,000",
+        localized("notif_mock_yesterday"),
+        Icons.Default.Payments,
+        MockNotificationIds.PAYMENT in readIds,
+    ),
 )
 
 private fun Modifier.clickableNoRipple(onClick: () -> Unit) =

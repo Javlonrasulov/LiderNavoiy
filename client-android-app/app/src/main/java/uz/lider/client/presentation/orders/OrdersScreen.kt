@@ -43,6 +43,7 @@ import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.clientCard
 import uz.lider.client.presentation.components.formatMoney
+import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
@@ -149,7 +150,7 @@ private fun OrderCard(order: ClientOrder, lang: uz.lider.client.localization.App
                     Icon(Icons.Default.ShoppingBag, null, tint = palette.primary)
                 }
                 Column {
-                    Text(order.id, color = palette.text, fontWeight = FontWeight.SemiBold)
+                    Text(orderDisplayLabel(lang, order.id), color = palette.text, fontWeight = FontWeight.SemiBold)
                     Text(order.createdAt.take(10), color = palette.textMuted, fontSize = 12.sp)
                 }
             }

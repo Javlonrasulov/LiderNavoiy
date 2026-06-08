@@ -7,6 +7,7 @@ import {
   apiClientToRow,
   rowToUpdatePayload,
   formToCreatePayload,
+  appCredentialsPayload,
   distributorsToAgents,
   distributorsToLines,
   agentNameToId,
@@ -135,34 +136,54 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     onClientsChange?.(clients);
   }, [clients, onClientsChange]);
 
-  const handleSaveClient = async (data: Partial<ClientRow> & { id: string }) => {
+  const handleSaveClient = async (data: Partial<ClientRow> & {
+    id: string;
+    appUsername?: string;
+    appPassword?: string;
+    appLoginChanged?: boolean;
+    hasAppLogin?: boolean;
+  }) => {
     setSaveError(null);
     try {
       const distributorId = data.distributorId
         ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
+      const { appUsername, appPassword, appLoginChanged, hasAppLogin, ...rest } = data;
       const updated = await api.updateClient(
         data.id,
-        rowToUpdatePayload({ ...data, distributorId }),
+        {
+          ...rowToUpdatePayload({ ...rest, distributorId, id: data.id }),
+          ...appCredentialsPayload(appUsername, appPassword, {
+            hasExisting: hasAppLogin,
+            loginChanged: appLoginChanged,
+          }),
+        },
       );
       const row = apiClientToRow(updated);
       setClients(prev => prev.map(c => c.id === row.id ? row : c));
       setActiveClient(prev => prev?.id === row.id ? row : prev);
+      return row.id;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
       throw e;
     }
   };
 
-  const handleCreateClient = async (data: Partial<ClientRow>) => {
+  const handleCreateClient = async (data: Partial<ClientRow> & {
+    appUsername?: string;
+    appPassword?: string;
+  }) => {
     setSaveError(null);
     try {
       const distributorId = data.distributorId
         ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
-      const created = await api.createClient(
-        formToCreatePayload({ ...data, distributorId }, companyId),
-      );
+      const { appUsername, appPassword, ...rest } = data;
+      const created = await api.createClient({
+        ...formToCreatePayload({ ...rest, distributorId }, companyId),
+        ...appCredentialsPayload(appUsername, appPassword),
+      });
       const row = apiClientToRow(created);
       setClients(prev => [...prev, row]);
+      return row.id;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
       throw e;

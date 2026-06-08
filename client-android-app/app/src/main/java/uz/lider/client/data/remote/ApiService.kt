@@ -3,11 +3,13 @@ package uz.lider.client.data.remote
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 import uz.lider.client.data.remote.dto.AuthResponseDto
 import uz.lider.client.data.remote.dto.CategoryRowDto
 import uz.lider.client.data.remote.dto.ClientAnalyticsDto
 import uz.lider.client.data.remote.dto.ClientOrderDto
+import uz.lider.client.data.remote.dto.OrderTrackingDto
 import uz.lider.client.data.remote.dto.ClientProfileDto
 import uz.lider.client.data.remote.dto.CreateOrderRequest
 import uz.lider.client.data.remote.dto.LoginRequest
@@ -27,6 +29,9 @@ interface ApiService {
 
     @GET("client-portal/orders")
     suspend fun getOrders(): List<ClientOrderDto>
+
+    @GET("client-portal/orders/{orderId}/tracking")
+    suspend fun getOrderTracking(@Path("orderId") orderId: String): OrderTrackingDto
 
     @POST("client-portal/orders")
     suspend fun createOrder(@Body body: CreateOrderRequest): ClientOrderDto
