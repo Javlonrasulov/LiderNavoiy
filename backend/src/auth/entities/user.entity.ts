@@ -5,8 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToOne,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { DistributorProfile } from '../../distributors/entities/distributor-profile.entity';
+import { Client } from '../../clients/entities/client.entity';
 import { UserRole } from '../../common/enums';
 
 @Entity('users')
@@ -37,6 +40,13 @@ export class User {
 
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })
   distributorProfile?: DistributorProfile;
+
+  @Column({ type: 'uuid', nullable: true })
+  clientId: string | null;
+
+  @ManyToOne(() => Client, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'clientId' })
+  client?: Client;
 
   @CreateDateColumn()
   createdAt: Date;

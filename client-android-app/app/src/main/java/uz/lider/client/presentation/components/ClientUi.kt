@@ -1,0 +1,191 @@
+package uz.lider.client.presentation.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import uz.lider.client.domain.model.OrderStatus
+import uz.lider.client.localization.AppLanguage
+import uz.lider.client.localization.AppStrings
+import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.theme.ClientColors
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.util.Locale
+
+@Composable
+fun ProductImageBox(
+    imageUrl: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+) {
+    val palette = rememberClientPalette()
+    if (!imageUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = contentScale,
+        )
+    } else {
+        Box(
+            modifier = modifier.background(palette.surface2),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                localized("no_image"),
+                color = palette.textMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(8.dp),
+            )
+        }
+    }
+}
+
+fun isDecimalUnit(unit: String): Boolean {
+    val normalized = unit.trim().lowercase()
+    return normalized in setOf("kg", "кг", "g", "gr", "gram", "l", "litr", "л")
+}
+
+fun formatQty(qty: Double): String =
+    if (qty % 1.0 == 0.0) qty.toInt().toString() else qty.toString()
+
+fun cartBadgeCount(items: List<uz.lider.client.domain.model.CartItem>): Int {
+    val sum = items.sumOf { it.qty }
+    return if (sum % 1.0 == 0.0) sum.toInt() else kotlin.math.ceil(sum).toInt()
+}
+
+@Immutable
+data class ClientPalette(
+    val text: Color,
+    val textMuted: Color,
+    val primary: Color,
+    val secondary: Color,
+    val accent: Color,
+    val success: Color,
+    val warning: Color,
+    val danger: Color,
+    val surface: Color,
+    val surface2: Color,
+    val card: Color,
+    val border: Color,
+    val navBg: Color,
+    val input: Color,
+)
+
+@Composable
+fun rememberClientPalette(): ClientPalette {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    return remember(isDark) {
+        if (isDark) {
+            ClientPalette(
+                text = ClientColors.Text,
+                textMuted = ClientColors.TextMuted,
+                primary = ClientColors.Primary,
+                secondary = ClientColors.Secondary,
+                accent = ClientColors.Accent,
+                success = ClientColors.Success,
+                warning = ClientColors.Warning,
+                danger = ClientColors.Danger,
+                surface = ClientColors.Surface,
+                surface2 = ClientColors.Surface2,
+                card = ClientColors.Card,
+                border = ClientColors.Border,
+                navBg = ClientColors.NavBg,
+                input = ClientColors.Surface2,
+            )
+        } else {
+            ClientPalette(
+                text = ClientColors.TextLight,
+                textMuted = ClientColors.TextMutedLight,
+                primary = ClientColors.PrimaryLight,
+                secondary = ClientColors.SecondaryLight,
+                accent = ClientColors.AccentLight,
+                success = ClientColors.SuccessLight,
+                warning = ClientColors.WarningLight,
+                danger = ClientColors.DangerLight,
+                surface = ClientColors.SurfaceLight,
+                surface2 = ClientColors.Surface2Light,
+                card = ClientColors.SurfaceLight,
+                border = ClientColors.BorderStrong,
+                navBg = ClientColors.NavBgLight,
+                input = ClientColors.Surface2Light,
+            )
+        }
+    }
+}
+
+@Composable
+fun localized(key: String): String = AppStrings.t(LocalAppLanguage.current, key)
+
+fun formatMoney(value: Double): String {
+    val symbols = DecimalFormatSymbols(Locale.US).apply {
+        groupingSeparator = ','
+        decimalSeparator = '.'
+    }
+    return DecimalFormat("#,##0", symbols).format(value)
+}
+
+fun orderStatusKey(status: String): String = when (OrderStatus.fromKey(status)) {
+    OrderStatus.PENDING, OrderStatus.CONFIRMED -> "ord_status_received"
+    OrderStatus.PACKING -> "ord_status_packing"
+    OrderStatus.ON_WAY -> "ord_status_onway"
+    OrderStatus.DELIVERED -> "ord_status_delivered"
+    OrderStatus.CANCELLED -> "ord_status_cancelled"
+}
+
+fun orderStatusLabel(lang: AppLanguage, status: String): String =
+    AppStrings.t(lang, orderStatusKey(status))
+
+fun orderStatusColor(status: String, palette: ClientPalette): Color = when (OrderStatus.fromKey(status)) {
+    OrderStatus.PENDING, OrderStatus.CONFIRMED -> palette.primary
+    OrderStatus.PACKING -> palette.warning
+    OrderStatus.ON_WAY -> palette.secondary
+    OrderStatus.DELIVERED -> palette.success
+    OrderStatus.CANCELLED -> palette.danger
+}
+
+@Composable
+fun ClientBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = rememberClientPalette()
+    IconButton(
+        onClick = onBack,
+        modifier = modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.primary.copy(alpha = 0.12f))
+            .border(1.dp, palette.primary.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = localized("com_back"), tint = palette.primary)
+    }
+}
+
+fun Modifier.clientCard(palette: ClientPalette): Modifier = this
+    .clip(RoundedCornerShape(16.dp))
+    .background(palette.card)
+    .border(1.dp, palette.border, RoundedCornerShape(16.dp))

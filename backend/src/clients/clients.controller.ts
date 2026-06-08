@@ -18,8 +18,10 @@ import { ClientsService } from './clients.service';
 import { ClientsUploadService } from './clients-upload.service';
 import { ClientRequestsService } from './client-requests.service';
 import { ClientReconciliationService } from './client-reconciliation.service';
+import { ClientCredentialsService } from './client-credentials.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { SetClientCredentialsDto } from './dto/client-credentials.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
@@ -34,6 +36,7 @@ export class ClientsController {
     private readonly uploadService: ClientsUploadService,
     private readonly requestsService: ClientRequestsService,
     private readonly reconciliationService: ClientReconciliationService,
+    private readonly credentialsService: ClientCredentialsService,
   ) {}
 
   private scopeDistributorId(user: User): string | undefined {
@@ -68,6 +71,22 @@ export class ClientsController {
     const scopedCompany =
       companyId ?? req.user.distributorProfile?.companyId ?? undefined;
     return this.service.findLines(scopedCompany);
+  }
+
+  @Get(':id/app-credentials')
+  @ApiOperation({ summary: 'Get client app login (admin/agent)' })
+  getAppCredentials(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.credentialsService.getCredentials(id, req.user);
+  }
+
+  @Post(':id/app-credentials')
+  @ApiOperation({ summary: 'Set client app login/password (admin/agent)' })
+  setAppCredentials(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: SetClientCredentialsDto,
+  ) {
+    return this.credentialsService.setCredentials(id, dto, req.user);
   }
 
   @Get(':id/reconciliation')

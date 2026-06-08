@@ -9,6 +9,7 @@ export enum UserRole {
   ADMIN = 'admin',
   MANAGER = 'manager',
   DISTRIBUTOR = 'distributor',
+  CLIENT = 'client',
 }
 
 export enum VisitStatus {

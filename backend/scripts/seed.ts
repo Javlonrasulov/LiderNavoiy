@@ -155,9 +155,28 @@ async function seed() {
   const clientCount = await clientRepo.count();
   const productCount = await productRepo.count();
   const lineCount = await lineRepo.count();
+
+  // Demo client app login (first client)
+  const demoClient = await clientRepo.findOne({ where: { code: '29072' } });
+  if (demoClient) {
+    let clientUser = await userRepo.findOne({ where: { username: 'client29072' } });
+    if (!clientUser) {
+      clientUser = userRepo.create({
+        username: 'client29072',
+        passwordHash: await bcrypt.hash('client123456', 12),
+        fullName: demoClient.fullName ?? demoClient.name,
+        role: UserRole.CLIENT,
+        clientId: demoClient.id,
+        isActive: true,
+      });
+      await userRepo.save(clientUser);
+    }
+  }
+
   console.log(`Seed complete:`);
   console.log(`  admin / admin123`);
   console.log(`  agent001 / agent123`);
+  console.log(`  client29072 / client123456  (client app demo)`);
   console.log(`  ${lineCount} lines, ${clientCount} clients, ${productCount} products`);
   await ds.destroy();
 }

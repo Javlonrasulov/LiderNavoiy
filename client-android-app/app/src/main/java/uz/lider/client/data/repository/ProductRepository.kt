@@ -1,0 +1,53 @@
+package uz.lider.client.data.repository
+
+import uz.lider.client.BuildConfig
+import uz.lider.client.data.remote.ApiService
+import uz.lider.client.data.remote.dto.ProductDto
+import uz.lider.client.domain.model.Product
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class ProductRepository @Inject constructor(
+    private val api: ApiService,
+) {
+    suspend fun getProducts(category: String? = null): List<Product> {
+        return try {
+            api.getProducts(category).map { it.toDomain() }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getCategories(): List<String> {
+        return try {
+            api.getProductCategories()
+                .mapNotNull { row -> row.category.takeIf { it.isNotBlank() } }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getProduct(id: String): Product? {
+        return getProducts().firstOrNull { it.id == id }
+    }
+
+    fun resolveImageUrl(path: String?): String {
+        if (path.isNullOrBlank()) return ""
+        if (path.startsWith("http")) return path
+        val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
+        return "$base$path"
+    }
+
+    private fun ProductDto.toDomain() = Product(
+        id = id,
+        code = code,
+        name = name,
+        brand = brand,
+        category = category,
+        price = price,
+        stockBalance = stockBalance,
+        unit = unit,
+        imageUrl = imageUrl,
+    )
+}

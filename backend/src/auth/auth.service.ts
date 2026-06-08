@@ -14,6 +14,7 @@ export interface JwtPayload {
   username: string;
   role: UserRole;
   distributorId?: string;
+  clientId?: string;
 }
 
 @Injectable()
@@ -32,7 +33,7 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.userRepo.findOne({
       where: { username: dto.username, isActive: true },
-      relations: ['distributorProfile'],
+      relations: ['distributorProfile', 'client'],
     });
 
     if (!user || !(await bcrypt.compare(dto.password, user.passwordHash))) {
@@ -52,7 +53,7 @@ export class AuthService {
       });
       const user = await this.userRepo.findOne({
         where: { id: payload.sub, isActive: true },
-        relations: ['distributorProfile'],
+        relations: ['distributorProfile', 'client'],
       });
       if (!user) throw new UnauthorizedException();
       user.lastLoginAt = new Date();
@@ -66,7 +67,7 @@ export class AuthService {
   async validateUser(payload: JwtPayload): Promise<User | null> {
     return this.userRepo.findOne({
       where: { id: payload.sub, isActive: true },
-      relations: ['distributorProfile'],
+      relations: ['distributorProfile', 'client'],
     });
   }
 
@@ -91,6 +92,7 @@ export class AuthService {
       username: user.username,
       role: user.role,
       distributorId: profile?.id,
+      clientId: user.clientId ?? undefined,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -110,6 +112,8 @@ export class AuthService {
         role: user.role,
         distributorId: profile?.id,
         companyName: profile?.companyName ?? undefined,
+        clientId: user.clientId ?? undefined,
+        clientName: user.client?.name ?? undefined,
       },
     };
   }

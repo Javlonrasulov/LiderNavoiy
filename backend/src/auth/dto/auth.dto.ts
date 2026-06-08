@@ -43,5 +43,7 @@ export class AuthResponseDto {
     role: string;
     distributorId?: string;
     companyName?: string;
+    clientId?: string;
+    clientName?: string;
   };
 }

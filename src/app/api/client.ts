@@ -308,6 +308,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  getClientAppCredentials: (clientId: string) =>
+    request<
+      | { hasCredentials: false }
+      | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
+    >(`/clients/${clientId}/app-credentials`),
+
+  setClientAppCredentials: (clientId: string, body: { username: string; password: string }) =>
+    request<{ userId: string; username: string; clientId: string; created: boolean }>(
+      `/clients/${clientId}/app-credentials`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
   // ─── Lines ───
   getLines: (companyId?: string) =>
     request<Array<{

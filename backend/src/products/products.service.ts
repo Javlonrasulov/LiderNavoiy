@@ -16,6 +16,28 @@ export class ProductsService {
     return qb.orderBy('p.name', 'ASC').getMany();
   }
 
+  findInStock(category?: string) {
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('p.isActive = true')
+      .andWhere('p.stockBalance > 0');
+    if (category) qb.andWhere('p.category = :category', { category });
+    return qb.orderBy('p.name', 'ASC').getMany();
+  }
+
+  async findInStockMap(): Promise<Map<string, Product>> {
+    const products = await this.findInStock();
+    return new Map(products.map((p) => [p.id, p]));
+  }
+
+  async findActiveMaps(): Promise<{ byId: Map<string, Product>; byCode: Map<string, Product> }> {
+    const products = await this.findAll();
+    return {
+      byId: new Map(products.map((p) => [p.id, p])),
+      byCode: new Map(products.map((p) => [p.code, p])),
+    };
+  }
+
   findOne(id: string) {
     return this.repo.findOne({ where: { id } });
   }

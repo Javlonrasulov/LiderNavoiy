@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Check, Save, MapPin, ChevronDown, Maximize2, Minimize2, Camera, Plus, Trash2 } from 'lucide-react';
+import { X, Check, Save, MapPin, ChevronDown, Maximize2, Minimize2, Camera, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useLang } from './LangContext';
 import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 import type { ClientRow } from '../data/adminData';
+import { api } from '../api/client';
 
 export interface AgentOption {
   id: string;
@@ -17,7 +18,7 @@ interface AddClientProps {
   client?: ClientRow;
   agents?: AgentOption[];
   lines?: string[];
-  onSave?: (data: Partial<ClientRow> & { id?: string }) => void | Promise<void>;
+  onSave?: (data: Partial<ClientRow> & { id?: string }) => Promise<string | void> | void | Promise<void>;
 }
 type TabKey = 'rekvizit' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
 
@@ -50,6 +51,16 @@ const TRANS = {
     statusSection: "Holat", registrationDate: "Ro'yxatga olingan", comment: "Izoh",
     category: "Kategoriya", agent: "Agent",
     directionNo: "№", directionName: "Yo'nalish",
+    appLoginTitle: "Mijoz ilovasi (APK) kirish",
+    appLogin: "Login",
+    appPassword: "Parol",
+    appPasswordNew: "Yangi parol",
+    appPasswordKeep: "O'zgartirmaslik uchun bo'sh qoldiring",
+    appHint: "Mijoz mobil ilovaga shu login va parol bilan kiradi.",
+    appLoginRequired: "Login kamida 3 ta belgi bo'lishi kerak",
+    appPasswordRequired: "Parol kamida 6 ta belgi bo'lishi kerak",
+    appCredentialsSaved: "APK login saqlandi",
+    appCredentialsError: "APK login saqlab bo'lmadi",
   },
   uz_cyrl: {
     saveClose: "Сақлаш ва ёпиш", close: "Ёпиш",
@@ -79,6 +90,16 @@ const TRANS = {
     statusSection: "Ҳолат", registrationDate: "Рўйхатга олинган", comment: "Изоҳ",
     category: "Категория", agent: "Агент",
     directionNo: "№", directionName: "Йўналиш",
+    appLoginTitle: "Мижоз иловаси (APK) кириш",
+    appLogin: "Логин",
+    appPassword: "Парол",
+    appPasswordNew: "Янги парол",
+    appPasswordKeep: "Ўзгартirmaslik uchun bo'sh qoldiring",
+    appHint: "Мижоз мобил иловаga shu login va parol bilan kiradi.",
+    appLoginRequired: "Логин kamida 3 ta belgi bo'lishi kerak",
+    appPasswordRequired: "Парол kamida 6 ta belgi bo'lishi kerak",
+    appCredentialsSaved: "APK login saqlandi",
+    appCredentialsError: "APK login saqlab bo'lmadi",
   },
   ru: {
     saveClose: "Записать и закрыть", close: "Закрыть",
@@ -108,6 +129,16 @@ const TRANS = {
     statusSection: "Статус", registrationDate: "Дата регистрации", comment: "Комментарий",
     category: "Категория", agent: "Агент",
     directionNo: "№", directionName: "Направление",
+    appLoginTitle: "Вход в приложение клиента (APK)",
+    appLogin: "Логин",
+    appPassword: "Пароль",
+    appPasswordNew: "Новый пароль",
+    appPasswordKeep: "Оставьте пустым, если не меняете",
+    appHint: "Клиент входит в мобильное приложение с этим логином и паролем.",
+    appLoginRequired: "Логин — минимум 3 символа",
+    appPasswordRequired: "Пароль — минимум 6 символов",
+    appCredentialsSaved: "APK логин сохранён",
+    appCredentialsError: "Не удалось сохранить APK логин",
   },
 };
 
