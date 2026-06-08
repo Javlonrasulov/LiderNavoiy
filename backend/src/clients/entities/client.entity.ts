@@ -19,6 +19,9 @@ export class Client {
   @Column()
   code: string;
 
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  onTradeId: string | null;
+
   @Column()
   name: string;
 

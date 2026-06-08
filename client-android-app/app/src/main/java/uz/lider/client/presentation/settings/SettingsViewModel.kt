@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AppSettingsRepository
+import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.localization.AppLanguage
 import javax.inject.Inject
 
@@ -16,18 +17,14 @@ class SettingsViewModel @Inject constructor(
     private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModel() {
 
-    val darkMode: StateFlow<Boolean> = appSettingsRepository.darkMode
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val themeMode: StateFlow<ThemeMode> = appSettingsRepository.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.DARK)
 
     val language: StateFlow<AppLanguage> = appSettingsRepository.language
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppLanguage.DEFAULT)
 
-    fun setDarkMode(enabled: Boolean) {
-        viewModelScope.launch { appSettingsRepository.setDarkMode(enabled) }
-    }
-
-    fun toggleDarkMode() {
-        viewModelScope.launch { appSettingsRepository.toggleDarkMode() }
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { appSettingsRepository.setThemeMode(mode) }
     }
 
     fun setLanguage(language: AppLanguage) {

@@ -1,6 +1,7 @@
 package uz.lider.client.presentation.promotions
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,9 +13,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Percent
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Wallet
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,76 +33,143 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientStackScaffold
-import uz.lider.client.presentation.components.clientCard
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.components.rememberClientPalette
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun PromotionsScreen(onBack: () -> Unit) {
     val lang = LocalAppLanguage.current
-    val palette = rememberClientPalette()
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf(localized("promo_discounts"), localized("promo_bonus"), localized("promo_cashback"))
+    val tabs = listOf(
+        localized("promo_discounts"),
+        localized("promo_bonus"),
+        localized("promo_cashback"),
+    )
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
 
     ClientStackScaffold(title = localized("promo_title"), onBack = onBack) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                Modifier
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.surface2)
-                    .padding(4.dp),
-            ) {
-                tabs.forEachIndexed { index, label ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (tab == index) palette.primary else Color.Transparent)
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            label,
-                            color = if (tab == index) Color.White else palette.textMuted,
-                            fontSize = 12.sp,
-                            modifier = Modifier.clickableNoRipple { tab = index },
+        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                // ── Glass pill tab bar ────────────────────────────────────────
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .border(
+                            1.dp,
+                            Brush.linearGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.30f),
+                                    Color.White.copy(alpha = 0.08f),
+                                )
+                            ),
+                            RoundedCornerShape(50.dp),
                         )
-                    }
-                }
-            }
-            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                when (tab) {
-                    0 -> items(discountPromos(lang)) { promo ->
-                        PromoGradientCard(promo.title, promo.desc, promo.discount, promo.until)
-                    }
-                    1 -> {
-                        item { BonusPointsCard("4,850") }
-                        items(bonusPrograms(lang)) { program ->
-                            ProgramCard(program.title, program.desc, program.active)
+                        .padding(4.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth()) {
+                        tabs.forEachIndexed { index, label ->
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(50.dp))
+                                    .background(
+                                        if (tab == index)
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    LiquidGlass.Indigo,
+                                                    LiquidGlass.Violet,
+                                                    LiquidGlass.Cyan,
+                                                ),
+                                                start = Offset(0f, 0f),
+                                                end = Offset(Float.POSITIVE_INFINITY, 0f),
+                                            )
+                                        else
+                                            Brush.linearGradient(
+                                                listOf(Color.Transparent, Color.Transparent),
+                                            )
+                                    )
+                                    .clickableNoRipple { tab = index }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (tab == index) Color.White else textMuted,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal,
+                                )
+                            }
                         }
                     }
-                    else -> {
-                        item { CashbackSummaryCard("125,000") }
-                        item { RulesCard() }
-                        items(cashbackHistory()) { item ->
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clientCard(palette)
-                                    .padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(item.first, color = palette.text)
-                                Text(item.second, color = palette.success, fontWeight = FontWeight.Bold)
+                }
+
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    when (tab) {
+                        0 -> items(discountPromos(lang)) { promo ->
+                            PromoGradientCard(promo.title, promo.desc, promo.discount, promo.until)
+                        }
+                        1 -> {
+                            item { BonusPointsCard("4,850") }
+                            items(bonusPrograms(lang)) { program ->
+                                GlassProgramCard(program.title, program.desc, program.active)
+                            }
+                        }
+                        else -> {
+                            item { CashbackHeroCard("125,000") }
+                            item { CashbackRulesCard() }
+                            item {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .liquidGlassThemed()
+                                        .padding(vertical = 4.dp),
+                                ) {
+                                    cashbackHistory().forEachIndexed { i, (date, amount) ->
+                                        if (i > 0) {
+                                            Box(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp)
+                                                    .height(1.dp)
+                                                    .background(Color.White.copy(alpha = 0.08f)),
+                                            )
+                                        }
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(date, color = textMuted)
+                                            Text(
+                                                amount,
+                                                color = LiquidGlass.Emerald,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -108,18 +184,55 @@ private fun PromoGradientCard(title: String, desc: String, discount: String, unt
     Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF7C4DFF), Color(0xFFFF4DFF))))
-            .padding(16.dp),
+            .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF4F46E5), LiquidGlass.Violet, Color(0xFF9333EA)),
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                )
+            )
+            .padding(20.dp),
     ) {
         Column {
-            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text(desc, color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("$discount • ${localized("promo_until")} $until", color = Color.White, fontSize = 12.sp)
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.2f)).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(localized("promo_use_now"), color = Color.White, fontSize = 13.sp)
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(desc, color = Color.White.copy(alpha = 0.80f), fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color.White.copy(alpha = 0.22f))
+                        .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(50.dp))
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    Text(discount, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    "${localized("promo_until")} $until",
+                    color = Color.White.copy(alpha = 0.70f),
+                    fontSize = 12.sp,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color.White.copy(alpha = 0.18f))
+                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(50.dp))
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    localized("promo_use_now"),
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
@@ -127,41 +240,224 @@ private fun PromoGradientCard(title: String, desc: String, discount: String, unt
 
 @Composable
 private fun BonusPointsCard(points: String) {
-    val palette = rememberClientPalette()
-    Column(Modifier.clientCard(palette).padding(16.dp)) {
-        Text(localized("promo_your_points"), color = palette.textMuted, fontSize = 12.sp)
-        Text(points, color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 32.sp)
-        Text(localized("promo_spend"), color = palette.secondary, fontSize = 13.sp)
-    }
-}
-
-@Composable
-private fun ProgramCard(title: String, desc: String, active: Boolean) {
-    val palette = rememberClientPalette()
-    Column(Modifier.clientCard(palette).padding(14.dp)) {
-        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Text(title, color = palette.text, fontWeight = FontWeight.SemiBold)
-            Text(if (active) localized("promo_active") else localized("promo_inactive"), color = if (active) palette.success else palette.textMuted, fontSize = 12.sp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+            .background(
+                Brush.linearGradient(
+                    listOf(LiquidGlass.Indigo, LiquidGlass.Violet, LiquidGlass.Cyan),
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                )
+            )
+            .padding(24.dp),
+    ) {
+        Column {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Star,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Text(
+                    localized("promo_your_points"),
+                    color = Color.White.copy(alpha = 0.80f),
+                    fontSize = 13.sp,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                points,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 44.sp,
+                letterSpacing = (-1).sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                localized("promo_spend"),
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 13.sp,
+            )
         }
-        Text(desc, color = palette.textMuted, fontSize = 13.sp)
     }
 }
 
 @Composable
-private fun CashbackSummaryCard(amount: String) {
-    val palette = rememberClientPalette()
-    Column(Modifier.clientCard(palette).padding(16.dp)) {
-        Text(localized("promo_this_month"), color = palette.textMuted, fontSize = 12.sp)
-        Text("$amount ${localized("com_som")} ${localized("promo_returned")}", color = palette.text, fontWeight = FontWeight.Bold)
+private fun GlassProgramCard(title: String, desc: String, active: Boolean) {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .liquidGlassThemed()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    if (active)
+                        Brush.linearGradient(listOf(LiquidGlass.Amber, LiquidGlass.Rose))
+                    else
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.15f),
+                                Color.White.copy(alpha = 0.08f),
+                            )
+                        )
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.CardGiftcard,
+                null,
+                tint = if (active) Color.White else textMuted,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, color = text, fontWeight = FontWeight.SemiBold)
+            Text(desc, color = textMuted, fontSize = 13.sp)
+        }
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(50.dp))
+                .background(
+                    if (active)
+                        Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Cyan))
+                    else
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.12f),
+                                Color.White.copy(alpha = 0.06f),
+                            )
+                        )
+                )
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        ) {
+            Text(
+                if (active) localized("promo_active") else localized("promo_inactive"),
+                color = if (active) Color.White else textMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
 @Composable
-private fun RulesCard() {
-    val palette = rememberClientPalette()
-    Column(Modifier.clientCard(palette).padding(14.dp)) {
-        Text(localized("promo_rules"), color = palette.text, fontWeight = FontWeight.SemiBold)
-        Text("• 5% ${localized("promo_cashback")}", color = palette.textMuted, fontSize = 13.sp)
+private fun CashbackHeroCard(amount: String) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+            .background(
+                Brush.linearGradient(
+                    listOf(LiquidGlass.Emerald, LiquidGlass.Cyan, LiquidGlass.Indigo),
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                )
+            )
+            .padding(20.dp),
+    ) {
+        Column {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Wallet,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Text(
+                    localized("promo_this_month"),
+                    color = Color.White.copy(alpha = 0.80f),
+                    fontSize = 13.sp,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "$amount ${localized("com_som")}",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 32.sp,
+            )
+            Text(
+                localized("promo_returned"),
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 13.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CashbackRulesCard() {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .liquidGlassThemed()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Cyan)),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Percent,
+                null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column {
+            Text(
+                localized("promo_rules"),
+                color = text,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "• 5% ${localized("promo_cashback")}",
+                color = textMuted,
+                fontSize = 13.sp,
+            )
+        }
     }
 }
 

@@ -186,6 +186,7 @@ export function appUserToSotrudnikRow(
     phone: distributor?.phone || '',
     orgId: distributor?.companyId || 'boran',
     backendUserId: app.id,
+    distributorId: distributor?.id,
     username: app.username,
   };
 }

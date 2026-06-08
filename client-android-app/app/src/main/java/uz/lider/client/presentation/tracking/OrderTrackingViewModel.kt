@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.OrderRepository
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderTrackingDetails
-import java.util.Calendar
 import javax.inject.Inject
 
 data class OrderTrackingUiState(
@@ -22,7 +21,6 @@ data class OrderTrackingUiState(
     val order: ClientOrder? = null,
     val tracking: OrderTrackingDetails? = null,
     val activeStep: Int = 3,
-    val eta: String = "—",
     val distance: String = "—",
 )
 
@@ -68,23 +66,15 @@ class OrderTrackingViewModel @Inject constructor(
             "confirmed", "pending", "warehouse" -> 2
             else -> 3
         }
-        val eta = tracking?.etaMinutes?.let { formatEta(it) } ?: "—"
         val distance = tracking?.distanceKm?.let { formatDistance(it) } ?: "—"
         _uiState.update {
             it.copy(
                 order = order,
                 tracking = tracking,
                 activeStep = step,
-                eta = eta,
                 distance = distance,
             )
         }
-    }
-
-    private fun formatEta(minutes: Int): String {
-        val cal = Calendar.getInstance()
-        cal.add(Calendar.MINUTE, minutes)
-        return String.format("%02d:%02d", cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
     }
 
     private fun formatDistance(km: Double): String =

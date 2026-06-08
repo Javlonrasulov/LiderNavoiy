@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,13 +36,20 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientTabScaffold
+import uz.lider.client.presentation.components.AnalyticsTrendChart
+import uz.lider.client.presentation.components.ChartPoint
+import uz.lider.client.presentation.components.ChartVisualStyle
 import uz.lider.client.presentation.components.HorizontalProgressBar
-import uz.lider.client.presentation.components.SimpleAreaChart
-import uz.lider.client.presentation.components.SimpleBarChart
-import uz.lider.client.presentation.components.clientCard
+import uz.lider.client.presentation.components.formatChartAmount
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.components.rememberClientPalette
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun AnalyticsScreen(
@@ -49,177 +57,342 @@ fun AnalyticsScreen(
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
-    val palette = rememberClientPalette()
     val state by viewModel.uiState.collectAsState()
     val data = state.data
 
-    ClientTabScaffold(title = localized("an_title"), bottomPadding = true) { padding ->
-        if (state.loading && data == null) {
-            Box(
-                Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = palette.primary)
-            }
-            return@ClientTabScaffold
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    Row(Modifier.clip(RoundedCornerShape(12.dp)).background(palette.surface2).padding(4.dp)) {
-                        listOf(
-                            "week" to localized("an_week"),
-                            "month" to localized("an_month"),
-                            "year" to localized("an_year"),
-                        ).forEach { (key, label) ->
-                            Box(
+    ClientTabScaffold(title = localized("an_title")) { padding ->
+        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            if (state.loading && data == null) {
+                Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = LiquidGlass.Indigo)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    // Period toggle — glass pill with gradient active tab
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Row(
                                 Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (state.period == key) palette.primary else Color.Transparent)
-                                    .clickable { viewModel.setPeriod(key) }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                                    .padding(4.dp),
                             ) {
-                                Text(
-                                    label,
-                                    color = if (state.period == key) Color.White else palette.textMuted,
-                                    fontSize = 12.sp,
-                                )
+                                listOf(
+                                    "week" to localized("an_week"),
+                                    "month" to localized("an_month"),
+                                    "year" to localized("an_year"),
+                                ).forEach { (key, label) ->
+                                    val selected = state.period == key
+                                    if (selected) {
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                                .background(LiquidGlass.GradientPrimary)
+                                                .clickable { viewModel.setPeriod(key) }
+                                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                                        ) {
+                                            Text(
+                                                label,
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                        }
+                                    } else {
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                                .clickable { viewModel.setPeriod(key) }
+                                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                                        ) {
+                                            Text(label, color = LiquidTheme.textMuted, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    KpiCard(
-                        localized("an_total"),
-                        formatMoney(data?.totalPurchases ?: 0.0),
-                        localized("com_som"),
-                        data?.totalPurchasesTrend ?: 0.0,
-                        palette.primary,
-                        Modifier.weight(1f),
-                    )
-                    KpiCard(
-                        localized("an_orders"),
-                        "${data?.orderCount ?: 0}",
-                        "ta",
-                        data?.orderCountTrend ?: 0.0,
-                        palette.secondary,
-                        Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    KpiCard(
-                        localized("an_avg_check"),
-                        formatMoney(data?.avgCheck ?: 0.0),
-                        localized("com_som"),
-                        data?.avgCheckTrend ?: 0.0,
-                        palette.accent,
-                        Modifier.weight(1f),
-                    )
-                    KpiCard(
-                        localized("an_goods"),
-                        formatMoney(data?.totalQuantity ?: 0.0),
-                        unitLabel(lang),
-                        data?.totalQuantityTrend ?: 0.0,
-                        palette.success,
-                        Modifier.weight(1f),
-                    )
-                }
-            }
-            item {
-                Column(Modifier.clientCard(palette).padding(16.dp)) {
-                    Text(localized("an_monthly_chart"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    val monthly = data?.monthlyPurchases.orEmpty()
-                    val monthlyValues = monthly.map { it.amount.toFloat() }
-                    val monthlyLabels = monthly.map { monthShortName(lang, it.month) }
-                    SimpleBarChart(
-                        values = monthlyValues.ifEmpty { listOf(0f) },
-                        labels = monthlyLabels.ifEmpty { emptyList() },
-                        barColor = palette.primary,
-                        heightDp = 140,
-                        labelColor = palette.textMuted,
-                    )
-                }
-            }
-            item {
-                Column(Modifier.clientCard(palette).padding(16.dp)) {
-                    Text(localized("an_weekly"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    val weeklyValues = data?.weeklyDynamics.orEmpty().map { it.amount.toFloat() }
-                    SimpleAreaChart(
-                        values = if (weeklyValues.size >= 2) weeklyValues else listOf(0f, 0f),
-                        strokeColor = palette.secondary,
-                        fillColor = palette.secondary.copy(alpha = 0.3f),
-                        heightDp = 100,
-                    )
-                }
-            }
-            item {
-                Column(Modifier.clientCard(palette).padding(16.dp)) {
-                    Text(localized("an_by_category"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(12.dp))
-                    val categories = data?.categories.orEmpty()
-                    if (categories.isEmpty()) {
-                        Text(
-                            if (state.loadFailed) localized("an_load_error") else localized("an_no_data"),
-                            color = palette.textMuted,
-                            fontSize = 13.sp,
-                        )
-                    } else {
-                        val colors = listOf(palette.primary, palette.secondary, palette.accent, palette.warning, palette.success, palette.danger)
-                        categories.forEachIndexed { index, category ->
+
+                    // KPI cards — glass with colored gradient icon area and trend arrows
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            KpiCard(
+                                label = localized("an_total"),
+                                value = formatMoney(data?.totalPurchases ?: 0.0),
+                                unit = localized("com_som"),
+                                trend = data?.totalPurchasesTrend ?: 0.0,
+                                accentColor = LiquidGlass.Indigo,
+                                modifier = Modifier.weight(1f),
+                            )
+                            KpiCard(
+                                label = localized("an_orders"),
+                                value = "${data?.orderCount ?: 0}",
+                                unit = "ta",
+                                trend = data?.orderCountTrend ?: 0.0,
+                                accentColor = LiquidGlass.Violet,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            KpiCard(
+                                label = localized("an_avg_check"),
+                                value = formatMoney(data?.avgCheck ?: 0.0),
+                                unit = localized("com_som"),
+                                trend = data?.avgCheckTrend ?: 0.0,
+                                accentColor = LiquidGlass.Cyan,
+                                modifier = Modifier.weight(1f),
+                            )
+                            KpiCard(
+                                label = localized("an_goods"),
+                                value = formatMoney(data?.totalQuantity ?: 0.0),
+                                unit = unitLabel(lang),
+                                trend = data?.totalQuantityTrend ?: 0.0,
+                                accentColor = LiquidGlass.Emerald,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+
+                    // Chart style — ustun / to'lqin / aylana (oylik xaridlar tepasida)
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                localized("an_chart_view"),
+                                color = LiquidTheme.textMuted,
+                                fontSize = 12.sp,
+                            )
                             Row(
-                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                Modifier
+                                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                                    .padding(4.dp),
                             ) {
-                                Text(
-                                    category.name,
-                                    color = palette.text,
-                                    modifier = Modifier.width(120.dp),
-                                    fontSize = 13.sp,
-                                )
-                                HorizontalProgressBar(
-                                    (category.share / 100.0).toFloat(),
-                                    colors[index % colors.size],
-                                    palette.surface2,
-                                    Modifier.weight(1f),
-                                )
-                                Text(" ${category.share}%", color = palette.textMuted, fontSize = 12.sp)
+                                listOf(
+                                    ChartVisualStyle.BAR to localized("an_style_bar"),
+                                    ChartVisualStyle.WAVE to localized("an_style_wave"),
+                                    ChartVisualStyle.CIRCLE to localized("an_style_circle"),
+                                ).forEach { (style, label) ->
+                                    val selected = state.chartStyle == style
+                                    if (selected) {
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                                .background(LiquidGlass.GradientPrimary)
+                                                .clickable { viewModel.setChartStyle(style) }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        ) {
+                                            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    } else {
+                                        Box(
+                                            Modifier
+                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                                .clickable { viewModel.setChartStyle(style) }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        ) {
+                                            Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-            item {
-                Column(Modifier.clientCard(palette).padding(16.dp)) {
-                    Text(localized("an_top_products"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    val topProducts = data?.topProducts.orEmpty()
-                    if (topProducts.isEmpty()) {
-                        Text(
-                            if (state.loadFailed) localized("an_load_error") else localized("an_no_data"),
-                            color = palette.textMuted,
-                            fontSize = 13.sp,
-                        )
-                    } else {
-                        topProducts.forEach { product ->
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(product.name, color = palette.text, fontSize = 13.sp)
+
+                    // Monthly bar chart — glass container, gradient-tinted bars
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                localized("an_monthly_chart"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            val monthly = data?.monthlyPurchases.orEmpty()
+                            val som = localized("com_som")
+                            val monthlyPoints = monthly.map {
+                                ChartPoint(
+                                    value = it.amount.toFloat(),
+                                    label = monthShortName(lang, it.month),
+                                    amountLabel = formatChartAmount(it.amount, som),
+                                )
+                            }.ifEmpty { listOf(ChartPoint(0f, "-", formatChartAmount(0.0, som))) }
+                            val segmentColors = listOf(
+                                LiquidGlass.Indigo, LiquidGlass.Violet, LiquidGlass.Cyan,
+                                LiquidGlass.Emerald, LiquidGlass.Amber, LiquidGlass.Rose,
+                            )
+                            AnalyticsTrendChart(
+                                points = monthlyPoints,
+                                style = state.chartStyle,
+                                primaryColor = LiquidGlass.Indigo,
+                                secondaryColor = LiquidGlass.Violet,
+                                heightDp = if (state.chartStyle == ChartVisualStyle.CIRCLE) 0 else 140,
+                                labelColor = LiquidTheme.textMuted,
+                                valueColor = LiquidTheme.text,
+                                segmentColors = segmentColors,
+                                centerLabel = localized("com_som"),
+                            )
+                        }
+                    }
+
+                    // Weekly area chart — glass container, cyan gradient fill
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                localized("an_weekly"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            val weekly = data?.weeklyDynamics.orEmpty()
+                            val weeklySom = localized("com_som")
+                            val weeklySegmentColors = listOf(
+                                LiquidGlass.Cyan, LiquidGlass.Indigo, LiquidGlass.Violet,
+                                LiquidGlass.Emerald, LiquidGlass.Amber, LiquidGlass.Rose, LiquidGlass.Pink,
+                            )
+                            val weeklyPoints = weekly.map {
+                                ChartPoint(
+                                    value = it.amount.toFloat(),
+                                    label = dayShortName(lang, it.date),
+                                    amountLabel = formatChartAmount(it.amount, weeklySom),
+                                )
+                            }.ifEmpty {
+                                listOf(
+                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom)),
+                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom)),
+                                )
+                            }
+                            AnalyticsTrendChart(
+                                points = weeklyPoints,
+                                style = state.chartStyle,
+                                primaryColor = LiquidGlass.Cyan,
+                                secondaryColor = LiquidGlass.Indigo,
+                                heightDp = if (state.chartStyle == ChartVisualStyle.CIRCLE) 0 else 110,
+                                labelColor = LiquidTheme.textMuted,
+                                valueColor = LiquidTheme.text,
+                                segmentColors = weeklySegmentColors,
+                                centerLabel = localized("com_som"),
+                            )
+                        }
+                    }
+
+                    // Category bars — glass with gradient progress
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                localized("an_by_category"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            val categories = data?.categories.orEmpty()
+                            if (categories.isEmpty()) {
                                 Text(
-                                    "${product.share}%",
-                                    color = palette.primary,
-                                    fontWeight = FontWeight.Bold,
+                                    if (state.loadFailed) localized("an_load_error") else localized("an_no_data"),
+                                    color = LiquidTheme.textMuted,
                                     fontSize = 13.sp,
                                 )
+                            } else {
+                                val accentColors = listOf(
+                                    LiquidGlass.Indigo,
+                                    LiquidGlass.Violet,
+                                    LiquidGlass.Cyan,
+                                    LiquidGlass.Amber,
+                                    LiquidGlass.Emerald,
+                                    LiquidGlass.Rose,
+                                )
+                                categories.forEachIndexed { index, category ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            category.name,
+                                            color = LiquidTheme.text,
+                                            modifier = Modifier.width(120.dp),
+                                            fontSize = 13.sp,
+                                        )
+                                        HorizontalProgressBar(
+                                            progress = (category.share / 100.0).toFloat(),
+                                            color = accentColors[index % accentColors.size],
+                                            trackColor = Color.White.copy(alpha = 0.10f),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            " ${category.share}%",
+                                            color = LiquidTheme.textMuted,
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Top products — glass card
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                localized("an_top_products"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            val topProducts = data?.topProducts.orEmpty()
+                            if (topProducts.isEmpty()) {
+                                Text(
+                                    if (state.loadFailed) localized("an_load_error") else localized("an_no_data"),
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 13.sp,
+                                )
+                            } else {
+                                topProducts.forEach { product ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(product.name, color = LiquidTheme.text, fontSize = 13.sp)
+                                        Text(
+                                            "${product.share}%",
+                                            color = LiquidGlass.Cyan,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -235,24 +408,43 @@ private fun KpiCard(
     value: String,
     unit: String,
     trend: Double,
-    color: Color,
+    accentColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    val palette = rememberClientPalette()
-    Column(modifier.clientCard(palette).padding(14.dp)) {
-        Text(label, color = palette.textMuted, fontSize = 11.sp)
-        Text(value, color = palette.text, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-        Text(unit, color = palette.textMuted, fontSize = 11.sp)
+    Column(
+        modifier
+            .liquidGlassThemed()
+            .padding(14.dp),
+    ) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(accentColor.copy(alpha = 0.22f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (trend >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                null,
+                tint = accentColor,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp)
+        Text(value, color = LiquidTheme.text, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text(unit, color = LiquidTheme.textMuted, fontSize = 11.sp)
+        Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (trend >= 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
                 null,
-                tint = if (trend >= 0) palette.success else palette.danger,
-                modifier = Modifier.height(14.dp),
+                tint = if (trend >= 0) LiquidGlass.Emerald else LiquidGlass.Rose,
+                modifier = Modifier.size(14.dp),
             )
             Text(
                 " ${kotlin.math.abs(trend)}%",
-                color = if (trend >= 0) palette.success else palette.danger,
+                color = if (trend >= 0) LiquidGlass.Emerald else LiquidGlass.Rose,
                 fontSize = 11.sp,
             )
         }
@@ -263,6 +455,20 @@ private fun unitLabel(lang: AppLanguage) = when (lang) {
     AppLanguage.RU -> "единиц"
     AppLanguage.EN -> "units"
     else -> "birlik"
+}
+
+private fun dayShortName(lang: AppLanguage, date: String): String {
+    return try {
+        val d = LocalDate.parse(date.take(10))
+        val locale = when (lang) {
+            AppLanguage.RU, AppLanguage.UZ_KRIL -> Locale("ru")
+            AppLanguage.EN -> Locale.ENGLISH
+            else -> Locale("uz")
+        }
+        d.dayOfWeek.getDisplayName(TextStyle.SHORT, locale).take(3)
+    } catch (_: Exception) {
+        date.takeLast(5)
+    }
 }
 
 private fun monthShortName(lang: AppLanguage, month: Int): String {

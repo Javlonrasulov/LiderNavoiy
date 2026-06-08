@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,10 +30,30 @@ fun SimpleBarChart(
     modifier: Modifier = Modifier,
     heightDp: Int = 120,
     labelColor: Color = Color.Gray,
+    valueLabels: List<String>? = null,
+    valueColor: Color = labelColor,
 ) {
     if (values.isEmpty()) return
     val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble()) }
     Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            amounts.forEach { amount ->
+                Text(
+                    text = amount,
+                    color = valueColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
@@ -44,14 +66,15 @@ fun SimpleBarChart(
                 val barHeight = (value / max) * (chartHeight - 8f)
                 val left = index * (barWidth + gap) + gap
                 drawRoundRect(
-                    color = barColor.copy(alpha = 0.85f),
-                    topLeft = Offset(left, chartHeight - barHeight),
-                    size = Size(barWidth, barHeight),
+                    color = barColor.copy(alpha = if (value > 0f) 0.85f else 0.2f),
+                    topLeft = Offset(left, chartHeight - barHeight.coerceAtLeast(if (value > 0f) 4f else 2f)),
+                    size = Size(barWidth, barHeight.coerceAtLeast(if (value > 0f) 4f else 2f)),
                     cornerRadius = CornerRadius(8f, 8f),
                 )
             }
         }
         if (labels.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -77,30 +100,71 @@ fun SimpleAreaChart(
     fillColor: Color,
     modifier: Modifier = Modifier,
     heightDp: Int = 64,
+    labels: List<String> = emptyList(),
+    valueLabels: List<String>? = null,
+    labelColor: Color = Color.Gray,
+    valueColor: Color = labelColor,
 ) {
     if (values.size < 2) return
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(heightDp.dp),
-    ) {
-        val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
-        val stepX = size.width / (values.size - 1)
-        val points = values.mapIndexed { index, value ->
-            Offset(
-                x = index * stepX,
-                y = size.height - (value / max) * size.height,
-            )
+    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble()) }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(heightDp.dp),
+        ) {
+            val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+            val stepX = size.width / (values.size - 1)
+            val points = values.mapIndexed { index, value ->
+                Offset(
+                    x = index * stepX,
+                    y = size.height - (value / max) * size.height,
+                )
+            }
+            val path = buildSmoothPath(points)
+            val fillPath = Path().apply {
+                addPath(path)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+                close()
+            }
+            drawPath(fillPath, Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
+            drawPath(path, strokeColor, style = Stroke(width = 3f))
         }
-        val path = buildSmoothPath(points)
-        val fillPath = Path().apply {
-            addPath(path)
-            lineTo(size.width, size.height)
-            lineTo(0f, size.height)
-            close()
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            amounts.forEach { amount ->
+                Text(
+                    text = amount,
+                    color = valueColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+            }
         }
-        drawPath(fillPath, Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
-        drawPath(path, strokeColor, style = Stroke(width = 3f))
+        if (labels.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                labels.forEach { label ->
+                    Text(
+                        text = label,
+                        color = labelColor,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
     }
 }
 

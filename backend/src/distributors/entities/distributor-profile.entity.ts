@@ -35,6 +35,9 @@ export class DistributorProfile {
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  position: string | null;
+
   @Column({ type: 'enum', enum: DistributorStatus, default: DistributorStatus.OFFLINE })
   status: DistributorStatus;
 

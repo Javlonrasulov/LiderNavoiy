@@ -51,12 +51,15 @@ export type AgentRow = {
   clients: number; visits: number; sales: number;
   payments: number; debt: number; plan: number;
   status: string; orgId: string;
+  phone?: string;
+  backendUserId?: string;
+  distributorId?: string;
 };
 
 export type ChartRow = { month: string; sales: number; payments: number };
 
 export type ClientRow = {
-  id: string; code: string; name: string; fullName: string;
+  id: string; code: string; onTradeId?: string; name: string; fullName: string;
   line: string; priceCat: string; territory: string;
   inn: string; legalAddr: string; phone: string; contact: string;
   cls: string; gps: string; agent: string; balance: number;
@@ -1702,6 +1705,7 @@ export type SotrudnikRow = {
   phone: string;
   orgId: string;
   backendUserId?: string;
+  distributorId?: string;
   username?: string;
   deptKey?: string;
   posKey?: string;

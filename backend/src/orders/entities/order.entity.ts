@@ -22,6 +22,9 @@ export class Order {
   clientId: string;
 
   @Column({ type: 'uuid', nullable: true })
+  deliveryDistributorId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
   visitId: string | null;
 
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })

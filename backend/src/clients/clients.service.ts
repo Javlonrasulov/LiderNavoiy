@@ -69,6 +69,7 @@ export class ClientsService {
       `A${Date.now().toString(36).slice(-7).toUpperCase()}`;
     const client = this.repo.create({
       code,
+      onTradeId: dto.onTradeId?.trim() || code,
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
       phone: dto.phone ?? null,
@@ -94,6 +95,7 @@ export class ClientsService {
   async update(id: string, dto: UpdateClientDto) {
     const client = await this.findOne(id);
     if (dto.code !== undefined) client.code = dto.code;
+    if (dto.onTradeId !== undefined) client.onTradeId = dto.onTradeId?.trim() || null;
     if (dto.name !== undefined) client.name = dto.name;
     if (dto.fullName !== undefined) client.fullName = dto.fullName;
     if (dto.phone !== undefined) client.phone = dto.phone;

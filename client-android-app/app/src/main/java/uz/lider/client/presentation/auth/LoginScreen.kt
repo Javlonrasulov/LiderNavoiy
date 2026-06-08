@@ -1,6 +1,7 @@
 package uz.lider.client.presentation.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +20,6 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +51,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
-import uz.lider.client.presentation.theme.ClientColors
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.glowEffect
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun LoginScreen(
@@ -63,42 +67,47 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var showLangMenu by remember { mutableStateOf(false) }
 
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedContainerColor = ClientColors.Surface2,
-        unfocusedContainerColor = ClientColors.Surface2,
-        focusedTextColor = ClientColors.Text,
-        unfocusedTextColor = ClientColors.Text,
-        focusedBorderColor = ClientColors.Primary,
-        unfocusedBorderColor = ClientColors.Border,
-        focusedLabelColor = ClientColors.Primary,
-        unfocusedLabelColor = ClientColors.TextMuted,
-        cursorColor = ClientColors.Primary,
+    val glassFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color.White.copy(alpha = 0.12f),
+        unfocusedContainerColor = Color.White.copy(alpha = 0.08f),
+        focusedTextColor = LiquidTheme.text,
+        unfocusedTextColor = LiquidTheme.text,
+        focusedBorderColor = LiquidGlass.GlassDarkBorderStrong,
+        unfocusedBorderColor = LiquidTheme.textMuted.copy(alpha = 0.3f),
+        focusedLabelColor = LiquidGlass.IndigoLight,
+        unfocusedLabelColor = LiquidTheme.textMuted,
+        cursorColor = LiquidGlass.Cyan,
+        focusedLeadingIconColor = LiquidGlass.IndigoLight,
+        unfocusedLeadingIconColor = LiquidTheme.textMuted,
+        focusedTrailingIconColor = LiquidGlass.IndigoLight,
+        unfocusedTrailingIconColor = LiquidTheme.textMuted,
     )
 
-    LaunchedEffect(Unit) {
-        viewModel.resetForm()
-    }
+    LaunchedEffect(Unit) { viewModel.resetForm() }
+    LaunchedEffect(state.isSuccess) { if (state.isSuccess) onLoginSuccess() }
 
-    LaunchedEffect(state.isSuccess) {
-        if (state.isSuccess) onLoginSuccess()
-    }
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(ClientColors.BgDeep, ClientColors.BgDark, ClientColors.Surface),
-                ),
-            ),
-    ) {
+        // Language picker — top-right glass pill button
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(20.dp),
+                .padding(16.dp),
         ) {
-            IconButton(onClick = { showLangMenu = true }) {
-                Icon(Icons.Default.Language, contentDescription = null, tint = ClientColors.TextMuted)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(onClick = { showLangMenu = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.Default.Language,
+                        contentDescription = null,
+                        tint = LiquidTheme.textMuted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
             DropdownMenu(
                 expanded = showLangMenu,
@@ -116,103 +125,128 @@ fun LoginScreen(
             }
         }
 
+        // Center form column
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+
+            // Gradient logo icon with ambient glow
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .background(
-                        Brush.linearGradient(listOf(ClientColors.Primary, ClientColors.Secondary)),
-                        RoundedCornerShape(24.dp),
-                    ),
+                    .size(80.dp)
+                    .glowEffect(color = LiquidGlass.Indigo, radius = 180f)
+                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                    .background(LiquidGlass.GradientPrimary),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Login, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
+                Icon(
+                    Icons.Default.Login,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp),
+                )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(20.dp))
+
             Text(
                 loginTitle(lang),
-                fontSize = 24.sp,
+                fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
-                color = ClientColors.Text,
+                color = LiquidTheme.text,
             )
+            Spacer(Modifier.height(4.dp))
             Text(
                 loginSubtitle(lang),
                 fontSize = 14.sp,
-                color = ClientColors.TextMuted,
+                color = LiquidTheme.textMuted,
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(32.dp))
 
-            OutlinedTextField(
-                value = state.username,
-                onValueChange = viewModel::onUsernameChange,
-                label = { Text(loginUsername(lang)) },
-                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                colors = fieldColors,
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = viewModel::onPasswordChange,
-                label = { Text(loginPassword(lang)) },
-                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = if (passwordVisible) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Outlined.VisibilityOff,
-                            contentDescription = null,
-                            tint = ClientColors.TextMuted,
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                colors = fieldColors,
-            )
+            // Frosted glass card wrapping the form fields
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.username,
+                    onValueChange = viewModel::onUsernameChange,
+                    label = { Text(loginUsername(lang)) },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(LiquidGlass.RadiusInput),
+                    colors = glassFieldColors,
+                )
+
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = viewModel::onPasswordChange,
+                    label = { Text(loginPassword(lang)) },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Outlined.VisibilityOff,
+                                contentDescription = null,
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(LiquidGlass.RadiusInput),
+                    colors = glassFieldColors,
+                )
+            }
 
             state.errorKey?.let { key ->
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     apiErrorMessage(lang, key),
-                    color = MaterialTheme.colorScheme.error,
+                    color = LiquidGlass.Rose,
                     fontSize = 13.sp,
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = viewModel::login,
+            Spacer(Modifier.height(20.dp))
+
+            // Gradient "Kirish" button
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                enabled = !state.isLoading,
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ClientColors.Primary),
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                    .background(
+                        if (!state.isLoading) LiquidGlass.GradientPrimary
+                        else Brush.linearGradient(
+                            listOf(LiquidGlass.GlassDarkStrong, LiquidGlass.GlassDarkStrong),
+                        ),
+                    )
+                    .clickable(enabled = !state.isLoading) { viewModel.login() },
+                contentAlignment = Alignment.Center,
             ) {
                 if (state.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
                 } else {
                     Text(
                         loginButton(lang),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
                     )
                 }
             }

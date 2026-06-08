@@ -4,7 +4,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+
+/** Provides the current dark/light mode to all children without prop-drilling. */
+val LocalClientDark = compositionLocalOf { true }
 
 private val DarkColorScheme = darkColorScheme(
     primary = ClientColors.Primary,
@@ -39,8 +43,10 @@ fun ClientTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
-        content = content,
-    )
+    androidx.compose.runtime.CompositionLocalProvider(LocalClientDark provides darkTheme) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
+            content = content,
+        )
+    }
 }

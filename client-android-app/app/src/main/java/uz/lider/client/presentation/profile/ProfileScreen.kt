@@ -1,6 +1,9 @@
 package uz.lider.client.presentation.profile
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,9 +13,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -36,6 +42,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -43,13 +51,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import uz.lider.client.domain.model.ContactPerson
 import uz.lider.client.presentation.components.ClientTabScaffold
-import uz.lider.client.presentation.components.clientCard
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun ProfileScreen(
@@ -58,120 +68,287 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val palette = rememberClientPalette()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val profile = state.profile
-    val branches = listOf(
-        BranchInfo("Asosiy filial", "Toshkent, Yunusobod, Amir Temur 108", "+998 71 123-45-67"),
-        BranchInfo("Qo'shimcha filial", "Toshkent, Chilonzor, Bunyodkor 44", "+998 71 234-56-78"),
-    )
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
 
-    ClientTabScaffold(title = localized("prof_title"), bottomPadding = true) { padding ->
-        if (state.loading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.primary)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
-                    Column(
-                        Modifier
-                            .clientCard(palette)
-                            .padding(20.dp),
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(
-                                model = "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=120&h=120&fit=crop",
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)),
-                            )
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(profile?.fullName ?: profile?.name ?: "—", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(palette.warning.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 2.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Star, null, tint = palette.warning, modifier = Modifier.size(12.dp))
-                                            Text(" VIP Gold", color = palette.warning, fontSize = 11.sp)
+    ClientTabScaffold(title = localized("prof_title")) { padding ->
+        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            if (state.loading) {
+                Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = LiquidGlass.Indigo)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(padding),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
+                    // ── Hero banner ───────────────────────────────────────────
+                    item {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            Color(0xFF4F46E5),
+                                            LiquidGlass.Violet,
+                                            Color(0xFF7C3AED),
+                                        ),
+                                        start = Offset(0f, 0f),
+                                        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                                    )
+                                )
+                                .padding(vertical = 28.dp, horizontal = 24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(72.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.18f))
+                                        .border(2.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        profileInitials(profile?.fullName ?: profile?.name),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 22.sp,
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    profile?.fullName ?: profile?.name ?: "—",
+                                    color = text,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp,
+                                )
+                                Text(
+                                    profile?.name ?: "",
+                                    color = textMuted,
+                                    fontSize = 14.sp,
+                                )
+                                profileCategoryStyle(profile?.category)?.let { categoryStyle ->
+                                    Spacer(Modifier.height(12.dp))
+                                    Box(
+                                        Modifier
+                                            .clip(RoundedCornerShape(50.dp))
+                                            .background(categoryStyle.gradient)
+                                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Star,
+                                                null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(13.dp),
+                                            )
+                                            Text(
+                                                categoryStyle.label,
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
                                         }
                                     }
                                 }
-                                Text(profile?.name ?: "", color = palette.textMuted, fontSize = 14.sp)
                             }
                         }
-                        Spacer(Modifier.size(16.dp))
-                        Row(Modifier.clip(RoundedCornerShape(16.dp)).background(palette.surface2).padding(12.dp)) {
-                            StatCell("${profile?.orderCount ?: 0}", localized("nav_orders"), Modifier.weight(1f))
-                            StatCell("4,850", "Bonus", Modifier.weight(1f))
-                            StatCell("12%", localized("promo_discount_label"), Modifier.weight(1f))
-                        }
                     }
-                }
-                item {
-                    Column(Modifier.clientCard(palette).padding(16.dp)) {
-                        Text(localized("prof_company"), color = palette.textMuted, fontSize = 12.sp)
-                        InfoRow(Icons.Default.Business, localized("prof_company"), profile?.name ?: "—", palette.primary)
-                        InfoRow(Icons.Default.Shield, localized("prof_tin"), profile?.code ?: "—", palette.secondary)
-                        InfoRow(Icons.Default.Phone, localized("prof_phone"), profile?.phone ?: "+998 90 123-45-67", palette.accent)
-                        InfoRow(Icons.Default.LocationOn, localized("prof_address"), "Toshkent, Yunusobod", palette.success)
-                    }
-                }
-                item {
-                    Column(Modifier.clientCard(palette).padding(16.dp)) {
-                        Text(localized("prof_manager"), color = palette.textMuted, fontSize = 12.sp)
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AsyncImage(
-                                model = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)),
+
+                    // ── Stats row ─────────────────────────────────────────────
+                    item {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            GlassStatCard(
+                                "${profile?.orderCount ?: 0}",
+                                localized("nav_orders"),
+                                Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+                                Modifier.weight(1f),
                             )
-                            Column(Modifier.weight(1f)) {
-                                Text(profile?.agentName ?: "Anora Yusupova", color = palette.text, fontWeight = FontWeight.SemiBold)
-                                Text(localized("prof_sales_manager"), color = palette.textMuted, fontSize = 12.sp)
-                            }
-                            Icon(Icons.Default.Phone, null, tint = palette.secondary, modifier = Modifier.size(20.dp))
-                            Icon(Icons.Default.Chat, null, tint = palette.primary, modifier = Modifier.size(20.dp).clickable { onNavigate(ClientRoutes.CHAT) })
+                            GlassStatCard(
+                                "4,850",
+                                "Bonus",
+                                Brush.linearGradient(listOf(LiquidGlass.Violet, LiquidGlass.Pink)),
+                                Modifier.weight(1f),
+                            )
+                            GlassStatCard(
+                                "12%",
+                                localized("promo_discount_label"),
+                                Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
+                                Modifier.weight(1f),
+                            )
                         }
                     }
-                }
-                item {
-                    Column(Modifier.clientCard(palette).padding(16.dp)) {
-                        Text(localized("prof_branches"), color = palette.textMuted, fontSize = 12.sp)
-                        branches.forEach { branch ->
-                            Column(Modifier.padding(vertical = 8.dp)) {
-                                Text(branch.name, color = palette.text, fontWeight = FontWeight.SemiBold)
-                                Text(branch.address, color = palette.textMuted, fontSize = 13.sp)
-                                Text(branch.phone, color = palette.secondary, fontSize = 13.sp)
-                            }
+
+                    // ── Company info ──────────────────────────────────────────
+                    item {
+                        Column(
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 16.dp)
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Text(
+                                localized("prof_company").uppercase(),
+                                color = textMuted,
+                                fontSize = 11.sp,
+                                letterSpacing = 1.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            GlassInfoRow(
+                                Icons.Default.Business,
+                                localized("prof_company"),
+                                profile?.name ?: "—",
+                                Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+                            )
+                            GlassInfoRow(
+                                Icons.Default.Shield,
+                                localized("prof_tin"),
+                                profile?.code ?: "—",
+                                Brush.linearGradient(listOf(LiquidGlass.Violet, LiquidGlass.Cyan)),
+                            )
+                            GlassInfoRow(
+                                Icons.Default.Phone,
+                                localized("prof_phone"),
+                                profile?.phone?.takeIf { it.isNotBlank() } ?: "—",
+                                Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
+                            )
+                            GlassInfoRow(
+                                Icons.Default.LocationOn,
+                                localized("prof_address"),
+                                profile?.address?.takeIf { it.isNotBlank() } ?: "—",
+                                Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Amber)),
+                            )
                         }
                     }
-                }
-                item {
-                    MenuLink(Icons.Default.Notifications, localized("prof_notif_settings"), palette.warning) { onNavigate(ClientRoutes.NOTIFICATIONS) }
-                    MenuLink(Icons.Default.Settings, localized("prof_app_settings"), palette.primary) { onNavigate(ClientRoutes.SETTINGS) }
-                    MenuLink(Icons.Default.Help, localized("prof_help"), palette.secondary) { }
-                }
-                item {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(palette.danger.copy(alpha = 0.1f))
-                            .clickable {
-                                scope.launch {
-                                    viewModel.logout()
-                                    onLogout()
+
+                    // ── Manager card ──────────────────────────────────────────
+                    if (!profile?.agentName.isNullOrBlank()) {
+                        item {
+                            ContactInfoCard(
+                                title = localized("prof_manager"),
+                                person = ContactPerson(
+                                    name = profile?.agentName.orEmpty(),
+                                    position = profile?.agentPosition,
+                                    phone = profile?.agentPhone,
+                                ),
+                                onCall = { phone ->
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                                },
+                                onChat = { onNavigate(ClientRoutes.CHAT) },
+                            )
+                        }
+                    }
+
+                    // ── Delivery card (only when order is loaded) ─────────────
+                    profile?.deliveryPerson?.let { delivery ->
+                        item {
+                            ContactInfoCard(
+                                title = localized("prof_delivery"),
+                                person = delivery,
+                                onCall = { phone ->
+                                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                                },
+                            )
+                        }
+                    }
+
+                    // ── Menu links ────────────────────────────────────────────
+                    item {
+                        Column(
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            GlassMenuLink(
+                                Icons.Default.Notifications,
+                                localized("prof_notif_settings"),
+                                Brush.linearGradient(listOf(LiquidGlass.Amber, LiquidGlass.Rose)),
+                            ) { onNavigate(ClientRoutes.NOTIFICATIONS) }
+                            GlassMenuLink(
+                                Icons.Default.Settings,
+                                localized("prof_app_settings"),
+                                LiquidGlass.GradientPrimary,
+                            ) { onNavigate(ClientRoutes.SETTINGS) }
+                            GlassMenuLink(
+                                Icons.Default.Help,
+                                localized("prof_help"),
+                                Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
+                            ) { }
+                        }
+                    }
+
+                    // ── Logout ────────────────────────────────────────────────
+                    item {
+                        Box(
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 12.dp, bottom = 8.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            LiquidGlass.Rose.copy(alpha = 0.28f),
+                                            Color(0xFFFB2D48).copy(alpha = 0.18f),
+                                        )
+                                    )
+                                )
+                                .border(
+                                    1.dp,
+                                    Brush.linearGradient(
+                                        listOf(
+                                            LiquidGlass.Rose.copy(alpha = 0.65f),
+                                            LiquidGlass.Rose.copy(alpha = 0.20f),
+                                        )
+                                    ),
+                                    RoundedCornerShape(LiquidGlass.RadiusCard),
+                                )
+                                .clickable {
+                                    scope.launch {
+                                        viewModel.logout()
+                                        onLogout()
+                                    }
                                 }
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Default.Logout, null, tint = LiquidGlass.Rose)
+                                Text(
+                                    localized("prof_logout"),
+                                    color = LiquidGlass.Rose,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
                             }
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.Logout, null, tint = palette.danger)
-                        Text(" ${localized("prof_logout")}", color = palette.danger, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -179,45 +356,206 @@ fun ProfileScreen(
     }
 }
 
+private data class ProfileCategoryStyle(
+    val label: String,
+    val gradient: Brush,
+)
+
+private fun profileCategoryStyle(category: String?): ProfileCategoryStyle? {
+    val raw = category?.trim().orEmpty()
+    if (raw.isEmpty()) return null
+    return when (raw.lowercase()) {
+        "standard" -> ProfileCategoryStyle(
+            "Standard",
+            Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFF4F46E5))),
+        )
+        "vip" -> ProfileCategoryStyle(
+            "VIP",
+            Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF7C3AED))),
+        )
+        "premium" -> ProfileCategoryStyle(
+            "Premium",
+            Brush.linearGradient(listOf(Color(0xFFA78BFA), Color(0xFF8B5CF6))),
+        )
+        else -> ProfileCategoryStyle(
+            raw,
+            Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+        )
+    }
+}
+
+private fun profileInitials(name: String?): String {
+    if (name.isNullOrBlank()) return "—"
+    return name.split(Regex("\\s+"))
+        .filter { it.isNotBlank() }
+        .map { it.first().uppercaseChar() }
+        .take(2)
+        .joinToString("")
+}
+
 @Composable
-private fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
-    val palette = rememberClientPalette()
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = palette.text, fontWeight = FontWeight.Bold)
-        Text(label, color = palette.textMuted, fontSize = 11.sp)
+private fun ContactInfoCard(
+    title: String,
+    person: ContactPerson,
+    onCall: (String) -> Unit,
+    onChat: (() -> Unit)? = null,
+) {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    val phone = person.phone?.takeIf { it.isNotBlank() }
+
+    Column(
+        Modifier
+            .padding(horizontal = 16.dp)
+            .padding(top = 12.dp)
+            .fillMaxWidth()
+            .liquidGlassThemed()
+            .padding(16.dp),
+    ) {
+        Text(
+            title.uppercase(),
+            color = textMuted,
+            fontSize = 11.sp,
+            letterSpacing = 1.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(person.name, color = text, fontWeight = FontWeight.SemiBold)
+                person.position?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = textMuted, fontSize = 12.sp)
+                }
+                Text(
+                    phone ?: "—",
+                    color = if (phone != null) LiquidGlass.Cyan else textMuted,
+                    fontSize = 13.sp,
+                    fontWeight = if (phone != null) FontWeight.Medium else FontWeight.Normal,
+                )
+            }
+            if (phone != null) {
+                Box(
+                    Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Cyan)),
+                        )
+                        .clickable { onCall(phone) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Phone, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+            if (onChat != null) {
+                Box(
+                    Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+                        )
+                        .clickable(onClick = onChat),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Chat, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun InfoRow(icon: ImageVector, label: String, value: String, color: Color) {
-    val palette = rememberClientPalette()
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
-        }
-        Column {
-            Text(label, color = palette.textMuted, fontSize = 11.sp)
-            Text(value, color = palette.text, fontSize = 14.sp)
-        }
+private fun GlassStatCard(value: String, label: String, gradient: Brush, modifier: Modifier = Modifier) {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    Column(
+        modifier
+            .liquidGlassThemed()
+            .padding(vertical = 14.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            value,
+            color = text,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+        )
+        Spacer(Modifier.height(2.dp))
+        Box(
+            Modifier
+                .height(2.dp)
+                .width(24.dp)
+                .clip(RoundedCornerShape(1.dp))
+                .background(gradient),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = textMuted, fontSize = 11.sp)
     }
 }
 
 @Composable
-private fun MenuLink(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {
-    val palette = rememberClientPalette()
+private fun GlassInfoRow(icon: ImageVector, label: String, value: String, gradient: Brush) {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
     Row(
         Modifier
             .fillMaxWidth()
-            .clientCard(palette)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(gradient),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        }
+        Column {
+            Text(label, color = textMuted, fontSize = 11.sp)
+            Text(value, color = text, fontSize = 14.sp)
+        }
+    }
+}
+
+@Composable
+private fun GlassMenuLink(icon: ImageVector, label: String, gradient: Brush, onClick: () -> Unit) {
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .liquidGlassThemed()
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = color)
-            Text(label, color = palette.text)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(gradient),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = Color.White, modifier = Modifier.size(17.dp))
+            }
+            Text(label, color = text)
         }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = palette.textMuted)
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            null,
+            tint = textMuted,
+        )
     }
 }

@@ -272,10 +272,18 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
+      const phone = editDraft.phone.trim() || undefined;
       await api.updateAppUser(editDraft.backendUserId, {
         fullName: editDraft.name.trim(),
         role: mapPosKeyToBackend(editDraft.posKey),
+        phone,
+        position: sotrudnikPosLabel(editDraft, t) || undefined,
       });
+      const distributorId = editDraft.distributorId
+        ?? apiDistributors.find(d => d.userId === editDraft.backendUserId)?.id;
+      if (distributorId && phone) {
+        await api.updateDistributor(distributorId, { phone });
+      }
       await refreshEmployees();
       setEditRow(null);
       setEditDraft(null);
@@ -313,6 +321,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         fullName: addDraft.name.trim(),
         role: mapPosKeyToBackend(addDraft.posKey),
         companyId: orgId,
+        phone: addDraft.phone.trim() || undefined,
+        position: sotrudnikPosLabel(addDraft, t) || undefined,
       });
       await refreshEmployees();
       setShowAdd(false);

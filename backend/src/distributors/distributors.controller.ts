@@ -37,4 +37,13 @@ export class DistributorsController {
   ) {
     return this.service.updateStatus(id, status);
   }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update distributor profile (phone, position, line)' })
+  updateProfile(
+    @Param('id') id: string,
+    @Body() body: { phone?: string | null; position?: string | null; lineCode?: string | null },
+  ) {
+    return this.service.updateProfile(id, body);
+  }
 }

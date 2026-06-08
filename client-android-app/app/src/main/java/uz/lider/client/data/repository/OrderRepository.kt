@@ -8,7 +8,7 @@ import uz.lider.client.data.remote.dto.OrderItemDto
 import uz.lider.client.data.remote.dto.OrderTrackingDto
 import uz.lider.client.domain.model.CartItem
 import uz.lider.client.domain.model.ClientOrder
-import uz.lider.client.domain.model.CourierTracking
+import uz.lider.client.domain.model.DeliveryPersonTracking
 import uz.lider.client.domain.model.OrderItem
 import uz.lider.client.domain.model.OrderTrackingDetails
 import javax.inject.Inject
@@ -65,9 +65,11 @@ class OrderRepository @Inject constructor(
         deliveryLongitude = deliveryLongitude,
         distanceKm = distanceKm,
         etaMinutes = etaMinutes,
-        courier = courier?.let {
-            CourierTracking(
+        deliveryPerson = deliveryPerson?.let {
+            DeliveryPersonTracking(
                 name = it.name,
+                position = it.position,
+                phone = it.phone,
                 isOnline = it.isOnline,
                 latitude = it.latitude,
                 longitude = it.longitude,

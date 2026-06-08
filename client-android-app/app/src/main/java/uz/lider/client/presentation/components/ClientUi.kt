@@ -151,6 +151,10 @@ fun formatMoney(value: Double): String {
     return DecimalFormat("#,##0", symbols).format(value)
 }
 
+fun formatChartAmount(value: Double, currency: String = "so'm"): String {
+    return "${formatMoney(value)} $currency"
+}
+
 fun formatOrderId(id: String): String =
     "#${id.replace("-", "").take(8).uppercase()}"
 

@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus } from '../common/enums';
+import { OrderStatus, UserRole } from '../common/enums';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
 import { CreateOrderDto } from '../orders/dto/order.dto';
 import { OrdersService } from '../orders/orders.service';
@@ -18,6 +19,8 @@ export class ClientPortalService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
+    @InjectRepository(DistributorProfile)
+    private readonly distributorRepo: Repository<DistributorProfile>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
     private readonly gpsService: GpsService,
@@ -26,6 +29,49 @@ export class ClientPortalService {
   private clientId(user: User): string {
     if (!user.clientId) throw new BadRequestException('No client linked to user');
     return user.clientId;
+  }
+
+  private roleToPosition(role?: UserRole, customPosition?: string | null): string | null {
+    if (customPosition?.trim()) return customPosition.trim();
+    switch (role) {
+      case UserRole.ADMIN:
+        return 'Direktor';
+      case UserRole.MANAGER:
+        return 'Menejer';
+      case UserRole.DISTRIBUTOR:
+        return 'Agent';
+      default:
+        return null;
+    }
+  }
+
+  private contactFromDistributor(
+    distributor: DistributorProfile | null | undefined,
+    fallbackPosition?: string | null,
+  ) {
+    if (!distributor) return null;
+    const name = distributor.user?.fullName?.trim();
+    if (!name) return null;
+    return {
+      name,
+      position:
+        distributor.position?.trim() ||
+        this.roleToPosition(distributor.user?.role, fallbackPosition) ||
+        fallbackPosition ||
+        null,
+      phone: distributor.phone?.trim() || null,
+    };
+  }
+
+  private async resolveClientDistributor(client: Client): Promise<DistributorProfile | null> {
+    if (client.distributorId) {
+      const distributor = await this.distributorRepo.findOne({
+        where: { id: client.distributorId },
+        relations: ['user'],
+      });
+      if (distributor) return distributor;
+    }
+    return client.distributor ?? null;
   }
 
   async getProfile(user: User) {
@@ -43,6 +89,23 @@ export class ClientPortalService {
       .andWhere('o.status != :cancelled', { cancelled: OrderStatus.CANCELLED })
       .getRawOne();
 
+    const agent = this.contactFromDistributor(await this.resolveClientDistributor(client));
+
+    const loadedOrder = await this.orderRepo.findOne({
+      where: { clientId: client.id, status: OrderStatus.CONFIRMED },
+      order: { updatedAt: 'DESC' },
+    });
+
+    let deliveryPerson: { name: string; position: string | null; phone: string | null } | null =
+      null;
+    if (loadedOrder?.deliveryDistributorId) {
+      const deliveryDistributor = await this.distributorRepo.findOne({
+        where: { id: loadedOrder.deliveryDistributorId },
+        relations: ['user'],
+      });
+      deliveryPerson = this.contactFromDistributor(deliveryDistributor, 'Dostavkachi');
+    }
+
     return {
       id: client.id,
       code: client.code,
@@ -55,7 +118,10 @@ export class ClientPortalService {
       category: client.category,
       clientClass: client.clientClass,
       priceCategory: client.priceCategory,
-      agentName: client.distributor?.user?.fullName ?? null,
+      agentName: agent?.name ?? null,
+      agentPosition: agent?.position ?? null,
+      agentPhone: agent?.phone ?? null,
+      deliveryPerson,
       orderCount,
       totalPurchases: Number(totalPurchases?.total ?? 0),
     };
@@ -88,40 +154,73 @@ export class ClientPortalService {
     });
     if (!client) throw new NotFoundException('Client not found');
 
-    let courierLat: number | null = null;
-    let courierLng: number | null = null;
-    let courierLastAt: string | null = null;
-    const distributor = client.distributor;
-    const courierName = distributor?.user?.fullName ?? null;
-    const courierOnline = distributor?.isOnline ?? false;
+    const deliveryLat = client.latitude;
+    const deliveryLng = client.longitude;
 
-    if (client.distributorId) {
-      try {
-        const live = await this.gpsService.getLastLocation(client.distributorId);
-        courierLat = live.latitude;
-        courierLng = live.longitude;
-        courierLastAt = live.recordedAt ?? null;
-      } catch {
-        if (distributor?.lastLatitude != null && distributor?.lastLongitude != null) {
-          courierLat = distributor.lastLatitude;
-          courierLng = distributor.lastLongitude;
-          courierLastAt = distributor.lastLocationAt?.toISOString() ?? null;
+    let deliveryPerson:
+      | {
+          name: string;
+          position: string | null;
+          phone: string | null;
+          isOnline: boolean;
+          latitude: number | null;
+          longitude: number | null;
+          lastLocationAt: string | null;
         }
+      | null = null;
+
+    if (order.deliveryDistributorId) {
+      const deliveryDistributor = await this.distributorRepo.findOne({
+        where: { id: order.deliveryDistributorId },
+        relations: ['user'],
+      });
+      const contact = this.contactFromDistributor(deliveryDistributor, 'Dostavkachi');
+      if (contact) {
+        let personLat: number | null = null;
+        let personLng: number | null = null;
+        let personLastAt: string | null = null;
+
+        try {
+          const live = await this.gpsService.getLastLocation(order.deliveryDistributorId);
+          personLat = live.latitude;
+          personLng = live.longitude;
+          personLastAt = live.recordedAt ?? null;
+        } catch {
+          if (
+            deliveryDistributor?.lastLatitude != null &&
+            deliveryDistributor?.lastLongitude != null
+          ) {
+            personLat = deliveryDistributor.lastLatitude;
+            personLng = deliveryDistributor.lastLongitude;
+            personLastAt = deliveryDistributor.lastLocationAt?.toISOString() ?? null;
+          }
+        }
+
+        deliveryPerson = {
+          ...contact,
+          isOnline: deliveryDistributor?.isOnline ?? false,
+          latitude: personLat,
+          longitude: personLng,
+          lastLocationAt: personLastAt,
+        };
       }
     }
 
-    const deliveryLat = client.latitude;
-    const deliveryLng = client.longitude;
     let distanceKm: number | null = null;
     let etaMinutes: number | null = null;
 
     if (
       deliveryLat != null &&
       deliveryLng != null &&
-      courierLat != null &&
-      courierLng != null
+      deliveryPerson?.latitude != null &&
+      deliveryPerson?.longitude != null
     ) {
-      distanceKm = this.haversineKm(deliveryLat, deliveryLng, courierLat, courierLng);
+      distanceKm = this.haversineKm(
+        deliveryLat,
+        deliveryLng,
+        deliveryPerson.latitude,
+        deliveryPerson.longitude,
+      );
       etaMinutes = Math.max(5, Math.round((distanceKm / 30) * 60));
     }
 
@@ -134,15 +233,7 @@ export class ClientPortalService {
       deliveryLongitude: deliveryLng,
       distanceKm,
       etaMinutes,
-      courier: courierName
-        ? {
-            name: courierName,
-            isOnline: courierOnline,
-            latitude: courierLat,
-            longitude: courierLng,
-            lastLocationAt: courierLastAt,
-          }
-        : null,
+      deliveryPerson,
     };
   }
 

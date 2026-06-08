@@ -18,31 +18,26 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.SettingsBrightness
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,231 +55,313 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
-import uz.lider.client.presentation.components.ClientScreenBox
+import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
-import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.notifications.MockNotificationIds
+import uz.lider.client.presentation.notifications.NotificationsViewModel
 import uz.lider.client.presentation.settings.SettingsViewModel
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
+import uz.lider.client.presentation.theme.LiquidGlassDropdownMenu
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onNavigate: (String) -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
+    notificationsViewModel: NotificationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val readNotificationIds by notificationsViewModel.readIds.collectAsState()
+    val hasUnreadNotifications = MockNotificationIds.all.any { it !in readNotificationIds }
     val lang = LocalAppLanguage.current
     val palette = rememberClientPalette()
     val t = remember(lang) { { key: String -> AppStrings.t(lang, key) } }
     var showDatePicker by remember { mutableStateOf(false) }
     val filtered = state.filtered
-    val periodLabel = if (state.dateRange.isCustom) {
-        DashboardDateFilter.formatRange(state.dateRange)
-    } else {
-        "${t("dash_last_month")} • ${DashboardDateFilter.formatRange(state.dateRange)}"
-    }
+    val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
 
-    if (showDatePicker) {
-        val pickerState = rememberDateRangePickerState(
-            initialSelectedStartDateMillis = DashboardDateFilter.toStartMillis(state.dateRange.start),
-            initialSelectedEndDateMillis = DashboardDateFilter.toStartMillis(state.dateRange.end),
-        )
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val start = pickerState.selectedStartDateMillis
-                        val end = pickerState.selectedEndDateMillis ?: start
-                        if (start != null && end != null) {
-                            viewModel.setDateRange(start, end)
-                        }
-                        showDatePicker = false
-                    },
-                ) {
-                    Text(t("dash_apply_dates"))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(t("com_cancel"))
-                }
-            },
-        ) {
-            DateRangePicker(
-                state = pickerState,
-                title = {
-                    Text(
-                        t("dash_select_dates"),
-                        modifier = Modifier.padding(start = 24.dp, top = 16.dp),
-                    )
-                },
-            )
-        }
-    }
+    DashboardDateRangeDialog(
+        visible = showDatePicker,
+        onDismiss = { showDatePicker = false },
+        onApply = { start, end -> viewModel.setDateRange(start, end) },
+        onClear = { viewModel.resetToLastMonth() },
+        initialStartMillis = state.dateRange.takeIf { it.isCustom }
+            ?.let { DashboardDateFilter.toStartMillis(it.start) },
+        initialEndMillis = state.dateRange.takeIf { it.isCustom }
+            ?.let { DashboardDateFilter.toStartMillis(it.end) },
+        title = t("dash_select_dates"),
+        applyLabel = t("dash_apply_dates"),
+        cancelLabel = t("com_cancel"),
+    )
 
     ClientTabScaffold(
-        titleContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t("nav_home"), fontWeight = FontWeight.Bold, color = palette.text)
-                IconButton(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Default.CalendarMonth, contentDescription = t("dash_select_dates"), tint = palette.primary)
-                }
-            }
+        title = t("nav_home"),
+        actions = {
+            DashboardHeaderActions(
+                settingsViewModel = settingsViewModel,
+                onCalendarClick = { showDatePicker = true },
+                calendarLabel = t("dash_select_dates"),
+            )
         },
-        bottomPadding = true,
-        actions = { DashboardHeaderActions(settingsViewModel) },
     ) { padding ->
-        if (state.loading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.primary)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item {
-                    Text(
-                        periodLabel,
-                        color = palette.primary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(palette.primary.copy(alpha = 0.1f))
-                            .clickable { showDatePicker = true }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            if (state.loading) {
+                Box(
+                    Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
-
-                item {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text(t("dash_welcome"), color = palette.textMuted, fontSize = 14.sp)
-                            Text(
-                                state.data?.profile?.fullName ?: state.data?.profile?.name ?: "—",
-                                color = palette.text,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                            )
-                        }
-                        Box(
-                            Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(palette.primary.copy(alpha = 0.12f))
-                                .clickable { onNavigate(ClientRoutes.NOTIFICATIONS) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.Default.Notifications, null, tint = palette.primary)
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(padding),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (state.dateRange.isCustom) {
+                        item {
                             Box(
                                 Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .size(8.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(palette.accent),
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                    .background(LiquidGlass.GradientPrimary)
+                                    .clickable { showDatePicker = true }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    periodLabel,
+                                    color = LiquidGlass.TextWhite,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(
+                                    t("dash_welcome"),
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 14.sp,
+                                )
+                                Text(
+                                    state.clientName,
+                                    color = LiquidTheme.text,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Box(
+                                Modifier
+                                    .size(44.dp)
+                                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                                    .clickable { onNavigate(ClientRoutes.NOTIFICATIONS) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Default.Notifications,
+                                    null,
+                                    tint = LiquidGlass.Indigo,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                if (hasUnreadNotifications) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(LiquidGlass.Rose),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                                .background(LiquidGlass.GradientPrimary)
+                                .padding(20.dp),
+                        ) {
+                            Column {
+                                Text(
+                                    t("dash_total_purchases"),
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    fontSize = 13.sp,
+                                )
+                                Text(
+                                    "${formatMoney(filtered.totalPurchases)} ${t("com_som")}",
+                                    color = LiquidGlass.TextWhite,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 28.sp,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                SimpleAreaChart(
+                                    filtered.chartValues,
+                                    strokeColor = Color.White,
+                                    fillColor = Color.White.copy(alpha = 0.35f),
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            StatCard(
+                                icon = Icons.Default.CreditCard,
+                                label = t("dash_debt"),
+                                value = formatMoney(state.data?.balance ?: 2_500_000.0),
+                                unit = t("com_som"),
+                                iconColor = LiquidGlass.Rose,
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatCard(
+                                icon = Icons.Default.CardGiftcard,
+                                label = t("dash_bonus"),
+                                value = "4,850",
+                                unit = "ball",
+                                iconColor = LiquidGlass.Emerald,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            StatCard(
+                                icon = Icons.Default.ShoppingBag,
+                                label = t("dash_active_orders"),
+                                value = "${filtered.activeOrderCount}",
+                                unit = "ta",
+                                iconColor = LiquidGlass.Cyan,
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatCard(
+                                icon = Icons.Default.Star,
+                                label = t("dash_discount_level"),
+                                value = state.data?.profile?.category?.trim().takeIf { !it.isNullOrBlank() } ?: "—",
+                                unit = "",
+                                iconColor = LiquidGlass.Amber,
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
-                }
 
-                item {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF7C4DFF), Color(0xFFFF4DFF), Color(0xFF00D4FF)),
-                                ),
-                            )
-                            .padding(20.dp),
-                    ) {
-                        Column {
-                            Text(t("dash_total_purchases"), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                    item {
+                        Text(
+                            t("dash_quick_actions"),
+                            color = LiquidTheme.textMuted,
+                            fontSize = 14.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            QuickAction(Icons.Default.ShoppingCart, t("dash_order"), LiquidGlass.Indigo) {
+                                onNavigate(ClientRoutes.CATALOG)
+                            }
+                            QuickAction(Icons.Default.ShoppingBag, t("nav_orders"), LiquidGlass.Violet) {
+                                onNavigate(ClientRoutes.ORDERS)
+                            }
+                            QuickAction(Icons.Default.CreditCard, t("dash_payment"), LiquidGlass.Cyan) {
+                                onNavigate(ClientRoutes.DEBT)
+                            }
+                            QuickAction(Icons.Default.TrendingUp, t("dash_promotions"), LiquidGlass.Amber) {
+                                onNavigate(ClientRoutes.PROMOTIONS)
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                "${formatMoney(filtered.totalPurchases)} ${t("com_som")}",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
+                                t("dash_latest_promotions"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
                             )
-                            Spacer(Modifier.height(8.dp))
-                            SimpleAreaChart(
-                                filtered.chartValues,
-                                strokeColor = Color.White,
-                                fillColor = Color.White.copy(alpha = 0.35f),
+                            Row(
+                                Modifier.clickable { onNavigate(ClientRoutes.PROMOTIONS) },
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(t("dash_see_all"), color = LiquidGlass.Indigo, fontSize = 14.sp)
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    null,
+                                    tint = LiquidGlass.Indigo,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            PromoCard(
+                                title = promoTitle(lang, 0),
+                                desc = promoDesc(lang, 0),
+                                emoji = "🎁",
+                                colors = listOf(LiquidGlass.Indigo, LiquidGlass.Pink),
+                            )
+                            PromoCard(
+                                title = promoTitle(lang, 1),
+                                desc = promoDesc(lang, 1),
+                                emoji = "💰",
+                                colors = listOf(LiquidGlass.Cyan, LiquidGlass.Violet),
                             )
                         }
                     }
-                }
 
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard(Icons.Default.CreditCard, t("dash_debt"), formatMoney(state.data?.balance ?: 2_500_000.0), t("com_som"), palette.danger, Modifier.weight(1f))
-                        StatCard(Icons.Default.CardGiftcard, t("dash_bonus"), "4,850", "ball", palette.success, Modifier.weight(1f))
+                    item {
+                        Text(
+                            t("dash_recent_orders"),
+                            color = LiquidTheme.text,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(Modifier.height(8.dp))
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        StatCard(Icons.Default.ShoppingBag, t("dash_active_orders"), "${filtered.activeOrderCount}", "ta", palette.secondary, Modifier.weight(1f))
-                        StatCard(Icons.Default.Star, t("dash_discount_level"), "VIP", "Gold", palette.warning, Modifier.weight(1f))
-                    }
-                }
 
-                item {
-                    Text(t("dash_quick_actions"), color = palette.textMuted, fontSize = 14.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        QuickAction(Icons.Default.ShoppingCart, t("dash_order"), palette.primary) { onNavigate(ClientRoutes.CATALOG) }
-                        QuickAction(Icons.Default.ShoppingBag, t("nav_orders"), palette.secondary) { onNavigate(ClientRoutes.ORDERS) }
-                        QuickAction(Icons.Default.CreditCard, t("dash_payment"), palette.accent) { onNavigate(ClientRoutes.DEBT) }
-                        QuickAction(Icons.Default.TrendingUp, t("dash_promotions"), palette.warning) { onNavigate(ClientRoutes.PROMOTIONS) }
-                    }
-                }
-
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(t("dash_latest_promotions"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                        Row(Modifier.clickable { onNavigate(ClientRoutes.PROMOTIONS) }, verticalAlignment = Alignment.CenterVertically) {
-                            Text(t("dash_see_all"), color = palette.primary, fontSize = 14.sp)
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = palette.primary, modifier = Modifier.size(16.dp))
+                    val orders = filtered.recentOrders
+                    items(orders.take(3), key = { it.id }) { order ->
+                        RecentOrderRow(order, lang, palette) {
+                            onNavigate(ClientRoutes.orderTracking(order.id))
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PromoCard(promoTitle(lang, 0), promoDesc(lang, 0), "🎁", listOf(Color(0xFF7C4DFF), Color(0xFFFF4DFF)))
-                        PromoCard(promoTitle(lang, 1), promoDesc(lang, 1), "💰", listOf(Color(0xFF00D4FF), Color(0xFF7C4DFF)))
-                    }
-                }
-
-                item {
-                    Text(t("dash_recent_orders"), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                val orders = filtered.recentOrders
-                items(orders.take(3), key = { it.id }) { order ->
-                    RecentOrderRow(order, lang, palette) { onNavigate(ClientRoutes.orderTracking(order.id)) }
                 }
             }
         }
@@ -292,73 +369,157 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun StatCard(icon: ImageVector, label: String, value: String, unit: String, color: Color, modifier: Modifier = Modifier) {
-    val palette = rememberClientPalette()
+private fun StatCard(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    unit: String,
+    iconColor: Color,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(palette.card)
+            .liquidGlassThemed()
             .padding(14.dp),
     ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = palette.textMuted, fontSize = 11.sp)
-        Text(value, color = palette.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        Text(unit, color = palette.textMuted, fontSize = 11.sp)
-    }
-}
-
-@Composable
-private fun QuickAction(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {
-    val palette = rememberClientPalette()
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
         Box(
             Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(color.copy(alpha = 0.12f)),
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(iconColor.copy(alpha = 0.20f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = color)
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(17.dp))
         }
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = palette.textMuted, fontSize = 10.sp, maxLines = 1)
+        Spacer(Modifier.height(8.dp))
+        Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp)
+        Text(value, color = LiquidTheme.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(unit, color = LiquidTheme.textMuted, fontSize = 11.sp)
     }
 }
 
 @Composable
-private fun DashboardHeaderActions(settingsViewModel: SettingsViewModel) {
-    val darkMode by settingsViewModel.darkMode.collectAsState()
-    val language by settingsViewModel.language.collectAsState()
-    var showLangMenu by remember { mutableStateOf(false) }
-    val palette = rememberClientPalette()
-
-    IconButton(onClick = { settingsViewModel.toggleDarkMode() }) {
-        Icon(
-            imageVector = if (darkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-            contentDescription = null,
-            tint = palette.primary,
-        )
-    }
-    Box {
-        IconButton(onClick = { showLangMenu = true }) {
-            Icon(Icons.Default.Language, contentDescription = null, tint = palette.primary)
+private fun QuickAction(
+    icon: ImageVector,
+    label: String,
+    color: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Box(
+            Modifier
+                .size(52.dp)
+                .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
         }
-        DropdownMenu(expanded = showLangMenu, onDismissRequest = { showLangMenu = false }) {
-            AppLanguage.menuOrder.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            option.menuLabel,
-                            fontWeight = if (language == option) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    },
-                    onClick = {
-                        settingsViewModel.setLanguage(option)
-                        showLangMenu = false
-                    },
-                )
+        Spacer(Modifier.height(4.dp))
+        Text(label, color = LiquidTheme.textMuted, fontSize = 10.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun DashboardHeaderActions(
+    settingsViewModel: SettingsViewModel,
+    onCalendarClick: () -> Unit,
+    calendarLabel: String,
+) {
+    val themeMode by settingsViewModel.themeMode.collectAsState()
+    val language by settingsViewModel.language.collectAsState()
+    var showThemeMenu by remember { mutableStateOf(false) }
+    var showLangMenu by remember { mutableStateOf(false) }
+    val themeIcon = when (themeMode) {
+        ThemeMode.LIGHT -> Icons.Default.WbSunny
+        ThemeMode.SYSTEM -> Icons.Default.SettingsBrightness
+        ThemeMode.DARK -> Icons.Default.NightlightRound
+    }
+    val themeOptions = listOf(
+        ThemeMode.DARK to "com_theme_dark",
+        ThemeMode.LIGHT to "com_theme_light",
+        ThemeMode.SYSTEM to "com_theme_system",
+    )
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GlassHeaderIconButton(
+            onClick = onCalendarClick,
+            contentDescription = calendarLabel,
+            icon = Icons.Outlined.CalendarMonth,
+            tint = LiquidTheme.textMuted,
+        )
+        Box {
+            GlassHeaderIconButton(
+                onClick = { showThemeMenu = true },
+                icon = themeIcon,
+                tint = LiquidGlass.Indigo,
+            )
+            LiquidGlassDropdownMenu(
+                expanded = showThemeMenu,
+                onDismissRequest = { showThemeMenu = false },
+            ) {
+                themeOptions.forEach { (mode, labelKey) ->
+                    LiquidGlassDropdownItem(
+                        text = AppStrings.t(language, labelKey),
+                        selected = themeMode == mode,
+                        onClick = {
+                            settingsViewModel.setThemeMode(mode)
+                            showThemeMenu = false
+                        },
+                    )
+                }
             }
+        }
+        Box {
+            GlassHeaderIconButton(
+                onClick = { showLangMenu = true },
+                icon = Icons.Default.Language,
+                tint = LiquidGlass.Indigo,
+            )
+            LiquidGlassDropdownMenu(
+                expanded = showLangMenu,
+                onDismissRequest = { showLangMenu = false },
+            ) {
+                AppLanguage.menuOrder.forEach { option ->
+                    LiquidGlassDropdownItem(
+                        text = option.menuLabel,
+                        selected = language == option,
+                        onClick = {
+                            settingsViewModel.setLanguage(option)
+                            showLangMenu = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassHeaderIconButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    tint: Color,
+    contentDescription: String? = null,
+) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
+        contentAlignment = Alignment.Center,
+    ) {
+        IconButton(onClick = onClick, modifier = Modifier.size(36.dp)) {
+            Icon(
+                icon,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
@@ -369,7 +530,7 @@ private fun PromoCard(title: String, desc: String, emoji: String, colors: List<C
         Modifier
             .width(240.dp)
             .height(108.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
             .background(Brush.linearGradient(colors))
             .padding(16.dp),
     ) {
@@ -393,15 +554,20 @@ private fun PromoCard(title: String, desc: String, emoji: String, colors: List<C
 }
 
 @Composable
-private fun RecentOrderRow(order: ClientOrder, lang: AppLanguage, palette: uz.lider.client.presentation.components.ClientPalette, onClick: () -> Unit) {
+private fun RecentOrderRow(
+    order: ClientOrder,
+    lang: AppLanguage,
+    palette: ClientPalette,
+    onClick: () -> Unit,
+) {
     val status = orderStatusLabel(lang, order.status)
     val color = orderStatusColor(order.status, palette)
     val product = order.items.firstOrNull()?.productName ?: order.id
+
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(palette.card)
+            .liquidGlassThemed()
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
@@ -410,19 +576,34 @@ private fun RecentOrderRow(order: ClientOrder, lang: AppLanguage, palette: uz.li
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                orderDisplayLabel(lang, order.id),
-                color = palette.text,
-                fontWeight = FontWeight.SemiBold,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(color),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    orderDisplayLabel(lang, order.id),
+                    color = LiquidTheme.text,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.width(8.dp))
             Text(status, color = color, fontSize = 12.sp, maxLines = 1)
         }
-        Text(product, color = palette.textMuted, fontSize = 13.sp)
-        Text("${formatMoney(order.totalAmount)} ${AppStrings.t(lang, "com_som")}", color = palette.text, fontWeight = FontWeight.Bold)
+        Text(product, color = LiquidTheme.textMuted, fontSize = 13.sp)
+        Text(
+            "${formatMoney(order.totalAmount)} ${AppStrings.t(lang, "com_som")}",
+            color = LiquidTheme.text,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -447,4 +628,3 @@ private fun promoDesc(lang: AppLanguage, index: Int) = when (index) {
         else -> "100,000 so'mdan yuqori xaridlarda"
     }
 }
-

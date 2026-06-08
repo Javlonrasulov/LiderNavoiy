@@ -37,6 +37,16 @@ export class CreateAppUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  position?: string;
 }
 
 export class UpdateAppUserDto {
@@ -71,6 +81,16 @@ export class UpdateAppUserDto {
   @IsOptional()
   @IsString()
   companyName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  position?: string;
 }
 
 export class AppUserResponseDto {

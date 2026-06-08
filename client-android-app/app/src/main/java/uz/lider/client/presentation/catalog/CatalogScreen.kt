@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,12 +53,13 @@ import uz.lider.client.domain.model.Product
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ProductImageBox
-import uz.lider.client.presentation.components.clientCard
-import uz.lider.client.presentation.components.clientPageBackground
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun CatalogScreen(
@@ -66,149 +68,202 @@ fun CatalogScreen(
     viewModel: CatalogViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    @Suppress("UNUSED_VARIABLE")
     val lang = LocalAppLanguage.current
-    val palette = rememberClientPalette()
     val products = viewModel.filteredProducts()
     val categories = listOf(localized("cat_all")) + state.categories
 
-    Column(Modifier.fillMaxSize().clientPageBackground()) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(localized("cat_title"), color = palette.text, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.primary.copy(alpha = 0.12f))
-                        .clickable { onNavigate(ClientRoutes.CART) },
-                    contentAlignment = Alignment.Center,
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.ShoppingCart, null, tint = palette.primary)
-                    if (cartCount > 0) {
+                    Text(
+                        localized("cat_title"),
+                        color = LiquidTheme.text,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                    )
+                    Box {
                         Box(
                             Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-4).dp)
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .background(palette.accent),
+                                .size(42.dp)
+                                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                                .clickable { onNavigate(ClientRoutes.CART) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("$cartCount", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Icon(
+                                Icons.Default.ShoppingCart,
+                                null,
+                                tint = LiquidGlass.Indigo,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        if (cartCount > 0) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 4.dp, y = (-4).dp)
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                                    .background(LiquidGlass.Rose),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    "$cartCount",
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
                         }
                     }
                 }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.input)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Search, null, tint = palette.textMuted, modifier = Modifier.size(18.dp))
-                    BasicTextField(
-                        value = state.search,
-                        onValueChange = viewModel::onSearchChange,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = palette.text, fontSize = 14.sp),
-                        decorationBox = { inner ->
-                            if (state.search.isEmpty()) {
-                                Text(localized("cat_search"), color = palette.textMuted, fontSize = 14.sp)
-                            }
-                            inner()
-                        },
-                    )
-                    if (state.search.isNotEmpty()) {
-                        Icon(Icons.Default.Close, null, tint = palette.textMuted, modifier = Modifier.size(16.dp).clickable { viewModel.onSearchChange("") })
-                    }
-                }
-                Box {
-                    Box(
+
+                Spacer(Modifier.height(12.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
                         Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(palette.primary.copy(alpha = 0.12f))
-                            .clickable { viewModel.toggleSortMenu() },
-                        contentAlignment = Alignment.Center,
+                            .weight(1f)
+                            .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Default.Sort, null, tint = palette.primary)
-                    }
-                    DropdownMenu(
-                        expanded = state.sortMenuOpen,
-                        onDismissRequest = { viewModel.toggleSortMenu() },
-                        containerColor = palette.card,
-                    ) {
-                        sortOptions().forEach { (sort, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label, color = palette.text) },
-                                onClick = { viewModel.onSortChange(sort) },
+                        Icon(
+                            Icons.Default.Search,
+                            null,
+                            tint = LiquidTheme.textMuted,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        BasicTextField(
+                            value = state.search,
+                            onValueChange = viewModel::onSearchChange,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp),
+                            textStyle = TextStyle(
+                                color = LiquidTheme.text,
+                                fontSize = 14.sp,
+                            ),
+                            decorationBox = { inner ->
+                                if (state.search.isEmpty()) {
+                                    Text(
+                                        localized("cat_search"),
+                                        color = LiquidTheme.textMuted,
+                                        fontSize = 14.sp,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                        if (state.search.isNotEmpty()) {
+                            Icon(
+                                Icons.Default.Close,
+                                null,
+                                tint = LiquidTheme.textMuted,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable { viewModel.onSearchChange("") },
                             )
                         }
                     }
+
+                    Box {
+                        Box(
+                            Modifier
+                                .size(44.dp)
+                                .liquidGlassThemed(radius = 16.dp)
+                                .clickable { viewModel.toggleSortMenu() },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Default.Sort, null, tint = LiquidGlass.Indigo)
+                        }
+                        DropdownMenu(
+                            expanded = state.sortMenuOpen,
+                            onDismissRequest = { viewModel.toggleSortMenu() },
+                        ) {
+                            sortOptions().forEach { (sort, label) ->
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = { viewModel.onSortChange(sort) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
-        }
 
-        Row(
-            Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            categories.forEachIndexed { index, cat ->
-                val selected = state.activeCategoryIndex == index
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            if (selected) Brush.linearGradient(listOf(palette.primary, palette.accent))
-                            else Brush.linearGradient(listOf(palette.surface2, palette.surface2)),
-                        )
-                        .clickable { viewModel.onCategorySelected(index) }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Text(cat, color = if (selected) Color.White else palette.textMuted, fontSize = 13.sp)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        if (state.loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.primary)
-            }
-        } else {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("${products.size} ${localized("cat_products")}", color = palette.textMuted, fontSize = 13.sp)
-                Spacer(Modifier.height(8.dp))
-            }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f),
+            Row(
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(products, key = { it.id }) { product ->
-                    ProductGridItem(
-                        product = product,
-                        imageUrl = viewModel.resolveImage(product.imageUrl).takeIf { it.isNotBlank() },
-                        isFavorite = state.favorites.contains(product.id),
-                        onFavorite = { viewModel.toggleFavorite(product.id) },
-                        onClick = { onNavigate(ClientRoutes.productDetail(product.id)) },
-                        onAdd = { viewModel.showAddToCart(product) },
-                    )
+                categories.forEachIndexed { index, cat ->
+                    val selected = state.activeCategoryIndex == index
+                    Box(
+                        Modifier
+                            .then(
+                                if (selected)
+                                    Modifier
+                                        .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                        .background(LiquidGlass.GradientPrimary)
+                                else
+                                    Modifier.liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                            )
+                            .clickable { viewModel.onCategorySelected(index) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            cat,
+                            color = if (selected) Color.White else LiquidTheme.textMuted,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                    }
                 }
             }
+
+            Spacer(Modifier.height(8.dp))
+
+            if (state.loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = LiquidGlass.Indigo)
+                }
+            } else {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Text(
+                        "${products.size} ${localized("cat_products")}",
+                        color = LiquidTheme.textMuted,
+                        fontSize = 13.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    items(products, key = { it.id }) { product ->
+                        ProductGridItem(
+                            product = product,
+                            imageUrl = viewModel.resolveImage(product.imageUrl).takeIf { it.isNotBlank() },
+                            isFavorite = state.favorites.contains(product.id),
+                            onFavorite = { viewModel.toggleFavorite(product.id) },
+                            onClick = { onNavigate(ClientRoutes.productDetail(product.id)) },
+                            onAdd = { viewModel.showAddToCart(product) },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(80.dp))
         }
-        Spacer(Modifier.height(80.dp))
     }
 
     state.addToCartProduct?.let { product ->
@@ -229,17 +284,16 @@ private fun ProductGridItem(
     onClick: () -> Unit,
     onAdd: () -> Unit,
 ) {
-    val palette = rememberClientPalette()
     Column(
         Modifier
-            .clientCard(palette)
+            .liquidGlassThemed()
             .clickable(onClick = onClick),
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .background(palette.surface2),
+                .background(LiquidGlass.BgMidDark),
         ) {
             ProductImageBox(
                 imageUrl = imageUrl,
@@ -252,16 +306,15 @@ private fun ProductGridItem(
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
                     .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
                     .clickable(onClick = onFavorite),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     null,
-                    tint = if (isFavorite) palette.accent else Color.LightGray,
-                    modifier = Modifier.size(16.dp),
+                    tint = if (isFavorite) LiquidGlass.Rose else LiquidTheme.textMuted,
+                    modifier = Modifier.size(15.dp),
                 )
             }
             if (!product.brand.isNullOrBlank()) {
@@ -271,28 +324,51 @@ private fun ProductGridItem(
                         .align(Alignment.BottomStart)
                         .padding(8.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.5f))
+                        .background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                     color = Color.White,
                     fontSize = 10.sp,
                 )
             }
         }
+
         Column(Modifier.padding(10.dp)) {
-            Text(product.name, color = palette.text, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 2)
-            Text("${formatMoney(product.price)} ${localized("com_som")}", color = palette.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text("${localized("cat_stock")}: ${product.stockBalance.toInt()} ${product.unit}", color = palette.textMuted, fontSize = 11.sp)
+            Text(
+                product.name,
+                color = LiquidTheme.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                maxLines = 2,
+            )
+            Text(
+                "${formatMoney(product.price)} ${localized("com_som")}",
+                style = TextStyle(
+                    brush = Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                ),
+            )
+            Text(
+                "${localized("cat_stock")}: ${product.stockBalance.toInt()} ${product.unit}",
+                color = LiquidTheme.textMuted,
+                fontSize = 11.sp,
+            )
             Spacer(Modifier.height(6.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(palette.primary.copy(alpha = 0.15f))
+                    .background(LiquidGlass.GradientPrimary)
                     .clickable(onClick = onAdd)
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(localized("cat_add_cart"), color = palette.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    localized("cat_add_cart"),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }

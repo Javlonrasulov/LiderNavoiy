@@ -57,16 +57,27 @@ data class ClientOrder(
     val updatedAt: String,
 )
 
+data class ContactPerson(
+    val name: String,
+    val position: String? = null,
+    val phone: String? = null,
+)
+
 data class ClientProfile(
     val id: String,
     val code: String,
     val name: String,
     val fullName: String? = null,
     val phone: String? = null,
+    val address: String? = null,
+    val category: String? = null,
     val balance: Double,
     val totalPurchases: Double,
     val orderCount: Int,
     val agentName: String? = null,
+    val agentPosition: String? = null,
+    val agentPhone: String? = null,
+    val deliveryPerson: ContactPerson? = null,
 )
 
 data class DashboardData(
@@ -122,11 +133,13 @@ data class OrderTrackingInfo(
     val statusColorArgb: Long,
 )
 
-data class CourierTracking(
+data class DeliveryPersonTracking(
     val name: String,
-    val isOnline: Boolean,
-    val latitude: Double?,
-    val longitude: Double?,
+    val position: String? = null,
+    val phone: String? = null,
+    val isOnline: Boolean = false,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 )
 
 data class OrderTrackingDetails(
@@ -138,7 +151,7 @@ data class OrderTrackingDetails(
     val deliveryLongitude: Double?,
     val distanceKm: Double?,
     val etaMinutes: Int?,
-    val courier: CourierTracking?,
+    val deliveryPerson: DeliveryPersonTracking? = null,
 )
 
 enum class OrderStatus(val key: String) {

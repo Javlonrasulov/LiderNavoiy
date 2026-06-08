@@ -1,6 +1,7 @@
-import { IsUUID, IsArray, ValidateNested, IsOptional, IsString, IsNumber } from 'class-validator';
+import { IsUUID, IsArray, ValidateNested, IsOptional, IsString, IsNumber, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OrderStatus } from '../../common/enums';
 
 export class OrderItemDto {
   @ApiProperty()
@@ -56,4 +57,16 @@ export class BatchOrdersDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOrderDto)
   orders: CreateOrderDto[];
+}
+
+export class UpdateOrderDto {
+  @ApiPropertyOptional({ enum: OrderStatus })
+  @IsOptional()
+  @IsEnum(OrderStatus)
+  status?: OrderStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  deliveryDistributorId?: string | null;
 }

@@ -1,7 +1,15 @@
 package uz.lider.client.presentation.navigation
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +30,15 @@ import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -33,9 +47,11 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
-import uz.lider.client.presentation.theme.ClientColors
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
-val ClientBottomNavHeight = 80.dp
+val ClientBottomNavHeight = 84.dp
 
 enum class ClientTab(val route: String) {
     DASHBOARD("dashboard"),
@@ -75,12 +91,25 @@ fun clientBottomNavSelectedTab(route: String?): ClientTab? = when {
 }
 
 fun NavHostController.navigateClientTab(tab: ClientTab) {
+    if (currentBackStackEntry?.destination?.route == tab.route) return
+
     navigate(tab.route) {
-        popUpTo(ClientTab.DASHBOARD.route) { saveState = true }
+        popUpTo(graph.id) {
+            saveState = true
+        }
         launchSingleTop = true
         restoreState = true
     }
 }
+
+// Per-tab accent colors for glow
+private val tabAccents = mapOf(
+    ClientTab.DASHBOARD to LiquidGlass.Indigo,
+    ClientTab.CATALOG   to LiquidGlass.Cyan,
+    ClientTab.ORDERS    to LiquidGlass.Violet,
+    ClientTab.ANALYTICS to LiquidGlass.Amber,
+    ClientTab.PROFILE   to LiquidGlass.Pink,
+)
 
 @Composable
 fun ClientBottomNav(
@@ -91,81 +120,214 @@ fun ClientBottomNav(
     modifier: Modifier = Modifier,
 ) {
     val lang = LocalAppLanguage.current
-    val navBg = if (isDark) ClientColors.NavBg else ClientColors.NavBgLight
-    val borderColor = if (isDark) ClientColors.Border else ClientColors.BorderStrong
-    val muted = if (isDark) ClientColors.TextMuted else ClientColors.TextMutedLight
-    val primary = if (isDark) ClientColors.Primary else ClientColors.PrimaryLight
-    val accent = if (isDark) ClientColors.Accent else ClientColors.AccentLight
 
     val tabs = listOf(
         TabItem(ClientTab.DASHBOARD, Icons.Default.Dashboard, tabLabel(lang, ClientTab.DASHBOARD)),
-        TabItem(ClientTab.CATALOG, Icons.Default.Inventory2, tabLabel(lang, ClientTab.CATALOG), showBadge = cartCount > 0, badgeCount = cartCount),
+        TabItem(
+            ClientTab.CATALOG,
+            Icons.Default.Inventory2,
+            tabLabel(lang, ClientTab.CATALOG),
+            showBadge = cartCount > 0,
+            badgeCount = cartCount,
+        ),
         TabItem(ClientTab.ORDERS, Icons.Default.ShoppingBag, tabLabel(lang, ClientTab.ORDERS)),
         TabItem(ClientTab.ANALYTICS, Icons.Default.BarChart, tabLabel(lang, ClientTab.ANALYTICS)),
         TabItem(ClientTab.PROFILE, Icons.Default.Person, tabLabel(lang, ClientTab.PROFILE)),
     )
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(ClientBottomNavHeight)
-            .background(navBg)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        tabs.forEach { tab ->
-            val isActive = selected == tab.tab
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { onTabSelected(tab.tab) }
-                    .background(if (isActive) primary.copy(alpha = 0.12f) else Color.Transparent)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Box {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.label,
-                        tint = if (isActive) primary else muted,
-                        modifier = Modifier.size(22.dp),
+        // Glass pill container
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { tab ->
+                val isActive = selected == tab.tab
+                val accent = tabAccents[tab.tab] ?: LiquidGlass.Indigo
+                NavTabItem(
+                    tab = tab,
+                    isActive = isActive,
+                    accent = accent,
+                    onClick = { onTabSelected(tab.tab) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavTabItem(
+    tab: TabItem,
+    isActive: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val textMuted = LiquidTheme.textMuted
+
+    // Animated icon scale — bounces up on activation
+    val iconScale by animateFloatAsState(
+        targetValue = if (isActive) 1.18f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "iconScale",
+    )
+
+    // Icon lift (translateY) — floats up when active
+    val iconLift by animateDpAsState(
+        targetValue = if (isActive) (-3).dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "iconLift",
+    )
+
+    // Icon color transition
+    val iconTint by animateColorAsState(
+        targetValue = if (isActive) Color.White else textMuted,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "iconTint",
+    )
+
+    // Label alpha fades in/out
+    val labelAlpha by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0.55f,
+        animationSpec = tween(durationMillis = 200),
+        label = "labelAlpha",
+    )
+
+    // Glow bubble alpha behind icon
+    val glowAlpha by animateFloatAsState(
+        targetValue = if (isActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+        label = "glowAlpha",
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .height(56.dp)
+            .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onClick() },
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 2.dp),
+        ) {
+            // Icon with glow bubble
+            Box(contentAlignment = Alignment.Center) {
+                // Glow orb behind icon
+                if (glowAlpha > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .blur(12.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(
+                                        accent.copy(alpha = 0.55f * glowAlpha),
+                                        Color.Transparent,
+                                    ),
+                                ),
+                                CircleShape,
+                            ),
                     )
+                }
+                // Solid accent bubble (filled circle when active)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .drawBehind {
+                            if (glowAlpha > 0f) {
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        listOf(
+                                            accent.copy(alpha = 0.30f * glowAlpha),
+                                            Color.Transparent,
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
+                        .then(
+                            if (isActive) {
+                                Modifier
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(accent, accent.copy(alpha = 0.7f)),
+                                        ),
+                                    )
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .offset(y = iconLift)
+                            .scale(iconScale),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = iconTint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    // Cart badge
                     if (tab.showBadge) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 6.dp, y = (-4).dp)
-                                .size(14.dp)
+                                .offset(x = 4.dp, y = (-4).dp)
+                                .size(13.dp)
                                 .clip(CircleShape)
-                                .background(accent),
+                                .background(LiquidGlass.Rose),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = tab.badgeCount.coerceAtMost(99).toString(),
                                 color = Color.White,
-                                fontSize = 8.sp,
+                                fontSize = 7.sp,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
                     }
                 }
-                Text(
-                    text = tab.label,
-                    fontSize = 10.sp,
-                    color = if (isActive) primary else muted,
-                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                )
-                if (isActive) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 16.dp, height = 2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(primary),
-                    )
-                }
             }
+
+            // Label — always visible, just dimmed when inactive
+            Text(
+                text = tab.label,
+                fontSize = 8.5.sp,
+                color = if (isActive) accent else textMuted.copy(alpha = labelAlpha),
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.padding(top = 2.dp),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+            )
         }
     }
 }

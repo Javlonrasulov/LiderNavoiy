@@ -2,11 +2,18 @@ package uz.lider.client.presentation.dashboard
 
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
+
+enum class DatePreset {
+    TODAY, WEEK, MONTH, ALL, CUSTOM,
+}
 
 data class DashboardDateRange(
     val start: LocalDate,
@@ -29,6 +36,39 @@ object DashboardDateFilter {
         val lastDayLastMonth = today.withDayOfMonth(1).minusDays(1)
         return DashboardDateRange(start = firstDayLastMonth, end = lastDayLastMonth, isCustom = false)
     }
+
+    fun todayRange(today: LocalDate = LocalDate.now()): DashboardDateRange =
+        DashboardDateRange(start = today, end = today, isCustom = true)
+
+    fun thisWeekRange(today: LocalDate = LocalDate.now()): DashboardDateRange {
+        val start = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return DashboardDateRange(start = start, end = today, isCustom = true)
+    }
+
+    fun thisMonthRange(today: LocalDate = LocalDate.now()): DashboardDateRange =
+        DashboardDateRange(
+            start = today.withDayOfMonth(1),
+            end = today,
+            isCustom = true,
+        )
+
+    fun monthGrid(month: YearMonth): List<LocalDate?> {
+        val firstDay = month.atDay(1)
+        val leading = (firstDay.dayOfWeek.value - DayOfWeek.MONDAY.value + 7) % 7
+        val daysInMonth = month.lengthOfMonth()
+        val cells = mutableListOf<LocalDate?>()
+        repeat(leading) { cells += null }
+        for (day in 1..daysInMonth) cells += month.atDay(day)
+        while (cells.size % 7 != 0) cells += null
+        return cells
+    }
+
+    fun normalizeRange(start: LocalDate, end: LocalDate): DashboardDateRange =
+        DashboardDateRange(
+            start = minOf(start, end),
+            end = maxOf(start, end),
+            isCustom = true,
+        )
 
     fun toStartMillis(date: LocalDate): Long =
         date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()

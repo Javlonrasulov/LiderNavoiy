@@ -40,6 +40,8 @@ export class UsersService {
           role: dto.role,
           isActive: dto.isActive ?? true,
           companyName: dto.companyName,
+          phone: dto.phone,
+          position: dto.position,
         });
       }
       throw new ConflictException('Username already exists');
@@ -53,21 +55,12 @@ export class UsersService {
       isActive: dto.isActive ?? true,
     });
     const saved = await this.userRepo.save(user);
-
-    if (saved.role === UserRole.DISTRIBUTOR) {
-      const existingProfile = await this.profileRepo.findOne({ where: { userId: saved.id } });
-      if (!existingProfile) {
-        await this.profileRepo.save(
-          this.profileRepo.create({
-            userId: saved.id,
-            companyId: dto.companyId ?? 'boran',
-            companyName: dto.companyName ?? null,
-            status: DistributorStatus.OFFLINE,
-            isOnline: false,
-          }),
-        );
-      }
-    }
+    await this.upsertDistributorProfile(saved, {
+      companyId: dto.companyId,
+      companyName: dto.companyName,
+      phone: dto.phone,
+      position: dto.position,
+    });
 
     return this.toDto(saved);
   }
@@ -89,16 +82,54 @@ export class UsersService {
     }
 
     const saved = await this.userRepo.save(user);
-
-    if (dto.companyName) {
-      const profile = await this.profileRepo.findOne({ where: { userId: saved.id } });
-      if (profile) {
-        profile.companyName = dto.companyName;
-        await this.profileRepo.save(profile);
-      }
-    }
+    await this.upsertDistributorProfile(saved, {
+      companyName: dto.companyName,
+      phone: dto.phone,
+      position: dto.position,
+    });
 
     return this.toDto(saved);
+  }
+
+  private async upsertDistributorProfile(
+    user: User,
+    data: {
+      companyId?: string;
+      companyName?: string;
+      phone?: string;
+      position?: string;
+    },
+  ): Promise<void> {
+    if (user.role !== UserRole.DISTRIBUTOR && user.role !== UserRole.MANAGER) {
+      return;
+    }
+
+    const hasProfileData =
+      data.companyName !== undefined ||
+      data.phone !== undefined ||
+      data.position !== undefined ||
+      user.role === UserRole.DISTRIBUTOR;
+
+    if (!hasProfileData) return;
+
+    let profile = await this.profileRepo.findOne({ where: { userId: user.id } });
+    if (!profile) {
+      profile = this.profileRepo.create({
+        userId: user.id,
+        companyId: data.companyId ?? 'boran',
+        companyName: data.companyName ?? null,
+        phone: data.phone?.trim() || null,
+        position: data.position?.trim() || null,
+        status: DistributorStatus.OFFLINE,
+        isOnline: false,
+      });
+    } else {
+      if (data.companyName !== undefined) profile.companyName = data.companyName;
+      if (data.phone !== undefined) profile.phone = data.phone.trim() || null;
+      if (data.position !== undefined) profile.position = data.position.trim() || null;
+    }
+
+    await this.profileRepo.save(profile);
   }
 
   async findAllApp(): Promise<AppUserResponseDto[]> {

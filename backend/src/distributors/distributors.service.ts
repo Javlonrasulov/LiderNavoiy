@@ -33,6 +33,18 @@ export class DistributorsService {
     return this.findOne(id);
   }
 
+  async updateProfile(
+    id: string,
+    data: { phone?: string | null; position?: string | null; lineCode?: string | null },
+  ) {
+    const distributor = await this.findOne(id);
+    if (data.phone !== undefined) distributor.phone = data.phone?.trim() || null;
+    if (data.position !== undefined) distributor.position = data.position?.trim() || null;
+    if (data.lineCode !== undefined) distributor.lineCode = data.lineCode?.trim() || null;
+    await this.repo.save(distributor);
+    return this.findOne(id);
+  }
+
   async getOnlineDistributors() {
     const keys = await this.redis.getClient().keys('online:*');
     const online: string[] = [];

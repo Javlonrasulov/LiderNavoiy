@@ -87,8 +87,10 @@ data class ClientOrderDto(
     val updatedAt: String,
 )
 
-data class CourierTrackingDto(
+data class DeliveryPersonTrackingDto(
     val name: String,
+    val position: String? = null,
+    val phone: String? = null,
     val isOnline: Boolean = false,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val latitude: Double? = null,
@@ -110,11 +112,17 @@ data class OrderTrackingDto(
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val distanceKm: Double? = null,
     val etaMinutes: Int? = null,
-    val courier: CourierTrackingDto? = null,
+    val deliveryPerson: DeliveryPersonTrackingDto? = null,
 )
 
 data class CreateOrderRequest(
     val items: List<OrderItemDto>,
+)
+
+data class ContactPersonDto(
+    val name: String? = null,
+    val position: String? = null,
+    val phone: String? = null,
 )
 
 data class ClientProfileDto(
@@ -123,12 +131,17 @@ data class ClientProfileDto(
     val name: String,
     val fullName: String? = null,
     val phone: String? = null,
+    val address: String? = null,
+    val category: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val balance: Double = 0.0,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val totalPurchases: Double = 0.0,
     val orderCount: Int = 0,
     val agentName: String? = null,
+    val agentPosition: String? = null,
+    val agentPhone: String? = null,
+    val deliveryPerson: ContactPersonDto? = null,
 )
 
 data class ApiErrorDto(

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -34,22 +35,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
-import uz.lider.client.presentation.components.ClientBackButton
 import uz.lider.client.presentation.components.ProductImageBox
-import uz.lider.client.presentation.components.clientCard
-import uz.lider.client.presentation.components.clientPageBackground
 import uz.lider.client.presentation.components.formatQty
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.components.rememberClientPalette
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun ProductDetailScreen(
@@ -60,65 +63,40 @@ fun ProductDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val lang = LocalAppLanguage.current
-    val palette = rememberClientPalette()
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
 
     LaunchedEffect(productId) { viewModel.load(productId) }
 
-    Column(Modifier.fillMaxSize().clientPageBackground()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ClientBackButton(onBack = onBack)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.primary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Default.Share, null, tint = palette.primary)
-                }
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.primary.copy(alpha = 0.12f))
-                        .clickable { viewModel.toggleLike() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        if (state.liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        null,
-                        tint = if (state.liked) palette.accent else palette.primary,
-                    )
-                }
-            }
-        }
-
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
         if (state.loading || state.product == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = palette.primary)
+                CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
+            GlassHeaderRow(
+                onBack = onBack,
+                liked = false,
+                onToggleLike = {},
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+            )
         } else {
             val product = state.product!!
             val image = viewModel.resolveImage(product.imageUrl).takeIf { it.isNotBlank() }
             val reviews = remember(lang) { mockReviews(lang) }
             val inCart = viewModel.isInCart()
 
-            LazyColumn(contentPadding = PaddingValues(bottom = 100.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 120.dp),
+            ) {
                 item {
                     Box(
                         Modifier
-                            .padding(horizontal = 16.dp)
                             .fillMaxWidth()
-                            .height(220.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(palette.surface2),
+                            .height(300.dp),
                     ) {
                         ProductImageBox(
                             imageUrl = image,
@@ -126,71 +104,151 @@ fun ProductDetailScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(140.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, LiquidGlass.BgDark),
+                                    ),
+                                ),
+                        )
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(16.dp)
+                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                .background(LiquidGlass.Emerald.copy(alpha = 0.22f))
+                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                        ) {
+                            Text(
+                                "${localized("pd_stock")}: ${product.stockBalance.toInt()} ${product.unit}",
+                                color = LiquidGlass.Emerald,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Column(
+                        Modifier
+                            .padding(horizontal = 16.dp)
+                            .liquidGlassThemed()
+                            .padding(16.dp),
+                    ) {
                         Text(
-                            "${localized("pd_stock")}: ${product.stockBalance.toInt()}",
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(palette.success.copy(alpha = 0.3f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            color = palette.success,
+                            "SKU: ${product.code} • ${product.category.orEmpty()}",
+                            color = textMuted,
                             fontSize = 12.sp,
                         )
-                    }
-                }
-                item {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("SKU: ${product.code} • ${product.category.orEmpty()}", color = palette.textMuted, fontSize = 12.sp)
-                        Text(product.name, color = palette.text, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text(
+                            product.name,
+                            color = text,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                        )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            repeat(5) { Icon(Icons.Default.Star, null, tint = palette.warning, modifier = Modifier.size(14.dp)) }
-                            Text(" 4.5", color = palette.warning, fontSize = 14.sp)
+                            repeat(5) {
+                                Icon(
+                                    Icons.Default.Star,
+                                    null,
+                                    tint = LiquidGlass.Amber,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                            Text(" 4.5", color = LiquidGlass.Amber, fontSize = 14.sp)
                         }
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             "${formatMoney(product.price)} ${localized("com_som")}",
-                            color = palette.primary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 26.sp,
+                            style = TextStyle(
+                                brush = LiquidGlass.GradientPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 26.sp,
+                            ),
                         )
                     }
                 }
+
                 item {
+                    Spacer(Modifier.height(12.dp))
                     Row(
                         Modifier
                             .padding(horizontal = 16.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(palette.surface2)
+                            .liquidGlassThemed(radius = 16.dp)
                             .padding(4.dp),
                     ) {
-                        listOf("info" to localized("pd_info"), "reviews" to localized("pd_reviews")).forEach { (key, label) ->
+                        listOf(
+                            "info" to localized("pd_info"),
+                            "reviews" to localized("pd_reviews"),
+                        ).forEach { (key, label) ->
+                            val isSelected = state.tab == key
                             Box(
                                 Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (state.tab == key) palette.primary else Color.Transparent)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .run {
+                                        if (isSelected) background(LiquidGlass.GradientPrimary)
+                                        else this
+                                    }
                                     .clickable { viewModel.setTab(key) }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(label, color = if (state.tab == key) Color.White else palette.textMuted, fontSize = 14.sp)
+                                Text(
+                                    label,
+                                    color = if (isSelected) Color.White else textMuted,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                )
                             }
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
                 }
+
                 if (state.tab == "info") {
                     item {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.clientCard(palette).padding(16.dp)) {
-                                Text(localized("pd_desc"), color = palette.textMuted, fontSize = 12.sp)
-                                Text(product.name, color = palette.text, fontSize = 14.sp)
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(16.dp),
+                            ) {
+                                Text(
+                                    localized("pd_desc"),
+                                    color = textMuted,
+                                    fontSize = 12.sp,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(product.name, color = text, fontSize = 14.sp)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                InfoTile(localized("pd_brand"), product.brand.orEmpty(), Modifier.weight(1f))
-                                InfoTile(localized("pd_category"), product.category.orEmpty(), Modifier.weight(1f))
+                                InfoTile(
+                                    localized("pd_brand"),
+                                    product.brand.orEmpty(),
+                                    Modifier.weight(1f),
+                                )
+                                InfoTile(
+                                    localized("pd_category"),
+                                    product.category.orEmpty(),
+                                    Modifier.weight(1f),
+                                )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                InfoTile(localized("pd_stock"), "${product.stockBalance.toInt()} ${product.unit}", Modifier.weight(1f))
+                                InfoTile(
+                                    localized("pd_stock"),
+                                    "${product.stockBalance.toInt()} ${product.unit}",
+                                    Modifier.weight(1f),
+                                )
                                 InfoTile(localized("pd_rating"), "4.5/5", Modifier.weight(1f))
                             }
                         }
@@ -200,56 +258,113 @@ fun ProductDetailScreen(
                         Column(
                             Modifier
                                 .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .clientCard(palette)
+                                .liquidGlassThemed()
                                 .padding(14.dp),
                         ) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(review.user, color = palette.text, fontWeight = FontWeight.SemiBold)
-                                repeat(review.rating) { Icon(Icons.Default.Star, null, tint = palette.warning, modifier = Modifier.size(11.dp)) }
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    review.user,
+                                    color = text,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Row {
+                                    repeat(review.rating) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            null,
+                                            tint = LiquidGlass.Amber,
+                                            modifier = Modifier.size(11.dp),
+                                        )
+                                    }
+                                }
                             }
-                            Text(review.comment, color = palette.textMuted, fontSize = 14.sp)
-                            Text(review.date, color = palette.textMuted, fontSize = 11.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(review.comment, color = textMuted, fontSize = 14.sp)
+                            Text(review.date, color = textMuted, fontSize = 11.sp)
                         }
                     }
                 }
             }
 
-            Row(
-                Modifier
+            GlassHeaderRow(
+                onBack = onBack,
+                liked = state.liked,
+                onToggleLike = { viewModel.toggleLike() },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .background(palette.navBg)
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+            )
+
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, LiquidGlass.BgDark.copy(alpha = 0.97f)),
+                        ),
+                    )
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
             ) {
                 Row(
-                    Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(palette.surface2)
-                        .padding(4.dp),
+                    Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Icon(Icons.Default.Remove, null, tint = palette.text, modifier = Modifier.clickable { viewModel.decQty() }.padding(8.dp))
-                    Text(formatQty(state.qty), color = palette.text, modifier = Modifier.padding(horizontal = 12.dp))
-                    Icon(Icons.Default.Add, null, tint = palette.text, modifier = Modifier.clickable { viewModel.incQty() }.padding(8.dp))
-                }
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.primary)
-                        .clickable {
-                            viewModel.addToCart()
-                            onOpenCart()
-                        }
-                        .padding(vertical = 14.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        if (inCart) localized("pd_in_cart") else localized("pd_add_cart"),
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(
+                        Modifier
+                            .liquidGlassThemed(radius = 16.dp)
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Remove,
+                            null,
+                            tint = text,
+                            modifier = Modifier
+                                .clickable { viewModel.decQty() }
+                                .padding(8.dp),
+                        )
+                        Text(
+                            formatQty(state.qty),
+                            color = text,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                        Icon(
+                            Icons.Default.Add,
+                            null,
+                            tint = text,
+                            modifier = Modifier
+                                .clickable { viewModel.incQty() }
+                                .padding(8.dp),
+                        )
+                    }
+
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                            .background(LiquidGlass.GradientPrimary)
+                            .clickable {
+                                viewModel.addToCart()
+                                onOpenCart()
+                            }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (inCart) localized("pd_in_cart") else localized("pd_add_cart"),
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        )
+                    }
                 }
             }
         }
@@ -257,11 +372,75 @@ fun ProductDetailScreen(
 }
 
 @Composable
+private fun GlassHeaderRow(
+    onBack: () -> Unit,
+    liked: Boolean,
+    onToggleLike: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val text = LiquidTheme.text
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = text,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Share,
+                    null,
+                    tint = text,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
+                    .clickable(onClick = onToggleLike),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    null,
+                    tint = if (liked) LiquidGlass.Rose else text,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun InfoTile(label: String, value: String, modifier: Modifier = Modifier) {
-    val palette = rememberClientPalette()
-    Column(modifier.clientCard(palette).padding(12.dp)) {
-        Text(label, color = palette.textMuted, fontSize = 11.sp)
-        Text(value, color = palette.text, fontSize = 13.sp)
+    val text = LiquidTheme.text
+    val textMuted = LiquidTheme.textMuted
+    Column(
+        modifier
+            .liquidGlassThemed()
+            .padding(12.dp),
+    ) {
+        Text(label, color = textMuted, fontSize = 11.sp)
+        Text(value, color = text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 

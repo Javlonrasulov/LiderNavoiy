@@ -15,9 +15,9 @@ const CYRILLIC_TO_LATIN: Record<string, string> = {
   Ъ: '', Ы: 'y', Ь: '', Э: 'e', Ю: 'yu', Я: 'ya',
 };
 
-/** Mijoz nomidan APK login: kichik harf, lotin, faqat a-z0-9 */
-export function clientNameToLogin(name: string, codeFallback?: string): string {
-  let raw = name.trim()
+function transliterateWord(word: string): string {
+  let raw = word
+    .trim()
     .replace(/o[''`ʼ]/gi, 'o')
     .replace(/g[''`ʼ]/gi, 'g');
 
@@ -26,12 +26,17 @@ export function clientNameToLogin(name: string, codeFallback?: string): string {
     latin += CYRILLIC_TO_LATIN[ch] ?? ch;
   }
 
-  let login = latin
+  return latin
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 32);
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+/** Mijoz nomining faqat birinchi so'zidan login (masalan: "GO ZAL TONG" → "go") */
+export function clientNameToLogin(name: string, codeFallback?: string): string {
+  const firstWord = name.trim().split(/\s+/).find(Boolean) ?? '';
+  let login = transliterateWord(firstWord).slice(0, 32);
 
   if (login.length < 3 && codeFallback) {
     login = `${login}${codeFallback.replace(/\D/g, '')}`.slice(0, 32);
@@ -67,6 +72,7 @@ export function apiClientToRow(c: BackendClient): ClientRow {
   return {
     id: c.id,
     code: c.code,
+    onTradeId: c.onTradeId ?? c.code,
     name: c.name,
     fullName: c.fullName ?? c.name,
     line: c.lineCode ?? '',
@@ -91,6 +97,7 @@ export function rowToUpdatePayload(data: Partial<ClientRow> & { id: string }) {
   const { lat, lng } = parseGpsString(data.gps ?? '');
   return {
     code: data.code,
+    onTradeId: data.onTradeId,
     name: data.name,
     fullName: data.fullName,
     phone: data.phone,
@@ -115,6 +122,7 @@ export function formToCreatePayload(
   const { lat, lng } = parseGpsString(data.gps ?? '');
   return {
     code: data.code || 'NEW',
+    onTradeId: data.onTradeId,
     name: data.name || '',
     fullName: data.fullName || data.name,
     phone: data.phone,

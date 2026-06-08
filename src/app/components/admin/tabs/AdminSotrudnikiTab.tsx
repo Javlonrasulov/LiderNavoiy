@@ -109,6 +109,9 @@ function distributorToAgentRow(d: Distributor): AgentRow {
     plan: 0,
     status: active ? 'active' : 'inactive',
     orgId: d.companyId || 'boran',
+    phone: d.phone?.trim() || '',
+    backendUserId: d.userId,
+    distributorId: d.id,
   };
 }
 
@@ -133,10 +136,11 @@ function toEmployee(a: AgentRow, i: number, fromBackend = false) {
   const line1 = LINES[(a.id * 3 + i) % LINES.length];
   const line2 = LINES[(a.id * 7 + i + 5) % LINES.length];
   const lines = count === 2 ? [line1, line2] : [line1];
+  const fallbackPhone = `+998 9${(i % 9) + 1} ${String(30000000 + (i * 1234567) % 90000000).slice(0, 7)}`;
   return {
     ...a,
     role: fromBackend ? 'Agent' : ROLES[i % ROLES.length],
-    phone: `+998 9${(i % 9) + 1} ${String(30000000 + (i * 1234567) % 90000000).slice(0, 7)}`,
+    phone: fromBackend && a.phone?.trim() ? a.phone.trim() : fallbackPhone,
     city: CITIES_LIST[i % CITIES_LIST.length],
     hireDate: `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     liniyaCount: count,
@@ -429,8 +433,25 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     setForm({ name: '', role: ROLES[0], phone: '', city: CITIES_LIST[0] });
     setShowAdd(true);
   };
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!form.name.trim()) return;
+    if (hasApiToken() && (editEmp?.backendUserId || editEmp?.distributorId)) {
+      try {
+        const phone = form.phone.trim() || undefined;
+        if (editEmp?.backendUserId) {
+          await api.updateAppUser(editEmp.backendUserId, {
+            fullName: form.name.trim(),
+            phone,
+          });
+        }
+        if (editEmp?.distributorId) {
+          await api.updateDistributor(editEmp.distributorId, { phone: form.phone.trim() });
+        }
+        await refreshAgents();
+      } catch {
+        /* keep local row updated */
+      }
+    }
     setLocalEmps(prev => prev.map(e => e.id === editEmp!.id ? { ...e, ...form, name: form.name.trim() } : e));
     setSaved(true);
     setTimeout(() => { setSaved(false); setEditEmp(null); }, 900);

@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
-import { CreateOrderDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderDto } from './dto/order.dto';
 import { OrderStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
@@ -134,5 +134,15 @@ export class OrdersService {
 
   findOne(id: string) {
     return this.repo.findOne({ where: { id } });
+  }
+
+  async update(id: string, dto: UpdateOrderDto) {
+    const order = await this.repo.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (dto.status !== undefined) order.status = dto.status;
+    if (dto.deliveryDistributorId !== undefined) {
+      order.deliveryDistributorId = dto.deliveryDistributorId;
+    }
+    return this.repo.save(order);
   }
 }

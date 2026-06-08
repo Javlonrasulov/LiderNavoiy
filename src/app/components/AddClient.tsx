@@ -179,7 +179,7 @@ function clientToForm(client: ClientRow) {
     : `${NAVOIY.lat.toFixed(6)},${NAVOIY.lng.toFixed(6)}`;
   return {
     form: {
-      kod: client.code, liniya: client.line, status: 'active', onTradeId: String(client.id),
+      kod: client.code, liniya: client.line, status: 'active', onTradeId: client.onTradeId ?? client.code,
       category: client.category || 'Standard',
       name: client.name, officialName: client.fullName, legalAddr: client.legalAddr,
       landmark: '', phones: client.phone, bankAcc: '', mfo: '', bank: '',
@@ -315,6 +315,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       hasAppLogin?: boolean;
     } = {
       code: form.kod,
+      onTradeId: form.onTradeId || undefined,
       name: form.name,
       fullName: form.officialName || form.name,
       line: form.liniya,
@@ -365,7 +366,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
           setHasAppLogin(false);
           setSavedAppUsername(null);
           setAppLoginTouched(false);
-          setAppLogin(clientNameToLogin(client.name, client.code));
+          setAppLogin(
+            cred.suggestedUsername
+            ?? clientNameToLogin(client.name, client.code),
+          );
           setAppPassword(DEFAULT_CLIENT_APP_PASSWORD);
         }
       })

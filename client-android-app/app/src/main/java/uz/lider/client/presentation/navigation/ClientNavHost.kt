@@ -3,6 +3,7 @@ package uz.lider.client.presentation.navigation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,7 +91,19 @@ fun ClientNavHost(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        NavHost(navController = navController, startDestination = ClientRoutes.SPLASH) {
+        NavHost(
+            navController = navController,
+            startDestination = ClientRoutes.SPLASH,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (showBottomNav) {
+                        Modifier.padding(bottom = ClientBottomNavHeight)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             composable(ClientRoutes.SPLASH) {
                 SplashRoute(
                     onLoggedIn = {

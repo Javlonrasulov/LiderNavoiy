@@ -14,6 +14,11 @@ export class CreateClientDto {
   @IsString()
   code?: string;
 
+  @ApiPropertyOptional({ example: '174912345678901234' })
+  @IsOptional()
+  @IsString()
+  onTradeId?: string;
+
   @ApiProperty({ example: 'Ahmad Market' })
   @IsString()
   @MinLength(1)
@@ -113,6 +118,11 @@ export class UpdateClientDto {
   @IsString()
   @MinLength(1)
   code?: string;
+
+  @ApiPropertyOptional({ example: '174912345678901234' })
+  @IsOptional()
+  @IsString()
+  onTradeId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

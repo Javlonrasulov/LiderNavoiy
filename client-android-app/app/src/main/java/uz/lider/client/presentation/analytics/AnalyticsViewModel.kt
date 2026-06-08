@@ -9,12 +9,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AnalyticsRepository
+import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.domain.model.ClientAnalytics
+import uz.lider.client.presentation.components.ChartVisualStyle
 import javax.inject.Inject
 
 data class AnalyticsUiState(
     val loading: Boolean = true,
     val period: String = "month",
+    val chartStyle: ChartVisualStyle = ChartVisualStyle.BAR,
     val data: ClientAnalytics? = null,
     val loadFailed: Boolean = false,
 )
@@ -22,6 +25,7 @@ data class AnalyticsUiState(
 @HiltViewModel
 class AnalyticsViewModel @Inject constructor(
     private val analyticsRepository: AnalyticsRepository,
+    private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AnalyticsUiState())
@@ -29,12 +33,23 @@ class AnalyticsViewModel @Inject constructor(
 
     init {
         load("month")
+        viewModelScope.launch {
+            appSettingsRepository.chartStyle.collect { style ->
+                _uiState.update { it.copy(chartStyle = style) }
+            }
+        }
     }
 
     fun setPeriod(period: String) {
         if (_uiState.value.period == period) return
         _uiState.update { it.copy(period = period) }
         load(period)
+    }
+
+    fun setChartStyle(style: ChartVisualStyle) {
+        if (_uiState.value.chartStyle == style) return
+        _uiState.update { it.copy(chartStyle = style) }
+        viewModelScope.launch { appSettingsRepository.setChartStyle(style) }
     }
 
     private fun load(period: String) {

@@ -38,6 +38,7 @@ export interface Distributor {
   companyName: string | null;
   lineCode: string | null;
   phone: string | null;
+  position?: string | null;
   status: string;
   lastLatitude: number | null;
   lastLongitude: number | null;
@@ -57,6 +58,7 @@ export interface LocationPoint {
 export interface Client {
   id: string;
   code: string;
+  onTradeId?: string | null;
   name: string;
   fullName?: string | null;
   phone?: string | null;
@@ -203,6 +205,8 @@ export const api = {
     companyName?: string;
     companyId?: string;
     isActive?: boolean;
+    phone?: string;
+    position?: string;
   }) =>
     request<AppUserRecord>('/users/app', {
       method: 'POST',
@@ -216,6 +220,8 @@ export const api = {
     role?: string;
     isActive?: boolean;
     companyName?: string;
+    phone?: string;
+    position?: string;
   }) =>
     request<AppUserRecord>(`/users/app/${id}`, {
       method: 'PATCH',
@@ -235,6 +241,12 @@ export const api = {
     request<Distributor>(`/distributors/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    }),
+
+  updateDistributor: (id: string, body: { phone?: string; position?: string; lineCode?: string }) =>
+    request<Distributor>(`/distributors/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     }),
 
   // ─── GPS ───
@@ -279,6 +291,7 @@ export const api = {
     territory?: string;
     clientClass?: string;
     priceCategory?: string;
+    onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
   }) =>
@@ -304,6 +317,7 @@ export const api = {
     clientClass?: string;
     priceCategory?: string;
     isActive?: boolean;
+    onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
   }) =>
@@ -314,7 +328,7 @@ export const api = {
 
   getClientAppCredentials: (clientId: string) =>
     request<
-      | { hasCredentials: false }
+      | { hasCredentials: false; suggestedUsername: string }
       | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
     >(`/clients/${clientId}/app-credentials`),
 

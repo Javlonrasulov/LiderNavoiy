@@ -254,7 +254,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       [t.colAgent]:      c.agent,
       [t.colBalance]:    c.balance,
       [t.colLastVisit]:  c.lastVisit,
-      [t.colID]:         c.id,
+      [t.colID]:         c.code,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -710,7 +710,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   {c.territory && <span className="truncate">📍 {c.territory}</span>}
                   {c.inn       && <span className="truncate font-mono">{t.colINN}: {c.inn}</span>}
                   <span className="font-mono">{t.colClass}: {c.cls}</span>
-                  <span className="font-mono">{t.colID}: {c.id}</span>
+                  <span className="font-mono">{t.colID}: {c.code}</span>
                 </div>
                 {c.legalAddr && (
                   <p className={`text-xs ${sub} mt-1 truncate`}>{c.legalAddr}</p>
@@ -782,7 +782,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     <td className={`${tdCls} ${rowText} max-w-[90px] truncate`}>{c.contact}</td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.cls}</td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.gps}</td>
-                    <td className={`${tdCls} font-mono ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.id}</td>
+                    <td className={`${tdCls} font-mono ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.code}</td>
                     <td className={`${tdCls} ${rowText}`}>
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap
                         ${c.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
@@ -908,7 +908,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                         'bg-indigo-500/15 text-indigo-400'}`}>
                       {activeClient.category}
                     </span>
-                    <span className={`text-[11px] font-mono ${D ? 'text-gray-500' : 'text-gray-400'}`}>{t.colID}: {activeClient.id}</span>
+                    <span className={`text-[11px] font-mono ${D ? 'text-gray-500' : 'text-gray-400'}`}>{t.colID}: {activeClient.code}</span>
                   </div>
                   <span className={`text-sm font-bold tabular-nums ${balColor}`}>
                     {sign}{Math.abs(activeClient.balance).toLocaleString()}

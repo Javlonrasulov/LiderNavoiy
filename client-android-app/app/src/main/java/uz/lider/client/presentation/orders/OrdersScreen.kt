@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +42,6 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientTabScaffold
-import uz.lider.client.presentation.components.clientCard
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.localized
@@ -49,6 +49,10 @@ import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun OrdersScreen(
@@ -69,61 +73,100 @@ fun OrdersScreen(
         "cancelled" to localized("ord_status_cancelled"),
     )
 
-    ClientTabScaffold(title = localized("ord_title"), bottomPadding = true) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(palette.input)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Search, null, tint = palette.textMuted, modifier = Modifier.size(18.dp))
-                    BasicTextField(
-                        value = state.search,
-                        onValueChange = viewModel::onSearchChange,
-                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = palette.text, fontSize = 14.sp),
-                        decorationBox = { inner ->
-                            if (state.search.isEmpty()) Text(localized("ord_search"), color = palette.textMuted, fontSize = 14.sp)
-                            inner()
-                        },
-                    )
-                }
-                Spacer(Modifier.size(12.dp))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    filters.forEach { (key, label) ->
-                        val selected = state.statusFilter == key
-                        val chipColor = if (key == "all") palette.primary else orderStatusColor(keyToStatus(key), palette)
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(if (selected) chipColor else palette.surface2)
-                                .clickable { viewModel.onStatusFilterChange(key) }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        ) {
-                            Text(label, color = if (selected) Color.White else palette.textMuted, fontSize = 12.sp)
+    ClientTabScaffold(title = localized("ord_title")) { padding ->
+        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // Glass pill search bar
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            null,
+                            tint = LiquidTheme.textMuted,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        BasicTextField(
+                            value = state.search,
+                            onValueChange = viewModel::onSearchChange,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 10.dp),
+                            textStyle = TextStyle(color = LiquidTheme.text, fontSize = 14.sp),
+                            decorationBox = { inner ->
+                                if (state.search.isEmpty()) {
+                                    Text(localized("ord_search"), color = LiquidTheme.textMuted, fontSize = 14.sp)
+                                }
+                                inner()
+                            },
+                        )
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    // Glass chip filters, active = gradient
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        filters.forEach { (key, label) ->
+                            val selected = state.statusFilter == key
+                            if (selected) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                        .background(LiquidGlass.GradientPrimary)
+                                        .clickable { viewModel.onStatusFilterChange(key) }
+                                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                                ) {
+                                    Text(
+                                        label,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    Modifier
+                                        .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                                        .clickable { viewModel.onStatusFilterChange(key) }
+                                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                                ) {
+                                    Text(label, color = LiquidTheme.textMuted, fontSize = 12.sp)
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            if (state.loading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = palette.primary)
-                }
-            } else {
-                Text(
-                    "${orders.size} ${localized("ord_count")}",
-                    color = palette.textMuted,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(orders, key = { it.id }) { order ->
-                        OrderCard(order, lang, palette, onClick = { onNavigate(ClientRoutes.orderTracking(order.id)) }, onReorder = { onNavigate(ClientRoutes.CATALOG) })
+                if (state.loading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = LiquidGlass.Indigo)
+                    }
+                } else {
+                    Text(
+                        "${orders.size} ${localized("ord_count")}",
+                        color = LiquidTheme.textMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(orders, key = { it.id }) { order ->
+                            OrderCard(
+                                order = order,
+                                lang = lang,
+                                palette = palette,
+                                onClick = { onNavigate(ClientRoutes.orderTracking(order.id)) },
+                                onReorder = { onNavigate(ClientRoutes.CATALOG) },
+                            )
+                        }
                     }
                 }
             }
@@ -132,7 +175,13 @@ fun OrdersScreen(
 }
 
 @Composable
-private fun OrderCard(order: ClientOrder, lang: uz.lider.client.localization.AppLanguage, palette: uz.lider.client.presentation.components.ClientPalette, onClick: () -> Unit, onReorder: () -> Unit) {
+private fun OrderCard(
+    order: ClientOrder,
+    lang: uz.lider.client.localization.AppLanguage,
+    palette: uz.lider.client.presentation.components.ClientPalette,
+    onClick: () -> Unit,
+    onReorder: () -> Unit,
+) {
     val status = orderStatusLabel(lang, order.status)
     val color = orderStatusColor(order.status, palette)
     val product = order.items.firstOrNull()?.productName ?: order.id
@@ -140,45 +189,103 @@ private fun OrderCard(order: ClientOrder, lang: uz.lider.client.localization.App
 
     Column(
         Modifier
-            .clientCard(palette)
+            .fillMaxWidth()
+            .liquidGlassThemed()
             .clickable(onClick = onClick)
             .padding(16.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(palette.primary.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.ShoppingBag, null, tint = palette.primary)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .liquidGlassThemed(radius = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.ShoppingBag,
+                        null,
+                        tint = LiquidGlass.Indigo,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
                 Column {
-                    Text(orderDisplayLabel(lang, order.id), color = palette.text, fontWeight = FontWeight.SemiBold)
-                    Text(order.createdAt.take(10), color = palette.textMuted, fontSize = 12.sp)
+                    Text(
+                        orderDisplayLabel(lang, order.id),
+                        color = LiquidTheme.text,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(order.createdAt.take(10), color = LiquidTheme.textMuted, fontSize = 12.sp)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(status, color = color, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 4.dp))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = palette.textMuted)
+                Text(
+                    status,
+                    color = color,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(color.copy(alpha = 0.20f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    null,
+                    tint = LiquidTheme.textMuted,
+                )
             }
         }
-        Spacer(Modifier.size(8.dp))
-        Text(product, color = palette.textMuted, fontSize = 12.sp)
+        Spacer(Modifier.size(10.dp))
+        Text(product, color = LiquidTheme.textMuted, fontSize = 12.sp)
+        Spacer(Modifier.size(6.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${order.items.size} ${localized("ord_items")}", color = palette.textMuted, fontSize = 12.sp)
-            Text("${formatMoney(order.totalAmount)} ${localized("com_som")}", color = palette.text, fontWeight = FontWeight.Bold)
+            Text(
+                "${order.items.size} ${localized("ord_items")}",
+                color = LiquidTheme.textMuted,
+                fontSize = 12.sp,
+            )
+            Text(
+                "${formatMoney(order.totalAmount)} ${localized("com_som")}",
+                color = LiquidTheme.text,
+                fontWeight = FontWeight.Bold,
+            )
         }
         if (delivered) {
-            Spacer(Modifier.size(8.dp))
-            Row(
+            Spacer(Modifier.size(10.dp))
+            Box(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(palette.primary.copy(alpha = 0.1f))
+                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                    .background(LiquidGlass.GradientPrimary)
                     .clickable(onClick = onReorder)
                     .padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Refresh, null, tint = palette.primary, modifier = Modifier.size(16.dp))
-                Text(" ${localized("ord_reorder")}", color = palette.primary, fontSize = 13.sp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Refresh,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        localized("ord_reorder"),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
     }

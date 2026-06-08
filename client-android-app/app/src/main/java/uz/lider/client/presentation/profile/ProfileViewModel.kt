@@ -13,8 +13,6 @@ import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.domain.model.ClientProfile
 import javax.inject.Inject
 
-data class BranchInfo(val name: String, val address: String, val phone: String)
-
 data class ProfileUiState(
     val loading: Boolean = true,
     val profile: ClientProfile? = null,

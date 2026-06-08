@@ -3,6 +3,8 @@ package uz.lider.client.data.repository
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ClientProfileDto
 import uz.lider.client.domain.model.ClientProfile
+import uz.lider.client.domain.model.ContactPerson
+import uz.lider.client.data.remote.dto.ContactPersonDto
 import uz.lider.client.domain.model.DashboardData
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,15 +24,33 @@ class ProfileRepository @Inject constructor(
 
     suspend fun getAllOrders() = orderRepository.getOrders()
 
-    suspend fun getDashboardData(): DashboardData? {
-        val profile = getProfile() ?: return null
+    suspend fun getDashboardData(): DashboardData {
+        val profile = getProfile()
         val orders = getAllOrders()
+        val effectiveProfile = profile ?: ClientProfile(
+            id = "",
+            code = "",
+            name = "",
+            balance = 0.0,
+            totalPurchases = 0.0,
+            orderCount = orders.size,
+        )
         return DashboardData(
-            profile = profile,
+            profile = effectiveProfile,
             recentOrders = orders.take(5),
-            totalPurchases = profile.totalPurchases,
-            orderCount = profile.orderCount,
-            balance = profile.balance,
+            totalPurchases = profile?.totalPurchases ?: 0.0,
+            orderCount = profile?.orderCount ?: orders.size,
+            balance = profile?.balance ?: 0.0,
+        )
+    }
+
+    private fun ContactPersonDto.toDomain(): ContactPerson? {
+        val personName = name?.trim().orEmpty()
+        if (personName.isEmpty()) return null
+        return ContactPerson(
+            name = personName,
+            position = position?.trim(),
+            phone = phone?.trim(),
         )
     }
 
@@ -40,9 +60,14 @@ class ProfileRepository @Inject constructor(
         name = name,
         fullName = fullName,
         phone = phone,
+        address = address,
+        category = category,
         balance = balance,
         totalPurchases = totalPurchases,
         orderCount = orderCount,
         agentName = agentName,
+        agentPosition = agentPosition,
+        agentPhone = agentPhone,
+        deliveryPerson = deliveryPerson?.toDomain(),
     )
 }
