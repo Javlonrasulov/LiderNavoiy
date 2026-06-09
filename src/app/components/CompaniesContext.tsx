@@ -37,7 +37,7 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
 
   const refresh = async () => {
     if (!localStorage.getItem('api_access_token')) {
-      setCompanies(COMPANIES);
+      setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
       setError(null);
       return;
     }
@@ -48,10 +48,10 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
       if (rows.length > 0) {
         setCompanies(rows.map(mapCompany));
       } else {
-        setCompanies(COMPANIES);
+        setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
       }
     } catch (e) {
-      setCompanies(COMPANIES);
+      setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
       setError(e instanceof Error ? e.message : 'Tashkilotlarni yuklab bo\'lmadi');
     } finally {
       setLoading(false);
@@ -60,6 +60,9 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh();
+    const onAuth = () => { refresh(); };
+    window.addEventListener('lider:auth-changed', onAuth);
+    return () => window.removeEventListener('lider:auth-changed', onAuth);
   }, []);
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   X, Maximize2, Minimize2,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
@@ -25,6 +25,21 @@ interface ItemRow {
   ves:        number;
 }
 
+export interface PostReceiptItem {
+  id:         number;
+  productId?: string;
+  tovar:      string;
+  artikul:    string;
+  kolFakt:    number;
+  kolBrak:    number;
+  upakovka:   string;
+  tsenaPost:  number;
+  skid:       number;
+  tsenaPriv:  number;
+  summa:      number;
+  ves:        number;
+}
+
 export interface PostRowRef {
   id:       number;
   date:     string;
@@ -41,6 +56,7 @@ export interface PostRowRef {
   type:     'opt' | 'chakana' | 'ishlab';
   author:   string;
   authorId?: string;
+  items?:    PostReceiptItem[];
 }
 
 interface Props {
@@ -54,26 +70,25 @@ interface Props {
   hasNext?: boolean;
 }
 
-/* ─────────────────────────────────────────────────────────────────── */
-/*  Mock items data (used for all docs in demo)                        */
-/* ─────────────────────────────────────────────────────────────────── */
-const ITEMS: ItemRow[] = [
-  { id:  1, brand:'SOF IN Сыр', group:'Mozzarella', tovar:'Mozzarella 250 гр',            artikul:'', shtUp:1, kolFakt:540,   kolBrak:0, upakovka:'540 шт',   pokupTsena:25_000,  tsenaPost:25_000,  skid:0, tsenaPriv:25_000,  summa:13_500_000, ves:135   },
-  { id:  2, brand:'SOF IN',     group:'SOF IN',      tovar:'Тара яшик SOF IN',              artikul:'', shtUp:1, kolFakt:124,   kolBrak:0, upakovka:'124 шт',   pokupTsena:0,       tsenaPost:0,       skid:0, tsenaPriv:0,       summa:0,          ves:0     },
-  { id:  3, brand:'SOF IN',     group:'SOF IN',      tovar:'Катик 1% ПЭТ 450г',             artikul:'', shtUp:1, kolFakt:2_400, kolBrak:0, upakovka:'2 400 шт', pokupTsena:5_500,   tsenaPost:5_500,   skid:0, tsenaPriv:5_500,   summa:13_200_000, ves:480   },
-  { id:  4, brand:'SOF IN',     group:'SOF IN',      tovar:'Кефир 1% ПЭТ 900г',             artikul:'', shtUp:1, kolFakt:300,   kolBrak:0, upakovka:'300 шт',   pokupTsena:9_600,   tsenaPost:9_600,   skid:0, tsenaPriv:9_600,   summa:2_880_000,  ves:300   },
-  { id:  5, brand:'SOF IN',     group:'SOF IN',      tovar:'Кефир 2,5% ПЭТ 450г',           artikul:'', shtUp:1, kolFakt:2_400, kolBrak:0, upakovka:'2 400 шт', pokupTsena:5_700,   tsenaPost:5_700,   skid:0, tsenaPriv:5_700,   summa:13_680_000, ves:480   },
-  { id:  6, brand:'SOF IN',     group:'SOF IN',      tovar:'Кефир 3,2% ПЭТ 900г',           artikul:'', shtUp:1, kolFakt:300,   kolBrak:0, upakovka:'300 шт',   pokupTsena:11_400,  tsenaPost:11_400,  skid:0, tsenaPriv:11_400,  summa:3_420_000,  ves:300   },
-  { id:  7, brand:'SOF IN',     group:'SOF IN',      tovar:'Кефир 3,2% ПЭТ 450г',           artikul:'', shtUp:1, kolFakt:480,   kolBrak:0, upakovka:'480 шт',   pokupTsena:6_500,   tsenaPost:6_500,   skid:0, tsenaPriv:6_500,   summa:3_120_000,  ves:480   },
-  { id:  8, brand:'SOF IN',     group:'SOF IN',      tovar:'Йогурт 1,2% ПЭТ Банан 270г',    artikul:'', shtUp:1, kolFakt:330,   kolBrak:0, upakovka:'330 шт',   pokupTsena:6_500,   tsenaPost:6_500,   skid:0, tsenaPriv:6_500,   summa:2_145_000,  ves:330   },
-  { id:  9, brand:'SOF IN',     group:'SOF IN',      tovar:'Йогурт 1,2% ПЭТ Черника',       artikul:'', shtUp:1, kolFakt:465,   kolBrak:0, upakovka:'465 шт',   pokupTsena:6_500,   tsenaPost:6_500,   skid:0, tsenaPriv:6_500,   summa:3_022_500,  ves:465   },
-  { id: 10, brand:'SOF IN',     group:'SOF IN',      tovar:'Йогурт 1,2% ПЭТ Клубника 270г', artikul:'', shtUp:1, kolFakt:645,   kolBrak:0, upakovka:'645 шт',   pokupTsena:6_500,   tsenaPost:6_500,   skid:0, tsenaPriv:6_500,   summa:4_192_500,  ves:645   },
-  { id: 11, brand:'SOF IN',     group:'SOF IN',      tovar:'Сметана 20% Стакан 350г',        artikul:'', shtUp:1, kolFakt:1_200, kolBrak:0, upakovka:'1 200 шт', pokupTsena:13_400,  tsenaPost:13_400,  skid:0, tsenaPriv:13_400,  summa:16_080_000, ves:480   },
-  { id: 12, brand:'SOF IN',     group:'SOF IN',      tovar:'Сметана 20% Стакан 180г',        artikul:'', shtUp:1, kolFakt:600,   kolBrak:0, upakovka:'600 шт',   pokupTsena:8_400,   tsenaPost:8_400,   skid:0, tsenaPriv:8_400,   summa:5_040_000,  ves:600   },
-  { id: 13, brand:'SOF IN',     group:'SOF IN',      tovar:'Кайнок 45% стакан 180г',         artikul:'', shtUp:1, kolFakt:3_000, kolBrak:0, upakovka:'3 000 шт', pokupTsena:10_500,  tsenaPost:10_500,  skid:0, tsenaPriv:10_500,  summa:31_500_000, ves:3_000 },
-  { id: 14, brand:'SOF IN',     group:'SOF IN',      tovar:'Кайнок 45% стакан 350г',         artikul:'', shtUp:1, kolFakt:600,   kolBrak:0, upakovka:'600 шт',   pokupTsena:20_000,  tsenaPost:20_000,  skid:0, tsenaPriv:20_000,  summa:12_000_000, ves:600   },
-  { id: 15, brand:'SOF IN',     group:'SOF IN',      tovar:'Брынза 20% весовой',              artikul:'', shtUp:1, kolFakt:91,    kolBrak:0, upakovka:'91 кг 200г',pokupTsena:52_000, tsenaPost:52_000,  skid:0, tsenaPriv:52_000,  summa:4_742_400,  ves:91.2  },
-];
+function receiptItemsToRows(items: PostReceiptItem[]): ItemRow[] {
+  return items.map((item, i) => ({
+    id: i + 1,
+    brand: '—',
+    group: '—',
+    tovar: item.tovar,
+    artikul: item.artikul,
+    shtUp: 1,
+    kolFakt: item.kolFakt,
+    kolBrak: item.kolBrak,
+    upakovka: item.upakovka,
+    pokupTsena: item.tsenaPost,
+    tsenaPost: item.tsenaPost,
+    skid: item.skid,
+    tsenaPriv: item.tsenaPriv,
+    summa: item.summa,
+    ves: item.ves,
+  }));
+}
 
 /* ─────────────────────────────────────────────────────────────────── */
 /*  Helpers                                                            */
@@ -98,13 +113,22 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
   const toggleExp = (id: number) =>
     setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
+  const displayItems = useMemo(
+    () => (row.items && row.items.length > 0 ? receiptItemsToRows(row.items) : []),
+    [row.items],
+  );
+
   /* totals */
-  const totalKol   = ITEMS.reduce((s,r) => s + r.kolFakt,    0);
-  const totalBrak  = ITEMS.reduce((s,r) => s + r.kolBrak,    0);
-  const totalPokup = ITEMS.reduce((s,r) => s + r.pokupTsena, 0);
-  const totalPost  = ITEMS.reduce((s,r) => s + r.tsenaPost,  0);
-  const totalSumma = ITEMS.reduce((s,r) => s + r.summa,      0);
-  const totalVes   = ITEMS.reduce((s,r) => s + r.ves,        0);
+  const totalKol   = displayItems.reduce((s, r) => s + r.kolFakt, 0);
+  const totalBrak  = displayItems.reduce((s, r) => s + r.kolBrak, 0);
+  const totalPokup = displayItems.reduce((s, r) => s + r.pokupTsena, 0);
+  const totalPost  = displayItems.reduce((s, r) => s + r.tsenaPost, 0);
+  const totalSumma = displayItems.length > 0
+    ? displayItems.reduce((s, r) => s + r.summa, 0)
+    : row.sum;
+  const totalVes   = displayItems.length > 0
+    ? displayItems.reduce((s, r) => s + r.ves, 0)
+    : row.netto;
 
   /* style shortcuts */
   const bg      = D ? 'bg-[#0d0d0d]'           : 'bg-white';
@@ -135,7 +159,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
     { label: t.detNal,        value:'0,00',        hi: false },
     { label: t.detPoluchNal,  value:'0,00',        hi: false },
     { label: t.detSkidkaPer,  value:'0,00',        hi: false },
-    { label: t.detKOplate,    value:'0,00',        hi: false },
+    { label: t.detKOplate,    value: N(row.sum),    hi: false },
     { label: t.detSummaBrak,  value:'0,00',        hi: false },
     { label: t.detKontPrays,  value: N(row.sum),  hi: true  },
     { label: t.detColSumma,   value: N(row.sum),  hi: true  },
@@ -254,11 +278,17 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
                     </tr>
                   </thead>
                   <tbody>
-                    {ITEMS.map((r, i) => (
+                    {displayItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={15} className={`px-4 py-12 text-center text-xs ${sub}`}>
+                          {t.postEmptyItems ?? "Tovarlar ro'yxati saqlanmagan"}
+                        </td>
+                      </tr>
+                    ) : displayItems.map((r, i) => (
                       <tr
                         key={r.id}
                         className={`transition-colors
-                          ${i < ITEMS.length - 1 ? `border-b ${divider}` : ''}
+                          ${i < displayItems.length - 1 ? `border-b ${divider}` : ''}
                           ${r.kolBrak > 0 ? D ? 'bg-rose-500/5' : 'bg-rose-50/40' : ''}
                           ${D ? 'hover:bg-white/[0.025]' : 'hover:bg-indigo-50/40'}
                         `}
@@ -284,7 +314,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
                   <tfoot>
                     <tr className={`border-t-2 ${D ? 'border-gray-700 bg-white/[0.04]' : 'border-gray-200 bg-gray-50'}`}>
                       <td colSpan={5} className={`px-3 py-3 text-xs font-bold ${text}`}>
-                        {t.detItogo}: {ITEMS.length} {t.detPoz}
+                        {t.detItogo}: {displayItems.length} {t.detPoz}
                       </td>
                       <td />
                       <td className={`px-3 py-3 text-right text-xs font-bold tabular-nums ${text}`}>{N(totalKol)}</td>
@@ -302,10 +332,14 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
 
               {/* Mobile cards */}
               <div className="md:hidden">
-                {ITEMS.map((r, i) => {
+                {displayItems.length === 0 ? (
+                  <p className={`px-4 py-10 text-center text-xs ${sub}`}>
+                    {t.postEmptyItems ?? "Tovarlar ro'yxati saqlanmagan"}
+                  </p>
+                ) : displayItems.map((r, i) => {
                   const isExp = expanded.has(r.id);
                   return (
-                    <div key={r.id} className={i < ITEMS.length - 1 ? `border-b ${divider}` : ''}>
+                    <div key={r.id} className={i < displayItems.length - 1 ? `border-b ${divider}` : ''}>
                       <button
                         onClick={() => toggleExp(r.id)}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors
@@ -379,7 +413,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
                 {/* Mobile totals */}
                 <div className={`border-t-2 ${D ? 'border-gray-700' : 'border-gray-200'} px-4 py-4 ${D ? 'bg-white/[0.03]' : 'bg-gray-50'}`}>
                   <p className={`text-xs font-bold mb-3 ${text}`}>
-                    {t.detItogo} — {ITEMS.length} {t.detPoz}
+                    {t.detItogo} — {displayItems.length} {t.detPoz}
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div className={`rounded-xl border px-3 py-2.5 ${card}`}>

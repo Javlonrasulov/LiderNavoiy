@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.CartRepository
+import uz.lider.client.data.repository.FavoritesRepository
 import uz.lider.client.data.repository.ProductRepository
 import uz.lider.client.domain.model.Product
 import javax.inject.Inject
@@ -17,7 +18,7 @@ enum class CatalogSort { DEFAULT, PRICE_ASC, PRICE_DESC, RATING }
 
 data class CatalogUiState(
     val loading: Boolean = true,
-    val products: List<Product> = emptyList(),
+    val allProducts: List<Product> = emptyList(),
     val categories: List<String> = emptyList(),
     val search: String = "",
     val activeCategoryIndex: Int = 0,
@@ -31,51 +32,51 @@ data class CatalogUiState(
 class CatalogViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val cartRepository: CartRepository,
+    private val favoritesRepository: FavoritesRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CatalogUiState())
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
     val cartCount: Int get() = cartRepository.itemCount
 
+    companion object {
+        const val INDEX_ALL = 0
+        const val INDEX_FAVORITES = 1
+    }
+
     init {
         load()
+        viewModelScope.launch {
+            favoritesRepository.favoriteIds.collect { ids ->
+                _uiState.update { it.copy(favorites = ids) }
+            }
+        }
     }
 
-    fun load(category: String? = null) {
+    fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val products = productRepository.getProducts(category)
+            val allProducts = productRepository.getProducts(null)
             val categories = productRepository.getCategories()
-            _uiState.update { it.copy(loading = false, products = products, categories = categories) }
+            _uiState.update {
+                it.copy(loading = false, allProducts = allProducts, categories = categories)
+            }
         }
     }
 
-    fun refresh() {
-        val category = if (_uiState.value.activeCategoryIndex == 0) {
-            null
-        } else {
-            _uiState.value.categories.getOrNull(_uiState.value.activeCategoryIndex - 1)
-        }
-        load(category)
-    }
+    fun refresh() = load()
 
     fun onSearchChange(value: String) = _uiState.update { it.copy(search = value) }
 
-    fun onCategorySelected(index: Int) {
-        _uiState.update { it.copy(activeCategoryIndex = index) }
-        val category = if (index == 0) null else _uiState.value.categories.getOrNull(index - 1)
-        load(category)
-    }
+    fun onCategorySelected(index: Int) = _uiState.update { it.copy(activeCategoryIndex = index) }
 
     fun onSortChange(sort: CatalogSort) = _uiState.update { it.copy(sort = sort, sortMenuOpen = false) }
 
     fun toggleSortMenu() = _uiState.update { it.copy(sortMenuOpen = !it.sortMenuOpen) }
 
     fun toggleFavorite(productId: String) {
-        _uiState.update { state ->
-            val fav = state.favorites.toMutableSet()
-            if (fav.contains(productId)) fav.remove(productId) else fav.add(productId)
-            state.copy(favorites = fav)
+        viewModelScope.launch {
+            favoritesRepository.toggle(productId)
         }
     }
 
@@ -93,17 +94,19 @@ class CatalogViewModel @Inject constructor(
     fun filteredProducts(): List<Product> {
         val state = _uiState.value
         val query = state.search.trim().lowercase()
-        val category = if (state.activeCategoryIndex == 0) {
-            null
-        } else {
-            state.categories.getOrNull(state.activeCategoryIndex - 1)
+        var list = when (state.activeCategoryIndex) {
+            INDEX_FAVORITES -> state.allProducts.filter { it.id in state.favorites }
+            INDEX_ALL -> state.allProducts
+            else -> {
+                val category = state.categories.getOrNull(state.activeCategoryIndex - 2)
+                state.allProducts.filter { category == null || it.category == category }
+            }
         }
-        var list = state.products.filter { product ->
-            val matchCat = category == null || product.category == category
-            val matchSearch = query.isEmpty() ||
+        if (query.isNotEmpty()) {
+            list = list.filter { product ->
                 product.name.lowercase().contains(query) ||
-                product.code.lowercase().contains(query)
-            matchCat && matchSearch
+                    product.code.lowercase().contains(query)
+            }
         }
         list = when (state.sort) {
             CatalogSort.PRICE_ASC -> list.sortedBy { it.price }

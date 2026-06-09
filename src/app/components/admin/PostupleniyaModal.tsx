@@ -1,11 +1,17 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   X, Maximize2, Minimize2, Check, ChevronDown, ChevronLeft, ChevronRight,
   Calculator, Package, Tag, Plus, Trash2, ArrowUp, ArrowDown,
   RefreshCw, FileDown, FileUp, AlertCircle, CheckCircle2, Calendar, Search,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import type { PostRowRef } from './PostupleniyaDetailModal';
+import { createPortal } from 'react-dom';
+import type { PostRowRef, PostReceiptItem } from './PostupleniyaDetailModal';
+import {
+  syncReceiptItemsToCatalog,
+  persistSupplierPrice,
+  resolveSupplierPrice,
+} from '../../utils/receiptProductSync';
 import { useAdminAuth } from '../AdminAuthContext';
 import { useCompanies } from '../CompaniesContext';
 import { api, type AppUserRecord } from '../../api/client';
@@ -62,15 +68,21 @@ function backendProductToReceipt(p: {
 }): ReceiptProduct {
   const unit = p.unit.trim().toLowerCase();
   const unitLabel = unit === 'kg' || unit === 'кг' || unit === 'g' || unit === 'gr' ? 'кг' : 'шт';
+  const catalogPrice = typeof p.price === 'number' ? p.price : Number(p.price) || 0;
   return {
     id: p.id,
     name: p.name,
     code: p.code,
     artikul: p.code,
-    price: typeof p.price === 'number' ? p.price : Number(p.price) || 0,
+    price: resolveSupplierPrice(p.id, catalogPrice),
     unitLabel,
     brand: p.brand ?? '',
   };
+}
+
+function adminProductToReceiptWithCache(p: AdminProduct): ReceiptProduct {
+  const base = adminProductToReceipt(p);
+  return { ...base, price: resolveSupplierPrice(p.id, base.price) };
 }
 
 interface Props {
@@ -119,7 +131,7 @@ function fieldCls(D: boolean, red?: boolean) {
 }
 
 function FormSelect({
-  D, sub, value, onChange, options, placeholder, w,
+  D, sub, value, onChange, options, placeholder, w, error,
 }: {
   D: boolean;
   sub: string;
@@ -128,6 +140,7 @@ function FormSelect({
   options: string[];
   placeholder?: string;
   w?: string;
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -150,8 +163,8 @@ function FormSelect({
         onClick={() => setOpen(o => !o)}
         className={`w-full rounded-xl border px-3 py-2.5 pr-8 text-xs text-left outline-none transition-all
           focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500
-          ${open ? 'border-indigo-500 ring-2 ring-indigo-500/30' : ''}
-          ${fieldCls(D)}
+          ${error ? 'border-rose-500 ring-2 ring-rose-500/20' : open ? 'border-indigo-500 ring-2 ring-indigo-500/30' : ''}
+          ${fieldCls(D, error)}
           ${!value ? sub : ''}`}
       >
         <span className="block truncate">{display}</span>
@@ -346,8 +359,8 @@ function FormDatePicker({
 }
 
 function ProductSearchSelect({
-  D, sub, inp, value, products, onSelect, placeholder, searchPlaceholder, emptyText,
-  defaultOpen, onOpened,
+  D, sub, inp, value, products, onSelect, onCustomName, placeholder, searchPlaceholder, emptyText,
+  customLabel, defaultOpen, onOpened, error,
 }: {
   D: boolean;
   sub: string;
@@ -355,21 +368,60 @@ function ProductSearchSelect({
   value: string;
   products: ReceiptProduct[];
   onSelect: (p: ReceiptProduct) => void;
+  onCustomName?: (name: string) => void;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  customLabel?: string;
   defaultOpen?: boolean;
   onOpened?: () => void;
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [q, setQ] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 280, listMaxHeight: 208, openUp: false });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const reposition = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const searchH = 52;
+    const preferredListH = 208;
+    const totalH = searchH + preferredListH;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < totalH && spaceAbove > spaceBelow;
+    const available = openUp ? spaceAbove : spaceBelow;
+    const listMaxHeight = Math.max(Math.min(preferredListH, available - searchH), 100);
+    setPos({
+      top: openUp ? r.top - 4 : r.bottom + 4,
+      left: r.left,
+      width: Math.max(r.width, 280),
+      listMaxHeight,
+      openUp,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [open, reposition]);
 
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        dropRef.current && !dropRef.current.contains(e.target as Node)
+      ) setOpen(false);
     };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
@@ -378,9 +430,17 @@ function ProductSearchSelect({
   useEffect(() => {
     if (!open) return;
     setQ('');
+    reposition();
     const timer = setTimeout(() => searchRef.current?.focus(), 50);
     return () => clearTimeout(timer);
-  }, [open]);
+  }, [open, reposition]);
+
+  useEffect(() => {
+    if (!defaultOpen) return;
+    setOpen(true);
+    onOpened?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultOpen]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -395,13 +455,84 @@ function ProductSearchSelect({
 
   const display = value || placeholder || '—';
 
+  const dropdown = open ? createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed',
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        zIndex: 10060,
+        transform: pos.openUp ? 'translateY(-100%)' : undefined,
+      }}
+      className={`rounded-xl border shadow-xl overflow-hidden
+        ${D ? 'bg-[#1c1c1e] border-gray-700 shadow-black/60' : 'bg-white border-gray-200 shadow-gray-300/50'}`}
+    >
+      <div className={`p-2 border-b ${D ? 'border-gray-800' : 'border-gray-100'}`}>
+        <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border
+          ${D ? 'bg-[#111] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+          <Search size={12} className={sub} />
+          <input
+            ref={searchRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder={searchPlaceholder}
+            className={`flex-1 bg-transparent text-xs outline-none ${D ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
+          />
+          {q && (
+            <button type="button" onClick={() => setQ('')} className={sub}>
+              <X size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="overflow-y-auto overscroll-contain" style={{ maxHeight: pos.listMaxHeight }}>
+        {filtered.length === 0 ? (
+          <div className="px-3 py-3">
+            <p className={`text-xs text-center mb-2 ${sub}`}>{emptyText ?? 'Topilmadi'}</p>
+            {q.trim() && onCustomName && (
+              <button
+                type="button"
+                onClick={() => { onCustomName(q.trim()); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors
+                  ${D ? 'bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+              >
+                + {customLabel ?? 'Yangi mahsulot'}: &quot;{q.trim()}&quot;
+              </button>
+            )}
+          </div>
+        ) : filtered.map(p => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => { onSelect(p); setOpen(false); }}
+            className={`w-full text-left px-3 py-2.5 transition-colors border-b last:border-b-0
+              ${D ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-50 hover:bg-gray-50'}
+              ${value === p.name
+                ? D ? 'bg-indigo-500/15 text-indigo-300' : 'bg-indigo-50 text-indigo-600'
+                : ''}`}
+          >
+            <p className="text-xs font-medium truncate">{p.name}</p>
+            <p className={`text-[10px] mt-0.5 truncate ${sub}`}>
+              {[p.code, p.brand, p.price > 0 ? p.price.toLocaleString('ru-RU') : ''].filter(Boolean).join(' · ')}
+            </p>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
   return (
-    <div ref={ref} className="relative min-w-[160px]">
+    <div className="relative min-w-[160px]">
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(o => !o)}
         className={`w-full rounded border px-1.5 py-1 pr-6 text-xs text-left outline-none transition-all
-          focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 ${inp}
+          focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500
+          ${error ? 'border-rose-500 ring-1 ring-rose-500/30' : inp}
           ${!value ? sub : ''}`}
       >
         <span className="block truncate">{display}</span>
@@ -411,52 +542,7 @@ function ProductSearchSelect({
         className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 transition-transform
           ${open ? 'rotate-180' : ''} ${sub}`}
       />
-      {open && (
-        <div
-          className={`absolute top-full left-0 z-[320] mt-1 w-[min(340px,90vw)] rounded-xl border shadow-xl overflow-hidden
-            ${D ? 'bg-[#1c1c1e] border-gray-700 shadow-black/60' : 'bg-white border-gray-200 shadow-gray-300/50'}`}
-        >
-          <div className={`p-2 border-b ${D ? 'border-gray-800' : 'border-gray-100'}`}>
-            <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border
-              ${D ? 'bg-[#111] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-              <Search size={12} className={sub} />
-              <input
-                ref={searchRef}
-                value={q}
-                onChange={e => setQ(e.target.value)}
-                placeholder={searchPlaceholder}
-                className={`flex-1 bg-transparent text-xs outline-none ${D ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
-              />
-              {q && (
-                <button type="button" onClick={() => setQ('')} className={sub}>
-                  <X size={10} />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="max-h-52 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <p className={`px-3 py-4 text-xs text-center ${sub}`}>{emptyText ?? 'Topilmadi'}</p>
-            ) : filtered.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => { onSelect(p); setOpen(false); }}
-                className={`w-full text-left px-3 py-2.5 transition-colors border-b last:border-b-0
-                  ${D ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-50 hover:bg-gray-50'}
-                  ${value === p.name
-                    ? D ? 'bg-indigo-500/15 text-indigo-300' : 'bg-indigo-50 text-indigo-600'
-                    : ''}`}
-              >
-                <p className="text-xs font-medium truncate">{p.name}</p>
-                <p className={`text-[10px] mt-0.5 truncate ${sub}`}>
-                  {[p.code, p.brand, p.price > 0 ? `${p.price.toLocaleString('ru-RU')} so'm` : ''].filter(Boolean).join(' · ')}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }
@@ -472,7 +558,11 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
   const [items,      setItems]          = useState<PostItem[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [saveError, setSaveError]       = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors]   = useState<Set<string>>(new Set());
+  const [invalidItemIds, setInvalidItemIds] = useState<Set<number>>(new Set());
+  const [saving, setSaving]             = useState(false);
   const [catalogProducts, setCatalogProducts] = useState<ReceiptProduct[]>([]);
+  const [autoOpenProductRow, setAutoOpenProductRow] = useState<number | null>(null);
 
   /* ── import state ── */
   const fileInputRef                    = useRef<HTMLInputElement>(null);
@@ -531,7 +621,7 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
         }
       }
       if (!cancelled) {
-        setCatalogProducts(ADMIN_PRODUCTS.map(adminProductToReceipt));
+        setCatalogProducts(ADMIN_PRODUCTS.map(adminProductToReceiptWithCache));
       }
     }
     loadCatalog();
@@ -563,12 +653,34 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
   const lbl   = D ? 'text-gray-400' : 'text-gray-500';
   const hdr   = D ? 'bg-[#161616] border-gray-800' : 'bg-gray-50 border-gray-200';
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  const Field = ({
+    label, children, required, error,
+  }: { label: string; children: React.ReactNode; required?: boolean; error?: boolean }) => (
     <div className="flex flex-col gap-1 min-w-0">
-      <span className={`text-[10px] font-medium ${lbl} whitespace-nowrap`}>{label}</span>
+      <span className={`text-[10px] font-medium whitespace-nowrap ${error ? 'text-rose-400' : lbl}`}>
+        {label}{required && <span className="text-rose-400 ml-0.5">*</span>}
+      </span>
       {children}
     </div>
   );
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const clearItemError = (id: number) => {
+    setInvalidItemIds(prev => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
 
   const Inp = ({
     value, onChange, w, red, placeholder,
@@ -588,16 +700,34 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
   });
 
   const updateItem = (id: number, patch: Partial<PostItem>) => {
-    setItems(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      const updated = { ...r, ...patch };
-      updated.tsenaPriv = updated.tsenaPost * (1 - updated.skid / 100);
-      updated.summa = updated.kolFakt * updated.tsenaPriv;
-      return updated;
-    }));
+    setItems(prev => {
+      const next = prev.map(r => {
+        if (r.id !== id) return r;
+        const updated = { ...r, ...patch };
+        updated.tsenaPriv = updated.tsenaPost * (1 - updated.skid / 100);
+        updated.summa = updated.kolFakt * updated.tsenaPriv;
+        return updated;
+      });
+      const row = next.find(i => i.id === id);
+      if (row?.tovar.trim() && row.kolFakt > 0) clearItemError(id);
+      return next;
+    });
+  };
+
+  const handleSupplierPriceBlur = async (item: PostItem) => {
+    if (!item.productId || item.tsenaPost <= 0) return;
+    try {
+      await persistSupplierPrice(item.productId, item.tsenaPost);
+      setCatalogProducts(prev => prev.map(p =>
+        p.id === item.productId ? { ...p, price: item.tsenaPost } : p,
+      ));
+    } catch (error) {
+      console.error('Failed to save supplier price', error);
+    }
   };
 
   const selectProductForItem = (itemId: number, p: ReceiptProduct) => {
+    const savedPrice = resolveSupplierPrice(p.id, p.price);
     setItems(prev => prev.map(r => {
       if (r.id !== itemId) return r;
       const updated = {
@@ -606,17 +736,19 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
         tovar: p.name,
         artikul: p.artikul,
         upakovka: p.unitLabel,
-        tsenaPost: p.price,
+        tsenaPost: savedPrice,
       };
       updated.tsenaPriv = updated.tsenaPost * (1 - updated.skid / 100);
       updated.summa = updated.kolFakt * updated.tsenaPriv;
       return updated;
     }));
+    if (p.name.trim()) clearItemError(itemId);
   };
 
   const handleAddItem = () => {
+    const id = Date.now();
     setItems(prev => [...prev, {
-      id: Date.now(),
+      id,
       tovar: '',
       artikul: '',
       kolFakt: 0,
@@ -628,6 +760,8 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
       summa: 0,
       ves: 0,
     }]);
+    setAutoOpenProductRow(id);
+    clearFieldError('items');
   };
 
   const handleDeleteSelected = () => {
@@ -636,24 +770,53 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
     setSelectedRows(new Set());
   };
 
-  const handleSave = (closeAfter: boolean) => {
-    setSaveError(null);
+  const handleSave = async (closeAfter: boolean) => {
+    const missing: string[] = [];
+    const errs = new Set<string>();
+    const badItems = new Set<number>();
+
     if (!postavshik.trim()) {
-      setSaveError(t.zatFillRequired ?? "Majburiy maydonlarni to'ldiring");
-      return;
+      errs.add('supplier');
+      missing.push(t.postSupplier ?? 'Yetkazib beruvchi');
     }
     if (!avtor.trim()) {
-      setSaveError(t.zatFillRequired ?? "Majburiy maydonlarni to'ldiring");
-      return;
+      errs.add('author');
+      missing.push(t.detAvtor ?? 'Muallif');
     }
+    if (!dataDoc.trim()) {
+      errs.add('date');
+      missing.push(t.detDataDoc ?? 'Sana');
+    }
+    if (!poluchatel.trim()) {
+      errs.add('recipient');
+      missing.push(t.detPoluchatel ?? 'Oluvchi');
+    }
+
     const validItems = items.filter(i => i.tovar.trim() && i.kolFakt > 0);
     if (validItems.length === 0) {
-      setSaveError(t.postEmptyItems ?? "Kamida bitta tovar qo'shing");
+      errs.add('items');
+      missing.push(t.detTabTovary ?? 'Tovarlar');
+      items.forEach(i => {
+        if (!i.tovar.trim() || i.kolFakt <= 0) badItems.add(i.id);
+      });
+    }
+
+    if (missing.length > 0) {
+      setFieldErrors(errs);
+      setInvalidItemIds(badItems);
+      const base = t.zatFillRequired ?? "Majburiy maydonlarni to'ldiring";
+      setSaveError(`${base}: ${missing.join(', ')}`);
+      if (errs.has('items')) setInnerTab('tovary');
       return;
     }
+
+    setSaveError(null);
+    setFieldErrors(new Set());
+    setInvalidItemIds(new Set());
     const now = new Date();
     const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const authorUser = appUsers.find(u => u.fullName === avtor);
+    const receiptItems: PostReceiptItem[] = validItems.map(i => ({ ...i }));
     const row: PostRowRef = {
       id: Date.now(),
       date: `${dataDoc} ${time}`,
@@ -670,9 +833,25 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
       type: TSELI_TYPE[tselPrikh] ?? 'opt',
       author: avtor,
       authorId: authorUser?.id,
+      items: receiptItems,
     };
-    onSave?.(row);
-    if (closeAfter) onClose();
+
+    setSaving(true);
+    try {
+      if (hasApiToken()) {
+        await syncReceiptItemsToCatalog(validItems, {
+          direction: napravlenie,
+          supplier: postavshik,
+        });
+      }
+      onSave?.(row);
+      if (closeAfter) onClose();
+    } catch (error) {
+      console.error('Failed to sync receipt products', error);
+      setSaveError(t.postSyncError ?? 'Mahsulotlarni katalogga yozib bo\'lmadi. Qayta urinib ko\'ring.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const totalSumma = items.reduce((s, r) => s + r.summa, 0);
@@ -806,13 +985,15 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
           </div>
 
           <button
-            onClick={() => handleSave(true)}
+            onClick={() => void handleSave(true)}
+            disabled={saving}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition-colors"
           >
             <Check size={12} /> {t.detProvestiClose ?? "O'tkazish va yopish"}
           </button>
           <button
-            onClick={() => handleSave(false)}
+            onClick={() => void handleSave(false)}
+            disabled={saving}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}
           >
             <Check size={11} className="text-emerald-400" /> {t.detProvesti ?? "O'tkazish"}
@@ -823,9 +1004,6 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
 
           <div className="flex-1" />
 
-          <button className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}>
-            Все действия <ChevronDown size={10} className={sub} />
-          </button>
           <button
             onClick={() => setFullscreen(v => !v)}
             className={`p-1.5 rounded-lg border transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}
@@ -908,13 +1086,13 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                     <Inp value={nSchFak} onChange={setNSchFak} w="w-28" placeholder="—" />
                   </Field>
 
-                  <Field label={t.detDataDoc ?? 'Sana'}>
+                  <Field label={t.detDataDoc ?? 'Sana'} required error={fieldErrors.has('date')}>
                     <FormDatePicker
                       D={D}
                       sub={sub}
                       t={t}
                       value={dataDoc}
-                      onChange={setDataDoc}
+                      onChange={v => { setDataDoc(v); clearFieldError('date'); }}
                       w="w-36"
                     />
                   </Field>
@@ -931,35 +1109,53 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                     />
                   </Field>
 
-                  <Field label={t.postSupplier ?? 'Yetkazib beruvchi'}>
+                  <Field
+                    label={t.postSupplier ?? 'Yetkazib beruvchi'}
+                    required
+                    error={fieldErrors.has('supplier')}
+                  >
                     <FormSelect
                       D={D}
                       sub={sub}
                       value={postavshik}
-                      onChange={setPostavshik}
+                      onChange={v => { setPostavshik(v); clearFieldError('supplier'); }}
                       options={suppliers}
                       placeholder={t.zatSelect ?? 'Tanlang...'}
                       w="w-44"
+                      error={fieldErrors.has('supplier')}
                     />
                   </Field>
 
-                  <Field label={t.detPoluchatel ?? 'Oluvchi'}>
-                    <FormSelect D={D} sub={sub} value={poluchatel} onChange={setPoluchatel} options={organizations} w="w-52" />
+                  <Field
+                    label={t.detPoluchatel ?? 'Oluvchi'}
+                    required
+                    error={fieldErrors.has('recipient')}
+                  >
+                    <FormSelect
+                      D={D}
+                      sub={sub}
+                      value={poluchatel}
+                      onChange={v => { setPoluchatel(v); clearFieldError('recipient'); }}
+                      options={organizations}
+                      w="w-52"
+                      error={fieldErrors.has('recipient')}
+                    />
                   </Field>
 
                   <Field label={t.postDir ?? "Yo'nalish"}>
                     <FormSelect D={D} sub={sub} value={napravlenie} onChange={setNapravlenie} options={NAPRAVL} w="w-28" />
                   </Field>
 
-                  <Field label={t.detAvtor ?? 'Muallif'}>
+                  <Field label={t.detAvtor ?? 'Muallif'} required error={fieldErrors.has('author')}>
                     <FormSelect
                       D={D}
                       sub={sub}
                       value={avtor}
-                      onChange={setAvtor}
+                      onChange={v => { setAvtor(v); clearFieldError('author'); }}
                       options={authorOptions}
                       placeholder={t.zatSelect ?? 'Tanlang...'}
                       w="w-44"
+                      error={fieldErrors.has('author')}
                     />
                   </Field>
                 </div>
@@ -986,7 +1182,7 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                   </Field>
 
                   <Field label={t.detSkidkaPer ?? 'Chegirma'}>
-                    <Inp value={skidkaPer} onChange={setSkidkaPer} w="w-20" red />
+                    <Inp value={skidkaPer} onChange={setSkidkaPer} w="w-20" />
                   </Field>
 
                   <Field label={t.detKOplate ?? "To'lash"}>
@@ -1010,7 +1206,11 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
               </div>
 
               {/* ══ INNER TABS + TABLE ══ */}
-              <div className={`rounded-xl border overflow-hidden ${D ? 'border-gray-800' : 'border-gray-200'}`}>
+              <div className={`rounded-xl border overflow-hidden ${
+                fieldErrors.has('items')
+                  ? 'border-rose-500 ring-1 ring-rose-500/30'
+                  : D ? 'border-gray-800' : 'border-gray-200'
+              }`}>
 
                 {/* Tab bar */}
                 <div className={`flex items-center border-b ${bdr} ${hdr} px-2`}>
@@ -1071,10 +1271,6 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                       <span className="hidden sm:inline">{b.label}</span>
                     </button>
                   ))}
-                  <div className="flex-1" />
-                  <button className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'} ${sub}`}>
-                    Все действия <ChevronDown size={10} />
-                  </button>
                 </div>
 
                 {/* hidden file input */}
@@ -1106,20 +1302,20 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                       <thead>
                         <tr className={`border-b ${bdr} ${D ? 'bg-white/[0.02]' : 'bg-gray-50'}`}>
                           {[
-                            { k: '№', w: 'w-8' },
-                            { k: t.detColTovar ?? 'Tovar', w: '' },
-                            { k: t.detColArtikul ?? 'Artikul', w: 'w-24' },
-                            { k: t.detColKolFakt ?? 'Miqdor', w: 'w-20' },
-                            { k: t.detColKolBrak ?? 'Brak', w: 'w-20' },
-                            { k: t.detColUpakovka ?? 'Qadoq', w: 'w-16' },
-                            { k: t.detColPost ?? 'Narx', w: 'w-24' },
-                            { k: t.detColSkid ?? '%', w: 'w-16' },
-                            { k: t.detColPriv ?? 'Kirish', w: 'w-24' },
-                            { k: t.detColSumma ?? 'Summa', w: 'w-28' },
-                            { k: t.detColVes ?? "Og'irlik", w: 'w-18' },
+                            { k: '№', w: 'w-8', req: false },
+                            { k: t.detColTovar ?? 'Tovar', w: '', req: true },
+                            { k: t.detColArtikul ?? 'Artikul', w: 'w-24', req: false },
+                            { k: t.detColKolFakt ?? 'Miqdor', w: 'w-20', req: true },
+                            { k: t.detColKolBrak ?? 'Brak', w: 'w-20', req: false },
+                            { k: t.detColUpakovka ?? 'Qadoq', w: 'w-16', req: false },
+                            { k: t.detColPost ?? 'Narx', w: 'w-24', req: false },
+                            { k: t.detColSkid ?? '%', w: 'w-16', req: false },
+                            { k: t.detColPriv ?? 'Kirish', w: 'w-24', req: false },
+                            { k: t.detColSumma ?? 'Summa', w: 'w-28', req: false },
+                            { k: t.detColVes ?? "Og'irlik", w: 'w-18', req: false },
                           ].map(h => (
                             <th key={h.k} className={`px-3 py-2.5 text-left font-semibold ${sub} whitespace-nowrap ${h.w}`}>
-                              {h.k}
+                              {h.k}{h.req && <span className="text-rose-400 ml-0.5">*</span>}
                             </th>
                           ))}
                         </tr>
@@ -1128,20 +1324,28 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                         {items.length === 0 ? (
                           <tr>
                             <td colSpan={11}>
-                              <div className={`flex flex-col items-center justify-center py-10 gap-2 ${sub}`}>
+                              <div className={`flex flex-col items-center justify-center py-10 gap-2 ${
+                                fieldErrors.has('items') ? 'text-rose-400' : sub
+                              }`}>
                                 <Package size={22} className="opacity-25" />
                                 <p>{t.postEmptyItems ?? "Tovarlar qo'shilmagan — «Qo'shish» tugmasini bosing"}</p>
                               </div>
                             </td>
                           </tr>
-                        ) : items.map((r, i) => (
+                        ) : items.map((r, i) => {
+                          const rowInvalid = invalidItemIds.has(r.id);
+                          const tovarInvalid = rowInvalid && !r.tovar.trim();
+                          const qtyInvalid = rowInvalid && r.kolFakt <= 0;
+                          return (
                           <tr
                             key={r.id}
                             onClick={() => toggleRow(r.id)}
                             className={`cursor-pointer border-b ${bdr} transition-colors ${
-                              selectedRows.has(r.id)
-                                ? D ? 'bg-indigo-500/10' : 'bg-indigo-50'
-                                : D ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50'
+                              rowInvalid
+                                ? D ? 'bg-rose-500/5' : 'bg-rose-50'
+                                : selectedRows.has(r.id)
+                                  ? D ? 'bg-indigo-500/10' : 'bg-indigo-50'
+                                  : D ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50'
                             }`}
                           >
                             <td className={`px-3 py-2 ${sub}`}>{i + 1}</td>
@@ -1153,9 +1357,16 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                                 value={r.tovar}
                                 products={catalogProducts}
                                 onSelect={p => selectProductForItem(r.id, p)}
+                                onCustomName={name => updateItem(r.id, { tovar: name, productId: undefined })}
                                 placeholder={t.detColTovar ?? 'Tovar tanlang...'}
                                 searchPlaceholder={t.noPickerSearch ?? 'Tovar qidirish...'}
                                 emptyText={t.noPickerEmpty ?? 'Topilmadi'}
+                                customLabel={t.postNewProduct}
+                                defaultOpen={autoOpenProductRow === r.id}
+                                onOpened={() => {
+                                  if (autoOpenProductRow === r.id) setAutoOpenProductRow(null);
+                                }}
+                                error={tovarInvalid}
                               />
                             </td>
                             <td className={`px-3 py-2 tabular-nums ${sub}`} onClick={e => e.stopPropagation()}>
@@ -1171,7 +1382,8 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                                 min={0}
                                 value={r.kolFakt || ''}
                                 onChange={e => updateItem(r.id, { kolFakt: parseFloat(e.target.value) || 0 })}
-                                className={`w-16 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                                className={`w-16 rounded border px-1.5 py-1 text-xs text-right outline-none
+                                  ${qtyInvalid ? 'border-rose-500 ring-1 ring-rose-500/30' : inp}`}
                               />
                             </td>
                             <td className={`px-3 py-2 tabular-nums text-right ${r.kolBrak > 0 ? 'text-rose-400 font-semibold' : sub}`} onClick={e => e.stopPropagation()}>
@@ -1196,6 +1408,7 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                                 min={0}
                                 value={r.tsenaPost || ''}
                                 onChange={e => updateItem(r.id, { tsenaPost: parseFloat(e.target.value) || 0 })}
+                                onBlur={() => handleSupplierPriceBlur(r)}
                                 className={`w-20 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
                               />
                             </td>
@@ -1224,7 +1437,8 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
                               />
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                       {items.length > 0 && (
                         <tfoot>

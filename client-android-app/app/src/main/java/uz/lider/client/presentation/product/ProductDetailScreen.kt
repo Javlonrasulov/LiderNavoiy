@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -31,9 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -43,12 +42,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import uz.lider.client.localization.AppLanguage
-import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.FullScreenImageViewer
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.formatQty
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
+import uz.lider.client.presentation.components.shareText
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
@@ -62,7 +61,7 @@ fun ProductDetailScreen(
     viewModel: ProductDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val lang = LocalAppLanguage.current
+    val context = LocalContext.current
     val text = LiquidTheme.text
     val textMuted = LiquidTheme.textMuted
 
@@ -85,8 +84,10 @@ fun ProductDetailScreen(
         } else {
             val product = state.product!!
             val image = viewModel.resolveImage(product.imageUrl).takeIf { it.isNotBlank() }
-            val reviews = remember(lang) { mockReviews(lang) }
             val inCart = viewModel.isInCart()
+            val shareTitle = localized("pd_share")
+            val codeLabel = localized("pd_code")
+            val somLabel = localized("com_som")
 
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -101,7 +102,15 @@ fun ProductDetailScreen(
                         ProductImageBox(
                             imageUrl = image,
                             contentDescription = product.name,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(
+                                    if (image != null) {
+                                        Modifier.clickable { viewModel.openFullImage() }
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                             contentScale = ContentScale.Crop,
                         )
                         Box(
@@ -141,7 +150,7 @@ fun ProductDetailScreen(
                             .padding(16.dp),
                     ) {
                         Text(
-                            "SKU: ${product.code} • ${product.category.orEmpty()}",
+                            "${product.code} • ${product.category.orEmpty()}",
                             color = textMuted,
                             fontSize = 12.sp,
                         )
@@ -151,16 +160,23 @@ fun ProductDetailScreen(
                             fontWeight = FontWeight.Bold,
                             fontSize = 22.sp,
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            repeat(5) {
-                                Icon(
-                                    Icons.Default.Star,
-                                    null,
-                                    tint = LiquidGlass.Amber,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            }
-                            Text(" 4.5", color = LiquidGlass.Amber, fontSize = 14.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            localized("pd_your_rating"),
+                            color = textMuted,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        StarRatingInput(
+                            rating = state.userRating,
+                            onRate = viewModel::setRating,
+                        )
+                        if (state.userRating == null) {
+                            Text(
+                                localized("pd_rate_hint"),
+                                color = textMuted,
+                                fontSize = 11.sp,
+                            )
                         }
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -175,116 +191,53 @@ fun ProductDetailScreen(
                 }
 
                 item {
-                    Spacer(Modifier.height(12.dp))
-                    Row(
-                        Modifier
-                            .padding(horizontal = 16.dp)
-                            .liquidGlassThemed(radius = 16.dp)
-                            .padding(4.dp),
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf(
-                            "info" to localized("pd_info"),
-                            "reviews" to localized("pd_reviews"),
-                        ).forEach { (key, label) ->
-                            val isSelected = state.tab == key
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .run {
-                                        if (isSelected) background(LiquidGlass.GradientPrimary)
-                                        else this
-                                    }
-                                    .clickable { viewModel.setTab(key) }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    label,
-                                    color = if (isSelected) Color.White else textMuted,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                }
-
-                if (state.tab == "info") {
-                    item {
-                        Column(
-                            Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .liquidGlassThemed()
-                                    .padding(16.dp),
-                            ) {
-                                Text(
-                                    localized("pd_desc"),
-                                    color = textMuted,
-                                    fontSize = 12.sp,
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(product.name, color = text, fontSize = 14.sp)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                InfoTile(
-                                    localized("pd_brand"),
-                                    product.brand.orEmpty(),
-                                    Modifier.weight(1f),
-                                )
-                                InfoTile(
-                                    localized("pd_category"),
-                                    product.category.orEmpty(),
-                                    Modifier.weight(1f),
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                InfoTile(
-                                    localized("pd_stock"),
-                                    "${product.stockBalance.toInt()} ${product.unit}",
-                                    Modifier.weight(1f),
-                                )
-                                InfoTile(localized("pd_rating"), "4.5/5", Modifier.weight(1f))
-                            }
-                        }
-                    }
-                } else {
-                    items(reviews) { review ->
+                        Text(
+                            localized("pd_info"),
+                            color = text,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        )
                         Column(
                             Modifier
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .fillMaxWidth()
                                 .liquidGlassThemed()
-                                .padding(14.dp),
+                                .padding(16.dp),
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    review.user,
-                                    color = text,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Row {
-                                    repeat(review.rating) {
-                                        Icon(
-                                            Icons.Default.Star,
-                                            null,
-                                            tint = LiquidGlass.Amber,
-                                            modifier = Modifier.size(11.dp),
-                                        )
-                                    }
-                                }
-                            }
+                            Text(
+                                localized("pd_desc"),
+                                color = textMuted,
+                                fontSize = 12.sp,
+                            )
                             Spacer(Modifier.height(4.dp))
-                            Text(review.comment, color = textMuted, fontSize = 14.sp)
-                            Text(review.date, color = textMuted, fontSize = 11.sp)
+                            Text(product.name, color = text, fontSize = 14.sp)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            InfoTile(
+                                localized("pd_brand"),
+                                product.brand.orEmpty(),
+                                Modifier.weight(1f),
+                            )
+                            InfoTile(
+                                localized("pd_category"),
+                                product.category.orEmpty(),
+                                Modifier.weight(1f),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            InfoTile(
+                                localized("pd_stock"),
+                                "${product.stockBalance.toInt()} ${product.unit}",
+                                Modifier.weight(1f),
+                            )
+                            InfoTile(
+                                localized("pd_rating"),
+                                state.userRating?.let { "$it/5" } ?: "—",
+                                Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -294,11 +247,32 @@ fun ProductDetailScreen(
                 onBack = onBack,
                 liked = state.liked,
                 onToggleLike = { viewModel.toggleLike() },
+                onShare = {
+                    val shareBody = buildString {
+                        appendLine(product.name)
+                        appendLine("$codeLabel: ${product.code}")
+                        append("${formatMoney(product.price)} $somLabel")
+                    }
+                    shareText(
+                        context = context,
+                        subject = product.name,
+                        text = shareBody,
+                        chooserTitle = shareTitle,
+                    )
+                },
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
                     .padding(top = 16.dp, start = 8.dp, end = 8.dp),
             )
+
+            if (state.showFullImage && image != null) {
+                FullScreenImageViewer(
+                    imageUrl = image,
+                    contentDescription = product.name,
+                    onDismiss = viewModel::closeFullImage,
+                )
+            }
 
             Box(
                 Modifier
@@ -376,6 +350,7 @@ private fun GlassHeaderRow(
     onBack: () -> Unit,
     liked: Boolean,
     onToggleLike: () -> Unit,
+    onShare: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val text = LiquidTheme.text
@@ -402,12 +377,13 @@ private fun GlassHeaderRow(
             Box(
                 Modifier
                     .size(40.dp)
-                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard),
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
+                    .clickable(onClick = onShare),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Default.Share,
-                    null,
+                    contentDescription = localized("pd_share"),
                     tint = text,
                     modifier = Modifier.size(18.dp),
                 )
@@ -444,25 +420,32 @@ private fun InfoTile(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
-private fun mockReviews(lang: AppLanguage): List<ProductReview> = listOf(
-    ProductReview(
-        "Bobur T.",
-        5,
-        when (lang) {
-            AppLanguage.RU -> "Отличное качество"
-            AppLanguage.EN -> "Great quality"
-            else -> "Sifati ajoyib"
-        },
-        "05.06.2026",
-    ),
-    ProductReview(
-        "Dilnoza K.",
-        4,
-        when (lang) {
-            AppLanguage.RU -> "Хороший товар"
-            AppLanguage.EN -> "Good product"
-            else -> "Yaxshi mahsulot"
-        },
-        "02.06.2026",
-    ),
-)
+@Composable
+private fun StarRatingInput(
+    rating: Int?,
+    onRate: (Int) -> Unit,
+) {
+    val muted = LiquidTheme.textMuted
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        (1..5).forEach { star ->
+            val filled = rating != null && star <= rating
+            Icon(
+                Icons.Default.Star,
+                contentDescription = null,
+                tint = if (filled) LiquidGlass.Amber else muted.copy(alpha = 0.35f),
+                modifier = Modifier
+                    .size(28.dp)
+                    .clickable { onRate(star) },
+            )
+        }
+        if (rating != null) {
+            Text(
+                "$rating/5",
+                color = LiquidGlass.Amber,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(start = 4.dp, top = 6.dp),
+            )
+        }
+    }
+}

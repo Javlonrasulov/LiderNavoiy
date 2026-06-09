@@ -99,6 +99,7 @@ export default function AdminLogin() {
       }
       setTokens(res.accessToken, res.refreshToken);
       localStorage.setItem('api_user_id', res.user.id);
+      window.dispatchEvent(new CustomEvent('lider:auth-changed'));
       const userData = {
         name: res.user.fullName,
         role: res.user.role,

@@ -103,10 +103,14 @@ export default function AdminSelectCompany() {
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const { companies: apiCompanies } = useCompanies();
+  const { companies: apiCompanies, refresh: refreshCompanies } = useCompanies();
 
   /* companies local state (API + local edits for add/edit UI) */
   const [companies, setCompanies] = useState<LocalCompany[]>([]);
+
+  useEffect(() => {
+    refreshCompanies();
+  }, [refreshCompanies]);
 
   useEffect(() => {
     setCompanies(apiCompanies.map(c => ({ ...c })));

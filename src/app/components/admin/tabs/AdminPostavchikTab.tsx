@@ -14,6 +14,27 @@ import { VozvratDetailModal, type VozRowRef } from '../VozvratDetailModal';
 import { AktSverkiModal } from '../AktSverkiModal';
 import { BonusStrafCreateModal } from '../BonusStrafCreateModal';
 
+const POST_RECEIPTS_KEY = 'lider_goods_receipts';
+
+function loadPostReceipts(): PostRowRef[] {
+  try {
+    const raw = localStorage.getItem(POST_RECEIPTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PostRowRef[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePostReceipts(rows: PostRowRef[]) {
+  try {
+    localStorage.setItem(POST_RECEIPTS_KEY, JSON.stringify(rows));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 interface Props {
   D: boolean;
   card: string;
@@ -204,30 +225,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     '2026-03-03','2026-03-07','2026-03-10',
   ]);
 
-  const INITIAL_POST_DATA = demo([
-    { id:1,  date:'05.03.2026 20:59', num:'03574', ox:false, supplier:'Янги асорт «Соф…»',   org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:128_522_400, netto:12_946_200, type:'opt', author:'—' },
-    { id:2,  date:'06.03.2026 04:45', num:'03581', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045350', sum:8_320_000,   netto:80_000,    type:'opt', author:'—' },
-    { id:3,  date:'06.03.2026 04:50', num:'03576', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045821', sum:2_977_500,   netto:31_500,    type:'opt', author:'—' },
-    { id:4,  date:'06.03.2026 04:52', num:'03577', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045820', sum:200_531_400, netto:3_114_560, type:'opt', author:'—' },
-    { id:5,  date:'06.03.2026 04:55', num:'03578', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045247', sum:240_000_870, netto:4_973_960, type:'opt', author:'—' },
-    { id:6,  date:'06.03.2026 04:56', num:'03579', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045277', sum:273_078_300, netto:2_683_443, type:'opt', author:'—' },
-    { id:7,  date:'06.03.2026 04:58', num:'03580', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045243', sum:385_627_350, netto:7_121_475, type:'chakana', author:'—' },
-    { id:8,  date:'06.03.2026 05:00', num:'03582', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045351', sum:0,           netto:20_450,    type:'chakana', author:'—' },
-    { id:9,  date:'06.03.2026 05:05', num:'03583', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045278', sum:0,           netto:36_000,    type:'chakana', author:'—' },
-    { id:10, date:'06.03.2026 16:00', num:'03584', ox:false, supplier:'Янги асорт «Соф…»',    org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:121_670_700, netto:10_330_500, type:'opt', author:'—' },
-    { id:11, date:'06.03.2026 23:52', num:'03593', ox:true,  supplier:'EXCLUSIVE FO…',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'',       sum:874_000,     netto:18_000,    type:'ishlab', author:'—' },
-    { id:12, date:'07.03.2026 20:22', num:'03585', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:15_840_000,  netto:990_000,   type:'ishlab', author:'—' },
-    { id:13, date:'08.03.2026 08:00', num:'03590', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047816', sum:208_968_070, netto:3_395_470, type:'opt', author:'—' },
-    { id:14, date:'08.03.2026 08:00', num:'03588', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047849', sum:115_768_090, netto:2_036_060, type:'opt', author:'—' },
-    { id:15, date:'08.03.2026 08:00', num:'03589', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047846', sum:213_232_790, netto:4_287_050, type:'opt', author:'—' },
-    { id:16, date:'08.03.2026 23:03', num:'03586', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'3',dir:'SHERIN', invoice:'',       sum:7_040_000,   netto:44_000,    type:'ishlab', author:'—' },
-    { id:17, date:'08.03.2026 23:03', num:'03587', ox:true,  supplier:'Jahongir Zubayd…',     org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'1',dir:'SHERIN', invoice:'',       sum:199_721_604, netto:4_685_421, type:'chakana', author:'—' },
-    { id:18, date:'08.03.2026 23:13', num:'03591', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047850', sum:0,           netto:70_400,    type:'chakana', author:'—' },
-    { id:19, date:'09.03.2026 05:00', num:'03592', ox:false, supplier:'Nodir Invest',          org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:4_639_000,   netto:286_000,   type:'opt', author:'—' },
-    { id:20, date:'09.03.2026 07:42', num:'03594', ox:true,  supplier:'«IMILKY» MCHJ',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:32_031_650,  netto:481_610,   type:'opt', author:'—' },
-  ]);
-
-  const [postData, setPostData] = useState(INITIAL_POST_DATA);
+  const [postData, setPostData] = useState<PostRowRef[]>(() => loadPostReceipts());
   const [postFilter, setPostFilter] = useState<'all'|'opt'|'chakana'|'ishlab'>('all');
   const [postSearch, setPostSearch] = useState('');
   const [postExpanded, setPostExpanded] = useState<Set<number>>(new Set());
@@ -295,7 +293,12 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   ).padStart(5, '0');
 
   const handlePostSave = (row: PostRowRef) => {
-    setPostData(prev => [row, ...prev]);
+    setPostData(prev => {
+      const next = [row, ...prev];
+      savePostReceipts(next);
+      return next;
+    });
+    setShowCreateModal(false);
   };
 
   const postRows = postData.filter(r => {
@@ -453,6 +456,13 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                   </tr>
                 </thead>
                 <tbody>
+                  {postRows.length === 0 && (
+                    <tr>
+                      <td colSpan={12} className={`px-4 py-14 text-center text-sm ${sub}`}>
+                        {t.postListEmpty ?? "Hali kirim qayd etilmagan — «Yaratish» tugmasini bosing"}
+                      </td>
+                    </tr>
+                  )}
                   {postRows.map((r, i) => (
                     <tr
                       key={r.id}

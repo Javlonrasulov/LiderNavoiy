@@ -34,9 +34,19 @@ class ProductRepository @Inject constructor(
 
     fun resolveImageUrl(path: String?): String {
         if (path.isNullOrBlank()) return ""
-        if (path.startsWith("http")) return path
+        val trimmed = path.trim()
+        if (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("data:", ignoreCase = true) ||
+            trimmed.startsWith("content:", ignoreCase = true) ||
+            trimmed.startsWith("file:", ignoreCase = true)
+        ) {
+            return trimmed
+        }
         val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
-        return "$base$path"
+        val relative = if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+        return "$base$relative"
     }
 
     private fun ProductDto.toDomain() = Product(

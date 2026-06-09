@@ -15,6 +15,9 @@ import {
   adminToUpdatePayload,
   backendToAdminProduct,
 } from '../api/productMapper';
+import { compressCategoryImage, compressDataUrlIfNeeded } from '../utils/compressImage';
+import { normalizeProductImageForSave } from '../utils/productImageUrl';
+import { formatProductSaveError, formatProductSaveReason } from '../utils/productSaveError';
 
 // ── Brand color helpers ────────────────────────────────────────────────────
 const BCOLORS: Record<string, string> = {
@@ -28,9 +31,73 @@ const CAT_PALETTE = [
   '#64748b','#a16207',
 ];
 const CAT_EMOJIS = ['📦','🧀','🥩','🥛','🧈','🍖','🥓','🌮','🛒','🏪','⭐','🔥'];
+const CAT_META_KEY = 'admin_product_categories_meta';
+
+type CategoryMeta = Record<string, { color?: string; emoji?: string; image?: string }>;
+
+function loadCategoryMeta(): CategoryMeta {
+  try {
+    const raw = localStorage.getItem(CAT_META_KEY);
+    return raw ? JSON.parse(raw) as CategoryMeta : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCategoryMeta(categories: Category[]) {
+  const meta: CategoryMeta = {};
+  for (const cat of categories) {
+    meta[cat.name] = { color: cat.color, emoji: cat.emoji, image: cat.image };
+  }
+  try {
+    localStorage.setItem(CAT_META_KEY, JSON.stringify(meta));
+  } catch (error) {
+    console.error('Category meta local backup failed', error);
+    const slim: CategoryMeta = {};
+    for (const cat of categories) {
+      slim[cat.name] = { color: cat.color, emoji: cat.emoji };
+    }
+    try {
+      localStorage.setItem(CAT_META_KEY, JSON.stringify(slim));
+    } catch { /* ignore */ }
+  }
+}
+
+function removeCategoryFromLocalMeta(name: string) {
+  const meta = loadCategoryMeta();
+  if (!(name in meta)) return;
+  delete meta[name];
+  try {
+    localStorage.setItem(CAT_META_KEY, JSON.stringify(meta));
+  } catch { /* ignore */ }
+}
+
+type BackendCategoryMeta = {
+  id: string;
+  name: string;
+  color: string;
+  emoji: string;
+  imageUrl: string | null;
+};
+
+function backendMetaToCategory(
+  row: BackendCategoryMeta,
+  index: number,
+  local?: CategoryMeta[string],
+): Category {
+  return {
+    id: row.name,
+    metaId: row.id,
+    name: row.name,
+    color: row.color || local?.color || CAT_PALETTE[index % CAT_PALETTE.length],
+    emoji: row.emoji || local?.emoji || CAT_EMOJIS[index % CAT_EMOJIS.length],
+    image: row.imageUrl ?? local?.image,
+  };
+}
 
 interface Category {
   id: string;
+  metaId?: string;
   name: string;
   color: string;
   emoji: string;
@@ -149,6 +216,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   );
   const [page,      setPage]      = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addModalKey, setAddModalKey]   = useState(0);
+  const [addSaveError, setAddSaveError] = useState<string | null>(null);
   const [addTab, setAddTab] = useState<'asosiy'|'extra'|'balans'>('asosiy');
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [deleteProductConfirm, setDeleteProductConfirm] = useState<AdminProduct | null>(null);
@@ -158,6 +227,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
 
   // ── Category state ──────────────────────────────────────────────────────
   const [categories,       setCategories]       = useState<Category[]>([]);
+  const [categoryMetaRows, setCategoryMetaRows] = useState<BackendCategoryMeta[]>([]);
   const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
   const [catSectionOpen,   setCatSectionOpen]   = useState(true);
   // create/edit form
@@ -180,27 +250,88 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     if (ref.current) ref.current.scrollBy({ left: dir === 'right' ? 220 : -220, behavior: 'smooth' });
   };
 
-  const buildCategoriesFromProducts = (items: AdminProduct[]): Category[] => {
-    const names = Array.from(new Set(items.map(p => p.gruppa).filter(Boolean)));
-    return names.map((name, index) => ({
-      id: name,
-      name,
-      color: CAT_PALETTE[index % CAT_PALETTE.length],
-      emoji: CAT_EMOJIS[index % CAT_EMOJIS.length],
-    }));
+  const buildCategoriesFromProducts = (
+    items: AdminProduct[],
+    metaRows: BackendCategoryMeta[] = [],
+  ): Category[] => {
+    const local = loadCategoryMeta();
+    const metaByName = new Map(metaRows.map(row => [row.name, row]));
+    const productNames = Array.from(new Set(items.map(p => p.gruppa).filter(Boolean)));
+    const allNames = Array.from(new Set([
+      ...productNames,
+      ...metaRows.map(row => row.name),
+      ...Object.keys(local),
+    ]));
+
+    return allNames.map((name, index) => {
+      const row = metaByName.get(name);
+      if (row) return backendMetaToCategory(row, index, local[name]);
+      const saved = local[name];
+      return {
+        id: name,
+        name,
+        color: saved?.color ?? CAT_PALETTE[index % CAT_PALETTE.length],
+        emoji: saved?.emoji ?? CAT_EMOJIS[index % CAT_EMOJIS.length],
+        image: saved?.image,
+      };
+    });
+  };
+
+  const migrateLocalCategories = async (metaRows: BackendCategoryMeta[]) => {
+    const local = loadCategoryMeta();
+    const existing = new Set(metaRows.map(row => row.name));
+    let migrated = false;
+    for (const [name, data] of Object.entries(local)) {
+      if (existing.has(name)) continue;
+      try {
+        await api.createProductCategoryMeta({
+          name,
+          color: data.color,
+          emoji: data.emoji,
+          imageUrl: data.image ?? null,
+        });
+        migrated = true;
+      } catch (error) {
+        console.error('Category migration failed for', name, error);
+      }
+    }
+    if (migrated) {
+      try {
+        localStorage.removeItem(CAT_META_KEY);
+      } catch { /* ignore */ }
+    }
+    return migrated;
+  };
+
+  const loadCategoryMetaRows = async (): Promise<BackendCategoryMeta[]> => {
+    try {
+      let rows = await api.getProductCategoryMeta();
+      const migrated = await migrateLocalCategories(rows);
+      if (migrated) rows = await api.getProductCategoryMeta();
+      return rows;
+    } catch (error) {
+      console.error('Failed to load category meta', error);
+      return [];
+    }
   };
 
   const loadProducts = async () => {
     setProductsLoading(true);
     try {
-      const data = await api.getProducts();
+      const [data, metaRows] = await Promise.all([
+        api.getProducts(),
+        loadCategoryMetaRows(),
+      ]);
       const mapped = data.map((item) => backendToAdminProduct(item, viewOrg === 'all' ? 'boran' : viewOrg));
       setProducts(mapped);
-      setCategories(buildCategoriesFromProducts(mapped));
+      setCategoryMetaRows(metaRows);
+      setCategories(buildCategoriesFromProducts(mapped, metaRows));
     } catch (error) {
       console.error('Failed to load products', error);
       setProducts([]);
-      setCategories([]);
+      const metaRows = await loadCategoryMetaRows();
+      setCategoryMetaRows(metaRows);
+      setCategories(buildCategoriesFromProducts([], metaRows));
     } finally {
       setProductsLoading(false);
     }
@@ -208,6 +339,12 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
 
   useEffect(() => {
     loadProducts();
+  }, []);
+
+  useEffect(() => {
+    const onProductsChanged = () => { loadProducts(); };
+    window.addEventListener('admin-products-changed', onProductsChanged);
+    return () => window.removeEventListener('admin-products-changed', onProductsChanged);
   }, []);
 
   useEffect(() => {
@@ -226,24 +363,102 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     mobil:true, buyurtmaQoldiq:true, markalangan:false,
     buTara:false, tara:'', donaTarada:'0',
     categoryId: '',
+    imageUrl: '',
   };
   const [addForm, setAddForm] = useState<AddForm>(emptyForm);
 
   function setF(k: keyof AddForm, v: string | boolean) {
+    setAddSaveError(null);
     setAddForm(prev => ({ ...prev, [k]: v }));
   }
 
+  function patchForm(patch: Partial<AddForm>) {
+    setAddSaveError(null);
+    setAddForm(prev => ({ ...prev, ...patch }));
+  }
+
+  function resolveCategoryFields(form: AddForm) {
+    const selected = form.categoryId
+      ? categories.find(c => c.id === form.categoryId)
+      : null;
+    const catName = form.gruppa.trim() || form.brend.trim() || selected?.name || '';
+    return {
+      gruppa: catName,
+      brend: form.brend.trim() || catName,
+    };
+  }
+
+  function findDuplicateProduct(
+    candidate: { ismi: string; kod: string; artikul: string },
+    excludeId?: string,
+  ): AdminProduct | undefined {
+    const normName = candidate.ismi.trim().toLowerCase();
+    const normKod = candidate.kod.trim().toLowerCase();
+    const normArt = candidate.artikul.trim().toLowerCase();
+    return products.find((p) => {
+      if (excludeId && p.id === excludeId) return false;
+      if (normName && p.ismi.trim().toLowerCase() === normName) return true;
+      if (normKod && p.kod.trim().toLowerCase() === normKod) return true;
+      if (
+        normArt &&
+        normArt !== normKod &&
+        p.artikul.trim().toLowerCase() === normArt &&
+        p.kod.trim().toLowerCase() !== normArt
+      ) return true;
+      return false;
+    });
+  }
+
+  async function resolveProductImageForSave(raw: string): Promise<string | null> {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('/uploads/') || trimmed.startsWith('http')) {
+      return normalizeProductImageForSave(trimmed);
+    }
+    let dataUrl = trimmed;
+    if (dataUrl.startsWith('data:')) {
+      dataUrl = await compressDataUrlIfNeeded(dataUrl);
+      try {
+        const uploaded = await api.uploadProductImage(dataUrl);
+        return uploaded.url;
+      } catch {
+        return normalizeProductImageForSave(dataUrl);
+      }
+    }
+    return normalizeProductImageForSave(trimmed);
+  }
+
   async function saveNewProduct() {
+    setAddSaveError(null);
     try {
+      const { gruppa, brend } = resolveCategoryFields(addForm);
+      const savedImageUrl = await resolveProductImageForSave(addForm.imageUrl);
+
       if (editingProduct) {
+        const editName = (addForm.ismi || editingProduct.ismi).trim();
+        const editArtikul = (addForm.artikul || editingProduct.artikul).trim();
+        const duplicate = findDuplicateProduct({
+          ismi: editName,
+          kod: editingProduct.kod,
+          artikul: editArtikul,
+        }, editingProduct.id);
+        if (duplicate) {
+          setAddSaveError(formatProductSaveReason(
+            t.prodDuplicate
+            ?? `"${duplicate.ismi}" nomli yoki "${duplicate.kod}" kodli mahsulot allaqachon mavjud`,
+            t,
+          ));
+          return;
+        }
+
         const updated: AdminProduct = {
           ...editingProduct,
-          ismi: addForm.ismi || editingProduct.ismi,
+          ismi: editName || editingProduct.ismi,
           org: addForm.org || editingProduct.org,
           tipTo: (addForm.tipTo as AdminProduct['tipTo']) || editingProduct.tipTo,
           artikul: addForm.artikul || editingProduct.artikul,
-          brend: addForm.brend || editingProduct.brend,
-          gruppa: addForm.gruppa || editingProduct.gruppa,
+          brend,
+          gruppa,
           srok: Number(addForm.srok) || editingProduct.srok,
           postavshik: addForm.postavshik || editingProduct.postavshik,
           shtUpakovka: Number(addForm.shtUpakovka) || editingProduct.shtUpakovka,
@@ -253,27 +468,46 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           shtrixKod: addForm.shtrixKod || editingProduct.shtrixKod,
           ikpu: addForm.ikpu || editingProduct.ikpu,
           balance: Number(addForm.balance) || editingProduct.balance,
+          imageUrl: savedImageUrl,
         };
         const saved = await api.updateProduct(editingProduct.id, adminToUpdatePayload(updated));
         const mapped = backendToAdminProduct(saved, updated.org);
         setProducts(prev => prev.map(p => (p.id === editingProduct.id ? mapped : p)));
         setCategories(buildCategoriesFromProducts(
           products.map(p => (p.id === editingProduct.id ? mapped : p)),
+          categoryMetaRows,
         ));
         setEditingProduct(null);
       } else {
         const suffix = String(Date.now()).slice(-5);
-        const newKod = addForm.artikul?.trim() || `10${suffix}`;
+        const newKod = addForm.kodShort?.trim() || addForm.artikul?.trim() || `10${suffix}`;
+        const productName = addForm.ismi.trim() || 'Yangi mahsulot';
+        const artikul = addForm.artikul.trim() || newKod;
+
+        const duplicate = findDuplicateProduct({
+          ismi: productName,
+          kod: newKod,
+          artikul,
+        });
+        if (duplicate) {
+          setAddSaveError(formatProductSaveReason(
+            t.prodDuplicate
+            ?? `"${duplicate.ismi}" nomli yoki "${duplicate.kod}" kodli mahsulot allaqachon mavjud`,
+            t,
+          ));
+          return;
+        }
+
         const np: AdminProduct = {
           id: `temp-${suffix}`,
           kod: newKod,
           org: addForm.org || (viewOrg === 'all' ? 'boran' : viewOrg),
-          ismi: addForm.ismi || 'Yangi mahsulot',
+          ismi: productName,
           p1: 9,
           tipTo: (addForm.tipTo as AdminProduct['tipTo']) || 'Штучн.',
-          artikul: addForm.artikul || newKod,
-          brend: addForm.brend,
-          gruppa: addForm.gruppa || addForm.brend,
+          artikul,
+          brend,
+          gruppa,
           srok: Number(addForm.srok) || 12,
           postavshik: addForm.postavshik,
           shtUpakovka: Number(addForm.shtUpakovka) || 1,
@@ -284,24 +518,29 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           shtrixKod: addForm.shtrixKod || `46001${suffix.padStart(11, '0')}`,
           ikpu: addForm.ikpu || `102${suffix.padStart(5, '0')}`,
           balance: Number(addForm.balance) || 0,
+          imageUrl: savedImageUrl,
         };
         const saved = await api.createProduct(adminToCreatePayload(np));
         const mapped = backendToAdminProduct(saved, np.org);
         const nextProducts = [mapped, ...products];
         setProducts(nextProducts);
-        setCategories(buildCategoriesFromProducts(nextProducts));
+        setCategories(buildCategoriesFromProducts(nextProducts, categoryMetaRows));
       }
       setShowAddModal(false);
       setAddForm(emptyForm);
+      setAddSaveError(null);
     } catch (error) {
       console.error('Failed to save product', error);
+      setAddSaveError(formatProductSaveError(error, t));
     }
   }
 
   function openEditProduct(p: AdminProduct) {
+    setAddSaveError(null);
     setEditingProduct(p);
+    const cat = categories.find(c => c.name === p.gruppa);
     setAddForm({
-      ismi: p.ismi, kodShort: '', artikul: p.artikul, brend: p.brend,
+      ismi: p.ismi, kodShort: p.kod, artikul: p.artikul, brend: p.brend,
       gruppa: p.gruppa, postavshik: p.postavshik, org: p.org,
       tipTo: p.tipTo, shtUpakovka: String(p.shtUpakovka),
       netto: String(p.netto), brutto: String(p.brutto),
@@ -311,9 +550,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       sotuv: 'Штучный (Упаков.)', asosiyEd: 'Блок/упак', holat: 'Доступ открыт',
       mobil: true, buyurtmaQoldiq: true, markalangan: false,
       buTara: false, tara: '', donaTarada: '0',
-      categoryId: '',
+      categoryId: cat?.id ?? (p.gruppa || ''),
+      imageUrl: p.imageUrl ?? '',
     });
     setAddTab('asosiy');
+    setAddModalKey(k => k + 1);
     setShowAddModal(true);
   }
 
@@ -418,66 +659,128 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     setTimeout(() => catNameRef.current?.focus(), 50);
   }
 
-  function saveCatForm() {
+  async function saveCatForm() {
     if (!newCatName.trim()) return;
-    const catData = {
+    const payload = {
       name: newCatName.trim(),
       color: newCatColor,
       emoji: newCatEmoji,
-      image: iconMode === 'image' ? (newCatImage ?? undefined) : undefined,
+      imageUrl: iconMode === 'image' ? (newCatImage ?? null) : null,
     };
-    if (editCatId) {
-      const oldCat = categories.find(c => c.id === editCatId);
-      setCategories(prev => prev.map(c => c.id === editCatId ? { ...c, ...catData, id: catData.name } : c));
-      if (oldCat && oldCat.name !== catData.name) {
-        const affected = products.filter(p => p.gruppa === oldCat.name);
-        Promise.all(
-          affected.map(async (product) => {
-            const updated = { ...product, gruppa: catData.name };
-            const saved = await api.updateProduct(product.id, adminToUpdatePayload(updated));
-            return backendToAdminProduct(saved, product.org);
-          }),
-        ).then((mapped) => {
-          const byId = new Map(mapped.map(item => [item.id, item]));
-          setProducts(prev => prev.map(p => byId.get(p.id) ?? p));
-        }).catch(console.error);
+    try {
+      if (editCatId) {
+        const oldCat = categories.find(c => c.id === editCatId);
+        const saved = oldCat?.metaId
+          ? await api.updateProductCategoryMeta(oldCat.metaId, payload)
+          : await api.createProductCategoryMeta(payload);
+        const mappedCat: Category = {
+          id: saved.name,
+          metaId: saved.id,
+          name: saved.name,
+          color: saved.color,
+          emoji: saved.emoji,
+          image: saved.imageUrl ?? undefined,
+        };
+        setCategoryMetaRows(prev => (
+          oldCat?.metaId
+            ? prev.map(r => r.id === oldCat.metaId ? saved : r)
+            : [...prev, saved]
+        ));
+        setCategories(prev => {
+          const next = prev.map(c => c.id === editCatId ? mappedCat : c);
+          saveCategoryMeta(next);
+          return next;
+        });
+        if (oldCat && oldCat.name !== saved.name) {
+          if (selectedCatId === oldCat.id) setSelectedCatId(saved.name);
+          const affected = products.filter(p => p.gruppa === oldCat.name);
+          Promise.all(
+            affected.map(async (product) => {
+              const updated = { ...product, gruppa: saved.name };
+              const updatedProduct = await api.updateProduct(product.id, adminToUpdatePayload(updated));
+              return backendToAdminProduct(updatedProduct, product.org);
+            }),
+          ).then((mapped) => {
+            const byId = new Map(mapped.map(item => [item.id, item]));
+            setProducts(prev => prev.map(p => byId.get(p.id) ?? p));
+          }).catch(console.error);
+        }
+      } else {
+        const saved = await api.createProductCategoryMeta(payload);
+        const mappedCat: Category = {
+          id: saved.name,
+          metaId: saved.id,
+          name: saved.name,
+          color: saved.color,
+          emoji: saved.emoji,
+          image: saved.imageUrl ?? undefined,
+        };
+        setCategoryMetaRows(prev => [...prev, saved]);
+        setCategories(prev => {
+          const next = [...prev, mappedCat];
+          saveCategoryMeta(next);
+          return next;
+        });
       }
-    } else {
-      setCategories(prev => [...prev, { id: catData.name, ...catData }]);
+      setShowCatForm(false);
+      setEditCatId(null);
+    } catch (error) {
+      console.error('Failed to save category', error);
     }
-    setShowCatForm(false);
-    setEditCatId(null);
   }
 
-  function handleCatImage(file: File) {
+  async function handleCatImage(file: File) {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      setNewCatImage(e.target?.result as string);
+    try {
+      const compressed = await compressCategoryImage(file);
+      setNewCatImage(compressed);
       setIconMode('image');
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Failed to process category image', error);
+    }
   }
 
-  function deleteCat(id: string) {
+  async function deleteCat(id: string) {
     const cat = categories.find(c => c.id === id);
     if (!cat) return;
-    setCategories(prev => prev.filter(c => c.id !== id));
-    if (selectedCatId === id) setSelectedCatId(null);
-    const affected = products.filter(p => p.gruppa === cat.name);
-    if (affected.length > 0) {
-      Promise.all(
-        affected.map(async (product) => {
-          const updated = { ...product, gruppa: '' };
-          const saved = await api.updateProduct(product.id, adminToUpdatePayload(updated));
-          return backendToAdminProduct(saved, product.org);
-        }),
-      ).then((mapped) => {
+
+    try {
+      const affected = products.filter(
+        p => p.gruppa === cat.name || p.brend === cat.name,
+      );
+
+      let nextProducts = products;
+      if (affected.length > 0) {
+        const mapped = await Promise.all(
+          affected.map(async (product) => {
+            const saved = await api.updateProduct(product.id, {
+              category: '',
+              brand: '',
+            });
+            return backendToAdminProduct(saved, product.org);
+          }),
+        );
         const byId = new Map(mapped.map(item => [item.id, item]));
-        const nextProducts = products.map(p => byId.get(p.id) ?? p);
+        nextProducts = products.map(p => byId.get(p.id) ?? p);
         setProducts(nextProducts);
-        setCategories(buildCategoriesFromProducts(nextProducts));
-      }).catch(console.error);
+      }
+
+      let nextMetaRows = categoryMetaRows;
+      if (cat.metaId) {
+        await api.deleteProductCategoryMeta(cat.metaId);
+        nextMetaRows = categoryMetaRows.filter(r => r.id !== cat.metaId);
+        setCategoryMetaRows(nextMetaRows);
+      }
+
+      removeCategoryFromLocalMeta(cat.name);
+      const nextCategories = buildCategoriesFromProducts(nextProducts, nextMetaRows);
+      setCategories(nextCategories);
+      saveCategoryMeta(nextCategories);
+
+      if (selectedCatId === id) setSelectedCatId(null);
+    } catch (error) {
+      console.error('Failed to delete category', error);
+      throw error;
     }
   }
 
@@ -492,7 +795,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       const mapped = backendToAdminProduct(saved, product.org);
       const nextProducts = products.map(p => (p.id === productId ? mapped : p));
       setProducts(nextProducts);
-      setCategories(buildCategoriesFromProducts(nextProducts));
+      setCategories(buildCategoriesFromProducts(nextProducts, categoryMetaRows));
     } catch (error) {
       console.error('Failed to assign category', error);
     }
@@ -721,7 +1024,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${stockOnly ? 'bg-indigo-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-600 bg-gray-100 hover:bg-gray-200`}`}>
             <Activity size={12} /> {t.inStock ?? 'Mavjud'}
           </button>
-          <button onClick={() => { setEditingProduct(null); setAddForm(emptyForm); setAddTab('asosiy'); setShowAddModal(true); }}
+          <button onClick={() => { setEditingProduct(null); setAddForm(emptyForm); setAddSaveError(null); setAddTab('asosiy'); setAddModalKey(k => k + 1); setShowAddModal(true); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors">
             <Plus size={12} /> {t.addProd ?? "Qo'shish"}
           </button>
@@ -1321,11 +1624,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
 
       {showAddModal && (
         <AddProductDrawer
-          D={D} addForm={addForm} setF={setF} addTab={addTab} setAddTab={setAddTab}
-          onClose={() => { setShowAddModal(false); setEditingProduct(null); setAddForm(emptyForm); }} onSave={saveNewProduct}
+          key={addModalKey}
+          D={D} addForm={addForm} setF={setF} patchForm={patchForm} addTab={addTab} setAddTab={setAddTab}
+          onClose={() => { setShowAddModal(false); setEditingProduct(null); setAddForm(emptyForm); setAddSaveError(null); }} onSave={saveNewProduct}
           categories={categories}
           isEdit={!!editingProduct}
           editTitle={t.prodEditTitle}
+          saveError={addSaveError}
           t={t}
         />
       )}
@@ -1394,9 +1699,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                   {t.cancel ?? 'Bekor qilish'}
                 </button>
                 <button
-                  onClick={() => {
-                    deleteCat(deleteCatConfirm.id);
-                    setDeleteCatConfirm(null);
+                  onClick={async () => {
+                    try {
+                      await deleteCat(deleteCatConfirm.id);
+                      setDeleteCatConfirm(null);
+                    } catch (error) {
+                      console.error('Failed to delete category', error);
+                    }
                   }}
                   className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
                   style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
@@ -1473,7 +1782,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         await api.deleteProduct(p.id);
                         const nextProducts = products.filter(x => x.id !== p.id);
                         setProducts(nextProducts);
-                        setCategories(buildCategoriesFromProducts(nextProducts));
+                        setCategories(buildCategoriesFromProducts(nextProducts, categoryMetaRows));
                       } catch (error) {
                         console.error('Failed to delete product', error);
                       } finally {

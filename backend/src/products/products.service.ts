@@ -2,14 +2,36 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import {
+  CreateProductCategoryDto,
+  UpdateProductCategoryDto,
+} from './dto/product-category.dto';
 import { Product } from './entities/product.entity';
+import { ProductCategory } from './entities/product-category.entity';
+import { ProductsUploadService } from './products-upload.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly repo: Repository<Product>,
+    @InjectRepository(ProductCategory)
+    private readonly categoryRepo: Repository<ProductCategory>,
+    private readonly uploadService: ProductsUploadService,
   ) {}
+
+  private async resolveImageUrl(imageUrl?: string | null): Promise<string | null | undefined> {
+    if (imageUrl === undefined) return undefined;
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('data:')) {
+      const saved = await this.uploadService.saveDataUrl(imageUrl);
+      return saved.url;
+    }
+    const pathMatch = imageUrl.match(/\/uploads\/products\/[^?#]+/);
+    if (pathMatch) return pathMatch[0];
+    if (imageUrl.startsWith('/uploads/')) return imageUrl;
+    return imageUrl;
+  }
 
   findAll(category?: string) {
     const qb = this.repo.createQueryBuilder('p').where('p.isActive = true');
@@ -56,6 +78,13 @@ export class ProductsService {
   async create(dto: CreateProductDto) {
     const exists = await this.repo.findOne({ where: { code: dto.code } });
     if (exists) throw new ConflictException('Product code already exists');
+    const sameName = await this.repo
+      .createQueryBuilder('p')
+      .where('LOWER(TRIM(p.name)) = LOWER(TRIM(:name))', { name: dto.name })
+      .andWhere('p.isActive = true')
+      .getOne();
+    if (sameName) throw new ConflictException('Product name already exists');
+    const imageUrl = await this.resolveImageUrl(dto.imageUrl);
     const product = this.repo.create({
       code: dto.code,
       name: dto.name,
@@ -64,7 +93,7 @@ export class ProductsService {
       price: dto.price,
       unit: dto.unit,
       stockBalance: dto.stockBalance ?? 0,
-      imageUrl: dto.imageUrl ?? null,
+      imageUrl: imageUrl ?? null,
       isActive: true,
     });
     return this.repo.save(product);
@@ -77,11 +106,12 @@ export class ProductsService {
       const exists = await this.repo.findOne({ where: { code: dto.code } });
       if (exists) throw new ConflictException('Product code already exists');
     }
+    const imageUrl = await this.resolveImageUrl(dto.imageUrl);
     Object.assign(product, {
       ...dto,
       category: dto.category === undefined ? product.category : dto.category,
       brand: dto.brand === undefined ? product.brand : dto.brand,
-      imageUrl: dto.imageUrl === undefined ? product.imageUrl : dto.imageUrl,
+      imageUrl: imageUrl === undefined ? product.imageUrl : imageUrl,
     });
     return this.repo.save(product);
   }
@@ -91,5 +121,45 @@ export class ProductsService {
     if (!product) throw new NotFoundException('Product not found');
     product.isActive = false;
     return this.repo.save(product);
+  }
+
+  findAllCategoryMeta() {
+    return this.categoryRepo.find({ order: { name: 'ASC' } });
+  }
+
+  async createCategoryMeta(dto: CreateProductCategoryDto) {
+    const exists = await this.categoryRepo.findOne({ where: { name: dto.name } });
+    if (exists) throw new ConflictException('Category already exists');
+    const row = this.categoryRepo.create({
+      name: dto.name,
+      color: dto.color ?? '#6366f1',
+      emoji: dto.emoji ?? '📦',
+      imageUrl: dto.imageUrl ?? null,
+    });
+    return this.categoryRepo.save(row);
+  }
+
+  async updateCategoryMeta(id: string, dto: UpdateProductCategoryDto) {
+    const row = await this.categoryRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Category not found');
+    if (dto.name && dto.name !== row.name) {
+      const exists = await this.categoryRepo.findOne({ where: { name: dto.name } });
+      if (exists) throw new ConflictException('Category name already exists');
+    }
+    Object.assign(row, {
+      ...dto,
+      name: dto.name === undefined ? row.name : dto.name,
+      color: dto.color === undefined ? row.color : dto.color,
+      emoji: dto.emoji === undefined ? row.emoji : dto.emoji,
+      imageUrl: dto.imageUrl === undefined ? row.imageUrl : dto.imageUrl,
+    });
+    return this.categoryRepo.save(row);
+  }
+
+  async removeCategoryMeta(id: string) {
+    const row = await this.categoryRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Category not found');
+    await this.categoryRepo.remove(row);
+    return { ok: true };
   }
 }

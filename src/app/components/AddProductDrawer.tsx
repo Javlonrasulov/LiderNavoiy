@@ -6,6 +6,9 @@ import {
   CheckCircle2, Check, Plus, Maximize2, Minimize2,
 } from 'lucide-react';
 import { ADMIN_ORGS } from '../data/adminProducts';
+import { api } from '../api/client';
+import { compressProductImage } from '../utils/compressImage';
+import { resolveProductImageUrl } from '../utils/productImageUrl';
 
 // ── Shared AddForm type ──────────────────────────────────────────────────────
 export type AddForm = {
@@ -18,6 +21,7 @@ export type AddForm = {
   mobil: boolean; buyurtmaQoldiq: boolean; markalangan: boolean;
   buTara: boolean; tara: string; donaTarada: string;
   categoryId: string;
+  imageUrl: string;
 };
 
 // ── Category type (shared) ───────────────────────────────────────────────────
@@ -26,6 +30,7 @@ export interface DrawerCategory {
   name: string;
   color: string;
   emoji: string;
+  image?: string;
 }
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -33,6 +38,7 @@ interface Props {
   D: boolean;
   addForm: AddForm;
   setF: (k: keyof AddForm, v: string | boolean) => void;
+  patchForm?: (patch: Partial<AddForm>) => void;
   addTab: 'asosiy' | 'extra' | 'balans';
   setAddTab: (t: 'asosiy' | 'extra' | 'balans') => void;
   onClose: () => void;
@@ -40,6 +46,7 @@ interface Props {
   categories?: DrawerCategory[];
   isEdit?: boolean;
   editTitle?: string;
+  saveError?: string | null;
   t?: Record<string, string>;
 }
 
@@ -51,8 +58,13 @@ const BRAND_COLORS: Record<string, string> = {
 };
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose, onSave, categories = [], isEdit = false, editTitle, t = {} }: Props) {
-  const [imgPreview, setImgPreview] = useState<string | null>(null);
+export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTab, onClose, onSave, categories = [], isEdit = false, editTitle, saveError = null, t = {} }: Props) {
+  const applyPatch = patchForm ?? ((patch: Partial<AddForm>) => {
+    for (const [key, value] of Object.entries(patch)) {
+      setF(key as keyof AddForm, value as string | boolean);
+    }
+  });
+  const imgPreview = resolveProductImageUrl(addForm.imageUrl);
   const [imgDrag, setImgDrag]       = useState(false);
   const [maximized, setMaximized]   = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -120,11 +132,25 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
   }
 
   // ── Image handlers ───────────────────────────────────────────────────────
-  function handleFile(file: File) {
+  async function handleFile(file: File) {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => setImgPreview(e.target?.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressProductImage(file);
+      try {
+        const uploaded = await api.uploadProductImage(compressed);
+        setF('imageUrl', uploaded.url);
+      } catch {
+        setF('imageUrl', compressed);
+      }
+    } catch (err) {
+      console.error('Product image compress failed', err);
+    }
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function clearImage() {
+    setF('imageUrl', '');
+    if (fileRef.current) fileRef.current.value = '';
   }
 
   // ── Sotuv turi pills ─────────────────────────────────────────────────────
@@ -250,7 +276,7 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
                       style={{ background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,.2)' }}>
                       <Upload size={11} /> {t.drawerImgReplace ?? 'Almashtirish'}
                     </button>
-                    <button onClick={() => setImgPreview(null)}
+                    <button onClick={clearImage}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-medium"
                       style={{ background: 'rgba(239,68,68,.7)', backdropFilter: 'blur(6px)' }}>
                       <Trash2 size={11} /> {t.drawerImgDel ?? "O'chirish"}
@@ -324,7 +350,7 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
                       {/* No category option */}
                       <button
                         type="button"
-                        onClick={() => { setF('categoryId', ''); setF('brend', ''); setF('gruppa', ''); }}
+                        onClick={() => applyPatch({ categoryId: '', brend: '', gruppa: '' })}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-medium transition-all duration-200"
                         style={{
                           background: !addForm.categoryId ? (D ? '#1e2132' : '#ededf8') : (D ? '#1a1d27' : '#f1f3f8'),
@@ -342,11 +368,11 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
                           <button
                             key={cat.id}
                             type="button"
-                            onClick={() => {
-                              setF('categoryId', cat.id);
-                              setF('brend', cat.name);
-                              setF('gruppa', cat.name);
-                            }}
+                            onClick={() => applyPatch({
+                              categoryId: cat.id,
+                              brend: cat.name,
+                              gruppa: cat.name,
+                            })}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold transition-all duration-200"
                             style={{
                               background: isActive ? cat.color : (D ? '#1a1d27' : '#f1f3f8'),
@@ -356,7 +382,9 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
                               transform: isActive ? 'scale(1.04)' : 'scale(1)',
                             }}
                           >
-                            <span className="text-sm">{cat.emoji}</span>
+                            {cat.image
+                              ? <img src={cat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                              : <span className="text-sm">{cat.emoji}</span>}
                             {cat.name}
                             {isActive && <Check size={11} />}
                           </button>
@@ -623,8 +651,21 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex-shrink-0 px-5 py-4 flex items-center gap-3"
+        <div className="flex-shrink-0 px-5 py-4"
           style={{ borderTop: `1px solid ${bdr}`, background: bg }}>
+          {saveError && (() => {
+            const sep = saveError.indexOf(': ');
+            const title = sep > 0 ? saveError.slice(0, sep) : saveError;
+            const reason = sep > 0 ? saveError.slice(sep + 2) : null;
+            return (
+              <div className="mb-3 px-3 py-2.5 rounded-2xl text-xs"
+                style={{ background: '#ef444418', border: '1px solid #ef444444', color: '#ef4444' }}>
+                <p className="font-semibold">{title}</p>
+                {reason && <p className="mt-1 font-medium opacity-90">{reason}</p>}
+              </div>
+            );
+          })()}
+          <div className="flex items-center gap-3">
           <button type="button" onClick={onClose}
             className="flex-1 h-12 rounded-2xl text-sm font-semibold transition-all duration-200 hover:opacity-80"
             style={{ background: bg3, color: sub, border: `1px solid ${bdr}` }}>
@@ -641,6 +682,7 @@ export function AddProductDrawer({ D, addForm, setF, addTab, setAddTab, onClose,
             <Check size={15} />
             {isEdit ? (t.drawerSaveEdit ?? editTitle ?? 'Saqlash') : (t.drawerSaveAdd ?? "Mahsulot qo'shish")}
           </button>
+          </div>
         </div>
 
       </div>

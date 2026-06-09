@@ -1,6 +1,7 @@
 package uz.lider.client.presentation.catalog
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -75,7 +76,7 @@ fun CatalogScreen(
     @Suppress("UNUSED_VARIABLE")
     val lang = LocalAppLanguage.current
     val products = viewModel.filteredProducts()
-    val categories = listOf(localized("cat_all")) + state.categories
+    val categories = listOf(localized("cat_all"), localized("cat_favorites")) + state.categories
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(lifecycleOwner) {
@@ -245,6 +246,25 @@ fun CatalogScreen(
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
+            } else if (
+                state.activeCategoryIndex == CatalogViewModel.INDEX_FAVORITES && products.isEmpty()
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.FavoriteBorder,
+                            null,
+                            tint = LiquidTheme.textMuted,
+                            modifier = Modifier.size(48.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            localized("cat_favorites_empty"),
+                            color = LiquidTheme.textMuted,
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
             } else {
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     Text(
@@ -297,6 +317,13 @@ private fun ProductGridItem(
 ) {
     Column(
         Modifier
+            .then(
+                if (isFavorite) {
+                    Modifier.border(2.dp, LiquidGlass.Rose.copy(alpha = 0.65f), RoundedCornerShape(LiquidGlass.RadiusCard))
+                } else {
+                    Modifier
+                },
+            )
             .liquidGlassThemed()
             .clickable(onClick = onClick),
     ) {

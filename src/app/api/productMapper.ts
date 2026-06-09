@@ -38,7 +38,7 @@ export function backendToAdminProduct(
   const tipTo = unitToTipTo(product.unit);
   const price = toNumber(product.price);
   const stock = toNumber(product.stockBalance);
-  const brand = product.brand ?? product.category ?? '';
+  const brand = product.brand ?? '';
   const category = product.category ?? brand;
 
   return {
@@ -79,5 +79,8 @@ export function adminToCreatePayload(product: AdminProduct) {
 }
 
 export function adminToUpdatePayload(product: AdminProduct) {
-  return adminToCreatePayload(product);
+  return {
+    ...adminToCreatePayload(product),
+    imageUrl: product.imageUrl ?? null,
+  };
 }

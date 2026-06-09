@@ -30,6 +30,10 @@ coverage/
 # Docker
 postgres_data/
 
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
 # Android
 .kotlin/
 .gradle/

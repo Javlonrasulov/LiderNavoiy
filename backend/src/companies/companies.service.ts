@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
+import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
 
 export interface CompanyListItem {
   id: string;
@@ -65,7 +67,13 @@ export class CompaniesService implements OnModuleInit {
     const items = await Promise.all(
       companies.map(async (company) => {
         const [agents, clients] = await Promise.all([
-          this.profileRepo.count({ where: { companyId: company.id } }),
+          this.profileRepo
+            .createQueryBuilder('d')
+            .innerJoin(User, 'u', 'u.id = d.userId')
+            .where('d.companyId = :companyId', { companyId: company.id })
+            .andWhere('u.role = :role', { role: UserRole.DISTRIBUTOR })
+            .andWhere('u.isActive = true')
+            .getCount(),
           this.clientRepo.count({
             where: { companyId: company.id, isActive: true },
           }),

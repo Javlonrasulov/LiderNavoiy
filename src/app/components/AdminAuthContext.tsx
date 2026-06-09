@@ -21,8 +21,8 @@ const ALL_COMPANIES: Company[] = [
     icon: '🏢',
     color: 'from-red-600 to-rose-700',
     description: 'Savdo va distribyutsiya',
-    agents: 5,
-    clients: 138,
+    agents: 0,
+    clients: 0,
   },
   {
     id: 'zarafshon',
@@ -31,8 +31,8 @@ const ALL_COMPANIES: Company[] = [
     icon: '🌿',
     color: 'from-blue-500 to-cyan-600',
     description: 'Oziq-ovqat mahsulotlari',
-    agents: 4,
-    clients: 112,
+    agents: 0,
+    clients: 0,
   },
   {
     id: 'mipter',

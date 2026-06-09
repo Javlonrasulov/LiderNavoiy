@@ -240,7 +240,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     const msg = err.message;
     const text = Array.isArray(msg) ? msg.join(', ') : (msg || res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
+    throw new Error(text ? `HTTP ${res.status}: ${text}` : `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -458,6 +458,52 @@ export const api = {
   getProductCategories: () =>
     request<Array<{ category: string }>>('/products/categories'),
 
+  getProductCategoryMeta: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      color: string;
+      emoji: string;
+      imageUrl: string | null;
+    }>>('/products/category-meta'),
+
+  createProductCategoryMeta: (body: {
+    name: string;
+    color?: string;
+    emoji?: string;
+    imageUrl?: string | null;
+  }) =>
+    request<{
+      id: string;
+      name: string;
+      color: string;
+      emoji: string;
+      imageUrl: string | null;
+    }>('/products/category-meta', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateProductCategoryMeta: (metaId: string, body: {
+    name?: string;
+    color?: string;
+    emoji?: string;
+    imageUrl?: string | null;
+  }) =>
+    request<{
+      id: string;
+      name: string;
+      color: string;
+      emoji: string;
+      imageUrl: string | null;
+    }>(`/products/category-meta/${metaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteProductCategoryMeta: (metaId: string) =>
+    request<{ ok: boolean }>(`/products/category-meta/${metaId}`, { method: 'DELETE' }),
+
   createProduct: (body: {
     code: string;
     name: string;
@@ -511,6 +557,12 @@ export const api = {
 
   deleteProduct: (id: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE' }),
+
+  uploadProductImage: (dataUrl: string) =>
+    request<{ url: string; fullUrl: string; mimeType: string; fileSize: number }>(
+      '/products/upload-image',
+      { method: 'POST', body: JSON.stringify({ dataUrl }) },
+    ),
 
   // ─── Lines ───
   getLines: (companyId?: string) =>
