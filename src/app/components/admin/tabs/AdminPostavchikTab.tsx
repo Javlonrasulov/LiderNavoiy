@@ -204,29 +204,30 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     '2026-03-03','2026-03-07','2026-03-10',
   ]);
 
-  const POST_DATA = demo([
-    { id:1,  date:'05.03.2026 20:59', num:'03574', ox:false, supplier:'Янги асорт «Соф…»',   org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:128_522_400, netto:12_946_200, type:'opt' },
-    { id:2,  date:'06.03.2026 04:45', num:'03581', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045350', sum:8_320_000,   netto:80_000,    type:'opt' },
-    { id:3,  date:'06.03.2026 04:50', num:'03576', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045821', sum:2_977_500,   netto:31_500,    type:'opt' },
-    { id:4,  date:'06.03.2026 04:52', num:'03577', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045820', sum:200_531_400, netto:3_114_560, type:'opt' },
-    { id:5,  date:'06.03.2026 04:55', num:'03578', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045247', sum:240_000_870, netto:4_973_960, type:'opt' },
-    { id:6,  date:'06.03.2026 04:56', num:'03579', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045277', sum:273_078_300, netto:2_683_443, type:'opt' },
-    { id:7,  date:'06.03.2026 04:58', num:'03580', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045243', sum:385_627_350, netto:7_121_475, type:'chakana' },
-    { id:8,  date:'06.03.2026 05:00', num:'03582', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045351', sum:0,           netto:20_450,    type:'chakana' },
-    { id:9,  date:'06.03.2026 05:05', num:'03583', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045278', sum:0,           netto:36_000,    type:'chakana' },
-    { id:10, date:'06.03.2026 16:00', num:'03584', ox:false, supplier:'Янги асорт «Соф…»',    org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:121_670_700, netto:10_330_500, type:'opt' },
-    { id:11, date:'06.03.2026 23:52', num:'03593', ox:true,  supplier:'EXCLUSIVE FO…',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'',       sum:874_000,     netto:18_000,    type:'ishlab' },
-    { id:12, date:'07.03.2026 20:22', num:'03585', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:15_840_000,  netto:990_000,   type:'ishlab' },
-    { id:13, date:'08.03.2026 08:00', num:'03590', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047816', sum:208_968_070, netto:3_395_470, type:'opt' },
-    { id:14, date:'08.03.2026 08:00', num:'03588', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047849', sum:115_768_090, netto:2_036_060, type:'opt' },
-    { id:15, date:'08.03.2026 08:00', num:'03589', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047846', sum:213_232_790, netto:4_287_050, type:'opt' },
-    { id:16, date:'08.03.2026 23:03', num:'03586', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'3',dir:'SHERIN', invoice:'',       sum:7_040_000,   netto:44_000,    type:'ishlab' },
-    { id:17, date:'08.03.2026 23:03', num:'03587', ox:true,  supplier:'Jahongir Zubayd…',     org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'1',dir:'SHERIN', invoice:'',       sum:199_721_604, netto:4_685_421, type:'chakana' },
-    { id:18, date:'08.03.2026 23:13', num:'03591', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047850', sum:0,           netto:70_400,    type:'chakana' },
-    { id:19, date:'09.03.2026 05:00', num:'03592', ox:false, supplier:'Nodir Invest',          org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:4_639_000,   netto:286_000,   type:'opt' },
-    { id:20, date:'09.03.2026 07:42', num:'03594', ox:true,  supplier:'«IMILKY» MCHJ',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:32_031_650,  netto:481_610,   type:'opt' },
+  const INITIAL_POST_DATA = demo([
+    { id:1,  date:'05.03.2026 20:59', num:'03574', ox:false, supplier:'Янги асорт «Соф…»',   org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:128_522_400, netto:12_946_200, type:'opt', author:'—' },
+    { id:2,  date:'06.03.2026 04:45', num:'03581', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045350', sum:8_320_000,   netto:80_000,    type:'opt', author:'—' },
+    { id:3,  date:'06.03.2026 04:50', num:'03576', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045821', sum:2_977_500,   netto:31_500,    type:'opt', author:'—' },
+    { id:4,  date:'06.03.2026 04:52', num:'03577', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045820', sum:200_531_400, netto:3_114_560, type:'opt', author:'—' },
+    { id:5,  date:'06.03.2026 04:55', num:'03578', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045247', sum:240_000_870, netto:4_973_960, type:'opt', author:'—' },
+    { id:6,  date:'06.03.2026 04:56', num:'03579', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045277', sum:273_078_300, netto:2_683_443, type:'opt', author:'—' },
+    { id:7,  date:'06.03.2026 04:58', num:'03580', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045243', sum:385_627_350, netto:7_121_475, type:'chakana', author:'—' },
+    { id:8,  date:'06.03.2026 05:00', num:'03582', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045351', sum:0,           netto:20_450,    type:'chakana', author:'—' },
+    { id:9,  date:'06.03.2026 05:05', num:'03583', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0045278', sum:0,           netto:36_000,    type:'chakana', author:'—' },
+    { id:10, date:'06.03.2026 16:00', num:'03584', ox:false, supplier:'Янги асорт «Соф…»',    org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:121_670_700, netto:10_330_500, type:'opt', author:'—' },
+    { id:11, date:'06.03.2026 23:52', num:'03593', ox:true,  supplier:'EXCLUSIVE FO…',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'',       sum:874_000,     netto:18_000,    type:'ishlab', author:'—' },
+    { id:12, date:'07.03.2026 20:22', num:'03585', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:15_840_000,  netto:990_000,   type:'ishlab', author:'—' },
+    { id:13, date:'08.03.2026 08:00', num:'03590', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047816', sum:208_968_070, netto:3_395_470, type:'opt', author:'—' },
+    { id:14, date:'08.03.2026 08:00', num:'03588', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047849', sum:115_768_090, netto:2_036_060, type:'opt', author:'—' },
+    { id:15, date:'08.03.2026 08:00', num:'03589', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047846', sum:213_232_790, netto:4_287_050, type:'opt', author:'—' },
+    { id:16, date:'08.03.2026 23:03', num:'03586', ox:true,  supplier:'Сыр Хоразм Га…',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'3',dir:'SHERIN', invoice:'',       sum:7_040_000,   netto:44_000,    type:'ishlab', author:'—' },
+    { id:17, date:'08.03.2026 23:03', num:'03587', ox:true,  supplier:'Jahongir Zubayd…',     org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'1',dir:'SHERIN', invoice:'',       sum:199_721_604, netto:4_685_421, type:'chakana', author:'—' },
+    { id:18, date:'08.03.2026 23:13', num:'03591', ox:true,  supplier:'ЧП «SALAR ME…»',       org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'', dir:'SHERIN', invoice:'0047850', sum:0,           netto:70_400,    type:'chakana', author:'—' },
+    { id:19, date:'09.03.2026 05:00', num:'03592', ox:false, supplier:'Nodir Invest',          org:'LEADERS BAR…',   warehouse:'Склад SOFIN',  wagon:'', dir:'SOF IN',  invoice:'',       sum:4_639_000,   netto:286_000,   type:'opt', author:'—' },
+    { id:20, date:'09.03.2026 07:42', num:'03594', ox:true,  supplier:'«IMILKY» MCHJ',        org:'OOO «BORAN L…»', warehouse:'Склад SHERIN', wagon:'2',dir:'SHERIN', invoice:'',       sum:32_031_650,  netto:481_610,   type:'opt', author:'—' },
   ]);
 
+  const [postData, setPostData] = useState(INITIAL_POST_DATA);
   const [postFilter, setPostFilter] = useState<'all'|'opt'|'chakana'|'ishlab'>('all');
   const [postSearch, setPostSearch] = useState('');
   const [postExpanded, setPostExpanded] = useState<Set<number>>(new Set());
@@ -289,7 +290,15 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const togglePost = (id: number) =>
     setPostExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
-  const postRows = POST_DATA.filter(r => {
+  const nextPostNum = String(
+    Math.max(0, ...postData.map(r => parseInt(r.num, 10) || 0)) + 1,
+  ).padStart(5, '0');
+
+  const handlePostSave = (row: PostRowRef) => {
+    setPostData(prev => [row, ...prev]);
+  };
+
+  const postRows = postData.filter(r => {
     const matchFilter = postFilter === 'all' || r.type === postFilter;
     const matchSearch = r.supplier.toLowerCase().includes(postSearch.toLowerCase()) ||
                         r.num.includes(postSearch) || r.org.toLowerCase().includes(postSearch.toLowerCase());
@@ -377,10 +386,10 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex-shrink-0"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold transition-colors shadow-lg shadow-indigo-500/20 flex-shrink-0"
               >
-                <Plus size={14} />
-                Создать
+                <Plus size={14} className="flex-shrink-0" />
+                <span>{t.postCreate ?? t.vozCreateBtn ?? 'Yaratish'}</span>
               </button>
 
               <div className={`w-px h-6 flex-shrink-0 ${D ? 'bg-gray-700' : 'bg-gray-200'}`} />
@@ -438,7 +447,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
               <table className="w-full min-w-[900px]">
                 <thead>
                   <tr className={`border-b ${divider} ${D ? 'bg-white/[0.02]' : 'bg-gray-50/70'}`}>
-                    {['postDate','postNum','postOx','postSupplier','postOrg','postWarehouse','postWagon','postDir','postInvoice','postSum','postNetto'].map(k => (
+                    {['postDate','postNum','postOx','postSupplier','postOrg','postWarehouse','postWagon','postDir','postInvoice','detAvtor','postSum','postNetto'].map(k => (
                       <th key={k} className={`px-4 py-3 text-left text-xs font-medium ${sub} whitespace-nowrap`}>{t[k]}</th>
                     ))}
                   </tr>
@@ -469,6 +478,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                         }`}>{r.dir}</span>
                       </td>
                       <td className={`px-4 py-3 text-sm tabular-nums ${r.invoice ? '' : sub}`}>{r.invoice || '—'}</td>
+                      <td className={`px-4 py-3 text-sm max-w-[120px] truncate ${sub}`}>{r.author || '—'}</td>
                       <td className="px-4 py-3 text-sm font-semibold tabular-nums text-right">
                         {r.sum > 0 ? N(r.sum) : <span className={sub}>—</span>}
                       </td>
@@ -480,7 +490,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                 </tbody>
                 <tfoot>
                   <tr className={`border-t-2 ${D ? 'border-gray-700 bg-white/[0.03]' : 'border-gray-200 bg-gray-50'}`}>
-                    <td colSpan={9} className="px-4 py-3.5 text-sm font-bold">{t.postTotal} ({postRows.length})</td>
+                    <td colSpan={10} className="px-4 py-3.5 text-sm font-bold">{t.postTotal} ({postRows.length})</td>
                     <td className="px-4 py-3.5 text-sm font-bold tabular-nums text-right">{N(totalPostSum)}</td>
                     <td className="px-4 py-3.5 text-sm font-bold tabular-nums text-right text-emerald-400">{N(totalPostNetto)}</td>
                   </tr>
@@ -557,8 +567,8 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
               <p className={`text-sm ${sub} mt-0.5`}>{vozRows.length} {t.vozCount}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg shadow-indigo-500/20`}>
-                <Plus size={14} /> {t.vozCreateBtn ?? 'Создать'}
+              <button className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg shadow-indigo-500/20`}>
+                <Plus size={14} className="flex-shrink-0" /> <span>{t.vozCreateBtn ?? 'Yaratish'}</span>
               </button>
               <button className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
                 <Download size={14} /> {t.vozExport ?? 'Экспорт'}
@@ -1062,9 +1072,9 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={() => setShowBnsCreate(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
               >
-                <Plus size={14} /> {t.bnsCreate ?? 'Создать'}
+                <Plus size={14} className="flex-shrink-0" /> <span>{t.bnsCreate ?? 'Yaratish'}</span>
               </button>
               <button className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
                 <Download size={14} /> {t.bnsExport ?? 'Экспорт'}
@@ -1368,6 +1378,9 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
         <PostupleniyaModal
           D={D}
           t={t}
+          suppliers={SUP_DATA.map(s => s.name)}
+          nextNum={nextPostNum}
+          onSave={handlePostSave}
           onClose={() => setShowCreateModal(false)}
         />
       )}

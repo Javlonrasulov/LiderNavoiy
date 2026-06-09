@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Bell, Check, X, MapPin, Phone, User, Building2, AlertTriangle,
 } from 'lucide-react';
-import { useClientRequests } from '../ClientRequestContext';
+import { useClientRequests, ClientRequestProvider } from '../ClientRequestContext';
 import type { ClientRequestItem } from '../../data/clientRequests';
 import type { ClientRow } from '../../data/adminData';
 
@@ -175,6 +175,21 @@ function RequestCard({
 }
 
 export function ClientRequestBell({ D, sub, text, t, existingClients = [], companyId }: Props) {
+  return (
+    <ClientRequestProvider companyId={companyId}>
+      <ClientRequestBellInner
+        D={D}
+        sub={sub}
+        text={text}
+        t={t}
+        existingClients={existingClients}
+        companyId={companyId}
+      />
+    </ClientRequestProvider>
+  );
+}
+
+function ClientRequestBellInner({ D, sub, text, t, existingClients = [], companyId }: Props) {
   const { pending, loading, error } = useClientRequests();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);

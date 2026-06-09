@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import L from 'leaflet';
-import { Layers } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 
 export type LayerId =
   | 'standard'
@@ -114,7 +114,6 @@ export const MAP_LAYERS: LayerDef[] = [
   {
     id: 'topographic',
     label: 'Топографическая',
-    // OSM.org: Tracestrack Topo (kalit bilan). Kalitsiz: OpenTopoMap (bepul, biroz boshqa uslub)
     url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
     options: { maxZoom: 17, subdomains: ['a', 'b', 'c'], attribution: '&copy; OpenTopoMap & OpenStreetMap' },
     thumb: thumb('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
@@ -154,6 +153,12 @@ interface MapLayerSwitcherProps {
   onChange: (id: LayerId) => void;
   bottom?: number;
   left?: number;
+  /** O'ng tomonda zoom tugmalari uchun joy (px) */
+  rightInset?: number;
+}
+
+function stopMapDrag(e: React.SyntheticEvent) {
+  e.stopPropagation();
 }
 
 export function MapLayerSwitcher({
@@ -161,91 +166,249 @@ export function MapLayerSwitcher({
   onChange,
   bottom = 16,
   left = 12,
+  rightInset = 40,
 }: MapLayerSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
   const layers = resolvedLayers();
   const active = layers.find(l => l.id === activeLayer) ?? layers[0];
-  const ordered = [active, ...layers.filter(l => l.id !== activeLayer)];
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updateScrollState();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      ro.disconnect();
+    };
+  }, [open, updateScrollState]);
+
+  const scrollBy = (delta: number) => {
+    scrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  };
+
+  const scrollBtnStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: '1px solid rgba(0,0,0,0.1)',
+    background: 'rgba(255,255,255,0.95)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    padding: 0,
+  };
 
   return (
-    <div style={{ position: 'absolute', bottom, left, zIndex: 1000, fontFamily: 'system-ui, sans-serif' }}>
+    <div
+      style={{
+        position: 'absolute',
+        bottom,
+        left: open ? 8 : left,
+        right: open ? rightInset : 'auto',
+        zIndex: 1000,
+        fontFamily: 'system-ui, sans-serif',
+        pointerEvents: 'none',
+      }}
+    >
       {open && (
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0,
-          display: 'flex', gap: 8, alignItems: 'flex-end',
-          background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(12px)',
-          borderRadius: 16, padding: '10px 12px 12px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.22)', border: '1px solid rgba(0,0,0,0.08)',
-          maxWidth: 'min(calc(100vw - 32px), 720px)',
-          overflowX: 'auto',
-          scrollbarWidth: 'thin',
-        }}>
-          {ordered.map((layer, i) => {
-            const isActive = layer.id === activeLayer;
-            const size = i === 0 ? 72 : 58;
-            return (
-              <button
-                key={layer.id}
-                onClick={() => { onChange(layer.id); setOpen(false); }}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                  background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
-                  flexShrink: 0,
-                }}
-              >
-                <div style={{
-                  width: size, height: size, borderRadius: 12, overflow: 'hidden',
-                  border: isActive ? '3px solid #4285f4' : '2.5px solid rgba(0,0,0,0.12)',
-                  boxShadow: isActive ? '0 0 0 2px rgba(66,133,244,0.25)' : '0 2px 6px rgba(0,0,0,0.15)',
-                  background: '#e5e7eb',
-                }}>
-                  <img
-                    src={layer.thumb}
-                    alt={layer.label}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                </div>
-                <span style={{
-                  fontSize: i === 0 ? 12 : 10,
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? '#1a73e8' : '#3c4043',
-                  whiteSpace: 'nowrap',
-                  maxWidth: size + 8,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  textAlign: 'center',
-                }}>
-                  {layer.label}
-                </span>
-              </button>
-            );
-          })}
+        <div
+          style={{ position: 'relative', pointerEvents: 'auto' }}
+          onMouseDown={stopMapDrag}
+          onTouchStart={stopMapDrag}
+          onDoubleClick={stopMapDrag}
+        >
+          {canScrollLeft && (
+            <button
+              type="button"
+              aria-label="Chapga"
+              onClick={() => scrollBy(-120)}
+              style={{ ...scrollBtnStyle, left: 4 }}
+            >
+              <ChevronLeft size={16} color="#374151" />
+            </button>
+          )}
+          {canScrollRight && (
+            <button
+              type="button"
+              aria-label="O'ngga"
+              onClick={() => scrollBy(120)}
+              style={{ ...scrollBtnStyle, right: 4 }}
+            >
+              <ChevronRight size={16} color="#374151" />
+            </button>
+          )}
+
+          <div
+            ref={scrollRef}
+            className="map-layer-scroll show-sb"
+            onWheel={stopMapDrag}
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'flex-end',
+              background: 'rgba(255,255,255,0.97)',
+              backdropFilter: 'blur(12px)',
+              borderRadius: 16,
+              padding: '10px 36px 12px',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+              border: '1px solid rgba(0,0,0,0.08)',
+              width: '100%',
+              maxWidth: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorX: 'contain',
+              scrollSnapType: 'x proximity',
+              scrollbarWidth: 'thin',
+              touchAction: 'pan-x',
+            }}
+          >
+            {layers.map(layer => {
+              const isActive = layer.id === activeLayer;
+              const size = 58;
+              return (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => { onChange(layer.id); setOpen(false); }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 5,
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    flexShrink: 0,
+                    scrollSnapAlign: 'start',
+                  }}
+                >
+                  <div style={{
+                    width: size,
+                    height: size,
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    border: isActive ? '3px solid #4285f4' : '2.5px solid rgba(0,0,0,0.12)',
+                    boxShadow: isActive ? '0 0 0 2px rgba(66,133,244,0.25)' : '0 2px 6px rgba(0,0,0,0.15)',
+                    background: '#e5e7eb',
+                  }}>
+                    <img
+                      src={layer.thumb}
+                      alt={layer.label}
+                      draggable={false}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  </div>
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: isActive ? 700 : 500,
+                    color: isActive ? '#1a73e8' : '#3c4043',
+                    whiteSpace: 'nowrap',
+                    textAlign: 'center',
+                  }}>
+                    {layer.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
-      <button
-        onClick={() => setOpen(v => !v)}
-        title="Xarita qatlamlari"
-        style={{
-          width: 42, height: 42, borderRadius: 10, border: '2px solid rgba(0,0,0,0.15)',
-          background: 'rgba(255,255,255,0.97)', boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-          cursor: 'pointer', display: open ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: 0, overflow: 'hidden', position: 'relative',
-        }}
-      >
-        <img
-          src={active.thumb}
-          alt={active.label}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 }}
-          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-        <div style={{
-          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Layers size={18} color="#fff" />
-        </div>
-      </button>
+
+      {!open && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title="Xarita qatlamlari"
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 10,
+            border: '2px solid rgba(0,0,0,0.15)',
+            background: 'rgba(255,255,255,0.97)',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            overflow: 'hidden',
+            position: 'relative',
+            pointerEvents: 'auto',
+          }}
+        >
+          <img
+            src={active.thumb}
+            alt={active.label}
+            draggable={false}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 }}
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Layers size={18} color="#fff" />
+          </div>
+        </button>
+      )}
+
+      {open && (
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          title="Yopish"
+          style={{
+            position: 'absolute',
+            top: -36,
+            left: 0,
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            border: '1px solid rgba(0,0,0,0.1)',
+            background: 'rgba(255,255,255,0.95)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'auto',
+            padding: 0,
+            fontSize: 18,
+            lineHeight: 1,
+            color: '#374151',
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { demo } from './demoLimit';
 export type TipTo = 'Штучн.' | 'Тарози' | 'Весов.';
 
 export interface AdminProduct {
-  id: number;
+  id: string;
   kod: string;           // Код
   org: string;           // Организация (boran | zarafshon | mipter | navruz | sarbon | atlas)
   ismi: string;          // Наименование
@@ -24,6 +24,7 @@ export interface AdminProduct {
   shtrixKod: string;     // Штрих код
   ikpu: string;          // ИКПУ
   balance: number;       // Qoldiq
+  imageUrl?: string | null;
 }
 
 export const ADMIN_ORGS = demo([
@@ -35,7 +36,7 @@ export const ADMIN_ORGS = demo([
   { id: 'atlas',    label: 'Atlas' },
 ]);
 
-export const ADMIN_PRODUCTS = demo([
+const ADMIN_PRODUCTS_RAW = demo([
   // ── SOF IN / PILLER ── (Boran)
   { id:1,   kod:'10645', org:'boran',     ismi:'Масло Сливочное "PILLER" 82.5% 500 гр',         p1:9,  tipTo:'Штучн.', artikul:'PL-001', brend:'PILLER',   gruppa:'PILLER',         srok:12, postavshik:'SOLPRO ALLEA...',       shtUpakovka:10, netto:1.000, brutto:1.050, exId:645, rtl:28500, shtrixKod:'4600100064501', ikpu:'10200645', balance:45 },
   { id:2,   kod:'10646', org:'boran',     ismi:'Масло Сливочное растительное "PILLER" 82.5%',   p1:9,  tipTo:'Штучн.', artikul:'PL-002', brend:'PILLER',   gruppa:'PILLER',         srok:12, postavshik:'SOLPRO ALLEA...',       shtUpakovka:10, netto:1.000, brutto:1.050, exId:646, rtl:26900, shtrixKod:'4600100064601', ikpu:'10200646', balance:32 },
@@ -87,3 +88,8 @@ export const ADMIN_PRODUCTS = demo([
   { id:36,  kod:'11104', org:'atlas',    ismi:'Xayrli Tong Sosiski Молочная Atlas 0.5',          p1:12, tipTo:'Тарози', artikul:'АТЛ-04', brend:'XAYRLI',  gruppa:'Xayrli tong',    srok:10, postavshik:'ЧП "MILKY" MCH...',    shtUpakovka:1,  netto:0.500, brutto:0.510, exId:1104,rtl:42000, shtrixKod:'4650700110401', ikpu:'10201104', balance:64 },
   { id:37,  kod:'11105', org:'atlas',    ismi:'А\'ЛО ТА\'М Варёная Колбаса в/у Atlas 1.0',      p1:12, tipTo:'Тарози', artikul:'АТЛ-05', brend:"A'LO TA'M",gruppa:"A'lo ta'm",    srok:12, postavshik:"A'lo ta'm",            shtUpakovka:1,  netto:1.000, brutto:1.020, exId:1105,rtl:49000, shtrixKod:'4650700110501', ikpu:'10201105', balance:18 },
 ]);
+
+export const ADMIN_PRODUCTS: AdminProduct[] = ADMIN_PRODUCTS_RAW.map((p) => ({
+  ...p,
+  id: String(p.id),
+}));

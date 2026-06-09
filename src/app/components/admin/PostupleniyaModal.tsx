@@ -1,13 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  X, Maximize2, Minimize2, Check, ChevronDown,
+  X, Maximize2, Minimize2, Check, ChevronDown, ChevronLeft, ChevronRight,
   Calculator, Package, Tag, Plus, Trash2, ArrowUp, ArrowDown,
-  RefreshCw, FileDown, FileUp, AlertCircle, CheckCircle2,
+  RefreshCw, FileDown, FileUp, AlertCircle, CheckCircle2, Calendar, Search,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import type { PostRowRef } from './PostupleniyaDetailModal';
+import { useAdminAuth } from '../AdminAuthContext';
+import { useCompanies } from '../CompaniesContext';
+import { api, type AppUserRecord } from '../../api/client';
+import { ADMIN_PRODUCTS, type AdminProduct } from '../../data/adminProducts';
+
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
 
 interface PostItem {
   id: number;
+  productId?: string;
   tovar: string;
   artikul: string;
   kolFakt: number;
@@ -20,10 +30,56 @@ interface PostItem {
   ves: number;
 }
 
+interface ReceiptProduct {
+  id: string;
+  name: string;
+  code: string;
+  artikul: string;
+  price: number;
+  unitLabel: string;
+  brand: string;
+}
+
+function adminProductToReceipt(p: AdminProduct): ReceiptProduct {
+  return {
+    id: p.id,
+    name: p.ismi,
+    code: p.kod,
+    artikul: p.artikul || p.kod,
+    price: p.rtl,
+    unitLabel: p.tipTo === 'Штучн.' ? 'шт' : 'кг',
+    brand: p.brend,
+  };
+}
+
+function backendProductToReceipt(p: {
+  id: string;
+  code: string;
+  name: string;
+  brand: string | null;
+  price: number | string;
+  unit: string;
+}): ReceiptProduct {
+  const unit = p.unit.trim().toLowerCase();
+  const unitLabel = unit === 'kg' || unit === 'кг' || unit === 'g' || unit === 'gr' ? 'кг' : 'шт';
+  return {
+    id: p.id,
+    name: p.name,
+    code: p.code,
+    artikul: p.code,
+    price: typeof p.price === 'number' ? p.price : Number(p.price) || 0,
+    unitLabel,
+    brand: p.brand ?? '',
+  };
+}
+
 interface Props {
   D: boolean;
   t: Record<string, string>;
   onClose: () => void;
+  onSave?: (row: PostRowRef) => void;
+  suppliers?: string[];
+  nextNum?: string;
 }
 
 type MainTab = 'postavshiki' | 'vagon' | 'prodazha';
@@ -34,12 +90,389 @@ const TSELI    = ['Оптовая', 'Розничная', 'Производст�
 const SKLADY   = ['Склад SHERIN', 'Склад SOFIN', 'Склад MAIN'];
 const NAPRAVL  = ['SHERIN', 'SOF IN', 'MAIN'];
 
-export function PostupleniyaModal({ D, t, onClose }: Props) {
+const TSELI_TYPE: Record<string, PostRowRef['type']> = {
+  'Оптовая': 'opt',
+  'Розничная': 'chakana',
+  'Производство': 'ishlab',
+};
+
+function todayStr() {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+}
+
+function parseDMY(s: string): Date | null {
+  const [d, m, y] = s.split('.').map(Number);
+  if (!d || !m || !y || y < 2000) return null;
+  return new Date(y, m - 1, d);
+}
+
+function fmtDMY(d: Date) {
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+}
+
+function fieldCls(D: boolean, red?: boolean) {
+  if (red) return 'border-rose-500/50 bg-rose-500/5 text-rose-400';
+  return D
+    ? 'bg-[#1c1c1e] border-[#2a2a2e] text-white placeholder:text-gray-600'
+    : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400';
+}
+
+function FormSelect({
+  D, sub, value, onChange, options, placeholder, w,
+}: {
+  D: boolean;
+  sub: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  w?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const display = value || placeholder || '—';
+
+  return (
+    <div ref={ref} className={`relative ${w ?? 'w-full'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full rounded-xl border px-3 py-2.5 pr-8 text-xs text-left outline-none transition-all
+          focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500
+          ${open ? 'border-indigo-500 ring-2 ring-indigo-500/30' : ''}
+          ${fieldCls(D)}
+          ${!value ? sub : ''}`}
+      >
+        <span className="block truncate">{display}</span>
+      </button>
+      <ChevronDown
+        size={13}
+        className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 transition-transform
+          ${open ? 'rotate-180' : ''} ${sub}`}
+      />
+      {open && (
+        <div
+          className={`absolute top-full left-0 right-0 mt-1.5 z-[300] rounded-xl border shadow-xl overflow-hidden max-h-52 overflow-y-auto
+            ${D ? 'bg-[#1c1c1e] border-gray-700 shadow-black/60' : 'bg-white border-gray-200 shadow-gray-300/50'}`}
+        >
+          {placeholder && (
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className={`w-full text-left px-3 py-2.5 text-xs transition-colors border-b
+                ${D ? 'text-gray-500 hover:bg-gray-800 border-gray-800' : 'text-gray-400 hover:bg-gray-50 border-gray-100'}`}
+            >
+              {placeholder}
+            </button>
+          )}
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className={`w-full text-left px-3 py-2.5 text-xs transition-colors
+                ${value === opt
+                  ? D ? 'bg-indigo-500/20 text-indigo-300 font-semibold' : 'bg-indigo-50 text-indigo-600 font-semibold'
+                  : D ? 'text-gray-200 hover:bg-gray-800' : 'text-gray-800 hover:bg-gray-50'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormDatePicker({
+  D, sub, value, onChange, placeholder, w, t,
+}: {
+  D: boolean;
+  sub: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  w?: string;
+  t: Record<string, string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const parsed = parseDMY(value);
+  const [view, setView] = useState<Date>(() => parsed ?? new Date());
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  useEffect(() => {
+    if (parsed) setView(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+  }, [value]);
+
+  const months = (t.zatCalMonths || 'Yan,Fev,Mar,Apr,May,Iyn,Iyl,Avg,Sen,Okt,Noy,Dek').split(',');
+  const days   = (t.zatCalDays || 'Du,Se,Ch,Pa,Ju,Sh,Ya').split(',');
+  const year  = view.getFullYear();
+  const month = view.getMonth();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const today = new Date();
+  const isSelected = (day: number) =>
+    parsed &&
+    parsed.getFullYear() === year &&
+    parsed.getMonth() === month &&
+    parsed.getDate() === day;
+  const isToday = (day: number) =>
+    today.getFullYear() === year &&
+    today.getMonth() === month &&
+    today.getDate() === day;
+
+  return (
+    <div ref={ref} className={`relative ${w ?? 'w-full'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full rounded-xl border px-3 py-2.5 pr-8 text-xs text-left outline-none transition-all
+          focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 flex items-center gap-2
+          ${open ? 'border-indigo-500 ring-2 ring-indigo-500/30' : ''}
+          ${fieldCls(D)}`}
+      >
+        <Calendar size={12} className={`flex-shrink-0 ${D ? 'text-indigo-400' : 'text-indigo-500'}`} />
+        <span className={`truncate ${value ? '' : sub}`}>{value || placeholder || '—'}</span>
+      </button>
+      <ChevronDown
+        size={13}
+        className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 transition-transform
+          ${open ? 'rotate-180' : ''} ${sub}`}
+      />
+
+      {open && (
+        <div
+          className={`absolute top-full left-0 mt-1.5 z-[300] rounded-2xl border shadow-2xl p-3 w-[248px]
+            ${D ? 'bg-[#141414] border-gray-700 shadow-black/70' : 'bg-white border-gray-200 shadow-gray-300/60'}`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <button
+              type="button"
+              onClick={() => setView(new Date(year, month - 1, 1))}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors
+                ${D ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className={`text-xs font-bold ${D ? 'text-white' : 'text-gray-900'}`}>
+              {months[month] ?? month + 1} {year}
+            </span>
+            <button
+              type="button"
+              onClick={() => setView(new Date(year, month + 1, 1))}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors
+                ${D ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 mb-1">
+            {days.map(d => (
+              <div key={d} className={`text-center text-[10px] font-semibold py-0.5 ${sub}`}>{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((day, i) => day === null ? (
+              <div key={`e-${i}`} />
+            ) : (
+              <button
+                key={day}
+                type="button"
+                onClick={() => {
+                  onChange(fmtDMY(new Date(year, month, day)));
+                  setOpen(false);
+                }}
+                className={`h-8 rounded-lg text-xs font-medium transition-colors
+                  ${isSelected(day)
+                    ? 'bg-indigo-500 text-white font-bold'
+                    : isToday(day)
+                      ? D ? 'bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/40' : 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                      : D ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'}`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-dashed border-gray-700/40">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className={`text-[10px] px-2 py-1 rounded-lg transition-colors ${sub} ${D ? 'hover:bg-white/5' : 'hover:bg-gray-100'}`}
+            >
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={() => { onChange(todayStr()); setOpen(false); }}
+              className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-colors
+                ${D ? 'text-indigo-300 hover:bg-indigo-500/15' : 'text-indigo-600 hover:bg-indigo-50'}`}
+            >
+              {t.calToday ?? 'Bugun'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductSearchSelect({
+  D, sub, inp, value, products, onSelect, placeholder, searchPlaceholder, emptyText,
+  defaultOpen, onOpened,
+}: {
+  D: boolean;
+  sub: string;
+  inp: string;
+  value: string;
+  products: ReceiptProduct[];
+  onSelect: (p: ReceiptProduct) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  defaultOpen?: boolean;
+  onOpened?: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQ('');
+    const timer = setTimeout(() => searchRef.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return products.slice(0, 100);
+    return products.filter(p =>
+      p.name.toLowerCase().includes(needle) ||
+      p.code.toLowerCase().includes(needle) ||
+      p.artikul.toLowerCase().includes(needle) ||
+      p.brand.toLowerCase().includes(needle),
+    ).slice(0, 100);
+  }, [products, q]);
+
+  const display = value || placeholder || '—';
+
+  return (
+    <div ref={ref} className="relative min-w-[160px]">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`w-full rounded border px-1.5 py-1 pr-6 text-xs text-left outline-none transition-all
+          focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 ${inp}
+          ${!value ? sub : ''}`}
+      >
+        <span className="block truncate">{display}</span>
+      </button>
+      <ChevronDown
+        size={11}
+        className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 transition-transform
+          ${open ? 'rotate-180' : ''} ${sub}`}
+      />
+      {open && (
+        <div
+          className={`absolute top-full left-0 z-[320] mt-1 w-[min(340px,90vw)] rounded-xl border shadow-xl overflow-hidden
+            ${D ? 'bg-[#1c1c1e] border-gray-700 shadow-black/60' : 'bg-white border-gray-200 shadow-gray-300/50'}`}
+        >
+          <div className={`p-2 border-b ${D ? 'border-gray-800' : 'border-gray-100'}`}>
+            <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border
+              ${D ? 'bg-[#111] border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+              <Search size={12} className={sub} />
+              <input
+                ref={searchRef}
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                placeholder={searchPlaceholder}
+                className={`flex-1 bg-transparent text-xs outline-none ${D ? 'text-white placeholder-gray-600' : 'text-gray-900 placeholder-gray-400'}`}
+              />
+              {q && (
+                <button type="button" onClick={() => setQ('')} className={sub}>
+                  <X size={10} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className={`px-3 py-4 text-xs text-center ${sub}`}>{emptyText ?? 'Topilmadi'}</p>
+            ) : filtered.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => { onSelect(p); setOpen(false); }}
+                className={`w-full text-left px-3 py-2.5 transition-colors border-b last:border-b-0
+                  ${D ? 'border-gray-800 hover:bg-gray-800' : 'border-gray-50 hover:bg-gray-50'}
+                  ${value === p.name
+                    ? D ? 'bg-indigo-500/15 text-indigo-300' : 'bg-indigo-50 text-indigo-600'
+                    : ''}`}
+              >
+                <p className="text-xs font-medium truncate">{p.name}</p>
+                <p className={`text-[10px] mt-0.5 truncate ${sub}`}>
+                  {[p.code, p.brand, p.price > 0 ? `${p.price.toLocaleString('ru-RU')} so'm` : ''].filter(Boolean).join(' · ')}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextNum }: Props) {
+  const { selectedCompany, adminUser } = useAdminAuth();
+  const { companies } = useCompanies();
+  const organizations = companies.map(c => c.name);
+  const defaultOrg = selectedCompany?.name ?? organizations[0] ?? '';
   const [fullscreen, setFullscreen]     = useState(false);
   const [mainTab,    setMainTab]        = useState<MainTab>('postavshiki');
   const [innerTab,   setInnerTab]       = useState<InnerTab>('tovary');
   const [items,      setItems]          = useState<PostItem[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [saveError, setSaveError]       = useState<string | null>(null);
+  const [catalogProducts, setCatalogProducts] = useState<ReceiptProduct[]>([]);
 
   /* ── import state ── */
   const fileInputRef                    = useRef<HTMLInputElement>(null);
@@ -52,12 +485,14 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
   const [vidPost,     setVidPost]     = useState('Баланс');
   const [tselPrikh,   setTselPrikh]   = useState('Оптовая');
   const [nSchFak,     setNSchFak]     = useState('');
-  const [dataDoc,     setDataDoc]     = useState('10.03.2026');
+  const [dataDoc,     setDataDoc]     = useState(todayStr);
   const [dataPog,     setDataPog]     = useState('');
   const [postavshik,  setPostavshik]  = useState('');
-  const [poluchatel,  setPoluchatel]  = useState("OOO 'BORAN LEADERS'");
+  const [poluchatel,  setPoluchatel]  = useState(defaultOrg);
   const [napravlenie, setNapravlenie] = useState('SHERIN');
-  const [avtor,       setAvtor]       = useState('Менеджер');
+  const [appUsers,    setAppUsers]    = useState<AppUserRecord[]>([]);
+  const [avtor,       setAvtor]       = useState('');
+  const [avtorReady,  setAvtorReady]  = useState(false);
   const [sklad,       setSklad]       = useState('Склад SHERIN');
   const [pere,        setPere]        = useState('0.00');
   const [nal,         setNal]         = useState('0.00');
@@ -72,6 +507,52 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!hasApiToken()) return;
+    api.listAppUsers()
+      .then(users => setAppUsers(users.filter(u => u.isActive)))
+      .catch(() => setAppUsers([]));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCatalog() {
+      if (hasApiToken()) {
+        try {
+          const data = await api.getProducts();
+          const active = data.filter(p => p.isActive !== false);
+          if (!cancelled && active.length > 0) {
+            setCatalogProducts(active.map(backendProductToReceipt));
+            return;
+          }
+        } catch {
+          /* fallback below */
+        }
+      }
+      if (!cancelled) {
+        setCatalogProducts(ADMIN_PRODUCTS.map(adminProductToReceipt));
+      }
+    }
+    loadCatalog();
+    return () => { cancelled = true; };
+  }, []);
+
+  const authorOptions = useMemo(() => {
+    const names = appUsers.map(u => u.fullName);
+    if (names.length > 0) return names;
+    if (adminUser?.name) return [adminUser.name];
+    return [];
+  }, [appUsers, adminUser]);
+
+  useEffect(() => {
+    if (avtorReady || authorOptions.length === 0) return;
+    const match = adminUser?.name
+      ? authorOptions.find(n => n === adminUser.name) ?? authorOptions[0]
+      : authorOptions[0];
+    setAvtor(match);
+    setAvtorReady(true);
+  }, [authorOptions, adminUser, avtorReady]);
 
   /* ── style helpers ── */
   const bg    = D ? 'bg-[#0d0d0d]' : 'bg-white';
@@ -96,31 +577,103 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`rounded-lg border px-2 py-1.5 text-xs outline-none transition-colors ${w ?? 'w-full'}
-        ${red
-          ? 'border-rose-500/50 bg-rose-500/5 text-rose-400'
-          : inp}`}
+      className={`rounded-xl border px-3 py-2.5 text-xs outline-none transition-all
+        focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 ${w ?? 'w-full'}
+        ${fieldCls(D, red)}`}
     />
-  );
-
-  const Sel = ({
-    value, onChange, opts, w,
-  }: { value: string; onChange: (v: string) => void; opts: string[]; w?: string }) => (
-    <div className={`relative ${w ?? 'w-full'}`}>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={`rounded-lg border px-2 py-1.5 pr-6 text-xs outline-none appearance-none w-full cursor-pointer ${inp}`}
-      >
-        {opts.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <ChevronDown size={11} className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${sub}`} />
-    </div>
   );
 
   const toggleRow = (id: number) => setSelectedRows(prev => {
     const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s;
   });
+
+  const updateItem = (id: number, patch: Partial<PostItem>) => {
+    setItems(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, ...patch };
+      updated.tsenaPriv = updated.tsenaPost * (1 - updated.skid / 100);
+      updated.summa = updated.kolFakt * updated.tsenaPriv;
+      return updated;
+    }));
+  };
+
+  const selectProductForItem = (itemId: number, p: ReceiptProduct) => {
+    setItems(prev => prev.map(r => {
+      if (r.id !== itemId) return r;
+      const updated = {
+        ...r,
+        productId: p.id,
+        tovar: p.name,
+        artikul: p.artikul,
+        upakovka: p.unitLabel,
+        tsenaPost: p.price,
+      };
+      updated.tsenaPriv = updated.tsenaPost * (1 - updated.skid / 100);
+      updated.summa = updated.kolFakt * updated.tsenaPriv;
+      return updated;
+    }));
+  };
+
+  const handleAddItem = () => {
+    setItems(prev => [...prev, {
+      id: Date.now(),
+      tovar: '',
+      artikul: '',
+      kolFakt: 0,
+      kolBrak: 0,
+      upakovka: 'шт',
+      tsenaPost: 0,
+      skid: 0,
+      tsenaPriv: 0,
+      summa: 0,
+      ves: 0,
+    }]);
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedRows.size === 0) return;
+    setItems(prev => prev.filter(r => !selectedRows.has(r.id)));
+    setSelectedRows(new Set());
+  };
+
+  const handleSave = (closeAfter: boolean) => {
+    setSaveError(null);
+    if (!postavshik.trim()) {
+      setSaveError(t.zatFillRequired ?? "Majburiy maydonlarni to'ldiring");
+      return;
+    }
+    if (!avtor.trim()) {
+      setSaveError(t.zatFillRequired ?? "Majburiy maydonlarni to'ldiring");
+      return;
+    }
+    const validItems = items.filter(i => i.tovar.trim() && i.kolFakt > 0);
+    if (validItems.length === 0) {
+      setSaveError(t.postEmptyItems ?? "Kamida bitta tovar qo'shing");
+      return;
+    }
+    const now = new Date();
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const authorUser = appUsers.find(u => u.fullName === avtor);
+    const row: PostRowRef = {
+      id: Date.now(),
+      date: `${dataDoc} ${time}`,
+      num: nextNum ?? String(Date.now()).slice(-5),
+      ox: true,
+      supplier: postavshik,
+      org: poluchatel,
+      warehouse: sklad,
+      wagon: '',
+      dir: napravlenie,
+      invoice: nSchFak,
+      sum: totalSumma,
+      netto: totalVes > 0 ? totalVes : totalSumma,
+      type: TSELI_TYPE[tselPrikh] ?? 'opt',
+      author: avtor,
+      authorId: authorUser?.id,
+    };
+    onSave?.(row);
+    if (closeAfter) onClose();
+  };
 
   const totalSumma = items.reduce((s, r) => s + r.summa, 0);
   const totalVes   = items.reduce((s, r) => s + r.ves,   0);
@@ -248,15 +801,21 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
             <Package size={15} className="text-indigo-400" />
             <span className="text-sm font-bold">
               {t.supTabPostup ?? 'Поступление товаров'}{' '}
-              <span className={`font-normal text-xs ${sub}`}>— создание</span>
+              <span className={`font-normal text-xs ${sub}`}>{t.postModalCreating ?? '— yaratish'}</span>
             </span>
           </div>
 
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition-colors">
-            <Check size={12} /> Провести и закрыть
+          <button
+            onClick={() => handleSave(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition-colors"
+          >
+            <Check size={12} /> {t.detProvestiClose ?? "O'tkazish va yopish"}
           </button>
-          <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}>
-            <Check size={11} className="text-emerald-400" /> Провести
+          <button
+            onClick={() => handleSave(false)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}
+          >
+            <Check size={11} className="text-emerald-400" /> {t.detProvesti ?? "O'tkazish"}
           </button>
           <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'}`}>
             <Calculator size={11} className="text-blue-400" /> Прогноз прибыли
@@ -287,9 +846,9 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
         {/* ══ MAIN TABS ══ */}
         <div className={`flex items-center gap-0 border-b ${bdr} flex-shrink-0 px-4`}>
           {([
-            { id: 'postavshiki', label: 'Поставщики' },
-            { id: 'vagon',       label: 'Вагон'       },
-            { id: 'prodazha',    label: 'Продажа'     },
+            { id: 'postavshiki', label: t.detTabPostavshiki ?? t.postSupplier ?? 'Ta\'minotchilar' },
+            { id: 'vagon',       label: t.detTabVagon ?? 'Vagon'       },
+            { id: 'prodazha',    label: t.detTabProdazha ?? 'Sotish'     },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -308,6 +867,14 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
         {/* ══ FORM AREA ══ */}
         <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-3">
 
+          {saveError && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+              <AlertCircle size={13} className="shrink-0" />
+              {saveError}
+              <button className="ml-auto" onClick={() => setSaveError(null)}><X size={12} /></button>
+            </div>
+          )}
+
           {/* ── ПОСТАВЩИКИ ── */}
           {mainTab === 'postavshiki' && (
             <>
@@ -315,7 +882,7 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
               <div className={`rounded-xl border ${card} p-3`}>
                 <div className="flex flex-wrap gap-3 items-end">
 
-                  <Field label="Вид поступления">
+                  <Field label={t.detVidPost ?? 'Qabul turi'}>
                     <div className={`flex rounded-lg border overflow-hidden ${D ? 'border-gray-700' : 'border-gray-200'}`}>
                       {VIDY.map(v => (
                         <button
@@ -333,36 +900,67 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                     </div>
                   </Field>
 
-                  <Field label="Цель прихода">
-                    <Sel value={tselPrikh} onChange={setTselPrikh} opts={TSELI} w="w-32" />
+                  <Field label={t.detTselPrih ?? 'Maqsad'}>
+                    <FormSelect D={D} sub={sub} value={tselPrikh} onChange={setTselPrikh} options={TSELI} w="w-36" />
                   </Field>
 
-                  <Field label="N_Сч.фак">
-                    <Inp value={nSchFak} onChange={setNSchFak} w="w-24" placeholder="—" />
+                  <Field label={t.detSchFak ?? 'Sch-fak'}>
+                    <Inp value={nSchFak} onChange={setNSchFak} w="w-28" placeholder="—" />
                   </Field>
 
-                  <Field label="Дата">
-                    <Inp value={dataDoc} onChange={setDataDoc} w="w-28" />
+                  <Field label={t.detDataDoc ?? 'Sana'}>
+                    <FormDatePicker
+                      D={D}
+                      sub={sub}
+                      t={t}
+                      value={dataDoc}
+                      onChange={setDataDoc}
+                      w="w-36"
+                    />
                   </Field>
 
-                  <Field label="Дата погашения">
-                    <Inp value={dataPog} onChange={setDataPog} w="w-28" placeholder="—" />
+                  <Field label={t.detDataPog ?? "To'lov sanasi"}>
+                    <FormDatePicker
+                      D={D}
+                      sub={sub}
+                      t={t}
+                      value={dataPog}
+                      onChange={setDataPog}
+                      placeholder="—"
+                      w="w-36"
+                    />
                   </Field>
 
-                  <Field label="Поставщик">
-                    <Inp value={postavshik} onChange={setPostavshik} w="w-36" placeholder="Выберите..." />
+                  <Field label={t.postSupplier ?? 'Yetkazib beruvchi'}>
+                    <FormSelect
+                      D={D}
+                      sub={sub}
+                      value={postavshik}
+                      onChange={setPostavshik}
+                      options={suppliers}
+                      placeholder={t.zatSelect ?? 'Tanlang...'}
+                      w="w-44"
+                    />
                   </Field>
 
-                  <Field label="Получатель">
-                    <Inp value={poluchatel} onChange={setPoluchatel} w="w-44" />
+                  <Field label={t.detPoluchatel ?? 'Oluvchi'}>
+                    <FormSelect D={D} sub={sub} value={poluchatel} onChange={setPoluchatel} options={organizations} w="w-52" />
                   </Field>
 
-                  <Field label="Направление">
-                    <Sel value={napravlenie} onChange={setNapravlenie} opts={NAPRAVL} w="w-24" />
+                  <Field label={t.postDir ?? "Yo'nalish"}>
+                    <FormSelect D={D} sub={sub} value={napravlenie} onChange={setNapravlenie} options={NAPRAVL} w="w-28" />
                   </Field>
 
-                  <Field label="Автор">
-                    <Inp value={avtor} onChange={setAvtor} w="w-24" />
+                  <Field label={t.detAvtor ?? 'Muallif'}>
+                    <FormSelect
+                      D={D}
+                      sub={sub}
+                      value={avtor}
+                      onChange={setAvtor}
+                      options={authorOptions}
+                      placeholder={t.zatSelect ?? 'Tanlang...'}
+                      w="w-44"
+                    />
                   </Field>
                 </div>
               </div>
@@ -371,46 +969,42 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
               <div className={`rounded-xl border ${card} p-3`}>
                 <div className="flex flex-wrap gap-3 items-end">
 
-                  <Field label="Склад">
-                    <Sel value={sklad} onChange={setSklad} opts={SKLADY} w="w-36" />
+                  <Field label={t.postWarehouse ?? 'Ombor'}>
+                    <FormSelect D={D} sub={sub} value={sklad} onChange={setSklad} options={SKLADY} w="w-40" />
                   </Field>
 
-                  <Field label="Пер-е">
+                  <Field label={t.detPere ?? "O'tkazma"}>
                     <Inp value={pere} onChange={setPere} w="w-20" />
                   </Field>
 
-                  <Field label="Нал">
+                  <Field label={t.detNal ?? 'Naqd'}>
                     <Inp value={nal} onChange={setNal} w="w-20" />
                   </Field>
 
-                  <Field label="Получ.нал">
+                  <Field label={t.detPoluchNal ?? 'Qab.naqd'}>
                     <Inp value={poluchNal} onChange={setPoluchNal} w="w-20" />
                   </Field>
 
-                  <Field label="Скидка пер">
+                  <Field label={t.detSkidkaPer ?? 'Chegirma'}>
                     <Inp value={skidkaPer} onChange={setSkidkaPer} w="w-20" red />
                   </Field>
 
-                  <Field label="Скидка нал">
-                    <Inp value={skidkaNal} onChange={setSkidkaNal} w="w-20" red />
-                  </Field>
-
-                  <Field label="К_оплате">
+                  <Field label={t.detKOplate ?? "To'lash"}>
                     <div className={`px-2 py-1.5 rounded-lg border text-xs font-semibold tabular-nums w-28
                       ${D ? 'border-gray-700 bg-[#1a1a1a] text-emerald-400' : 'border-gray-200 bg-white text-emerald-600'}`}>
-                      0.00
+                      {totalSumma.toLocaleString('ru-RU')}
                     </div>
                   </Field>
 
-                  <Field label="Сумма брак">
+                  <Field label={t.detSummaBrak ?? 'Brak summasi'}>
                     <div className={`px-2 py-1.5 rounded-lg border text-xs tabular-nums w-20 ${sub}
                       ${D ? 'border-gray-700 bg-[#1a1a1a]' : 'border-gray-200 bg-white'}`}>
                       0.00
                     </div>
                   </Field>
 
-                  <Field label="Конт прайс">
-                    <Sel value={kontPrays} onChange={setKontPrays} opts={['Нет', 'Да']} w="w-16" />
+                  <Field label={t.detKontPrays ?? 'Kont.narx'}>
+                    <FormSelect D={D} sub={sub} value={kontPrays} onChange={setKontPrays} options={['Нет', 'Да']} w="w-24" />
                   </Field>
                 </div>
               </div>
@@ -421,11 +1015,11 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                 {/* Tab bar */}
                 <div className={`flex items-center border-b ${bdr} ${hdr} px-2`}>
                   {([
-                    { id: 'tovary',    label: 'Товары'      },
-                    { id: 'gruppy',    label: 'Группы'      },
-                    { id: 'brendy',    label: 'Бренды'      },
-                    { id: 'dop',       label: 'Доп расходы' },
-                    { id: 'materialy', label: 'Материалы'   },
+                    { id: 'tovary',    label: t.detTabTovary ?? 'Tovarlar'      },
+                    { id: 'gruppy',    label: t.detTabGruppy ?? 'Guruhlar'      },
+                    { id: 'brendy',    label: t.detTabBrendy ?? 'Brendlar'      },
+                    { id: 'dop',       label: t.detTabDop ?? "Qo'sh.xarajat" },
+                    { id: 'materialy', label: t.detTabMat ?? 'Materiallar'   },
                   ] as const).map(tab => (
                     <button
                       key={tab.id}
@@ -443,15 +1037,18 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
 
                 {/* Toolbar */}
                 <div className={`flex items-center gap-1 px-3 py-2 border-b ${bdr} flex-wrap`}>
-                  <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition-colors">
-                    <Plus size={11} /> Добавить
+                  <button
+                    onClick={handleAddItem}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition-colors"
+                  >
+                    <Plus size={11} /> {t.detAddBtn ?? "Qo'shish"}
                   </button>
                   {[
-                    { icon: <Trash2 size={11} />,    tip: 'Удалить' },
-                    { icon: <ArrowUp size={11} />,   tip: 'Вверх'   },
-                    { icon: <ArrowDown size={11} />, tip: 'Вниз'    },
+                    { icon: <Trash2 size={11} />, tip: "O'chirish", onClick: handleDeleteSelected },
+                    { icon: <ArrowUp size={11} />,   tip: '↑', onClick: undefined },
+                    { icon: <ArrowDown size={11} />, tip: '↓', onClick: undefined },
                   ].map((b, i) => (
-                    <button key={i} title={b.tip}
+                    <button key={i} title={b.tip} onClick={b.onClick}
                       className={`p-1.5 rounded-lg border transition-colors ${D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'} ${sub}`}
                     >
                       {b.icon}
@@ -459,16 +1056,16 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                   ))}
                   <div className={`w-px h-4 mx-1 ${D ? 'bg-gray-700' : 'bg-gray-200'}`} />
                   {[
-                    { icon: <RefreshCw size={11} />, label: 'Заполнить', onClick: undefined },
-                    { icon: <FileDown size={11} />,  label: 'Экспорт',   onClick: undefined },
-                    { icon: <FileUp size={11} />,    label: 'Импорт',    onClick: handleImportClick },
+                    { icon: <RefreshCw size={11} />, label: t.detFillBtn ?? "To'ldirish", onClick: undefined, importBtn: false },
+                    { icon: <FileDown size={11} />,  label: t.vozExport ?? 'Export',   onClick: undefined, importBtn: false },
+                    { icon: <FileUp size={11} />,    label: t.detImportBtn ?? 'Import',    onClick: handleImportClick, importBtn: true },
                   ].map((b, i) => (
                     <button key={i} onClick={b.onClick}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition-colors
-                        ${b.label === 'Импорт'
+                        ${b.importBtn
                           ? D ? 'border-indigo-500/50 text-indigo-400 hover:bg-indigo-500/10' : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'
                           : D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-100'
-                        } ${b.label !== 'Импорт' ? sub : ''}`}
+                        } ${!b.importBtn ? sub : ''}`}
                     >
                       {b.icon}
                       <span className="hidden sm:inline">{b.label}</span>
@@ -509,17 +1106,17 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                       <thead>
                         <tr className={`border-b ${bdr} ${D ? 'bg-white/[0.02]' : 'bg-gray-50'}`}>
                           {[
-                            { k: 'N',           w: 'w-8'  },
-                            { k: 'Товар',       w: ''     },
-                            { k: 'Артикул',     w: 'w-24' },
-                            { k: 'Кол-во',      w: 'w-20' },
-                            { k: 'Кол.брак',    w: 'w-20' },
-                            { k: 'Ед.изм',      w: 'w-16' },
-                            { k: 'Цена пост.',  w: 'w-24' },
-                            { k: '% скид',      w: 'w-16' },
-                            { k: 'Цена прих.',  w: 'w-24' },
-                            { k: 'Сумма',       w: 'w-28' },
-                            { k: 'Вес (кг)',    w: 'w-18' },
+                            { k: '№', w: 'w-8' },
+                            { k: t.detColTovar ?? 'Tovar', w: '' },
+                            { k: t.detColArtikul ?? 'Artikul', w: 'w-24' },
+                            { k: t.detColKolFakt ?? 'Miqdor', w: 'w-20' },
+                            { k: t.detColKolBrak ?? 'Brak', w: 'w-20' },
+                            { k: t.detColUpakovka ?? 'Qadoq', w: 'w-16' },
+                            { k: t.detColPost ?? 'Narx', w: 'w-24' },
+                            { k: t.detColSkid ?? '%', w: 'w-16' },
+                            { k: t.detColPriv ?? 'Kirish', w: 'w-24' },
+                            { k: t.detColSumma ?? 'Summa', w: 'w-28' },
+                            { k: t.detColVes ?? "Og'irlik", w: 'w-18' },
                           ].map(h => (
                             <th key={h.k} className={`px-3 py-2.5 text-left font-semibold ${sub} whitespace-nowrap ${h.w}`}>
                               {h.k}
@@ -533,7 +1130,7 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                             <td colSpan={11}>
                               <div className={`flex flex-col items-center justify-center py-10 gap-2 ${sub}`}>
                                 <Package size={22} className="opacity-25" />
-                                <p>Товары не добавлены — нажмите «Добавить»</p>
+                                <p>{t.postEmptyItems ?? "Tovarlar qo'shilmagan — «Qo'shish» tugmasini bosing"}</p>
                               </div>
                             </td>
                           </tr>
@@ -548,29 +1145,91 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                             }`}
                           >
                             <td className={`px-3 py-2 ${sub}`}>{i + 1}</td>
-                            <td className="px-3 py-2 font-medium">{r.tovar}</td>
-                            <td className={`px-3 py-2 tabular-nums ${sub}`}>{r.artikul}</td>
-                            <td className="px-3 py-2 tabular-nums text-right font-semibold">{r.kolFakt}</td>
-                            <td className={`px-3 py-2 tabular-nums text-right ${r.kolBrak > 0 ? 'text-rose-400 font-semibold' : sub}`}>
-                              {r.kolBrak > 0 ? r.kolBrak : '—'}
+                            <td className="px-3 py-2 font-medium" onClick={e => e.stopPropagation()}>
+                              <ProductSearchSelect
+                                D={D}
+                                sub={sub}
+                                inp={inp}
+                                value={r.tovar}
+                                products={catalogProducts}
+                                onSelect={p => selectProductForItem(r.id, p)}
+                                placeholder={t.detColTovar ?? 'Tovar tanlang...'}
+                                searchPlaceholder={t.noPickerSearch ?? 'Tovar qidirish...'}
+                                emptyText={t.noPickerEmpty ?? 'Topilmadi'}
+                              />
                             </td>
-                            <td className={`px-3 py-2 ${sub}`}>{r.upakovka}</td>
-                            <td className="px-3 py-2 tabular-nums text-right">{r.tsenaPost.toLocaleString('ru-RU')}</td>
-                            <td className={`px-3 py-2 tabular-nums text-right ${r.skid > 0 ? 'text-rose-400' : sub}`}>
-                              {r.skid > 0 ? `${r.skid}%` : '—'}
+                            <td className={`px-3 py-2 tabular-nums ${sub}`} onClick={e => e.stopPropagation()}>
+                              <input
+                                value={r.artikul}
+                                onChange={e => updateItem(r.id, { artikul: e.target.value })}
+                                className={`w-full rounded border px-1.5 py-1 text-xs outline-none ${inp}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2 tabular-nums text-right font-semibold" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.kolFakt || ''}
+                                onChange={e => updateItem(r.id, { kolFakt: parseFloat(e.target.value) || 0 })}
+                                className={`w-16 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                              />
+                            </td>
+                            <td className={`px-3 py-2 tabular-nums text-right ${r.kolBrak > 0 ? 'text-rose-400 font-semibold' : sub}`} onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.kolBrak || ''}
+                                onChange={e => updateItem(r.id, { kolBrak: parseFloat(e.target.value) || 0 })}
+                                className={`w-16 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                              />
+                            </td>
+                            <td className={`px-3 py-2 ${sub}`} onClick={e => e.stopPropagation()}>
+                              <input
+                                value={r.upakovka}
+                                onChange={e => updateItem(r.id, { upakovka: e.target.value })}
+                                className={`w-14 rounded border px-1.5 py-1 text-xs outline-none ${inp}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2 tabular-nums text-right" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={r.tsenaPost || ''}
+                                onChange={e => updateItem(r.id, { tsenaPost: parseFloat(e.target.value) || 0 })}
+                                className={`w-20 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                              />
+                            </td>
+                            <td className={`px-3 py-2 tabular-nums text-right ${r.skid > 0 ? 'text-rose-400' : sub}`} onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={r.skid || ''}
+                                onChange={e => updateItem(r.id, { skid: parseFloat(e.target.value) || 0 })}
+                                className={`w-12 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                              />
                             </td>
                             <td className="px-3 py-2 tabular-nums text-right">{r.tsenaPriv.toLocaleString('ru-RU')}</td>
                             <td className="px-3 py-2 tabular-nums text-right font-semibold text-emerald-400">
                               {r.summa.toLocaleString('ru-RU')}
                             </td>
-                            <td className={`px-3 py-2 tabular-nums text-right ${sub}`}>{r.ves}</td>
+                            <td className={`px-3 py-2 tabular-nums text-right ${sub}`} onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.1}
+                                value={r.ves || ''}
+                                onChange={e => updateItem(r.id, { ves: parseFloat(e.target.value) || 0 })}
+                                className={`w-14 rounded border px-1.5 py-1 text-xs text-right outline-none ${inp}`}
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                       {items.length > 0 && (
                         <tfoot>
                           <tr className={`border-t-2 ${D ? 'border-gray-700 bg-white/[0.03]' : 'border-gray-300 bg-gray-100'}`}>
-                            <td colSpan={3} className="px-3 py-2 font-bold">Итого ({items.length})</td>
+                            <td colSpan={3} className="px-3 py-2 font-bold">{t.detItogo ?? 'Jami'} ({items.length})</td>
                             <td className="px-3 py-2 tabular-nums text-right font-bold">
                               {items.reduce((s, r) => s + r.kolFakt, 0)}
                             </td>
@@ -592,7 +1251,7 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
                 {innerTab !== 'tovary' && (
                   <div className={`flex flex-col items-center justify-center py-10 ${sub}`}>
                     <Package size={22} className="mb-2 opacity-25" />
-                    <p className="text-xs">Нет данных</p>
+                    <p className="text-xs">{t.detNoData ?? "Ma'lumot yo'q"}</p>
                   </div>
                 )}
               </div>
@@ -604,8 +1263,8 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
             <div className="flex flex-col items-center justify-center py-16">
               <div className={`rounded-2xl border ${card} p-10 text-center max-w-xs w-full`}>
                 <Package size={28} className="mx-auto mb-3 text-indigo-400 opacity-50" />
-                <p className="text-sm font-semibold mb-1">Вагон</p>
-                <p className={`text-xs ${sub}`}>Данные о вагоне не введены</p>
+                <p className="text-sm font-semibold mb-1">{t.detTabVagon ?? 'Vagon'}</p>
+                <p className={`text-xs ${sub}`}>{t.detInDev ?? "Bo'lim ishlanmoqda"}</p>
               </div>
             </div>
           )}
@@ -615,8 +1274,8 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
             <div className="flex flex-col items-center justify-center py-16">
               <div className={`rounded-2xl border ${card} p-10 text-center max-w-xs w-full`}>
                 <Tag size={28} className="mx-auto mb-3 text-emerald-400 opacity-50" />
-                <p className="text-sm font-semibold mb-1">Продажа</p>
-                <p className={`text-xs ${sub}`}>Настройки продажи не заданы</p>
+                <p className="text-sm font-semibold mb-1">{t.detTabProdazha ?? 'Sotish'}</p>
+                <p className={`text-xs ${sub}`}>{t.detInDev ?? "Bo'lim ishlanmoqda"}</p>
               </div>
             </div>
           )}
@@ -625,7 +1284,7 @@ export function PostupleniyaModal({ D, t, onClose }: Props) {
         {/* ══ BOTTOM STATUS BAR ══ */}
         <div className={`flex items-center justify-between px-4 py-2 border-t ${bdr} ${hdr} flex-shrink-0`}>
           <span className={`text-[11px] ${sub}`}>
-            Статус: <span className="text-amber-400 font-semibold">Черновик</span>
+            <span className="text-amber-400 font-semibold">{t.postDraft ?? 'Qoralama'}</span>
           </span>
           <span className={`text-[11px] ${sub}`}>
             {fullscreen ? '⛶ Полный экран' : '▢ Оконный режим'}

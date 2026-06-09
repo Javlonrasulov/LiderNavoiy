@@ -1,0 +1,76 @@
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { api, type BackendCompany } from '../api/client';
+import { COMPANIES, type Company } from './AdminAuthContext';
+
+function mapCompany(row: BackendCompany): Company {
+  return {
+    id: row.id,
+    name: row.name,
+    shortName: row.shortName ?? row.name,
+    icon: row.icon ?? '🏢',
+    color: row.color ?? 'from-indigo-500 to-blue-600',
+    description: row.description ?? '',
+    agents: row.agents,
+    clients: row.clients,
+  };
+}
+
+interface CompaniesContextValue {
+  companies: Company[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+}
+
+const CompaniesContext = createContext<CompaniesContextValue | null>(null);
+
+export function CompaniesProvider({ children }: { children: ReactNode }) {
+  const [companies, setCompanies] = useState<Company[]>(COMPANIES);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    if (!localStorage.getItem('api_access_token')) {
+      setCompanies(COMPANIES);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await api.getCompanies();
+      if (rows.length > 0) {
+        setCompanies(rows.map(mapCompany));
+      } else {
+        setCompanies(COMPANIES);
+      }
+    } catch (e) {
+      setCompanies(COMPANIES);
+      setError(e instanceof Error ? e.message : 'Tashkilotlarni yuklab bo\'lmadi');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return (
+    <CompaniesContext.Provider value={{ companies, loading, error, refresh }}>
+      {children}
+    </CompaniesContext.Provider>
+  );
+}
+
+export function useCompanies() {
+  const ctx = useContext(CompaniesContext);
+  if (!ctx) throw new Error('useCompanies must be used within CompaniesProvider');
+  return ctx;
+}

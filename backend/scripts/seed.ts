@@ -8,7 +8,27 @@ import { DistributorProfile } from '../src/distributors/entities/distributor-pro
 import { Client } from '../src/clients/entities/client.entity';
 import { Product } from '../src/products/entities/product.entity';
 import { SalesLine } from '../src/lines/entities/sales-line.entity';
+import { Company } from '../src/companies/entities/company.entity';
 import { UserRole, DistributorStatus } from '../src/common/enums';
+
+const COMPANIES = [
+  {
+    id: 'boran',
+    name: 'Boran Leaders+ Darveshi Navoiy',
+    shortName: 'Boran Leaders+',
+    icon: '🏢',
+    color: 'from-red-600 to-rose-700',
+    description: 'Savdo va distribyutsiya',
+  },
+  {
+    id: 'zarafshon',
+    name: 'Зарафшон Шерин',
+    shortName: 'Зарафшон',
+    icon: '🌿',
+    color: 'from-blue-500 to-cyan-600',
+    description: 'Oziq-ovqat mahsulotlari',
+  },
+];
 
 const LINES = [
   { code: '01', name: 'Toshrabot - Xazora - Air', agentName: 'Alisher Karimov', companyId: 'boran' },
@@ -27,12 +47,18 @@ const CLIENTS = [
 ];
 
 const PRODUCTS = [
-  { code: 'SHRDL0477', name: 'Delektес Govyajiy v setka v/u 1,3', category: 'SHERIN', brand: 'SHERIN', price: 139000, unit: 'kg', stock: 37.69 },
-  { code: 'SHRDL0458', name: 'Rulet Iz Yazyka s kopcheniem 0,9', category: 'SHERIN', brand: 'SHERIN', price: 189900, unit: 'kg', stock: 26.39 },
-  { code: 'SHRPK0443', name: 'p/k Salami setka Sherin 1,4', category: 'SHERIN', brand: 'SHERIN', price: 97400, unit: 'kg', stock: 45.16 },
-  { code: 'TIMSS0201', name: 'Sosiska Molochnaya TIM 0,5', category: 'TIM', brand: 'TIM', price: 48600, unit: 'kg', stock: 74.5 },
-  { code: 'TIMVK0145', name: 'Varyonaya Kolbasa TIM Lyubitel 1,0', category: 'TIM', brand: 'TIM', price: 69800, unit: 'kg', stock: 55.3 },
-  { code: 'SIRT0088', name: 'Syr Tvyordyy Rossiyskiy 1 kg', category: 'SIR', brand: 'SIR', price: 95000, unit: 'kg', stock: 48.2 },
+  { code: '10645', name: 'Масло Сливочное "PILLER" 82.5% 500 гр', category: 'PILLER', brand: 'PILLER', price: 28500, unit: 'dona', stock: 45 },
+  { code: '10646', name: 'Масло Сливочное растительное "PILLER" 82.5%', category: 'PILLER', brand: 'PILLER', price: 26900, unit: 'dona', stock: 32 },
+];
+
+// Eski demo mahsulotlar — admin orqali boshqariladi, seed qayta yoqmasin
+const DEPRECATED_PRODUCT_CODES = [
+  'SHRDL0477',
+  'SHRPK0443',
+  'SHRDL0458',
+  'TIMSS0201',
+  'TIMVK0145',
+  'SIRT0088',
 ];
 
 async function seed() {
@@ -43,7 +69,7 @@ async function seed() {
     username: process.env.DB_USERNAME || 'crm_user',
     password: process.env.DB_PASSWORD || 'crm_password',
     database: process.env.DB_DATABASE || 'distributor_crm',
-    entities: [User, DistributorProfile, Client, Product, SalesLine],
+    entities: [User, DistributorProfile, Client, Product, SalesLine, Company],
     synchronize: true,
   });
 
@@ -56,6 +82,24 @@ async function seed() {
   const productRepo = ds.getRepository(Product);
   const lineRepo = ds.getRepository(SalesLine);
 
+  const lineRepo = ds.getRepository(SalesLine);
+  const companyRepo = ds.getRepository(Company);
+
+  for (const c of COMPANIES) {
+    const exists = await companyRepo.findOne({ where: { id: c.id } });
+    if (!exists) {
+      await companyRepo.save(companyRepo.create({ ...c, isActive: true }));
+    } else {
+      exists.name = c.name;
+      exists.shortName = c.shortName;
+      exists.icon = c.icon;
+      exists.color = c.color;
+      exists.description = c.description;
+      exists.isActive = true;
+      await companyRepo.save(exists);
+    }
+  }
+
   // Admin user
   let admin = await userRepo.findOne({ where: { username: 'admin' } });
   if (!admin) {
@@ -64,8 +108,13 @@ async function seed() {
       passwordHash: await bcrypt.hash('admin123', 12),
       fullName: 'Super Admin',
       role: UserRole.ADMIN,
+      position: 'Admin',
+      permissions: null,
       isActive: true,
     });
+    await userRepo.save(admin);
+  } else if (!admin.position) {
+    admin.position = 'Admin';
     await userRepo.save(admin);
   }
 
@@ -135,10 +184,18 @@ async function seed() {
     }
   }
 
-  // Products
+  // Products — faqat yangi mahsulotlarni yaratadi; admin o'chirganini qayta yoqmaydi
   for (const p of PRODUCTS) {
-    const exists = await productRepo.findOne({ where: { code: p.code } });
-    if (!exists) {
+    const existing = await productRepo.findOne({ where: { code: p.code } });
+    if (existing) {
+      existing.name = p.name;
+      existing.category = p.category;
+      existing.brand = p.brand;
+      existing.price = p.price;
+      existing.unit = p.unit;
+      existing.stockBalance = p.stock;
+      await productRepo.save(existing);
+    } else {
       await productRepo.save(productRepo.create({
         code: p.code,
         name: p.name,
@@ -149,6 +206,14 @@ async function seed() {
         stockBalance: p.stock,
         isActive: true,
       }));
+    }
+  }
+
+  for (const code of DEPRECATED_PRODUCT_CODES) {
+    const deprecated = await productRepo.findOne({ where: { code } });
+    if (deprecated?.isActive) {
+      deprecated.isActive = false;
+      await productRepo.save(deprecated);
     }
   }
 
@@ -177,7 +242,7 @@ async function seed() {
   console.log(`  admin / admin123`);
   console.log(`  agent001 / agent123`);
   console.log(`  client29072 / client123456  (client app demo)`);
-  console.log(`  ${lineCount} lines, ${clientCount} clients, ${productCount} products`);
+  console.log(`  ${lineCount} lines, ${clientCount} clients, ${productCount} products, ${COMPANIES.length} companies`);
   await ds.destroy();
 }
 

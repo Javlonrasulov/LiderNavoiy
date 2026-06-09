@@ -13,7 +13,7 @@ export interface Company {
   clients: number;
 }
 
-export const COMPANIES = demo([
+const ALL_COMPANIES: Company[] = [
   {
     id: 'boran',
     name: 'Boran Leaders+ Darveshi Navoiy',
@@ -74,13 +74,15 @@ export const COMPANIES = demo([
     agents: 3,
     clients: 76,
   },
-]);
+];
+
+export const COMPANIES = demo(ALL_COMPANIES);
 
 interface AdminAuthContextType {
   isLoggedIn: boolean;
   selectedCompany: Company | null;
-  adminUser: { name: string; role: string } | null;
-  login: (username: string, password: string, userData?: { name: string; role: string }) => boolean;
+  adminUser: { name: string; role: string; permissions?: string[] | null } | null;
+  login: (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }) => boolean;
   logout: () => void;
   selectCompany: (company: Company) => void;
   clearCompany: () => void;
@@ -113,12 +115,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
-  const [adminUser, setAdminUser] = useState<{ name: string; role: string } | null>(() => {
+  const [adminUser, setAdminUser] = useState<{ name: string; role: string; permissions?: string[] | null } | null>(() => {
     const saved = localStorage.getItem('admin_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  const login = (username: string, password: string, userData?: { name: string; role: string }): boolean => {
+  const login = (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }): boolean => {
     if (userData) {
       setIsLoggedIn(true);
       setAdminUser(userData);

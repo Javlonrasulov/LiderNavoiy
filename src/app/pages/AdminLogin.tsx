@@ -90,9 +90,20 @@ export default function AdminLogin() {
     setError('');
     try {
       const res = await api.login(username.trim(), password.trim());
+      if (res.user.role !== 'admin' && res.user.role !== 'manager') {
+        clearTokens();
+        setError(t.errWrong);
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+        return;
+      }
       setTokens(res.accessToken, res.refreshToken);
       localStorage.setItem('api_user_id', res.user.id);
-      const userData = { name: res.user.fullName, role: res.user.role };
+      const userData = {
+        name: res.user.fullName,
+        role: res.user.role,
+        permissions: res.user.permissions ?? null,
+      };
       login(username.trim(), password.trim(), userData);
       navigate('/admin/select');
     } catch (err) {

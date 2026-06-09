@@ -3,7 +3,7 @@ import {
   Check, ChevronDown, Eye, EyeOff, Globe, Menu, Moon, Sun, LayoutGrid, X,
 } from 'lucide-react';
 import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
-import { COMPANIES } from '../AdminAuthContext';
+import { useCompanies } from '../CompaniesContext';
 import { ClientRequestBell } from './ClientRequestBell';
 
 interface AdminNavbarProps {
@@ -48,6 +48,7 @@ export function AdminNavbar({
   setTab,
   existingClients = [],
 }: AdminNavbarProps) {
+  const { companies } = useCompanies();
   const currentLang = ADMIN_LANGS.find(l => l.id === adminLang)!;
   const [showModuleBar, setShowModuleBar] = useState(false);
 
@@ -99,13 +100,13 @@ export function AdminNavbar({
                   className={`flex items-start gap-1 md:gap-1.5 mt-0.5 px-1.5 md:px-2 py-0.5 md:py-1 rounded-lg transition-colors ${D ? 'hover:bg-gray-800' : 'hover:bg-gray-100'}`}
                 >
                   <div className="flex -space-x-1 flex-shrink-0 pt-0.5">
-                    {COMPANIES.filter(c => selectedCompanyIds.has(c.id)).slice(0, 4).map(c => (
+                    {companies.filter(c => selectedCompanyIds.has(c.id)).slice(0, 4).map(c => (
                       <span key={c.id} className="text-xs md:text-sm leading-none">{c.icon}</span>
                     ))}
                   </div>
                   <p className={`text-[10px] md:text-xs ${sub} max-w-[80px] md:max-w-[220px] leading-tight whitespace-normal`}>
                     {selectedCompanyIds.size === 1
-                      ? COMPANIES.find(c => selectedCompanyIds.has(c.id))?.name
+                      ? companies.find(c => selectedCompanyIds.has(c.id))?.name
                       : `${selectedCompanyIds.size} ta tashkilot tanlangan`}
                   </p>
                   <ChevronDown size={11} className={`${sub} transition-transform duration-200 flex-shrink-0 mt-0.5 ${showCompanyDropdown ? 'rotate-180' : ''}`} />
@@ -176,7 +177,7 @@ export function AdminNavbar({
             <span className={`text-[11px] font-semibold truncate ${sub}`}>
               {navItems.flatMap(n => n.children ? [n, ...n.children] : [n]).find(n => n.id === tab)?.label}
               {selectedCompanyIds.size === 1
-                ? ` · ${COMPANIES.find(c => selectedCompanyIds.has(c.id))?.icon} ${COMPANIES.find(c => selectedCompanyIds.has(c.id))?.shortName}`
+                ? ` · ${companies.find(c => selectedCompanyIds.has(c.id))?.icon} ${companies.find(c => selectedCompanyIds.has(c.id))?.shortName}`
                 : ` · ${selectedCompanyIds.size} ta tashkilot`}
             </span>
           </div>
@@ -263,7 +264,7 @@ export function AdminNavbar({
               <div className={`px-4 py-3 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
                 <p className={`text-xs font-semibold ${sub}`}>Tashkilotni tanlang</p>
               </div>
-              {COMPANIES.map(c => {
+              {companies.map(c => {
                 const isSel = selectedCompanyIds.has(c.id);
                 const d = COMPANY_DATA[c.id];
                 return (

@@ -13,6 +13,7 @@ import {
   sotrudnikPosLabel,
   translateApiError,
 } from '../../../utils/appUserCreds';
+import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 
 interface Props {
   D: boolean;
@@ -166,7 +167,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [deleteRow, setDeleteRow] = useState<SotrudnikRow | null>(null);
   const [showAdd, setShowAdd]     = useState(false);
   const [addDraft, setAddDraft]   = useState<SotrudnikRow>({
-    tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
+    tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
     deptKey: 'sales', posKey: 'salesAgent',
   });
   const [addLogin, setAddLogin]   = useState('');
@@ -281,8 +282,11 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       });
       const distributorId = editDraft.distributorId
         ?? apiDistributors.find(d => d.userId === editDraft.backendUserId)?.id;
-      if (distributorId && phone) {
-        await api.updateDistributor(distributorId, { phone });
+      if (distributorId) {
+        await api.updateDistributor(distributorId, {
+          phone: phone ?? '',
+          position: sotrudnikPosLabel(editDraft, t) || undefined,
+        });
       }
       await refreshEmployees();
       setEditRow(null);
@@ -329,7 +333,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       setAddLogin('');
       setAddPassword('');
       setAddDraft({
-        tabel: 0, name: '', department: '', position: '', phone: '', orgId: '',
+        tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
         deptKey: 'sales', posKey: 'salesAgent',
       });
     } catch (e) {
@@ -450,10 +454,11 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           <div>
             <label style={labelStyle}>{t.empPhoneCol || 'Telefon'}</label>
             <input
+              type="tel"
               style={inputStyle}
               value={draft.phone}
-              onChange={e => onChangeDraft({ ...draft, phone: e.target.value })}
-              placeholder={t.empPhonePh || '(99) 000-00-00'}
+              onChange={e => onChangeDraft({ ...draft, phone: formatUzPhoneInput(e.target.value) })}
+              placeholder="+998 99 999 99 99"
             />
           </div>
 
@@ -587,7 +592,14 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               />
             </div>
             <button
-              onClick={() => { setSaveError(null); setShowAdd(true); }}
+              onClick={() => {
+                setSaveError(null);
+                setAddDraft({
+                  tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
+                  deptKey: 'sales', posKey: 'salesAgent',
+                });
+                setShowAdd(true);
+              }}
               disabled={!backendReady}
               style={{
                 padding: '8px 14px', borderRadius: 12, border: 'none',
@@ -657,7 +669,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 paddingTop: 8, borderTop: `1px solid ${D ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}`,
               }}>
                 <button
-                  onClick={() => { setEditRow(emp); setEditDraft({ ...emp }); }}
+                  onClick={() => { setEditRow(emp); setEditDraft({ ...emp, phone: formatUzPhoneInput(emp.phone || '') }); }}
                   style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                     padding: isSmall ? '7px 6px' : '8px', borderRadius: 9, border: `1px solid ${border}`,
@@ -738,7 +750,14 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
             {/* Add button */}
             <button
-              onClick={() => { setSaveError(null); setShowAdd(true); }}
+              onClick={() => {
+                setSaveError(null);
+                setAddDraft({
+                  tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
+                  deptKey: 'sales', posKey: 'salesAgent',
+                });
+                setShowAdd(true);
+              }}
               disabled={!backendReady}
               style={{
                 display: 'flex', alignItems: 'center', gap: 7,
@@ -886,7 +905,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {/* Edit */}
                         <button
-                          onClick={() => { setEditRow(emp); setEditDraft({ ...emp }); }}
+                          onClick={() => { setEditRow(emp); setEditDraft({ ...emp, phone: formatUzPhoneInput(emp.phone || '') }); }}
                           title={t.empEditBtn || "O'zgartirish"}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 5,

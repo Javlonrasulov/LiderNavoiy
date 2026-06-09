@@ -71,7 +71,17 @@ export class ClientPortalService {
       });
       if (distributor) return distributor;
     }
-    return client.distributor ?? null;
+
+    const linked = client.distributor ?? null;
+    if (linked?.id) {
+      const distributor = await this.distributorRepo.findOne({
+        where: { id: linked.id },
+        relations: ['user'],
+      });
+      if (distributor) return distributor;
+    }
+
+    return linked;
   }
 
   async getProfile(user: User) {
@@ -277,7 +287,7 @@ export class ClientPortalService {
   }
 
   productCategories() {
-    return this.productsService.getCategories();
+    return this.productsService.getCategories(true);
   }
 
   async getAnalytics(user: User, period: 'week' | 'month' | 'year' = 'month') {

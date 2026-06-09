@@ -145,7 +145,7 @@ export function InlineEmployeeMap({
         <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500 inline-block" /><span className={`text-[10px] ${sub}`}>{t.empOffline || 'Offline'}</span></div>
       </div>
 
-      <MapLayerSwitcher activeLayer={activeLayer} onChange={setActiveLayer} bottom={44} left={8} />
+      <MapLayerSwitcher activeLayer={activeLayer} onChange={setActiveLayer} bottom={44} left={8} rightInset={36} />
     </div>
   );
 }

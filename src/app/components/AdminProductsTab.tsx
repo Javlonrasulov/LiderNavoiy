@@ -6,9 +6,15 @@ import {
   Pencil, ChevronDown, ChevronUp, FolderPlus,
   ImagePlus, Smile, Maximize2, Minimize2,
 } from 'lucide-react';
-import { ADMIN_PRODUCTS, type AdminProduct } from '../data/adminProducts';
+import { type AdminProduct } from '../data/adminProducts';
 import { AddProductDrawer, type AddForm } from './AddProductDrawer';
 import { brandColor } from '../data/adminData';
+import { api } from '../api/client';
+import {
+  adminToCreatePayload,
+  adminToUpdatePayload,
+  backendToAdminProduct,
+} from '../api/productMapper';
 
 // ── Brand color helpers ────────────────────────────────────────────────────
 const BCOLORS: Record<string, string> = {
@@ -136,7 +142,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [search,          setSearch]          = useState('');
   const [selectedBrends,  setSelectedBrends]  = useState<Set<string>>(new Set());
   const [stockOnly,       setStockOnly]       = useState(false);
-  const [products,        setProducts]        = useState<AdminProduct[]>(ADMIN_PRODUCTS);
+  const [products,        setProducts]        = useState<AdminProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [viewMode,        setViewMode]        = useState<'list' | 'card'>(() =>
     typeof window !== 'undefined' ? (window.innerWidth < 768 ? 'card' : 'list') : 'list'
   );
@@ -151,8 +158,6 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
 
   // ── Category state ──────────────────────────────────────────────────────
   const [categories,       setCategories]       = useState<Category[]>([]);
-  // productCategoryMap: productId → categoryId (direct assignment)
-  const [productCatMap,    setProductCatMap]    = useState<Record<number, string>>({});
   const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
   const [catSectionOpen,   setCatSectionOpen]   = useState(true);
   // create/edit form
@@ -164,7 +169,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [newCatImage,      setNewCatImage]      = useState<string | null>(null);
   const [iconMode,         setIconMode]         = useState<'emoji' | 'image'>('emoji');
   // per-product picker open state
-  const [openPickerProdId, setOpenPickerProdId] = useState<number | null>(null);
+  const [openPickerProdId, setOpenPickerProdId] = useState<string | null>(null);
   // delete confirmation modal
   const [deleteCatConfirm, setDeleteCatConfirm] = useState<Category | null>(null);
   const catNameRef  = useRef<HTMLInputElement>(null);
@@ -174,6 +179,36 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     const ref = isFullscreen ? prodFsTableRef : prodTableRef;
     if (ref.current) ref.current.scrollBy({ left: dir === 'right' ? 220 : -220, behavior: 'smooth' });
   };
+
+  const buildCategoriesFromProducts = (items: AdminProduct[]): Category[] => {
+    const names = Array.from(new Set(items.map(p => p.gruppa).filter(Boolean)));
+    return names.map((name, index) => ({
+      id: name,
+      name,
+      color: CAT_PALETTE[index % CAT_PALETTE.length],
+      emoji: CAT_EMOJIS[index % CAT_EMOJIS.length],
+    }));
+  };
+
+  const loadProducts = async () => {
+    setProductsLoading(true);
+    try {
+      const data = await api.getProducts();
+      const mapped = data.map((item) => backendToAdminProduct(item, viewOrg === 'all' ? 'boran' : viewOrg));
+      setProducts(mapped);
+      setCategories(buildCategoriesFromProducts(mapped));
+    } catch (error) {
+      console.error('Failed to load products', error);
+      setProducts([]);
+      setCategories([]);
+    } finally {
+      setProductsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProducts();
+  }, []);
 
   useEffect(() => {
     const handleResize = () => { if (window.innerWidth < 768) setViewMode('card'); };
@@ -198,53 +233,69 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     setAddForm(prev => ({ ...prev, [k]: v }));
   }
 
-  function saveNewProduct() {
-    if (editingProduct) {
-      // ── Update existing product ────────────────────────────────────────
-      setProducts(prev => prev.map(p =>
-        p.id === editingProduct.id
-          ? {
-              ...p,
-              ismi: addForm.ismi || p.ismi,
-              org: addForm.org || p.org,
-              tipTo: (addForm.tipTo as any) || p.tipTo,
-              artikul: addForm.artikul || p.artikul,
-              brend: addForm.brend || p.brend,
-              gruppa: addForm.gruppa || p.gruppa,
-              srok: Number(addForm.srok) || p.srok,
-              postavshik: addForm.postavshik || p.postavshik,
-              shtUpakovka: Number(addForm.shtUpakovka) || p.shtUpakovka,
-              netto: Number(addForm.netto) || p.netto,
-              brutto: Number(addForm.brutto) || p.brutto,
-              rtl: Number(addForm.rtl) || p.rtl,
-              shtrixKod: addForm.shtrixKod || p.shtrixKod,
-              ikpu: addForm.ikpu || p.ikpu,
-              balance: Number(addForm.balance) || p.balance,
-            }
-          : p
-      ));
-      setEditingProduct(null);
-    } else {
-      // ── Add new product ────────────────────────────────────────────────
-      const newId = Math.max(...products.map(p => p.id), 0) + 1;
-      const newKod = `10${String(newId + 800).padStart(3, '0')}`;
-      const np: AdminProduct = {
-        id: newId, kod: newKod,
-        org: addForm.org, ismi: addForm.ismi || 'Yangi mahsulot',
-        p1: 9, tipTo: (addForm.tipTo as any) || 'Штучн.',
-        artikul: addForm.artikul, brend: addForm.brend,
-        gruppa: addForm.gruppa, srok: Number(addForm.srok) || 12,
-        postavshik: addForm.postavshik, shtUpakovka: Number(addForm.shtUpakovka) || 1,
-        netto: Number(addForm.netto) || 0, brutto: Number(addForm.brutto) || 0,
-        exId: newId + 800, rtl: Number(addForm.rtl) || 0,
-        shtrixKod: addForm.shtrixKod || `46001${String(newId).padStart(11, '0')}`,
-        ikpu: addForm.ikpu || `102${String(newId).padStart(5, '0')}`,
-        balance: Number(addForm.balance) || 0,
-      };
-      setProducts(prev => [np, ...prev]);
+  async function saveNewProduct() {
+    try {
+      if (editingProduct) {
+        const updated: AdminProduct = {
+          ...editingProduct,
+          ismi: addForm.ismi || editingProduct.ismi,
+          org: addForm.org || editingProduct.org,
+          tipTo: (addForm.tipTo as AdminProduct['tipTo']) || editingProduct.tipTo,
+          artikul: addForm.artikul || editingProduct.artikul,
+          brend: addForm.brend || editingProduct.brend,
+          gruppa: addForm.gruppa || editingProduct.gruppa,
+          srok: Number(addForm.srok) || editingProduct.srok,
+          postavshik: addForm.postavshik || editingProduct.postavshik,
+          shtUpakovka: Number(addForm.shtUpakovka) || editingProduct.shtUpakovka,
+          netto: Number(addForm.netto) || editingProduct.netto,
+          brutto: Number(addForm.brutto) || editingProduct.brutto,
+          rtl: Number(addForm.rtl) || editingProduct.rtl,
+          shtrixKod: addForm.shtrixKod || editingProduct.shtrixKod,
+          ikpu: addForm.ikpu || editingProduct.ikpu,
+          balance: Number(addForm.balance) || editingProduct.balance,
+        };
+        const saved = await api.updateProduct(editingProduct.id, adminToUpdatePayload(updated));
+        const mapped = backendToAdminProduct(saved, updated.org);
+        setProducts(prev => prev.map(p => (p.id === editingProduct.id ? mapped : p)));
+        setCategories(buildCategoriesFromProducts(
+          products.map(p => (p.id === editingProduct.id ? mapped : p)),
+        ));
+        setEditingProduct(null);
+      } else {
+        const suffix = String(Date.now()).slice(-5);
+        const newKod = addForm.artikul?.trim() || `10${suffix}`;
+        const np: AdminProduct = {
+          id: `temp-${suffix}`,
+          kod: newKod,
+          org: addForm.org || (viewOrg === 'all' ? 'boran' : viewOrg),
+          ismi: addForm.ismi || 'Yangi mahsulot',
+          p1: 9,
+          tipTo: (addForm.tipTo as AdminProduct['tipTo']) || 'Штучн.',
+          artikul: addForm.artikul || newKod,
+          brend: addForm.brend,
+          gruppa: addForm.gruppa || addForm.brend,
+          srok: Number(addForm.srok) || 12,
+          postavshik: addForm.postavshik,
+          shtUpakovka: Number(addForm.shtUpakovka) || 1,
+          netto: Number(addForm.netto) || 0,
+          brutto: Number(addForm.brutto) || 0,
+          exId: Number(suffix) || 0,
+          rtl: Number(addForm.rtl) || 0,
+          shtrixKod: addForm.shtrixKod || `46001${suffix.padStart(11, '0')}`,
+          ikpu: addForm.ikpu || `102${suffix.padStart(5, '0')}`,
+          balance: Number(addForm.balance) || 0,
+        };
+        const saved = await api.createProduct(adminToCreatePayload(np));
+        const mapped = backendToAdminProduct(saved, np.org);
+        const nextProducts = [mapped, ...products];
+        setProducts(nextProducts);
+        setCategories(buildCategoriesFromProducts(nextProducts));
+      }
+      setShowAddModal(false);
+      setAddForm(emptyForm);
+    } catch (error) {
+      console.error('Failed to save product', error);
     }
-    setShowAddModal(false);
-    setAddForm(emptyForm);
   }
 
   function openEditProduct(p: AdminProduct) {
@@ -295,27 +346,26 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   }
 
   // ── Get category for a product (direct assignment) ────────────────────
-  function getProductCat(productId: number): Category | null {
-    const catId = productCatMap[productId];
-    if (!catId) return null;
-    return categories.find(c => c.id === catId) ?? null;
+  function getProductCat(productId: string): Category | null {
+    const product = products.find(p => p.id === productId);
+    if (!product?.gruppa) return null;
+    return categories.find(c => c.name === product.gruppa) ?? null;
   }
 
   // ── Category product counts ───────────────────────────────────────────
   const catCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const p of orgFilteredProducts) {
-      const catId = productCatMap[p.id];
-      if (catId) counts[catId] = (counts[catId] ?? 0) + 1;
+      if (p.gruppa) counts[p.gruppa] = (counts[p.gruppa] ?? 0) + 1;
     }
     return counts;
-  }, [orgFilteredProducts, productCatMap]);
+  }, [orgFilteredProducts]);
 
   // ── Filter by selected category ───────────────────────────────────────
   const catFilteredProducts = useMemo(() => {
     if (!selectedCatId) return orgFilteredProducts;
-    return orgFilteredProducts.filter(p => productCatMap[p.id] === selectedCatId);
-  }, [orgFilteredProducts, selectedCatId, productCatMap]);
+    return orgFilteredProducts.filter(p => p.gruppa === selectedCatId);
+  }, [orgFilteredProducts, selectedCatId]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -377,9 +427,23 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       image: iconMode === 'image' ? (newCatImage ?? undefined) : undefined,
     };
     if (editCatId) {
-      setCategories(prev => prev.map(c => c.id === editCatId ? { ...c, ...catData } : c));
+      const oldCat = categories.find(c => c.id === editCatId);
+      setCategories(prev => prev.map(c => c.id === editCatId ? { ...c, ...catData, id: catData.name } : c));
+      if (oldCat && oldCat.name !== catData.name) {
+        const affected = products.filter(p => p.gruppa === oldCat.name);
+        Promise.all(
+          affected.map(async (product) => {
+            const updated = { ...product, gruppa: catData.name };
+            const saved = await api.updateProduct(product.id, adminToUpdatePayload(updated));
+            return backendToAdminProduct(saved, product.org);
+          }),
+        ).then((mapped) => {
+          const byId = new Map(mapped.map(item => [item.id, item]));
+          setProducts(prev => prev.map(p => byId.get(p.id) ?? p));
+        }).catch(console.error);
+      }
     } else {
-      setCategories(prev => [...prev, { id: `cat-${Date.now()}`, ...catData }]);
+      setCategories(prev => [...prev, { id: catData.name, ...catData }]);
     }
     setShowCatForm(false);
     setEditCatId(null);
@@ -396,24 +460,42 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   }
 
   function deleteCat(id: string) {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
     setCategories(prev => prev.filter(c => c.id !== id));
-    // Remove from all products
-    setProductCatMap(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(k => { if (next[+k] === id) delete next[+k]; });
-      return next;
-    });
     if (selectedCatId === id) setSelectedCatId(null);
+    const affected = products.filter(p => p.gruppa === cat.name);
+    if (affected.length > 0) {
+      Promise.all(
+        affected.map(async (product) => {
+          const updated = { ...product, gruppa: '' };
+          const saved = await api.updateProduct(product.id, adminToUpdatePayload(updated));
+          return backendToAdminProduct(saved, product.org);
+        }),
+      ).then((mapped) => {
+        const byId = new Map(mapped.map(item => [item.id, item]));
+        const nextProducts = products.map(p => byId.get(p.id) ?? p);
+        setProducts(nextProducts);
+        setCategories(buildCategoriesFromProducts(nextProducts));
+      }).catch(console.error);
+    }
   }
 
   // ── Assign product to category ─────────────────────────────────────────
-  function assignProductCat(productId: number, catId: string | null) {
-    setProductCatMap(prev => {
-      const next = { ...prev };
-      if (catId === null) delete next[productId];
-      else next[productId] = catId;
-      return next;
-    });
+  async function assignProductCat(productId: string, catId: string | null) {
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+    const categoryName = catId ? categories.find(c => c.id === catId)?.name ?? '' : '';
+    const updated: AdminProduct = { ...product, gruppa: categoryName };
+    try {
+      const saved = await api.updateProduct(productId, adminToUpdatePayload(updated));
+      const mapped = backendToAdminProduct(saved, product.org);
+      const nextProducts = products.map(p => (p.id === productId ? mapped : p));
+      setProducts(nextProducts);
+      setCategories(buildCategoriesFromProducts(nextProducts));
+    } catch (error) {
+      console.error('Failed to assign category', error);
+    }
   }
 
   const thCls = `px-3 py-3 text-left text-[11px] font-semibold ${sub} whitespace-nowrap select-none`;
@@ -1386,9 +1468,17 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     {t.cancelBtn}
                   </button>
                   <button
-                    onClick={() => {
-                      setProducts(v => v.filter(x => x.id !== p.id));
-                      setDeleteProductConfirm(null);
+                    onClick={async () => {
+                      try {
+                        await api.deleteProduct(p.id);
+                        const nextProducts = products.filter(x => x.id !== p.id);
+                        setProducts(nextProducts);
+                        setCategories(buildCategoriesFromProducts(nextProducts));
+                      } catch (error) {
+                        console.error('Failed to delete product', error);
+                      } finally {
+                        setDeleteProductConfirm(null);
+                      }
                     }}
                     className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
                     style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}

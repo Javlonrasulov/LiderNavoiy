@@ -16,6 +16,13 @@ import {
   CreateAppUserDto,
   UpdateAppUserDto,
 } from './dto/app-user.dto';
+import {
+  CreateSystemUserDto,
+  SystemUserResponseDto,
+  UpdateSystemUserDto,
+} from './dto/system-user.dto';
+
+const PROTECTED_USERNAMES = ['admin'];
 
 @Injectable()
 export class UsersService {
@@ -155,6 +162,111 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     user.isActive = false;
     await this.userRepo.save(user);
+  }
+
+  /* ─── Admin panel (system) users ─── */
+
+  async findAllSystem(): Promise<SystemUserResponseDto[]> {
+    const users = await this.userRepo.find({
+      where: { role: In([UserRole.ADMIN, UserRole.MANAGER]) },
+      order: { createdAt: 'DESC' },
+    });
+    return users.map((u) => this.toSystemDto(u));
+  }
+
+  async createSystem(dto: CreateSystemUserDto): Promise<SystemUserResponseDto> {
+    const username = dto.username.trim();
+    const existing = await this.userRepo.findOne({ where: { username } });
+    if (existing) {
+      if (!existing.isActive && this.isSystemRole(existing.role)) {
+        return this.updateSystem(existing.id, {
+          username,
+          password: dto.password,
+          fullName: dto.fullName,
+          position: dto.position,
+          role: dto.role,
+          permissions: dto.permissions,
+          isActive: dto.isActive ?? true,
+        });
+      }
+      throw new ConflictException('Username already exists');
+    }
+
+    const role = dto.role ?? UserRole.MANAGER;
+    const user = this.userRepo.create({
+      username,
+      passwordHash: await this.authService.hashPassword(dto.password),
+      fullName: dto.fullName.trim(),
+      role,
+      position: dto.position?.trim() || null,
+      permissions: this.normalizePermissions(role, dto.permissions),
+      isActive: dto.isActive ?? true,
+    });
+    const saved = await this.userRepo.save(user);
+    return this.toSystemDto(saved);
+  }
+
+  async updateSystem(id: string, dto: UpdateSystemUserDto): Promise<SystemUserResponseDto> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!this.isSystemRole(user.role)) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (dto.username && dto.username.trim() !== user.username) {
+      await this.ensureUsernameAvailable(dto.username.trim(), id);
+      user.username = dto.username.trim();
+    }
+    if (dto.fullName?.trim()) user.fullName = dto.fullName.trim();
+    if (dto.position !== undefined) user.position = dto.position.trim() || null;
+    if (dto.role) user.role = dto.role;
+    if (dto.permissions !== undefined) {
+      user.permissions = this.normalizePermissions(user.role, dto.permissions);
+    }
+    if (dto.isActive !== undefined) user.isActive = dto.isActive;
+    if (dto.password?.trim()) {
+      user.passwordHash = await this.authService.hashPassword(dto.password);
+    }
+
+    const saved = await this.userRepo.save(user);
+    return this.toSystemDto(saved);
+  }
+
+  async deactivateSystem(id: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (this.isProtectedSystemUser(user)) {
+      throw new ConflictException('Bu foydalanuvchini o\'chirib bo\'lmaydi');
+    }
+    user.isActive = false;
+    await this.userRepo.save(user);
+  }
+
+  private isSystemRole(role: UserRole): boolean {
+    return role === UserRole.ADMIN || role === UserRole.MANAGER;
+  }
+
+  private isProtectedSystemUser(user: User): boolean {
+    return PROTECTED_USERNAMES.includes(user.username.toLowerCase());
+  }
+
+  private normalizePermissions(role: UserRole, permissions?: string[] | null): string[] | null {
+    if (role === UserRole.ADMIN) return null;
+    return permissions ?? [];
+  }
+
+  private toSystemDto(user: User): SystemUserResponseDto {
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      position: user.position,
+      permissions: user.permissions ?? [],
+      isActive: user.isActive,
+      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+      isProtected: this.isProtectedSystemUser(user),
+    };
   }
 
   private async ensureUsernameAvailable(username: string, excludeId?: string) {

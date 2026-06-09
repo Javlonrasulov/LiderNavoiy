@@ -15,9 +15,23 @@ export interface AuthResponse {
     username: string;
     fullName: string;
     role: string;
+    position?: string | null;
+    permissions?: string[] | null;
     distributorId?: string;
     companyName?: string;
   };
+}
+
+export interface SystemUserRecord {
+  id: string;
+  username: string;
+  fullName: string;
+  role: string;
+  position: string | null;
+  permissions: string[];
+  isActive: boolean;
+  lastLoginAt: string | null;
+  isProtected: boolean;
 }
 
 export interface AppUserRecord {
@@ -45,6 +59,58 @@ export interface Distributor {
   lastLocationAt: string | null;
   isOnline: boolean;
   user?: { fullName: string; username: string; isActive?: boolean };
+}
+
+export interface BackendCompany {
+  id: string;
+  name: string;
+  shortName: string | null;
+  icon: string | null;
+  color: string | null;
+  description: string | null;
+  agents: number;
+  clients: number;
+}
+
+export interface AdminDashboardData {
+  kpi: {
+    sales: number;
+    payments: number;
+    debt: number;
+    plan: number;
+    planPct: number;
+    salesTrend: number;
+    paymentsTrend: number;
+    debtTrend: number;
+    planTrend: number;
+  };
+  clientCategories: { name: string; value: number; color: string }[];
+  topAgents: {
+    distributorId: string;
+    name: string;
+    avatar: string;
+    sales: number;
+    plan: number;
+    planPct: number;
+    orgId: string;
+    status: string;
+  }[];
+  employeeLocations: {
+    distributorId: string;
+    name: string;
+    avatar: string;
+    role: 'agent' | 'delivery';
+    online: boolean;
+    lastSeen: string;
+    lat: number;
+    lng: number;
+    orgId: string;
+  }[];
+  salesChart: {
+    day: { month: string; sales: number; payments: number }[];
+    week: { month: string; sales: number; payments: number }[];
+    month: { month: string; sales: number; payments: number }[];
+  };
 }
 
 export interface LocationPoint {
@@ -194,6 +260,8 @@ export const api = {
 
   getTashkentTime: () => request<TashkentTimeInfo>('/health/time'),
 
+  getCompanies: () => request<BackendCompany[]>('/companies'),
+
   // ─── App users (APK login) ───
   listAppUsers: () => request<AppUserRecord[]>('/users/app'),
 
@@ -230,6 +298,40 @@ export const api = {
 
   deactivateAppUser: (id: string) =>
     request<void>(`/users/app/${id}`, { method: 'DELETE' }),
+
+  // ─── System users (admin panel) ───
+  listSystemUsers: () => request<SystemUserRecord[]>('/users/system'),
+
+  createSystemUser: (body: {
+    username: string;
+    password: string;
+    fullName: string;
+    position?: string;
+    role?: string;
+    permissions?: string[];
+    isActive?: boolean;
+  }) =>
+    request<SystemUserRecord>('/users/system', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateSystemUser: (id: string, body: {
+    username?: string;
+    password?: string;
+    fullName?: string;
+    position?: string;
+    role?: string;
+    permissions?: string[];
+    isActive?: boolean;
+  }) =>
+    request<SystemUserRecord>(`/users/system/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deactivateSystemUser: (id: string) =>
+    request<void>(`/users/system/${id}`, { method: 'DELETE' }),
 
   // ─── Distributors ───
   getDistributors: (companyId?: string) =>
@@ -338,6 +440,78 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
+  // ─── Products ───
+  getProducts: (category?: string) =>
+    request<Array<{
+      id: string;
+      code: string;
+      name: string;
+      category: string | null;
+      brand: string | null;
+      price: number | string;
+      unit: string;
+      stockBalance: number | string;
+      imageUrl?: string | null;
+      isActive?: boolean;
+    }>>(`/products${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+
+  getProductCategories: () =>
+    request<Array<{ category: string }>>('/products/categories'),
+
+  createProduct: (body: {
+    code: string;
+    name: string;
+    category?: string;
+    brand?: string;
+    price: number;
+    unit: string;
+    stockBalance?: number;
+    imageUrl?: string;
+  }) =>
+    request<{
+      id: string;
+      code: string;
+      name: string;
+      category: string | null;
+      brand: string | null;
+      price: number | string;
+      unit: string;
+      stockBalance: number | string;
+      imageUrl?: string | null;
+    }>('/products', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateProduct: (id: string, body: {
+    code?: string;
+    name?: string;
+    category?: string;
+    brand?: string;
+    price?: number;
+    unit?: string;
+    stockBalance?: number;
+    imageUrl?: string;
+    isActive?: boolean;
+  }) =>
+    request<{
+      id: string;
+      code: string;
+      name: string;
+      category: string | null;
+      brand: string | null;
+      price: number | string;
+      unit: string;
+      stockBalance: number | string;
+      imageUrl?: string | null;
+    }>(`/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteProduct: (id: string) =>
+    request<void>(`/products/${id}`, { method: 'DELETE' }),
+
   // ─── Lines ───
   getLines: (companyId?: string) =>
     request<Array<{
@@ -386,6 +560,14 @@ export const api = {
 
   deleteLine: (id: string) =>
     request<{ ok: boolean }>(`/lines/${id}`, { method: 'DELETE' }),
+
+  // ─── Admin dashboard ───
+  getAdminDashboard: (companyIds?: string[]) => {
+    const qs = companyIds?.length
+      ? `?${companyIds.map(id => `companyId=${encodeURIComponent(id)}`).join('&')}`
+      : '';
+    return request<AdminDashboardData>(`/dashboard/admin${qs}`);
+  },
 
   // ─── Client requests (agent → admin approval) ───
   getClientRequests: (companyId?: string) =>

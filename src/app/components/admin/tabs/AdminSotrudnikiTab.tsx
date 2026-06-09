@@ -16,6 +16,7 @@ import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
 import { MiniBarChart } from '../../MiniCharts';
 import { api, type Distributor } from '../../../api/client';
+import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 
 interface Props {
   D: boolean;
@@ -136,11 +137,10 @@ function toEmployee(a: AgentRow, i: number, fromBackend = false) {
   const line1 = LINES[(a.id * 3 + i) % LINES.length];
   const line2 = LINES[(a.id * 7 + i + 5) % LINES.length];
   const lines = count === 2 ? [line1, line2] : [line1];
-  const fallbackPhone = `+998 9${(i % 9) + 1} ${String(30000000 + (i * 1234567) % 90000000).slice(0, 7)}`;
   return {
     ...a,
     role: fromBackend ? 'Agent' : ROLES[i % ROLES.length],
-    phone: fromBackend && a.phone?.trim() ? a.phone.trim() : fallbackPhone,
+    phone: a.phone?.trim() || '',
     city: CITIES_LIST[i % CITIES_LIST.length],
     hireDate: `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     liniyaCount: count,
@@ -317,7 +317,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   const [deleteEmp, setDeleteEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [trackingEmp, setTrackingEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [saved, setSaved]         = useState(false);
-  const [form, setForm]           = useState({ name: '', role: '', phone: '', city: '' });
+  const [form, setForm]           = useState({ name: '', role: '', phone: UZ_PHONE_DEFAULT, city: '' });
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [mapKey, setMapKey]       = useState(0);
   const [mapFullscreen, setMapFullscreen] = useState(false);
@@ -426,33 +427,46 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   };
 
   const openEdit = (e: ReturnType<typeof toEmployee>) => {
-    setForm({ name: e.name, role: e.role, phone: e.phone, city: e.city });
+    setSaveError(null);
+    setForm({ name: e.name, role: e.role, phone: formatUzPhoneInput(e.phone || ''), city: e.city });
     setEditEmp(e);
   };
   const openAdd = () => {
-    setForm({ name: '', role: ROLES[0], phone: '', city: CITIES_LIST[0] });
+    setForm({ name: '', role: ROLES[0], phone: UZ_PHONE_DEFAULT, city: CITIES_LIST[0] });
     setShowAdd(true);
   };
   const saveEdit = async () => {
-    if (!form.name.trim()) return;
-    if (hasApiToken() && (editEmp?.backendUserId || editEmp?.distributorId)) {
+    if (!form.name.trim() || !editEmp) return;
+    setSaveError(null);
+
+    const phone = form.phone.trim();
+    const distributorId = editEmp.distributorId
+      ?? backendAgents.find(a => a.backendUserId === editEmp.backendUserId)?.distributorId;
+
+    if (hasApiToken() && (editEmp.backendUserId || distributorId)) {
       try {
-        const phone = form.phone.trim() || undefined;
-        if (editEmp?.backendUserId) {
+        if (editEmp.backendUserId) {
           await api.updateAppUser(editEmp.backendUserId, {
             fullName: form.name.trim(),
-            phone,
+            phone: phone || undefined,
           });
         }
-        if (editEmp?.distributorId) {
-          await api.updateDistributor(editEmp.distributorId, { phone: form.phone.trim() });
+        if (distributorId) {
+          await api.updateDistributor(distributorId, { phone });
         }
         await refreshAgents();
-      } catch {
-        /* keep local row updated */
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : (t.saveFailed || 'Saqlashda xatolik');
+        setSaveError(msg);
+        return;
       }
     }
-    setLocalEmps(prev => prev.map(e => e.id === editEmp!.id ? { ...e, ...form, name: form.name.trim() } : e));
+
+    setLocalEmps(prev => prev.map(e => (
+      e.id === editEmp.id
+        ? { ...e, ...form, name: form.name.trim(), phone }
+        : e
+    )));
     setSaved(true);
     setTimeout(() => { setSaved(false); setEditEmp(null); }, 900);
   };
@@ -475,7 +489,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       status: 'active',
       orgId,
       role: form.role || ROLES[0],
-      phone: form.phone.trim() || '+998 90 000 0000',
+      phone: form.phone.trim(),
       city: form.city.trim() || CITIES_LIST[0],
       hireDate: new Date().toISOString().slice(0, 10),
       liniyaCount: 1,
@@ -487,7 +501,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       return next;
     });
     setShowAdd(false);
-    setForm({ name: '', role: ROLES[0], phone: '', city: CITIES_LIST[0] });
+    setForm({ name: '', role: ROLES[0], phone: UZ_PHONE_DEFAULT, city: CITIES_LIST[0] });
   };
   const confirmDelete = () => {
     setLocalEmps(prev => prev.filter(e => e.id !== deleteEmp!.id));
@@ -1027,7 +1041,13 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               </div>
               <div>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formPhone || 'TELEFON'}</div>
-                <input style={InputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+998 90 000 0000" />
+                <input
+                  type="tel"
+                  style={InputStyle}
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: formatUzPhoneInput(e.target.value) }))}
+                  placeholder="+998 99 999 99 99"
+                />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
@@ -1071,8 +1091,17 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               </div>
               <div>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formPhone || 'TELEFON'}</div>
-                <input style={InputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                <input
+                  type="tel"
+                  style={InputStyle}
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: formatUzPhoneInput(e.target.value) }))}
+                  placeholder="+998 99 999 99 99"
+                />
               </div>
+              {saveError && (
+                <div style={{ fontSize: 12, color: red, fontWeight: 600 }}>{saveError}</div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
               <button onClick={() => setEditEmp(null)} style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${border}`, background: 'transparent', color: txt, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{t.cancelBtn || 'Bekor'}</button>
@@ -1323,7 +1352,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Phone size={11} color={muted} />
-                  <span style={{ fontSize: 11, color: muted }}>{emp.phone}</span>
+                  <span style={{ fontSize: 11, color: emp.phone ? muted : red }}>{emp.phone || '—'}</span>
                 </div>
                 {(emp.lines || []).slice(0, 1).map(ln => (
                   <div key={ln.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1402,7 +1431,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               {/* Phone */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <Phone size={11} color={muted} />
-                <span style={{ fontSize: 11, color: muted }}>{emp.phone}</span>
+                <span style={{ fontSize: 11, color: emp.phone ? muted : red }}>{emp.phone || '—'}</span>
               </div>
               {/* City */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

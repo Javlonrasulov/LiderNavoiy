@@ -50,6 +50,15 @@ class CatalogViewModel @Inject constructor(
         }
     }
 
+    fun refresh() {
+        val category = if (_uiState.value.activeCategoryIndex == 0) {
+            null
+        } else {
+            _uiState.value.categories.getOrNull(_uiState.value.activeCategoryIndex - 1)
+        }
+        load(category)
+    }
+
     fun onSearchChange(value: String) = _uiState.update { it.copy(search = value) }
 
     fun onCategorySelected(index: Int) {

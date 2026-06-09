@@ -1,11 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
   LogOut, Moon, Sun, Globe, ChevronDown, Users,
   Check, ArrowRight, Plus, Pencil, X, Upload, Smile, Image as ImageIcon,
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeContext';
-import { useAdminAuth, COMPANIES, Company } from '../components/AdminAuthContext';
+import { useAdminAuth, type Company } from '../components/AdminAuthContext';
+import { useCompanies } from '../components/CompaniesContext';
 import { useLang, Lang } from '../components/LangContext';
 
 /* ─── Types ─────────────────────────────────────────────── */
@@ -102,10 +103,14 @@ export default function AdminSelectCompany() {
   const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  /* companies local state (starts from context) */
-  const [companies, setCompanies] = useState<LocalCompany[]>(() =>
-    COMPANIES.map(c => ({ ...c }))
-  );
+  const { companies: apiCompanies } = useCompanies();
+
+  /* companies local state (API + local edits for add/edit UI) */
+  const [companies, setCompanies] = useState<LocalCompany[]>([]);
+
+  useEffect(() => {
+    setCompanies(apiCompanies.map(c => ({ ...c })));
+  }, [apiCompanies]);
 
   /* modal state */
   const [modalMode, setModalMode] = useState<'add' | 'edit' | null>(null);

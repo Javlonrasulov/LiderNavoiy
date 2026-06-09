@@ -111,6 +111,8 @@ export class AuthService {
         username: user.username,
         fullName: user.fullName,
         role: user.role,
+        position: user.position,
+        permissions: user.permissions,
         distributorId: profile?.id,
         companyName: profile?.companyName ?? undefined,
         clientId: user.clientId ?? undefined,

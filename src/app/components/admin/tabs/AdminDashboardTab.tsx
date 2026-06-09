@@ -14,7 +14,17 @@ interface Props {
   sub: string;
   t: Record<string, string>;
   showBalances: boolean;
-  activeKpi: { sales: number; payments: number; debt: number; plan: number; planPct: number };
+  activeKpi: {
+    sales: number;
+    payments: number;
+    debt: number;
+    plan: number;
+    planPct: number;
+    salesTrend?: number;
+    paymentsTrend?: number;
+    debtTrend?: number;
+    planTrend?: number;
+  };
   salesPeriod: 'kun' | 'hafta' | 'oy';
   setSalesPeriod: (p: 'kun' | 'hafta' | 'oy') => void;
   aggSalesChart: ChartRow[];
@@ -43,15 +53,20 @@ export function AdminDashboardTab({
   activeAgents, selectedCompanyIds,
   setShowEmpMap, setTab, setSelectedAgent,
 }: Props) {
+  const formatTrend = (n?: number) => {
+    const v = n ?? 0;
+    return `${v > 0 ? '+' : ''}${v}%`;
+  };
+
   return (
     <div className="space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: t.totalSales, value: fmt(activeKpi.sales), change: '+12%', up: true, grad: 'from-indigo-600 to-purple-600', icon: TrendingUp },
-          { label: t.totalPayments, value: fmt(activeKpi.payments), change: '+8%', up: true, grad: 'from-emerald-600 to-teal-600', icon: DollarSign },
-          { label: t.totalDebt, value: fmt(activeKpi.debt), change: '-3%', up: false, grad: 'from-rose-600 to-pink-600', icon: AlertCircle },
-          { label: t.planExec, value: `${activeKpi.planPct}%`, change: '+5%', up: true, grad: 'from-orange-500 to-amber-500', icon: Star },
+          { label: t.totalSales, value: fmt(activeKpi.sales), change: formatTrend(activeKpi.salesTrend), up: (activeKpi.salesTrend ?? 0) >= 0, grad: 'from-indigo-600 to-purple-600', icon: TrendingUp },
+          { label: t.totalPayments, value: fmt(activeKpi.payments), change: formatTrend(activeKpi.paymentsTrend), up: (activeKpi.paymentsTrend ?? 0) >= 0, grad: 'from-emerald-600 to-teal-600', icon: DollarSign },
+          { label: t.totalDebt, value: fmt(activeKpi.debt), change: formatTrend(activeKpi.debtTrend), up: (activeKpi.debtTrend ?? 0) <= 0, grad: 'from-rose-600 to-pink-600', icon: AlertCircle },
+          { label: t.planExec, value: `${activeKpi.planPct}%`, change: formatTrend(activeKpi.planTrend), up: (activeKpi.planTrend ?? 0) >= 0, grad: 'from-orange-500 to-amber-500', icon: Star },
         ].map((k, i) => {
           const Icon = k.icon;
           return (
@@ -197,6 +212,11 @@ export function AdminDashboardTab({
             </button>
           </div>
           <div className="divide-y divide-inherit">
+            {activeAgents.length === 0 && (
+              <p className={`px-5 py-8 text-center text-sm ${sub}`}>
+                {t.noData ?? 'Ma\'lumot yo\'q'}
+              </p>
+            )}
             {[...activeAgents].sort((a, b) => b.sales - a.sales).slice(0, 5).map((agent, i) => {
               const p = Math.round((agent.sales / agent.plan) * 100);
               const orgInfo = COMPANIES.find(c => c.id === agent.orgId);

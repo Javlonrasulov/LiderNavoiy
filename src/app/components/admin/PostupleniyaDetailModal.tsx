@@ -39,6 +39,8 @@ export interface PostRowRef {
   sum:      number;
   netto:    number;
   type:     'opt' | 'chakana' | 'ishlab';
+  author:   string;
+  authorId?: string;
 }
 
 interface Props {
@@ -124,7 +126,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
     { label: t.postSupplier,  value: row.supplier },
     { label: t.detPoluchatel, value: row.org },
     { label: t.postDir,       value: row.dir },
-    { label: t.detAvtor,      value:'Фарноков Жасур' },
+    { label: t.detAvtor,      value: row.author || '—' },
     { label: t.postWarehouse, value: row.warehouse },
   ];
 

@@ -11,6 +11,7 @@ import { COMPANIES } from '../../AdminAuthContext';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from '../../MapLayerSwitcher';
 import L from 'leaflet';
 import { DayHistoryPanel } from '../DayHistoryPanel';
+import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 
 interface Props {
   D: boolean;
@@ -245,7 +246,7 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
   const [editEmp, setEditEmp]     = useState<ReturnType<typeof toDelivery> | null>(null);
   const [deleteEmp, setDeleteEmp] = useState<ReturnType<typeof toDelivery> | null>(null);
   const [saved, setSaved]         = useState(false);
-  const [form, setForm]           = useState({ name: '', role: '', phone: '', city: '' });
+  const [form, setForm]           = useState({ name: '', role: '', phone: UZ_PHONE_DEFAULT, city: '' });
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [mapKey, setMapKey]       = useState(0);
   const [listFilter, setListFilter] = useState<'all' | 'delivered' | 'pending'>('all');
@@ -292,7 +293,7 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
   };
 
   const openEdit = (e: ReturnType<typeof toDelivery>) => {
-    setForm({ name: e.name, role: e.role, phone: e.phone, city: e.city });
+    setForm({ name: e.name, role: e.role, phone: formatUzPhoneInput(e.phone || ''), city: e.city });
     setEditEmp(e);
   };
   const saveEdit = () => {
@@ -538,7 +539,13 @@ export function AdminDostavkaTab({ D, card, sub, t, activeAgents, selectedCompan
               </div>
               <div>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 4, fontWeight: 600 }}>{t.formPhone || 'TELEFON'}</div>
-                <input style={InputStyle} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                <input
+                  type="tel"
+                  style={InputStyle}
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: formatUzPhoneInput(e.target.value) }))}
+                  placeholder="+998 99 999 99 99"
+                />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>

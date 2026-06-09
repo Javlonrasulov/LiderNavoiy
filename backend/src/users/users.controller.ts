@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { CreateAppUserDto, UpdateAppUserDto } from './dto/app-user.dto';
+import { CreateSystemUserDto, UpdateSystemUserDto } from './dto/system-user.dto';
 import { UsersService } from './users.service';
 
 @ApiTags('Users')
@@ -34,5 +35,29 @@ export class UsersController {
   @ApiOperation({ summary: 'Deactivate mobile app user' })
   deactivateAppUser(@Param('id') id: string) {
     return this.usersService.deactivate(id);
+  }
+
+  @Get('system')
+  @ApiOperation({ summary: 'List admin panel users' })
+  listSystemUsers() {
+    return this.usersService.findAllSystem();
+  }
+
+  @Post('system')
+  @ApiOperation({ summary: 'Create admin panel user' })
+  createSystemUser(@Body() dto: CreateSystemUserDto) {
+    return this.usersService.createSystem(dto);
+  }
+
+  @Patch('system/:id')
+  @ApiOperation({ summary: 'Update admin panel user' })
+  updateSystemUser(@Param('id') id: string, @Body() dto: UpdateSystemUserDto) {
+    return this.usersService.updateSystem(id, dto);
+  }
+
+  @Delete('system/:id')
+  @ApiOperation({ summary: 'Deactivate admin panel user' })
+  deactivateSystemUser(@Param('id') id: string) {
+    return this.usersService.deactivateSystem(id);
   }
 }

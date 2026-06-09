@@ -38,6 +38,14 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
+  /** Admin panel lavozimi (Operator, Buxgalter, ...) */
+  @Column({ type: 'varchar', nullable: true })
+  position: string | null;
+
+  /** Admin panel sahifalariga ruxsatlar (Tab id ro'yxati) */
+  @Column({ type: 'jsonb', nullable: true })
+  permissions: string[] | null;
+
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })
   distributorProfile?: DistributorProfile;
 

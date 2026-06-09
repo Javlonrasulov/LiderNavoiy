@@ -6,7 +6,8 @@ import {
 import { EmployeeMapModal } from '../components/EmployeeMapModal';
 import { useTheme } from '../components/ThemeContext';
 import { useNavigate } from 'react-router';
-import { useAdminAuth, COMPANIES } from '../components/AdminAuthContext';
+import { useAdminAuth } from '../components/AdminAuthContext';
+import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
 
 import {
@@ -17,7 +18,6 @@ import {
   allClients,
   type Tab, type AgentRow, type ChartRow, type ClientRow, type LangAdmin,
 } from '../data/adminData';
-import { ClientRequestProvider } from '../components/ClientRequestContext';
 
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { AdminNavbar } from '../components/admin/AdminNavbar';
@@ -33,13 +33,19 @@ import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
 import { AdminTaroziTab } from '../components/admin/tabs/AdminTaroziTab';
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
 import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
+import { AdminSystemUsersTab } from '../components/admin/tabs/AdminSystemUsersTab';
 import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
 import { useMessagesUnreadCount } from '../hooks/useMessagesUnread';
+import { api, type AdminDashboardData } from '../api/client';
+import { clientIdHash } from '../utils/clientApi';
+import { hasPageAccess } from '../utils/pagePermissions';
+import type { EmployeeMarker } from '../components/EmployeeMapModal';
 
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
   const navigate = useNavigate();
-  const { isLoggedIn, selectedCompany, logout, clearCompany } = useAdminAuth();
+  const { isLoggedIn, selectedCompany, logout, clearCompany, adminUser } = useAdminAuth();
+  const { companies } = useCompanies();
   const { lang: adminLang, setLang: setAdminLang } = useLang();
 
   const [tab, setTab] = useState<Tab>('dashboard');
@@ -57,6 +63,7 @@ export default function AdminPanel() {
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const messagesUnread = useMessagesUnreadCount(isLoggedIn && !!selectedCompany);
   const [clientsForBell, setClientsForBell] = useState<ClientRow[]>([]);
+  const [dashData, setDashData] = useState<AdminDashboardData | null>(null);
 
   const companyBtnRef = useRef<HTMLButtonElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -94,11 +101,24 @@ export default function AdminPanel() {
   }, [selectedCompanyIds]);
 
   const t = AP[adminLang as LangAdmin];
-  const NAV_ITEMS = NAV_ITEMS_BASE.map(n => ({
-    ...n,
-    label: t[n.key] ?? n.key,
-    children: n.children?.map(c => ({ ...c, label: t[c.key] ?? c.key })),
-  }));
+  const userRole = adminUser?.role ?? 'admin';
+  const userPerms = adminUser?.permissions ?? null;
+  const canAccess = (tabId: string) => hasPageAccess(userRole, userPerms, tabId);
+
+  const NAV_ITEMS = NAV_ITEMS_BASE
+    .filter(n => !n.hideInSidebar && canAccess(n.id as string))
+    .map(n => ({
+      ...n,
+      label: t[n.key] ?? n.key,
+      children: n.children?.map(c => ({ ...c, label: t[c.key] ?? c.key })),
+    }));
+
+  useEffect(() => {
+    if (!canAccess(tab)) {
+      const first = NAV_ITEMS_BASE.find(n => !n.hideInSidebar && canAccess(n.id as string));
+      if (first) setTab(first.id as Tab);
+    }
+  }, [tab, userRole, userPerms]);
 
   useEffect(() => {
     if (!isLoggedIn) { navigate('/admin/login'); return; }
@@ -112,10 +132,23 @@ export default function AdminPanel() {
 
   useEffect(() => { setWeeklyView('map'); }, [viewOrg]);
 
+  useEffect(() => {
+    if (!isLoggedIn || !localStorage.getItem('api_access_token')) {
+      setDashData(null);
+      return;
+    }
+    const ids = viewOrg === 'all' ? Array.from(selectedCompanyIds) : [viewOrg];
+    let cancelled = false;
+    api.getAdminDashboard(ids)
+      .then(data => { if (!cancelled) setDashData(data); })
+      .catch(() => { if (!cancelled) setDashData(null); });
+    return () => { cancelled = true; };
+  }, [isLoggedIn, selectedCompanyIds, viewOrg]);
+
   if (!isLoggedIn || !selectedCompany) return null;
 
   // ─── Aggregated stats ───
-  const selCmpData = COMPANIES.filter(c => selectedCompanyIds.has(c.id)).map(c => COMPANY_DATA[c.id]);
+  const selCmpData = companies.filter(c => selectedCompanyIds.has(c.id)).map(c => COMPANY_DATA[c.id]);
   const totalSales    = selCmpData.reduce((s, d) => s + (d?.sales    || 0), 0);
   const totalPayments = selCmpData.reduce((s, d) => s + (d?.payments || 0), 0);
   const totalDebt     = selCmpData.reduce((s, d) => s + (d?.debt     || 0), 0);
@@ -125,7 +158,19 @@ export default function AdminPanel() {
   const isAllView = viewOrg === 'all';
   const orgIds = Array.from(selectedCompanyIds);
 
-  const activeKpi = isAllView
+  const activeKpi = dashData
+    ? {
+        sales: dashData.kpi.sales,
+        payments: dashData.kpi.payments,
+        debt: dashData.kpi.debt,
+        plan: dashData.kpi.plan,
+        planPct: dashData.kpi.planPct,
+        salesTrend: dashData.kpi.salesTrend,
+        paymentsTrend: dashData.kpi.paymentsTrend,
+        debtTrend: dashData.kpi.debtTrend,
+        planTrend: dashData.kpi.planTrend,
+      }
+    : isAllView
     ? { sales: totalSales, payments: totalPayments, debt: totalDebt, plan: totalPlan, planPct }
     : (() => {
         const d = COMPANY_DATA[viewOrg];
@@ -133,11 +178,28 @@ export default function AdminPanel() {
         return { sales: d?.sales||0, payments: d?.payments||0, debt: d?.debt||0, plan: d?.plan||0, planPct: pp };
       })();
 
-  const activeAgents: AgentRow[] = isAllView
+  const activeAgents: AgentRow[] = dashData
+    ? dashData.topAgents.map(a => ({
+        id: clientIdHash(a.distributorId),
+        name: a.name,
+        avatar: a.avatar,
+        clients: 0,
+        visits: 0,
+        sales: a.sales,
+        payments: 0,
+        debt: 0,
+        plan: a.plan,
+        status: a.status,
+        orgId: a.orgId,
+        distributorId: a.distributorId,
+      }))
+    : isAllView
     ? orgIds.flatMap(id => COMPANY_AGENTS[id] || [])
     : COMPANY_AGENTS[viewOrg] || [];
 
-  const activeCatPie = isAllView
+  const activeCatPie = dashData
+    ? dashData.clientCategories
+    : isAllView
     ? (() => {
         const totalC = orgIds.reduce((s, id) => s + (COMPANY_DATA[id]?.clients || 0), 0);
         return catPie.map((_, i) => ({
@@ -165,14 +227,39 @@ export default function AdminPanel() {
   };
 
   const activeIds = isAllView ? orgIds : [viewOrg];
-  const aggSalesChart     = buildOrgChart('month', activeIds);
-  const aggSalesChartWeek = buildOrgChart('week',  activeIds);
-  const aggSalesChartDay  = buildOrgChart('day',   activeIds);
+  const aggSalesChart     = dashData?.salesChart?.month ?? buildOrgChart('month', activeIds);
+  const aggSalesChartWeek = dashData?.salesChart?.week  ?? buildOrgChart('week',  activeIds);
+  const aggSalesChartDay  = dashData?.salesChart?.day   ?? buildOrgChart('day',   activeIds);
 
-  const activeMapEmployees = activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
-  const mapCenterInfo = !isAllView && ORG_CITIES[viewOrg]
-    ? ORG_CITIES[viewOrg]
-    : { center: UZ_CENTER as [number, number], label: "O'zbekiston", zoom: 6 };
+  const activeMapEmployees: EmployeeMarker[] = dashData
+    ? dashData.employeeLocations.map(e => ({
+        id: clientIdHash(e.distributorId),
+        name: e.name,
+        avatar: e.avatar,
+        role: e.role,
+        online: e.online,
+        lastSeen: e.lastSeen,
+        lat: e.lat,
+        lng: e.lng,
+        orgId: e.orgId,
+      }))
+    : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
+
+  const mapCenterInfo = (() => {
+    if (activeMapEmployees.length > 0) {
+      const lat = activeMapEmployees.reduce((s, e) => s + e.lat, 0) / activeMapEmployees.length;
+      const lng = activeMapEmployees.reduce((s, e) => s + e.lng, 0) / activeMapEmployees.length;
+      const org = !isAllView ? companies.find(c => c.id === viewOrg) : null;
+      return {
+        center: [lat, lng] as [number, number],
+        label: org ? org.shortName : `${activeMapEmployees.length} xodim`,
+        zoom: activeMapEmployees.length === 1 ? 14 : 12,
+      };
+    }
+    return !isAllView && ORG_CITIES[viewOrg]
+      ? ORG_CITIES[viewOrg]
+      : { center: UZ_CENTER as [number, number], label: "O'zbekiston", zoom: 6 };
+  })();
 
   // Theme classes
   const D = isDark;
@@ -203,7 +290,7 @@ export default function AdminPanel() {
               <h1 className="font-bold text-lg">{a.name}</h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <p className={`text-sm ${sub}`}>{t.agentProfile}</p>
-                {a.orgId && (() => { const org = COMPANIES.find(c => c.id === a.orgId); return org ? (
+                {a.orgId && (() => { const org = companies.find(c => c.id === a.orgId); return org ? (
                   <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg ${D ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
                     {org.icon} {org.shortName}
                   </span>
@@ -254,10 +341,7 @@ export default function AdminPanel() {
     );
   }
 
-  const bellCompanyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
-
   return (
-    <ClientRequestProvider companyId={bellCompanyId}>
     <div
       className={`flex min-h-screen overflow-x-hidden ${bg} ${text}`}
       style={{
@@ -322,7 +406,7 @@ export default function AdminPanel() {
               >
                 <span className="hidden sm:inline">🌐</span> Umumiy ({selectedCompanyIds.size})
               </button>
-              {COMPANIES.filter(c => selectedCompanyIds.has(c.id)).map(c => {
+              {companies.filter(c => selectedCompanyIds.has(c.id)).map(c => {
                 const isActive = viewOrg === c.id;
                 return (
                   <div key={c.id}
@@ -442,6 +526,10 @@ export default function AdminPanel() {
 
           {tab === 'messages' && <AdminMessagesTab />}
 
+          {tab === 'systemUsers' && (
+            <AdminSystemUsersTab D={D} card={card} sub={sub} t={t} />
+          )}
+
         </main>
       </div>
 
@@ -517,6 +605,5 @@ export default function AdminPanel() {
         <MessageNotificationHost onGoToMessages={() => setTab('messages')} />
       )}
     </div>
-    </ClientRequestProvider>
   );
 }

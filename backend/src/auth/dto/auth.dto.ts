@@ -41,6 +41,8 @@ export class AuthResponseDto {
     username: string;
     fullName: string;
     role: string;
+    position?: string | null;
+    permissions?: string[] | null;
     distributorId?: string;
     companyName?: string;
     clientId?: string;
