@@ -18,6 +18,7 @@ import { UsersModule } from './users/users.module';
 import { LinesModule } from './lines/lines.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
+import { PlansModule } from './plans/plans.module';
 import { RedisModule } from './common/redis/redis.module';
 
 @Module({
@@ -55,6 +56,7 @@ import { RedisModule } from './common/redis/redis.module';
     LinesModule,
     ExchangeRatesModule,
     CompaniesModule,
+    PlansModule,
   ],
 })
 export class AppModule {}

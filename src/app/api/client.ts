@@ -467,6 +467,52 @@ export const api = {
       imageUrl: string | null;
     }>>('/products/category-meta'),
 
+  listAgentPlans: (params?: { year?: number; month?: number; companyId?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.year) q.set('year', String(params.year));
+    if (params?.month) q.set('month', String(params.month));
+    if (params?.companyId) q.set('companyId', params.companyId);
+    const qs = q.toString();
+    return request<Array<{
+      distributorId: string;
+      agentName: string;
+      year: number;
+      month: number;
+      totalPlan: number;
+      totalDone: number;
+      donePct: number;
+      categories: Array<{
+        key: string;
+        name: string;
+        color: string;
+        plan: number;
+        done: number;
+        pct: number;
+      }>;
+    }>>(`/plans${qs ? `?${qs}` : ''}`);
+  },
+
+  upsertAgentPlan: (body: {
+    distributorId: string;
+    monthType?: 'current' | 'next';
+    year?: number;
+    month?: number;
+    total: number;
+    categories: Record<string, number>;
+    categoryNames?: Record<string, string>;
+  }) =>
+    request<{
+      id: string;
+      distributorId: string;
+      year: number;
+      month: number;
+      totalAmount: number;
+      categories: Array<{ key: string; name: string; amount: number }>;
+    }>('/plans', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   createProductCategoryMeta: (body: {
     name: string;
     color?: string;

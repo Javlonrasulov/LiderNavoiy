@@ -12,7 +12,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -34,21 +36,20 @@ import uz.distributor.crm.presentation.theme.sherinPageBackground
 private enum class PlanTab { MY, ALL }
 
 @Composable
-fun PlanScreen(onNavigate: (NavTab) -> Unit) {
+fun PlanScreen(
+    onNavigate: (NavTab) -> Unit,
+    viewModel: PlanViewModel = hiltViewModel(),
+) {
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val uiState by viewModel.uiState.collectAsState()
     var tab by remember { mutableStateOf(PlanTab.MY) }
     var statsPeriod by remember { mutableStateOf(StatsPeriod.DAY) }
-    var openAgentId by remember { mutableStateOf<Int?>(null) }
+    var openAgentId by remember { mutableStateOf<String?>(null) }
 
     val cardBg = if (isDark) Color(0xFF111827) else Color.White
     val sub = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
     val txt = if (isDark) Color.White else Color.Black
-
-    val totalPlan = planCategories.sumOf { it.plan }
-    val totalDone = planCategories.sumOf { it.done }
-    val totalPct = planPct(totalDone, totalPlan)
-    val sortedAgents = remember { planAgents.sortedByDescending { planPct(it.done, it.plan) } }
 
     Box(Modifier.fillMaxSize().background(sherinPageBackground(isDark))) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = BottomNavHeight + 16.dp)) {
@@ -75,12 +76,17 @@ fun PlanScreen(onNavigate: (NavTab) -> Unit) {
                 PlanTabButton(AppStrings.allAgents(lang), tab == PlanTab.ALL, isDark) { tab = PlanTab.ALL }
             }
 
-            when (tab) {
-                PlanTab.MY -> MyPlanContent(
-                    lang, isDark, cardBg, sub, txt, totalPlan, totalDone, totalPct, statsPeriod,
+            when {
+                uiState.isLoading -> Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF3B82F6))
+                }
+                tab == PlanTab.MY -> MyPlanContent(
+                    lang, isDark, cardBg, sub, txt,
+                    uiState.categories, uiState.totalPlan, uiState.totalDone, uiState.totalPct,
+                    uiState.hasPlan, statsPeriod,
                 ) { statsPeriod = it }
-                PlanTab.ALL -> AllAgentsContent(
-                    sortedAgents, openAgentId, isDark, cardBg, sub, txt,
+                else -> AllAgentsContent(
+                    uiState.agents, uiState.myDistributorId, openAgentId, isDark, cardBg, sub, txt,
                 ) { openAgentId = if (openAgentId == it) null else it }
             }
         }
@@ -106,13 +112,27 @@ private fun MyPlanContent(
     cardBg: Color,
     sub: Color,
     txt: Color,
+    categories: List<PlanCategory>,
     totalPlan: Long,
     totalDone: Long,
     totalPct: Int,
+    hasPlan: Boolean,
     statsPeriod: StatsPeriod,
     onPeriodChange: (StatsPeriod) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (!hasPlan) {
+            Surface(shape = RoundedCornerShape(24.dp), color = cardBg) {
+                Text(
+                    AppStrings.noPlanAssigned(lang),
+                    modifier = Modifier.padding(24.dp),
+                    color = sub,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            return@Column
+        }
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
                 .background(Brush.linearGradient(listOf(Color(0xFF312E81), Color(0xFF1E40AF), Color(0xFF0E7490)))),
@@ -177,7 +197,7 @@ private fun MyPlanContent(
             }
         }
 
-        planCategories.forEach { cat ->
+        categories.forEach { cat ->
             val p = planPct(cat.done, cat.plan)
             Surface(shape = RoundedCornerShape(24.dp), color = cardBg) {
                 Column(Modifier.padding(20.dp)) {
@@ -233,13 +253,28 @@ private fun MiniStatBox(label: String, value: String, isDark: Boolean, modifier:
 @Composable
 private fun AllAgentsContent(
     agents: List<PlanAgent>,
-    openAgentId: Int?,
+    myDistributorId: String?,
+    openAgentId: String?,
     isDark: Boolean,
     cardBg: Color,
     sub: Color,
     txt: Color,
-    onToggle: (Int) -> Unit,
+    onToggle: (String) -> Unit,
 ) {
+    if (agents.isEmpty()) {
+        Column(Modifier.padding(horizontal = 20.dp)) {
+            Surface(shape = RoundedCornerShape(24.dp), color = cardBg) {
+                Text(
+                    AppStrings.noTeamPlans(LocalAppLanguage.current),
+                    modifier = Modifier.padding(24.dp),
+                    color = sub,
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        return
+    }
     val podiumOrder = listOf(1, 0, 2)
     val podiumHeights = listOf(112.dp, 80.dp, 64.dp)
     val podiumColors = listOf(Color(0xFFFACC15), Color(0xFF9CA3AF), Color(0xFFD97706))
@@ -249,7 +284,7 @@ private fun AllAgentsContent(
             podiumOrder.forEachIndexed { rankIdx, agentIdx ->
                 val agent = agents.getOrNull(agentIdx) ?: return@forEachIndexed
                 val p = planPct(agent.done, agent.plan)
-                val isMe = agent.id == MY_AGENT_ID
+                val isMe = agent.distributorId == myDistributorId
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
                     Icon(
                         when (rankIdx) { 0 -> Icons.Default.EmojiEvents; 1 -> Icons.Default.MilitaryTech; else -> Icons.Default.WorkspacePremium },
@@ -272,8 +307,8 @@ private fun AllAgentsContent(
 
         agents.forEachIndexed { idx, agent ->
             val p = planPct(agent.done, agent.plan)
-            val isMe = agent.id == MY_AGENT_ID
-            val isOpen = openAgentId == agent.id
+            val isMe = agent.distributorId == myDistributorId
+            val isOpen = openAgentId == agent.distributorId
             val barColor = when (idx) {
                 0 -> Color(0xFFFACC15)
                 1 -> Color(0xFF9CA3AF)
@@ -287,7 +322,7 @@ private fun AllAgentsContent(
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Row(
-                        Modifier.fillMaxWidth().clickable { onToggle(agent.id) },
+                        Modifier.fillMaxWidth().clickable { onToggle(agent.distributorId) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
@@ -317,7 +352,7 @@ private fun AllAgentsContent(
                         Icon(if (isOpen) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, tint = if (isOpen) Color(0xFF60A5FA) else sub, modifier = Modifier.size(18.dp))
                     }
                     if (isOpen) {
-                        SherinCatBars(agent.sherinPct, agent.timPct, agent.sirPct, isDark)
+                        SherinCatBars(agent.categoryPcts, isDark)
                     }
                 }
             }

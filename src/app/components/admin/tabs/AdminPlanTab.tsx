@@ -2,25 +2,42 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import React from 'react';
 import { Plus, X, Search, ChevronRight, ChevronLeft, Check, AlertCircle, Calendar, Edit3, ChevronDown, ChevronUp, ArrowLeft, BarChart2 } from 'lucide-react';
 import { type AgentRow, fmt } from '../../../data/adminData';
-import { demo } from '../../../data/demoLimit';
+import { api } from '../../../api/client';
+import {
+  type PlanCat,
+  DEFAULT_PLAN_CATS,
+  fetchPlanCategories,
+  emptyCatAmounts,
+  sumCatAmounts,
+} from '../../../utils/planCategories';
 
-// ─── 3 categories ─────────────────────────────────────────────────────────────
-const CATS = demo([
-  { key: 'SHERIN', name: 'Sherin', color: '#10b981' },
-  { key: 'TIM',    name: 'TIM',    color: '#f59e0b' },
-  { key: 'SIR',    name: 'Sir',    color: '#3b82f6' },
-]);
+type BackendPlanView = Awaited<ReturnType<typeof api.listAgentPlans>>[number];
 
-function agentPlanData(agent: AgentRow, idx: number) {
+function planDataFromBackend(bp: BackendPlanView) {
+  const planSum = Number(bp.totalPlan);
+  const doneSum = Number(bp.totalDone);
+  return {
+    planSum,
+    doneSum,
+    donePct: bp.donePct,
+    remaining: planSum - doneSum,
+    cats: bp.categories.map(c => ({
+      key: c.key,
+      name: c.name,
+      color: c.color,
+      plan: Number(c.plan),
+      done: Number(c.done),
+      pct: c.pct,
+    })),
+  };
+}
+
+function agentPlanData(agent: AgentRow, idx: number, planCats: PlanCat[]) {
   const seed = agent.id * 17 + idx;
   const planSum = agent.plan * 1_200_000 + (seed % 7) * 500_000;
-  const catWeights = [
-    35 + ((seed * 3) % 25),
-    30 + ((seed * 7) % 25),
-    20 + ((seed * 11) % 20),
-  ];
-  const wSum = catWeights.reduce((a, b) => a + b, 0);
-  const cats = CATS.map((c, i) => {
+  const catWeights = planCats.map((_, i) => 20 + ((seed * (i + 3)) % 25));
+  const wSum = catWeights.reduce((a, b) => a + b, 0) || 1;
+  const cats = planCats.map((c, i) => {
     const catPlan    = Math.round(planSum * catWeights[i] / wSum);
     const catDonePct = 30 + ((seed + i * 13) % 65);
     const catDone    = Math.round(catPlan * catDonePct / 100);
@@ -89,23 +106,23 @@ function fmtInput(n: number) {
 // ─── Plan Set Modal ────────────────────────────────────────────────────────────
 interface PlanEntry { total: number; cats: Record<string, number>; monthType: 'current' | 'next'; }
 
-function PlanModal({ agents, dark, t, onClose, onSave }: {
+function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
   agents: AgentRow[];
+  planCats: PlanCat[];
   dark: boolean;
   t: Record<string, string>;
   onClose: () => void;
-  onSave: (agentId: number, entry: PlanEntry) => void;
+  onSave: (agent: AgentRow, entry: PlanEntry) => void;
 }) {
   const [step, setStep]               = useState<'agent' | 'form'>('agent');
   const [search, setSearch]           = useState('');
   const [selectedAgent, setSelected]  = useState<AgentRow | null>(null);
   const [monthType, setMonthType]     = useState<'current' | 'next'>('next');
   const [totalStr, setTotalStr]       = useState('');
-  const [catStr, setCatStr]           = useState<Record<string, string>>({
-    SHERIN: '', TIM: '', SIR: '',
-  });
+  const [catStr, setCatStr]           = useState<Record<string, string>>(() => emptyCatAmounts(planCats));
   const searchRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => { setCatStr(emptyCatAmounts(planCats)); }, [planCats]);
   useEffect(() => { if (step === 'agent') searchRef.current?.focus(); }, [step]);
 
   const bg      = dark ? '#0f0f0f' : '#ffffff';
@@ -122,8 +139,8 @@ function PlanModal({ agents, dark, t, onClose, onSave }: {
   );
 
   const total     = parseNum(totalStr);
-  const catNums   = { SHERIN: parseNum(catStr.SHERIN), TIM: parseNum(catStr.TIM), SIR: parseNum(catStr.SIR) };
-  const catTotal  = catNums.SHERIN + catNums.TIM + catNums.SIR;
+  const catNums   = Object.fromEntries(planCats.map(c => [c.key, parseNum(catStr[c.key] || '')]));
+  const catTotal  = sumCatAmounts(planCats, catStr);
   const diff      = total - catTotal;
   const diffAbs   = Math.abs(diff);
   const isValid   = total > 0 && diffAbs === 0;
@@ -137,7 +154,7 @@ function PlanModal({ agents, dark, t, onClose, onSave }: {
 
   function handleSave() {
     if (!selectedAgent || !isValid) return;
-    onSave(selectedAgent.id, { total, cats: catNums, monthType });
+    onSave(selectedAgent, { total, cats: catNums, monthType });
     onClose();
   }
 
@@ -284,7 +301,7 @@ function PlanModal({ agents, dark, t, onClose, onSave }: {
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: sub, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.planByCat || "Kategoriyalar bo'yicha"}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {CATS.map(cat => {
+                {planCats.map(cat => {
                   const val    = catStr[cat.key];
                   const num    = parseNum(val);
                   const catPct = total > 0 && num > 0 ? Math.round((num / total) * 100) : 0;
@@ -1303,14 +1320,14 @@ function fmtM(n: number) {
   return String(n);
 }
 
-function agentMonthDetail(agent: AgentRow, idx: number, monthSlot: number) {
+function agentMonthDetail(agent: AgentRow, idx: number, monthSlot: number, planCats: PlanCat[]) {
   const seed = agent.id * 17 + idx;
   const s    = seed + (HIST_COUNT - 1 - monthSlot) * 31;
   const base = agent.plan * 1_200_000 + (seed % 7) * 500_000;
   const plan = Math.round(base * (0.85 + ((s * 3) % 30) / 100));
-  const wts  = [35 + ((s * 3) % 25), 30 + ((s * 7) % 25), 20 + ((s * 11) % 20)];
-  const wSum = wts.reduce((a, b) => a + b, 0);
-  const cats = CATS.map((c, i) => {
+  const wts  = planCats.map((_, i) => 20 + ((s * (i + 3)) % 25));
+  const wSum = wts.reduce((a, b) => a + b, 0) || 1;
+  const cats = planCats.map((c, i) => {
     const cp  = Math.round(plan * wts[i] / wSum);
     const pct = 35 + ((s + i * 13) % 58);
     return { ...c, plan: cp, done: Math.round(cp * pct / 100), pct };
@@ -1540,9 +1557,10 @@ function CalendarPicker({
 
 // ─── Tarix Stat Full Page ─────────────────────────────────────────────────────
 function TarixStatPage({
-  allData, dark, showBalances, onClose, onAgentClick, t,
+  allData, planCats, dark, showBalances, onClose, onAgentClick, t,
 }: {
   allData: { agent: AgentRow; data: ReturnType<typeof agentPlanData> }[];
+  planCats: PlanCat[];
   dark: boolean;
   showBalances: boolean;
   onClose: () => void;
@@ -1621,19 +1639,19 @@ function TarixStatPage({
     const selectedArr = Array.from(selMonths).sort();
     return allData
       .map((x, i) => {
-        const monthDetails = selectedArr.map(mIdx => agentMonthDetail(x.agent, i, mIdx));
+        const monthDetails = selectedArr.map(mIdx => agentMonthDetail(x.agent, i, mIdx, planCats));
         const aggPlan = monthDetails.reduce((s, d) => s + d.plan, 0);
         const aggDone = monthDetails.reduce((s, d) => s + d.done, 0);
         const aggPct  = aggPlan > 0 ? Math.round((aggDone / aggPlan) * 100) : 0;
-        const aggCats = CATS.map((_, ci) => {
+        const aggCats = planCats.map((_, ci) => {
           const cp = monthDetails.reduce((s, d) => s + d.cats[ci].plan, 0);
           const cd = monthDetails.reduce((s, d) => s + d.cats[ci].done, 0);
-          return { ...CATS[ci], plan: cp, done: cd, pct: cp > 0 ? Math.round((cd / cp) * 100) : 0 };
+          return { ...planCats[ci], plan: cp, done: cd, pct: cp > 0 ? Math.round((cd / cp) * 100) : 0 };
         });
         return { agent: x.agent, data: x.data, plan: aggPlan, done: aggDone, pct: aggPct, cats: aggCats };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [allData, selMonths]);
+  }, [allData, selMonths, planCats]);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -1657,7 +1675,7 @@ function TarixStatPage({
   const totPlan = rows.reduce((s, r) => s + r.plan, 0);
   const totDone = rows.reduce((s, r) => s + r.done, 0);
   const totPct  = totPlan > 0 ? Math.round((totDone / totPlan) * 100) : 0;
-  const catTots = CATS.map((_, ci) => ({
+  const catTots = planCats.map((_, ci) => ({
     plan: rows.reduce((s, r) => s + r.cats[ci].plan, 0),
     done: rows.reduce((s, r) => s + r.cats[ci].done, 0),
     pct:  rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.cats[ci].pct, 0) / rows.length) : 0,
@@ -1810,7 +1828,7 @@ function TarixStatPage({
           }}>
             {t.planAll || 'Hammasi'}
           </button>
-          {CATS.map(c => (
+          {planCats.map(c => (
             <button key={c.key} onClick={() => setSelCatKey(c.key)} style={{
               padding: '6px 14px', borderRadius: 12, border: 'none',
               background: selCatKey === c.key ? c.color : (dark ? '#1a1a1a' : '#f1f5f9'),
@@ -1861,7 +1879,7 @@ function TarixStatPage({
                 <col style={{ width: isMobile ? 46 : 62 }}/>
               </>
             )}
-            {CATS.filter(c => selCatKey === 'all' || selCatKey === c.key).flatMap(c => {
+            {planCats.filter(c => selCatKey === 'all' || selCatKey === c.key).flatMap(c => {
               if (!isMobile) {
                 return [<col key={c.key+'-pl'} style={{ width: 90 }}/>, <col key={c.key+'-do'} style={{ width: 90 }}/>, <col key={c.key+'-pc'} style={{ width: 62 }}/>];
               }
@@ -1878,7 +1896,7 @@ function TarixStatPage({
               {(selCatKey === 'all' || selCatKey === 'UMUMIY') && (
                 <th colSpan={isMobile ? 2 : 3} style={{ ...th0, textAlign: 'center', color: txt }}>{t.planUmumiy || 'Umumiy'}</th>
               )}
-              {CATS.filter(c => selCatKey === 'all' || selCatKey === c.key).map(c => (
+              {planCats.filter(c => selCatKey === 'all' || selCatKey === c.key).map(c => (
                 <th key={c.key} colSpan={isMobile ? (selCatKey === 'all' ? 1 : 2) : 3} style={{ ...th0, textAlign: 'center', color: c.color }}>{c.name}</th>
               ))}
             </tr>
@@ -1893,7 +1911,7 @@ function TarixStatPage({
                   <th style={{ ...th1, textAlign: 'center' }}>%</th>
                 </>
               )}
-              {CATS.filter(c => selCatKey === 'all' || selCatKey === c.key).flatMap(c => {
+              {planCats.filter(c => selCatKey === 'all' || selCatKey === c.key).flatMap(c => {
                 if (!isMobile) {
                   return [
                     <th key={c.key+'-plan'} style={{ ...th1, textAlign: 'right' }}>{t.planReja || 'Plan'}</th>,
@@ -1986,7 +2004,7 @@ function TarixStatPage({
                   </td>
                 </>
               )}
-              {catTots.filter((_, ci) => selCatKey === 'all' || selCatKey === CATS[ci].key).flatMap((ct, ci) => {
+              {catTots.filter((_, ci) => selCatKey === 'all' || selCatKey === planCats[ci].key).flatMap((ct, ci) => {
                 if (!isMobile) {
                   return [
                     <td key={ci+'-plan'} style={tdBase({ color: sub, background: dark ? '#111' : '#f3f4f6' })}>{v(ct.plan)}</td>,
@@ -2031,8 +2049,8 @@ function MiniPctCell({ pct, color, dark, compact }: { pct: number; color: string
 }
 
 // ─── Monthly History Table ─────────────────────────────────────────────────────
-function MonthlyHistoryTable({ agent, agentIdx, dark, showBalances, t }: {
-  agent: AgentRow; agentIdx: number; dark: boolean; showBalances: boolean; t: Record<string, string>;
+function MonthlyHistoryTable({ agent, agentIdx, planCats, dark, showBalances, t }: {
+  agent: AgentRow; agentIdx: number; planCats: PlanCat[]; dark: boolean; showBalances: boolean; t: Record<string, string>;
 }) {
   const border = dark ? '#1e1e1e' : '#e5e7eb';
   const txt    = dark ? '#e5e7eb' : '#111827';
@@ -2052,7 +2070,7 @@ function MonthlyHistoryTable({ agent, agentIdx, dark, showBalances, t }: {
   const now = new Date();
   const months = Array.from({ length: HIST_COUNT }, (_, i) => {
     const d      = new Date(now.getFullYear(), now.getMonth() - (HIST_COUNT - 1 - i), 1);
-    const detail = agentMonthDetail(agent, agentIdx, i);
+    const detail = agentMonthDetail(agent, agentIdx, i, planCats);
     return { label: MONTH_NAMES[d.getMonth()], ...detail };
   });
 
@@ -2086,7 +2104,7 @@ function MonthlyHistoryTable({ agent, agentIdx, dark, showBalances, t }: {
             {!isMobile && <th style={{ ...thS, textAlign: 'right' }}>{t.planReja || 'Plan'}</th>}
             <th style={{ ...thS, textAlign: 'right' }}>{t.planExecuted || 'Bajardi'}</th>
             <th style={{ ...thS, textAlign: 'center', width: isMobile ? 50 : 72 }}>%</th>
-            {!isMobile && CATS.map(c => (
+            {!isMobile && planCats.map(c => (
               <th key={c.key} style={{ ...thS, textAlign: 'center', color: c.color, width: 72 }}>{c.name}</th>
             ))}
             {isMobile && <th style={{ ...thS, width: 40 }}></th>}
@@ -2156,10 +2174,11 @@ function MonthlyHistoryTable({ agent, agentIdx, dark, showBalances, t }: {
 
 // ─── Agent Stat Full Page ──────────────────────────────────────────────────────
 function AgentStatPage({
-  agent, agentIdx, dark, showBalances, onClose, t,
+  agent, agentIdx, planCats, dark, showBalances, onClose, t,
 }: {
   agent: AgentRow;
   agentIdx: number;
+  planCats: PlanCat[];
   dark: boolean;
   showBalances: boolean;
   onClose: () => void;
@@ -2167,7 +2186,7 @@ function AgentStatPage({
 }) {
   const [mode, setMode] = useState<ViewMode>('months');
 
-  const data      = useMemo(() => agentPlanData(agent, agentIdx), [agent, agentIdx]);
+  const data      = useMemo(() => agentPlanData(agent, agentIdx, planCats), [agent, agentIdx, planCats]);
   const histItems = useMemo(
     () => genHistory(agent.id * 17 + agentIdx, mode, data.planSum),
     [agent.id, agentIdx, mode, data.planSum],
@@ -2402,7 +2421,7 @@ function AgentStatPage({
             <div style={{ fontSize: 13, fontWeight: 800, color: txt }}>{t.planMonthHist || 'Oylik tarix'}</div>
             <div style={{ fontSize: 11, color: sub, marginTop: 2 }}>{t.planLast || 'Oxirgi'} {HIST_COUNT} {t.planMonth?.toLowerCase() || 'oy'}</div>
           </div>
-          <MonthlyHistoryTable agent={agent} agentIdx={agentIdx} dark={dark} showBalances={showBalances} t={t}/>
+          <MonthlyHistoryTable agent={agent} agentIdx={agentIdx} planCats={planCats} dark={dark} showBalances={showBalances} t={t}/>
         </div>
 
       </div>
@@ -2411,13 +2430,34 @@ function AgentStatPage({
 }
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
-export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
+export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances, t }: Props) {
   const [sortBy,     setSortBy]     = useState<SortKey>('pct');
   const [showModal,  setShowModal]  = useState(false);
-  const [savedPlans, setSavedPlans] = useState<Record<number, { entry: { total: number; cats: Record<string, number>; monthType: string }; }>>({});
   const [showTarix,  setShowTarix]  = useState(false);
   const [statPage,   setStatPage]   = useState<{ agent: AgentRow; agentIdx: number } | null>(null);
   const [isMobile,   setIsMobile]   = useState(false);
+  const [planCats,   setPlanCats]   = useState<PlanCat[]>(DEFAULT_PLAN_CATS);
+  const [backendPlans, setBackendPlans] = useState<Map<string, BackendPlanView>>(new Map());
+
+  const companyIdParam = useMemo(
+    () => (selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds).join(',') : undefined),
+    [selectedCompanyIds],
+  );
+
+  const reloadPlans = () => {
+    if (!localStorage.getItem('api_access_token')) return;
+    api.listAgentPlans({ companyId: companyIdParam })
+      .then(plans => setBackendPlans(new Map(plans.map(p => [p.distributorId, p]))))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchPlanCategories().then(setPlanCats);
+  }, []);
+
+  useEffect(() => {
+    reloadPlans();
+  }, [companyIdParam]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 700);
@@ -2434,8 +2474,14 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
   const infoB  = D ? '#161616' : '#f8fafc';
 
   const allData = useMemo(() =>
-    activeAgents.map((a, i) => ({ agent: a, data: agentPlanData(a, i) })),
-    [activeAgents]
+    activeAgents.map((a, i) => {
+      const bp = a.distributorId ? backendPlans.get(a.distributorId) : undefined;
+      return {
+        agent: a,
+        data: bp ? planDataFromBackend(bp) : agentPlanData(a, i, planCats),
+      };
+    }),
+    [activeAgents, planCats, backendPlans]
   );
 
   const sorted = useMemo(() => {
@@ -2457,8 +2503,17 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
     return '#ef4444';
   }
 
-  function handleSave(agentId: number, entry: { total: number; cats: Record<string, number>; monthType: string }) {
-    setSavedPlans(p => ({ ...p, [agentId]: { entry } }));
+  async function handleSave(agent: AgentRow, entry: { total: number; cats: Record<string, number>; monthType: string }) {
+    if (!agent.distributorId) return;
+    const categoryNames = Object.fromEntries(planCats.map(c => [c.key, c.name]));
+    await api.upsertAgentPlan({
+      distributorId: agent.distributorId,
+      monthType: entry.monthType as 'current' | 'next',
+      total: entry.total,
+      categories: entry.cats,
+      categoryNames,
+    });
+    reloadPlans();
   }
 
   return (
@@ -2563,7 +2618,7 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
           const pct      = data.donePct;
           const color    = pctColor(pct);
           const initials = agent.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
-          const saved    = savedPlans[agent.id];
+          const hasPlan  = !!(agent.distributorId && backendPlans.has(agent.distributorId));
           const agentIdx = allData.findIndex(x => x.agent.id === agent.id);
 
           return (
@@ -2600,9 +2655,9 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
                       <div style={{ fontSize: 14, fontWeight: 700, color: txt, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{agent.name}</div>
                       <div style={{ fontSize: 11, color: sub, marginTop: 1 }}>
                         {t.planReja || 'Reja'}: {showBalances ? fmt(data.planSum) + ' ' + som : '••••'}
-                        {saved && (
+                        {hasPlan && (
                           <span style={{ marginLeft: 8, color: '#6366f1', fontWeight: 700 }}>
-                            · {t.planNew || 'Yangi plan'}: {fmt(saved.entry.total)} ({saved.entry.monthType === 'next' ? (t.planNextMonth || 'keyingi oy') : (t.planCurrMonth || 'joriy oy')})
+                            · {t.planAssigned || 'Plan belgilangan'}
                           </span>
                         )}
                       </div>
@@ -2685,6 +2740,7 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
       {showModal && (
         <PlanModal
           agents={activeAgents}
+          planCats={planCats}
           dark={D}
           t={t}
           onClose={() => setShowModal(false)}
@@ -2696,6 +2752,7 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
       {showTarix && (
         <TarixStatPage
           allData={allData}
+          planCats={planCats}
           dark={D}
           showBalances={showBalances}
           t={t}
@@ -2709,6 +2766,7 @@ export function AdminPlanTab({ D, activeAgents, showBalances, t }: Props) {
         <AgentStatPage
           agent={statPage.agent}
           agentIdx={statPage.agentIdx}
+          planCats={planCats}
           dark={D}
           showBalances={showBalances}
           t={t}

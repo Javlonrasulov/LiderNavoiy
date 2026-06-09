@@ -50,13 +50,21 @@ fun SherinRadialProgress(
     }
 }
 
+private val CAT_BAR_COLORS = listOf(
+    Color(0xFF818CF8),
+    Color(0xFF34D399),
+    Color(0xFFFBBF24),
+    Color(0xFF60A5FA),
+    Color(0xFFF472B6),
+    Color(0xFFA78BFA),
+)
+
 @Composable
-fun SherinCatBars(sherin: Int, tim: Int, sir: Int, isDark: Boolean) {
-    val items = listOf(
-        Triple("Sherin", Color(0xFF818CF8), sherin),
-        Triple("Tim", Color(0xFF34D399), tim),
-        Triple("Sir", Color(0xFFFBBF24), sir),
-    )
+fun SherinCatBars(categoryPcts: List<Pair<String, Int>>, isDark: Boolean) {
+    if (categoryPcts.isEmpty()) return
+    val items = categoryPcts.mapIndexed { i, (label, pct) ->
+        Triple(label, CAT_BAR_COLORS[i % CAT_BAR_COLORS.size], pct)
+    }
     val track = if (isDark) Color.White.copy(0.06f) else Color.Black.copy(0.06f)
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

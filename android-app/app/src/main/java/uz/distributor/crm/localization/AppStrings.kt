@@ -121,6 +121,18 @@ object AppStrings {
     fun completed(lang: AppLanguage) = tr(lang, "Bajarildi", "Бажарилди", "Выполнено")
     fun remaining(lang: AppLanguage) = tr(lang, "Qoldi", "Қолди", "Осталось")
     fun planLabel(lang: AppLanguage) = tr(lang, "Reja", "Режа", "План")
+    fun noPlanAssigned(lang: AppLanguage) = tr(
+        lang,
+        "Sizga hali reja belgilanmagan",
+        "Сизга ҳали режа белгиланмаган",
+        "Вам ещё не назначен план",
+    )
+    fun noTeamPlans(lang: AppLanguage) = tr(
+        lang,
+        "Jamoa uchun rejalar topilmadi",
+        "Жамоа учун режалар топилмади",
+        "Планы для команды не найдены",
+    )
     fun statistics(lang: AppLanguage) = tr(lang, "Statistika", "Статистика", "Статистика")
     fun dayPeriod(lang: AppLanguage) = tr(lang, "Kun", "Кун", "День")
     fun weekPeriod(lang: AppLanguage) = tr(lang, "Hafta", "Ҳафта", "Неделя")

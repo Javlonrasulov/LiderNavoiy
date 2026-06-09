@@ -19,35 +19,14 @@ data class PlanCategory(
 }
 
 data class PlanAgent(
-    val id: Int,
+    val distributorId: String,
     val name: String,
     val plan: Long,
     val done: Long,
-    val sherinPct: Int,
-    val timPct: Int,
-    val sirPct: Int,
+    val categoryPcts: List<Pair<String, Int>>,
 )
 
 data class ChartPoint(val label: String, val sales: Long)
-
-val planCategories = listOf(
-    PlanCategory("sherin", "Sherin", "Шерин", "Шерин", 0xFF6366F1, 5_000_000, 3_750_000),
-    PlanCategory("tim", "Tim", "Тим", "Тим", 0xFF10B981, 8_000_000, 4_960_000),
-    PlanCategory("sir", "Sir", "Сир", "Сир", 0xFFF59E0B, 3_500_000, 3_150_000),
-)
-
-val planAgents = listOf(
-    PlanAgent(1, "Nazarov Jasur", 16_500_000, 15_180_000, 96, 90, 91),
-    PlanAgent(2, "Qodirov Sherzod", 16_500_000, 14_025_000, 88, 82, 86),
-    PlanAgent(3, "Abdujaqimov Diyorbek", 16_500_000, 11_860_000, 75, 62, 90),
-    PlanAgent(4, "Toshmatov Sanjar", 16_500_000, 10_395_000, 70, 58, 78),
-    PlanAgent(5, "Mirzayev Bobur", 16_500_000, 9_075_000, 61, 50, 67),
-    PlanAgent(6, "Yusupov Eldor", 16_500_000, 7_590_000, 50, 42, 55),
-    PlanAgent(7, "Raxmatullayev Timur", 16_500_000, 5_775_000, 38, 32, 41),
-    PlanAgent(8, "Holmatov Ravshan", 16_500_000, 3_960_000, 25, 20, 30),
-)
-
-const val MY_AGENT_ID = 3
 
 val dailyChartData = listOf(
     ChartPoint("08:00", 120_000),

@@ -255,3 +255,23 @@ data class UploadResponseDto(
     val messageType: String,
 )
 data class StartConversationRequest(val userId: String)
+
+data class PlanCategoryDto(
+    val key: String,
+    val name: String,
+    val color: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val plan: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val done: Double = 0.0,
+    val pct: Int = 0,
+)
+
+data class AgentPlanDto(
+    val distributorId: String,
+    val agentName: String,
+    val year: Int,
+    val month: Int,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val totalPlan: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val totalDone: Double = 0.0,
+    val donePct: Int = 0,
+    val categories: List<PlanCategoryDto> = emptyList(),
+)

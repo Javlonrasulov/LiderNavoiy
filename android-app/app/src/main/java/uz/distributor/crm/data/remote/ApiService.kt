@@ -116,4 +116,16 @@ interface ApiService {
         @Path("id") conversationId: String,
         @Body body: DeleteMessagesRequest,
     ): DeleteMessagesResponse
+
+    @GET("plans/me")
+    suspend fun getMyPlan(
+        @Query("year") year: Int? = null,
+        @Query("month") month: Int? = null,
+    ): AgentPlanDto?
+
+    @GET("plans/team")
+    suspend fun getTeamPlans(
+        @Query("year") year: Int? = null,
+        @Query("month") month: Int? = null,
+    ): List<AgentPlanDto>
 }
