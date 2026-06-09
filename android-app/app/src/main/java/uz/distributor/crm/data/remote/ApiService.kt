@@ -128,4 +128,10 @@ interface ApiService {
         @Query("year") year: Int? = null,
         @Query("month") month: Int? = null,
     ): List<AgentPlanDto>
+
+    @GET("plans/sales-stats")
+    suspend fun getPlanSalesStats(
+        @Query("from") from: String? = null,
+        @Query("to") to: String? = null,
+    ): AgentSalesStatsDto?
 }

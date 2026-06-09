@@ -52,10 +52,20 @@ export class PlansController {
     @Query('month') month?: string,
   ) {
     return this.service.getMyPlan(
-      req.user.id,
+      req.user,
       year ? Number(year) : undefined,
       month ? Number(month) : undefined,
     );
+  }
+
+  @Get('sales-stats')
+  @ApiOperation({ summary: 'Get my sales statistics for plan charts' })
+  getSalesStats(
+    @Request() req: { user: User },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getSalesStats(req.user, from, to);
   }
 
   @Get('team')
@@ -66,7 +76,7 @@ export class PlansController {
     @Query('month') month?: string,
   ) {
     return this.service.getTeamPlans(
-      req.user.id,
+      req.user,
       year ? Number(year) : undefined,
       month ? Number(month) : undefined,
     );

@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
@@ -23,6 +24,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.distributor.crm.localization.AppStrings
@@ -44,12 +46,23 @@ fun PlanScreen(
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val uiState by viewModel.uiState.collectAsState()
     var tab by remember { mutableStateOf(PlanTab.MY) }
-    var statsPeriod by remember { mutableStateOf(StatsPeriod.DAY) }
     var openAgentId by remember { mutableStateOf<String?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val cardBg = if (isDark) Color(0xFF111827) else Color.White
     val sub = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
     val txt = if (isDark) Color.White else Color.Black
+
+    PlanDateRangeDialog(
+        visible = showDatePicker,
+        isDark = isDark,
+        onDismiss = { showDatePicker = false },
+        onApply = { start, end -> viewModel.applyDateRange(start, end) },
+        onClear = { viewModel.clearDateRange() },
+        onPreset = { preset -> viewModel.onCalendarPreset(preset) },
+        initialStartMillis = uiState.dateRange?.let { PlanDateFilter.toStartMillis(it.start) },
+        initialEndMillis = uiState.dateRange?.let { PlanDateFilter.toStartMillis(it.end) },
+    )
 
     Box(Modifier.fillMaxSize().background(sherinPageBackground(isDark))) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = BottomNavHeight + 16.dp)) {
@@ -67,7 +80,30 @@ fun PlanScreen(
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                     )
-                    SherinGlassIconButton(onClick = {}, icon = Icons.Default.BarChart, size = 48.dp)
+                    SherinGlassIconButton(
+                        onClick = { showDatePicker = true },
+                        icon = Icons.Outlined.CalendarMonth,
+                        size = 48.dp,
+                    )
+                }
+            }
+
+            uiState.dateRange?.let { range ->
+                Box(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp)) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Brush.linearGradient(listOf(Color(0xFF312E81), Color(0xFF1E40AF))))
+                            .clickable { showDatePicker = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            PlanDateFilter.formatRange(range),
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
 
@@ -83,8 +119,9 @@ fun PlanScreen(
                 tab == PlanTab.MY -> MyPlanContent(
                     lang, isDark, cardBg, sub, txt,
                     uiState.categories, uiState.totalPlan, uiState.totalDone, uiState.totalPct,
-                    uiState.hasPlan, statsPeriod,
-                ) { statsPeriod = it }
+                    uiState.hasPlan, uiState.statsPeriod,
+                    uiState.dayStats, uiState.weekStats, uiState.monthStats, uiState.customStats,
+                ) { viewModel.setStatsPeriod(it) }
                 else -> AllAgentsContent(
                     uiState.agents, uiState.myDistributorId, openAgentId, isDark, cardBg, sub, txt,
                 ) { openAgentId = if (openAgentId == it) null else it }
@@ -106,6 +143,30 @@ private fun RowScope.PlanTabButton(label: String, selected: Boolean, isDark: Boo
 }
 
 @Composable
+private fun ClickablePlanAmount(
+    amount: Long,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    color: Color,
+    fontSize: TextUnit,
+    fontWeight: FontWeight = FontWeight.Normal,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember(amount) { mutableStateOf(false) }
+    val label = if (expanded) {
+        "${planFmtFull(amount)} ${AppStrings.sumCurrency(lang)}"
+    } else {
+        "${planFmt(amount)} ${AppStrings.sumCurrency(lang)}"
+    }
+    Text(
+        label,
+        modifier = modifier.clickable { expanded = !expanded },
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+    )
+}
+
+@Composable
 private fun MyPlanContent(
     lang: uz.distributor.crm.localization.AppLanguage,
     isDark: Boolean,
@@ -118,6 +179,10 @@ private fun MyPlanContent(
     totalPct: Int,
     hasPlan: Boolean,
     statsPeriod: StatsPeriod,
+    dayStats: SalesPeriodChart,
+    weekStats: SalesPeriodChart,
+    monthStats: SalesPeriodChart,
+    customStats: SalesPeriodChart,
     onPeriodChange: (StatsPeriod) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -139,7 +204,7 @@ private fun MyPlanContent(
         ) {
             Column(Modifier.padding(20.dp)) {
                 Text(AppStrings.totalPlan(lang), color = Color.White.copy(0.7f), fontSize = 14.sp)
-                Text("${planFmt(totalPlan)} ${AppStrings.sumCurrency(lang)}", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                ClickablePlanAmount(totalPlan, lang, Color.White, 28.sp, FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SherinRadialProgress(totalPct, Color(0xFF60A5FA), 120.dp, Color.White)
@@ -147,11 +212,11 @@ private fun MyPlanContent(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column {
                             Text(AppStrings.completed(lang), color = Color.White.copy(0.6f), fontSize = 12.sp)
-                            Text("${planFmt(totalDone)} ${AppStrings.sumCurrency(lang)}", color = Color.White, fontSize = 18.sp)
+                            ClickablePlanAmount(totalDone, lang, Color.White, 18.sp)
                         }
                         Column {
                             Text(AppStrings.remaining(lang), color = Color.White.copy(0.6f), fontSize = 12.sp)
-                            Text("${planFmt(totalPlan - totalDone)} ${AppStrings.sumCurrency(lang)}", color = Color.White, fontSize = 18.sp)
+                            ClickablePlanAmount(totalPlan - totalDone, lang, Color.White, 18.sp)
                         }
                     }
                 }
@@ -176,23 +241,25 @@ private fun MyPlanContent(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                SherinSalesChart(statsPeriod, isDark)
+                val chartStats = when (statsPeriod) {
+                    StatsPeriod.DAY -> dayStats
+                    StatsPeriod.WEEK -> weekStats
+                    StatsPeriod.MONTH -> monthStats
+                    StatsPeriod.CUSTOM -> customStats
+                }
+                SherinSalesChart(chartStats.points, statsPeriod, isDark)
                 HorizontalDivider(Modifier.padding(top = 16.dp), color = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB))
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         when (statsPeriod) {
                             StatsPeriod.DAY -> AppStrings.todaySales(lang)
                             StatsPeriod.WEEK -> AppStrings.weekSales(lang)
-                            else -> AppStrings.monthSales(lang)
+                            StatsPeriod.MONTH -> AppStrings.monthSales(lang)
+                            StatsPeriod.CUSTOM -> AppStrings.periodSales(lang)
                         },
                         color = sub, fontSize = 14.sp,
                     )
-                    val sum = when (statsPeriod) {
-                        StatsPeriod.DAY -> dailyChartData.last().sales
-                        StatsPeriod.WEEK -> weeklyChartData.sumOf { it.sales }
-                        StatsPeriod.MONTH -> monthlyChartData.last().sales
-                    }
-                    Text("${planFmt(sum)} ${AppStrings.sumCurrency(lang)}", color = txt, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    ClickablePlanAmount(chartStats.total, lang, txt, 18.sp, FontWeight.SemiBold)
                 }
             }
         }
@@ -209,15 +276,18 @@ private fun MyPlanContent(
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(cat.label(lang), color = txt, fontWeight = FontWeight.Medium)
-                                Text("${AppStrings.planLabel(lang)}: ${planFmt(cat.plan)} ${AppStrings.sumCurrency(lang)}", color = sub, fontSize = 12.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${AppStrings.planLabel(lang)}: ", color = sub, fontSize = 12.sp)
+                                    ClickablePlanAmount(cat.plan, lang, sub, 12.sp)
+                                }
                             }
                         }
                         SherinRadialProgress(p, Color(cat.color), 72.dp, txt)
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        MiniStatBox(AppStrings.completed(lang), "${planFmt(cat.done)} ${AppStrings.sumCurrency(lang)}", isDark, Modifier.weight(1f))
-                        MiniStatBox(AppStrings.remaining(lang), "${planFmt(cat.plan - cat.done)} ${AppStrings.sumCurrency(lang)}", isDark, Modifier.weight(1f))
+                        MiniStatBox(AppStrings.completed(lang), cat.done, lang, isDark, Modifier.weight(1f))
+                        MiniStatBox(AppStrings.remaining(lang), cat.plan - cat.done, lang, isDark, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
@@ -241,12 +311,18 @@ private fun PeriodChip(label: String, selected: Boolean, isDark: Boolean, onClic
 }
 
 @Composable
-private fun MiniStatBox(label: String, value: String, isDark: Boolean, modifier: Modifier = Modifier) {
+private fun MiniStatBox(
+    label: String,
+    amount: Long,
+    lang: uz.distributor.crm.localization.AppLanguage,
+    isDark: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0xFF1F2937) else Color(0xFFF9FAFB)).padding(12.dp),
     ) {
         Text(label, fontSize = 12.sp, color = Color(0xFF9CA3AF))
-        Text(value, fontSize = 14.sp, color = if (isDark) Color.White else Color.Black)
+        ClickablePlanAmount(amount, lang, if (isDark) Color.White else Color.Black, 14.sp)
     }
 }
 

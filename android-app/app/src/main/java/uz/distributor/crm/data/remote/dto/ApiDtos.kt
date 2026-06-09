@@ -275,3 +275,20 @@ data class AgentPlanDto(
     val donePct: Int = 0,
     val categories: List<PlanCategoryDto> = emptyList(),
 )
+
+data class SalesChartPointDto(
+    val label: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val sales: Double = 0.0,
+)
+
+data class SalesPeriodStatsDto(
+    val points: List<SalesChartPointDto> = emptyList(),
+    @JsonAdapter(FlexibleDoubleAdapter::class) val total: Double = 0.0,
+)
+
+data class AgentSalesStatsDto(
+    val day: SalesPeriodStatsDto = SalesPeriodStatsDto(),
+    val week: SalesPeriodStatsDto = SalesPeriodStatsDto(),
+    val month: SalesPeriodStatsDto = SalesPeriodStatsDto(),
+    val custom: SalesPeriodStatsDto? = null,
+)

@@ -7,7 +7,14 @@ import { Order } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { ProductCategory } from '../products/entities/product-category.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { User } from '../auth/entities/user.entity';
 import { OrderStatus } from '../common/enums';
+import {
+  addCalendarMonth,
+  getTashkentDateParts,
+  getTashkentYearMonth,
+  makeTashkentDate,
+} from '../common/time/tashkent-time';
 
 const EXCLUDED_ORDER_STATUSES = [OrderStatus.CANCELLED, OrderStatus.DRAFT];
 
@@ -33,6 +40,27 @@ export interface AgentPlanView {
   categories: PlanCategoryView[];
 }
 
+export interface SalesChartPoint {
+  label: string;
+  sales: number;
+}
+
+export interface SalesPeriodStats {
+  points: SalesChartPoint[];
+  total: number;
+}
+
+export interface AgentSalesStatsView {
+  day: SalesPeriodStats;
+  week: SalesPeriodStats;
+  month: SalesPeriodStats;
+  custom?: SalesPeriodStats;
+}
+
+const WEEKDAY_LABELS = ['Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Shan', 'Yak'];
+const MONTH_LABELS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyun', 'Iyul', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+const DAY_HOUR_SLOTS = [8, 10, 12, 14, 16, 18, 20];
+
 function toKey(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '_');
 }
@@ -45,12 +73,11 @@ function monthRange(year: number, month: number) {
 
 function resolveTargetMonth(dto: UpsertPlanDto): { year: number; month: number } {
   if (dto.year && dto.month) return { year: dto.year, month: dto.month };
-  const now = new Date();
+  const { year, month } = getTashkentYearMonth();
   if (dto.monthType === 'next') {
-    const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    return addCalendarMonth(year, month, 1);
   }
-  return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  return { year, month };
 }
 
 @Injectable()
@@ -97,9 +124,9 @@ export class PlansService {
   }
 
   async listPlans(year?: number, month?: number, companyIds?: string[]): Promise<AgentPlanView[]> {
-    const now = new Date();
-    const y = year ?? now.getFullYear();
-    const m = month ?? now.getMonth() + 1;
+    const fallback = getTashkentYearMonth();
+    const y = year ?? fallback.year;
+    const m = month ?? fallback.month;
 
     const qb = this.profileRepo
       .createQueryBuilder('d')
@@ -132,20 +159,14 @@ export class PlansService {
     return results.sort((a, b) => b.donePct - a.donePct);
   }
 
-  async getMyPlan(userId: string, year?: number, month?: number): Promise<AgentPlanView | null> {
-    const profile = await this.profileRepo.findOne({
-      where: { userId },
-      relations: ['user'],
-    });
+  async getMyPlan(user: User, year?: number, month?: number): Promise<AgentPlanView | null> {
+    const profile = await this.resolveProfile(user);
     if (!profile) return null;
 
-    const now = new Date();
-    const y = year ?? now.getFullYear();
-    const m = month ?? now.getMonth() + 1;
+    const plan = year && month
+      ? await this.findPlan(profile.id, year, month)
+      : await this.findActivePlan(profile.id);
 
-    const plan = await this.planRepo.findOne({
-      where: { distributorId: profile.id, year: y, month: m },
-    });
     if (!plan) return null;
 
     const name = profile.user?.fullName ?? profile.user?.username ?? profile.companyName ?? 'Agent';
@@ -153,12 +174,55 @@ export class PlansService {
     return this.toView(plan, name, colorMap);
   }
 
-  async getTeamPlans(userId: string, year?: number, month?: number): Promise<AgentPlanView[]> {
-    const myProfile = await this.profileRepo.findOne({ where: { userId } });
+  async getTeamPlans(user: User, year?: number, month?: number): Promise<AgentPlanView[]> {
+    const myProfile = await this.resolveProfile(user);
     if (!myProfile?.companyId) {
-      return this.getMyPlan(userId, year, month).then(p => (p ? [p] : []));
+      const mine = await this.getMyPlan(user, year, month);
+      return mine ? [mine] : [];
     }
-    return this.listPlans(year, month, [myProfile.companyId]);
+
+    if (year && month) {
+      return this.listPlans(year, month, [myProfile.companyId]);
+    }
+
+    const { year: y, month: m } = getTashkentYearMonth();
+    const next = addCalendarMonth(y, m, 1);
+    const [current, nextMonth] = await Promise.all([
+      this.listPlans(y, m, [myProfile.companyId]),
+      this.listPlans(next.year, next.month, [myProfile.companyId]),
+    ]);
+
+    const map = new Map<string, AgentPlanView>();
+    for (const p of nextMonth) map.set(p.distributorId, p);
+    for (const p of current) map.set(p.distributorId, p);
+    return [...map.values()].sort((a, b) => b.donePct - a.donePct);
+  }
+
+  private async resolveProfile(user: User): Promise<DistributorProfile | null> {
+    if (user.distributorProfile) return user.distributorProfile;
+    return this.profileRepo.findOne({
+      where: { userId: user.id },
+      relations: ['user'],
+    });
+  }
+
+  private async findPlan(
+    distributorId: string,
+    year: number,
+    month: number,
+  ): Promise<AgentPlan | null> {
+    return this.planRepo.findOne({
+      where: { distributorId, year, month },
+    });
+  }
+
+  /** Joriy oy rejasi; yo'q bo'lsa keyingi oy (admin panel bilan bir xil). */
+  private async findActivePlan(distributorId: string): Promise<AgentPlan | null> {
+    const { year, month } = getTashkentYearMonth();
+    const current = await this.findPlan(distributorId, year, month);
+    if (current) return current;
+    const next = addCalendarMonth(year, month, 1);
+    return this.findPlan(distributorId, next.year, next.month);
   }
 
   private async toView(
@@ -168,8 +232,11 @@ export class PlansService {
   ): Promise<AgentPlanView> {
     const doneByKey = await this.computeDoneByCategory(plan.distributorId, plan.year, plan.month);
     const categories: PlanCategoryView[] = plan.categories.map((c, i) => {
-      const planAmt = Number(c.amount);
-      const done = doneByKey.get(c.key) ?? doneByKey.get(toKey(c.name)) ?? 0;
+      const planAmt = parseFloat(String(c.amount)) || 0;
+      const done = doneByKey.get(c.key)
+        ?? doneByKey.get(toKey(c.name))
+        ?? doneByKey.get(toKey(c.key))
+        ?? 0;
       return {
         key: c.key,
         name: c.name,
@@ -180,7 +247,7 @@ export class PlansService {
       };
     });
 
-    const totalPlan = Number(plan.totalAmount);
+    const totalPlan = parseFloat(String(plan.totalAmount)) || 0;
     const totalDone = categories.reduce((s, c) => s + c.done, 0);
 
     return {
@@ -242,5 +309,178 @@ export class PlansService {
       map.set(toKey(r.name), r.color);
     }
     return map;
+  }
+
+  async getSalesStats(
+    user: User,
+    from?: string,
+    to?: string,
+  ): Promise<AgentSalesStatsView | null> {
+    const profile = await this.resolveProfile(user);
+    if (!profile) return null;
+
+    if (from && to) {
+      const custom = await this.aggregateSalesBuckets(
+        profile.id,
+        this.buildCustomRangeBuckets(from, to),
+      );
+      const empty = { points: [], total: 0 };
+      return { day: empty, week: empty, month: empty, custom };
+    }
+
+    const [day, week, month] = await Promise.all([
+      this.aggregateSalesBuckets(profile.id, this.getTodayHourBuckets()),
+      this.aggregateSalesBuckets(profile.id, this.getCurrentWeekDays()),
+      this.aggregateSalesBuckets(profile.id, this.getYearToDateMonths()),
+    ]);
+
+    return { day, week, month };
+  }
+
+  private parseDateYmd(value: string): { year: number; month: number; day: number } {
+    const [year, month, day] = value.split('-').map(Number);
+    return { year, month, day };
+  }
+
+  private buildCustomRangeBuckets(
+    from: string,
+    to: string,
+  ): { start: Date; end: Date; label: string }[] {
+    const s = this.parseDateYmd(from);
+    const e = this.parseDateYmd(to);
+    const startMs = makeTashkentDate(s.year, s.month, s.day, 0, 0, 0).getTime();
+    const endMs = makeTashkentDate(e.year, e.month, e.day, 0, 0, 0).getTime();
+    const totalDays = Math.floor((endMs - startMs) / 86_400_000) + 1;
+
+    if (totalDays <= 1) {
+      return this.getTodayHourBucketsForDate(s.year, s.month, s.day);
+    }
+
+    const buckets: { start: Date; end: Date; label: string }[] = [];
+    for (let i = 0; i < totalDays; i++) {
+      const parts = getTashkentDateParts(new Date(startMs + i * 86_400_000));
+      buckets.push({
+        start: makeTashkentDate(parts.year, parts.month, parts.day, 0, 0, 0),
+        end: makeTashkentDate(parts.year, parts.month, parts.day, 23, 59, 59),
+        label:
+          totalDays <= 7
+            ? WEEKDAY_LABELS[i % 7]
+            : `${String(parts.day).padStart(2, '0')}.${String(parts.month).padStart(2, '0')}`,
+      });
+    }
+
+    if (buckets.length <= 12) return buckets;
+
+    const grouped: { start: Date; end: Date; label: string }[] = [];
+    const chunkSize = Math.ceil(buckets.length / 12);
+    for (let i = 0; i < buckets.length; i += chunkSize) {
+      const chunk = buckets.slice(i, i + chunkSize);
+      grouped.push({
+        start: chunk[0].start,
+        end: chunk[chunk.length - 1].end,
+        label: chunk[0].label,
+      });
+    }
+    return grouped;
+  }
+
+  private getTodayHourBucketsForDate(
+    year: number,
+    month: number,
+    day: number,
+  ): { start: Date; end: Date; label: string }[] {
+    return DAY_HOUR_SLOTS.map((h, i) => {
+      const nextH = i < DAY_HOUR_SLOTS.length - 1 ? DAY_HOUR_SLOTS[i + 1] : 24;
+      return {
+        start: makeTashkentDate(year, month, day, h, 0, 0),
+        end:
+          nextH === 24
+            ? makeTashkentDate(year, month, day, 23, 59, 59)
+            : makeTashkentDate(year, month, day, nextH, 0, 0),
+        label: `${String(h).padStart(2, '0')}:00`,
+      };
+    });
+  }
+
+  private getTodayHourBuckets(): { start: Date; end: Date; label: string }[] {
+    const { year, month, day } = getTashkentDateParts();
+    return DAY_HOUR_SLOTS.map((h, i) => {
+      const nextH = i < DAY_HOUR_SLOTS.length - 1 ? DAY_HOUR_SLOTS[i + 1] : 24;
+      return {
+        start: makeTashkentDate(year, month, day, h, 0, 0),
+        end:
+          nextH === 24
+            ? makeTashkentDate(year, month, day, 23, 59, 59)
+            : makeTashkentDate(year, month, day, nextH, 0, 0),
+        label: `${String(h).padStart(2, '0')}:00`,
+      };
+    });
+  }
+
+  private getCurrentWeekDays(): { start: Date; end: Date; label: string }[] {
+    const { year, month, day } = getTashkentDateParts();
+    const todayNoon = makeTashkentDate(year, month, day, 12, 0, 0);
+    const weekdayStr = todayNoon.toLocaleDateString('en-US', {
+      timeZone: 'Asia/Tashkent',
+      weekday: 'short',
+    });
+    const weekdayMap: Record<string, number> = {
+      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+    };
+    const dow = weekdayMap[weekdayStr] ?? 1;
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    const mondayMs = todayNoon.getTime() + mondayOffset * 86_400_000;
+
+    return WEEKDAY_LABELS.map((label, i) => {
+      const parts = getTashkentDateParts(new Date(mondayMs + i * 86_400_000));
+      return {
+        start: makeTashkentDate(parts.year, parts.month, parts.day, 0, 0, 0),
+        end: makeTashkentDate(parts.year, parts.month, parts.day, 23, 59, 59),
+        label,
+      };
+    });
+  }
+
+  private getYearToDateMonths(): { start: Date; end: Date; label: string }[] {
+    const { year, month } = getTashkentYearMonth();
+    const buckets: { start: Date; end: Date; label: string }[] = [];
+    for (let m = 1; m <= month; m++) {
+      const lastDay = new Date(year, m, 0).getDate();
+      buckets.push({
+        start: makeTashkentDate(year, m, 1, 0, 0, 0),
+        end: makeTashkentDate(year, m, lastDay, 23, 59, 59),
+        label: MONTH_LABELS[m - 1],
+      });
+    }
+    return buckets;
+  }
+
+  private async aggregateSalesBuckets(
+    distributorId: string,
+    buckets: { start: Date; end: Date; label: string }[],
+  ): Promise<SalesPeriodStats> {
+    const points = await Promise.all(
+      buckets.map(async b => ({
+        label: b.label,
+        sales: await this.sumSalesForRange(distributorId, b.start, b.end),
+      })),
+    );
+    const total = points.reduce((s, p) => s + p.sales, 0);
+    return { points, total };
+  }
+
+  private async sumSalesForRange(
+    distributorId: string,
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const orders = await this.orderRepo.find({
+      where: {
+        distributorId,
+        createdAt: Between(start, end),
+        status: Not(In(EXCLUDED_ORDER_STATUSES)),
+      },
+    });
+    return orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
   }
 }

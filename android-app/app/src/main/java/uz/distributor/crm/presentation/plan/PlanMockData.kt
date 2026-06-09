@@ -28,40 +28,6 @@ data class PlanAgent(
 
 data class ChartPoint(val label: String, val sales: Long)
 
-val dailyChartData = listOf(
-    ChartPoint("08:00", 120_000),
-    ChartPoint("10:00", 350_000),
-    ChartPoint("12:00", 580_000),
-    ChartPoint("14:00", 720_000),
-    ChartPoint("16:00", 950_000),
-    ChartPoint("18:00", 1_200_000),
-    ChartPoint("20:00", 1_350_000),
-)
-
-val weeklyChartData = listOf(
-    ChartPoint("Dush", 2_100_000),
-    ChartPoint("Sesh", 1_850_000),
-    ChartPoint("Chor", 2_450_000),
-    ChartPoint("Pay", 2_200_000),
-    ChartPoint("Jum", 2_800_000),
-    ChartPoint("Shan", 3_100_000),
-    ChartPoint("Yak", 2_650_000),
-)
-
-val monthlyChartData = listOf(
-    ChartPoint("Yan", 12_500_000),
-    ChartPoint("Fev", 14_200_000),
-    ChartPoint("Mar", 13_800_000),
-    ChartPoint("Apr", 15_600_000),
-    ChartPoint("May", 16_500_000),
-    ChartPoint("Iyun", 17_200_000),
-    ChartPoint("Iyul", 18_900_000),
-    ChartPoint("Avg", 16_800_000),
-    ChartPoint("Sen", 19_200_000),
-    ChartPoint("Okt", 20_100_000),
-    ChartPoint("Noy", 18_500_000),
-    ChartPoint("Dek", 21_300_000),
-)
 
 fun planFmt(n: Long): String = when {
     n >= 1_000_000 -> "%.1f mln".format(n / 1_000_000.0)
@@ -69,5 +35,13 @@ fun planFmt(n: Long): String = when {
     else -> n.toString()
 }
 
+fun planFmtFull(n: Long): String =
+    java.text.DecimalFormat("#,###").format(n).replace(',', '\u00A0')
+
 fun planPct(done: Long, plan: Long): Int =
     if (plan <= 0) 0 else minOf(100, ((done.toDouble() / plan) * 100).toInt())
+
+data class SalesPeriodChart(
+    val points: List<ChartPoint> = emptyList(),
+    val total: Long = 0,
+)

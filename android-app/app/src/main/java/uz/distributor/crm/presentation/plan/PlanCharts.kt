@@ -1,6 +1,7 @@
 package uz.distributor.crm.presentation.plan
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,23 +94,26 @@ fun SherinCatBars(categoryPcts: List<Pair<String, Int>>, isDark: Boolean) {
     }
 }
 
-enum class StatsPeriod { DAY, WEEK, MONTH }
+enum class StatsPeriod { DAY, WEEK, MONTH, CUSTOM }
 
 @Composable
 fun SherinSalesChart(
+    data: List<ChartPoint>,
     period: StatsPeriod,
     isDark: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val data = when (period) {
-        StatsPeriod.DAY -> dailyChartData
-        StatsPeriod.WEEK -> weeklyChartData
-        StatsPeriod.MONTH -> monthlyChartData
+    if (data.isEmpty()) {
+        Box(modifier.height(220.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text("—", color = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280), fontSize = 14.sp)
+        }
+        return
     }
     val lineColor = when (period) {
         StatsPeriod.DAY -> Color(0xFF3B82F6)
         StatsPeriod.WEEK -> Color(0xFF10B981)
         StatsPeriod.MONTH -> Color(0xFFF59E0B)
+        StatsPeriod.CUSTOM -> Color(0xFF8B5CF6)
     }
     val axis = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
     val max = data.maxOf { it.sales }.toFloat().coerceAtLeast(1f)

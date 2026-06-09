@@ -12,8 +12,18 @@ import {
 } from '../../../utils/planCategories';
 
 type BackendPlanView = Awaited<ReturnType<typeof api.listAgentPlans>>[number];
+type AgentPlanDisplayData = {
+  planSum: number;
+  doneSum: number;
+  donePct: number;
+  remaining: number;
+  cats: { key: string; name: string; color: string; plan: number; done: number; pct: number }[];
+  monthKind?: 'current' | 'next';
+};
 
-function planDataFromBackend(bp: BackendPlanView) {
+type StoredBackendPlan = BackendPlanView & { monthKind: 'current' | 'next' };
+
+function planDataFromBackend(bp: StoredBackendPlan): AgentPlanDisplayData {
   const planSum = Number(bp.totalPlan);
   const doneSum = Number(bp.totalDone);
   return {
@@ -21,6 +31,7 @@ function planDataFromBackend(bp: BackendPlanView) {
     doneSum,
     donePct: bp.donePct,
     remaining: planSum - doneSum,
+    monthKind: bp.monthKind,
     cats: bp.categories.map(c => ({
       key: c.key,
       name: c.name,
@@ -32,21 +43,24 @@ function planDataFromBackend(bp: BackendPlanView) {
   };
 }
 
-function agentPlanData(agent: AgentRow, idx: number, planCats: PlanCat[]) {
-  const seed = agent.id * 17 + idx;
-  const planSum = agent.plan * 1_200_000 + (seed % 7) * 500_000;
-  const catWeights = planCats.map((_, i) => 20 + ((seed * (i + 3)) % 25));
-  const wSum = catWeights.reduce((a, b) => a + b, 0) || 1;
-  const cats = planCats.map((c, i) => {
-    const catPlan    = Math.round(planSum * catWeights[i] / wSum);
-    const catDonePct = 30 + ((seed + i * 13) % 65);
-    const catDone    = Math.round(catPlan * catDonePct / 100);
-    return { ...c, plan: catPlan, done: catDone, pct: catDonePct };
-  });
-  const doneSum   = cats.reduce((s, c) => s + c.done, 0);
-  const donePct   = Math.round((doneSum / planSum) * 100);
-  const remaining = planSum - doneSum;
-  return { planSum, donePct, doneSum, remaining, cats };
+function emptyPlanData(planCats: PlanCat[]): AgentPlanDisplayData {
+  return {
+    planSum: 0,
+    doneSum: 0,
+    donePct: 0,
+    remaining: 0,
+    cats: planCats.map(c => ({ ...c, plan: 0, done: 0, pct: 0 })),
+  };
+}
+
+function mergePlanMaps(
+  current: BackendPlanView[],
+  next: BackendPlanView[],
+): Map<string, StoredBackendPlan> {
+  const map = new Map<string, StoredBackendPlan>();
+  for (const p of next) map.set(p.distributorId, { ...p, monthKind: 'next' });
+  for (const p of current) map.set(p.distributorId, { ...p, monthKind: 'current' });
+  return map;
 }
 
 // ─── Multi-segment donut ───────────────────────────────────────────────────────
@@ -117,7 +131,7 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
   const [step, setStep]               = useState<'agent' | 'form'>('agent');
   const [search, setSearch]           = useState('');
   const [selectedAgent, setSelected]  = useState<AgentRow | null>(null);
-  const [monthType, setMonthType]     = useState<'current' | 'next'>('next');
+  const [monthType, setMonthType]     = useState<'current' | 'next'>('current');
   const [totalStr, setTotalStr]       = useState('');
   const [catStr, setCatStr]           = useState<Record<string, string>>(() => emptyCatAmounts(planCats));
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1559,7 +1573,7 @@ function CalendarPicker({
 function TarixStatPage({
   allData, planCats, dark, showBalances, onClose, onAgentClick, t,
 }: {
-  allData: { agent: AgentRow; data: ReturnType<typeof agentPlanData> }[];
+  allData: { agent: AgentRow; data: AgentPlanDisplayData }[];
   planCats: PlanCat[];
   dark: boolean;
   showBalances: boolean;
@@ -2174,11 +2188,12 @@ function MonthlyHistoryTable({ agent, agentIdx, planCats, dark, showBalances, t 
 
 // ─── Agent Stat Full Page ──────────────────────────────────────────────────────
 function AgentStatPage({
-  agent, agentIdx, planCats, dark, showBalances, onClose, t,
+  agent, agentIdx, planCats, planData, dark, showBalances, onClose, t,
 }: {
   agent: AgentRow;
   agentIdx: number;
   planCats: PlanCat[];
+  planData: AgentPlanDisplayData;
   dark: boolean;
   showBalances: boolean;
   onClose: () => void;
@@ -2186,7 +2201,7 @@ function AgentStatPage({
 }) {
   const [mode, setMode] = useState<ViewMode>('months');
 
-  const data      = useMemo(() => agentPlanData(agent, agentIdx, planCats), [agent, agentIdx, planCats]);
+  const data      = planData;
   const histItems = useMemo(
     () => genHistory(agent.id * 17 + agentIdx, mode, data.planSum),
     [agent.id, agentIdx, mode, data.planSum],
@@ -2437,7 +2452,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   const [statPage,   setStatPage]   = useState<{ agent: AgentRow; agentIdx: number } | null>(null);
   const [isMobile,   setIsMobile]   = useState(false);
   const [planCats,   setPlanCats]   = useState<PlanCat[]>(DEFAULT_PLAN_CATS);
-  const [backendPlans, setBackendPlans] = useState<Map<string, BackendPlanView>>(new Map());
+  const [backendPlans, setBackendPlans] = useState<Map<string, StoredBackendPlan>>(new Map());
 
   const companyIdParam = useMemo(
     () => (selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds).join(',') : undefined),
@@ -2446,8 +2461,14 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
 
   const reloadPlans = () => {
     if (!localStorage.getItem('api_access_token')) return;
-    api.listAgentPlans({ companyId: companyIdParam })
-      .then(plans => setBackendPlans(new Map(plans.map(p => [p.distributorId, p]))))
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const base = { companyId: companyIdParam };
+    Promise.all([
+      api.listAgentPlans({ ...base, year: now.getFullYear(), month: now.getMonth() + 1 }),
+      api.listAgentPlans({ ...base, year: next.getFullYear(), month: next.getMonth() + 1 }),
+    ])
+      .then(([current, nextMonth]) => setBackendPlans(mergePlanMaps(current, nextMonth)))
       .catch(() => {});
   };
 
@@ -2474,11 +2495,11 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   const infoB  = D ? '#161616' : '#f8fafc';
 
   const allData = useMemo(() =>
-    activeAgents.map((a, i) => {
+    activeAgents.map((a) => {
       const bp = a.distributorId ? backendPlans.get(a.distributorId) : undefined;
       return {
         agent: a,
-        data: bp ? planDataFromBackend(bp) : agentPlanData(a, i, planCats),
+        data: bp ? planDataFromBackend(bp) : emptyPlanData(planCats),
       };
     }),
     [activeAgents, planCats, backendPlans]
@@ -2657,7 +2678,9 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
                         {t.planReja || 'Reja'}: {showBalances ? fmt(data.planSum) + ' ' + som : '••••'}
                         {hasPlan && (
                           <span style={{ marginLeft: 8, color: '#6366f1', fontWeight: 700 }}>
-                            · {t.planAssigned || 'Plan belgilangan'}
+                            · {data.monthKind === 'next'
+                              ? (t.planNextMonth || 'keyingi oy')
+                              : (t.planAssigned || 'Plan belgilangan')}
                           </span>
                         )}
                       </div>
@@ -2767,6 +2790,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
           agent={statPage.agent}
           agentIdx={statPage.agentIdx}
           planCats={planCats}
+          planData={allData.find(x => x.agent.id === statPage.agent.id)?.data ?? emptyPlanData(planCats)}
           dark={D}
           showBalances={showBalances}
           t={t}
