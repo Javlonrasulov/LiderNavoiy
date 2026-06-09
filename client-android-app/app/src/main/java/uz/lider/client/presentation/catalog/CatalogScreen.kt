@@ -32,8 +32,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,6 +61,8 @@ import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
+import uz.lider.client.presentation.theme.LiquidGlassDropdownMenu
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
@@ -194,13 +194,14 @@ fun CatalogScreen(
                         ) {
                             Icon(Icons.Default.Sort, null, tint = LiquidGlass.Indigo)
                         }
-                        DropdownMenu(
+                        LiquidGlassDropdownMenu(
                             expanded = state.sortMenuOpen,
                             onDismissRequest = { viewModel.toggleSortMenu() },
                         ) {
                             sortOptions().forEach { (sort, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
+                                LiquidGlassDropdownItem(
+                                    text = label,
+                                    selected = state.sort == sort,
                                     onClick = { viewModel.onSortChange(sort) },
                                 )
                             }

@@ -88,6 +88,7 @@ data class ClientOrderDto(
 )
 
 data class DeliveryPersonTrackingDto(
+    val userId: String? = null,
     val name: String,
     val position: String? = null,
     val phone: String? = null,
@@ -120,6 +121,7 @@ data class CreateOrderRequest(
 )
 
 data class ContactPersonDto(
+    val userId: String? = null,
     val name: String? = null,
     val position: String? = null,
     val phone: String? = null,
@@ -141,6 +143,7 @@ data class ClientProfileDto(
     val agentName: String? = null,
     val agentPosition: String? = null,
     val agentPhone: String? = null,
+    val agentUserId: String? = null,
     val deliveryPerson: ContactPersonDto? = null,
 )
 

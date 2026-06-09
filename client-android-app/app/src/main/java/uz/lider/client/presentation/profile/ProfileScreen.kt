@@ -32,13 +32,18 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +66,8 @@ import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
+private const val HELP_TELEGRAM_URL = "https://t.me/javlon_abdurasulov_dev"
+
 @Composable
 fun ProfileScreen(
     onNavigate: (String) -> Unit,
@@ -73,6 +80,49 @@ fun ProfileScreen(
     val profile = state.profile
     val text = LiquidTheme.text
     val textMuted = LiquidTheme.textMuted
+    var showHelpDialog by remember { mutableStateOf(false) }
+
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            title = {
+                Text(
+                    localized("prof_help"),
+                    color = text,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            },
+            text = {
+                Text(
+                    localized("prof_help_modal_msg"),
+                    color = textMuted,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showHelpDialog = false
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(HELP_TELEGRAM_URL)),
+                        )
+                    },
+                ) {
+                    Text(
+                        localized("prof_help_modal_contact"),
+                        color = LiquidGlass.Indigo,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHelpDialog = false }) {
+                    Text(localized("com_cancel"), color = textMuted)
+                }
+            },
+        )
+    }
 
     ClientTabScaffold(title = localized("prof_title")) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
@@ -251,6 +301,7 @@ fun ProfileScreen(
                             ContactInfoCard(
                                 title = localized("prof_manager"),
                                 person = ContactPerson(
+                                    userId = profile?.agentUserId,
                                     name = profile?.agentName.orEmpty(),
                                     position = profile?.agentPosition,
                                     phone = profile?.agentPhone,
@@ -258,7 +309,17 @@ fun ProfileScreen(
                                 onCall = { phone ->
                                     context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
                                 },
-                                onChat = { onNavigate(ClientRoutes.CHAT) },
+                                onChat = profile?.agentUserId?.let { userId ->
+                                    {
+                                        onNavigate(
+                                            ClientRoutes.chat(
+                                                userId = userId,
+                                                name = profile?.agentName.orEmpty(),
+                                                position = profile?.agentPosition.orEmpty(),
+                                            ),
+                                        )
+                                    }
+                                },
                             )
                         }
                     }
@@ -271,6 +332,17 @@ fun ProfileScreen(
                                 person = delivery,
                                 onCall = { phone ->
                                     context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                                },
+                                onChat = delivery.userId?.let { userId ->
+                                    {
+                                        onNavigate(
+                                            ClientRoutes.chat(
+                                                userId = userId,
+                                                name = delivery.name,
+                                                position = delivery.position.orEmpty(),
+                                            ),
+                                        )
+                                    }
                                 },
                             )
                         }
@@ -298,7 +370,7 @@ fun ProfileScreen(
                                 Icons.Default.Help,
                                 localized("prof_help"),
                                 Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
-                            ) { }
+                            ) { showHelpDialog = true }
                         }
                     }
 

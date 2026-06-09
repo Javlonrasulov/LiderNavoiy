@@ -53,6 +53,7 @@ export class ClientPortalService {
     const name = distributor.user?.fullName?.trim();
     if (!name) return null;
     return {
+      userId: distributor.user?.id ?? null,
       name,
       position:
         distributor.position?.trim() ||
@@ -106,8 +107,12 @@ export class ClientPortalService {
       order: { updatedAt: 'DESC' },
     });
 
-    let deliveryPerson: { name: string; position: string | null; phone: string | null } | null =
-      null;
+    let deliveryPerson: {
+      userId: string | null;
+      name: string;
+      position: string | null;
+      phone: string | null;
+    } | null = null;
     if (loadedOrder?.deliveryDistributorId) {
       const deliveryDistributor = await this.distributorRepo.findOne({
         where: { id: loadedOrder.deliveryDistributorId },
@@ -131,6 +136,7 @@ export class ClientPortalService {
       agentName: agent?.name ?? null,
       agentPosition: agent?.position ?? null,
       agentPhone: agent?.phone ?? null,
+      agentUserId: agent?.userId ?? null,
       deliveryPerson,
       orderCount,
       totalPurchases: Number(totalPurchases?.total ?? 0),
@@ -169,6 +175,7 @@ export class ClientPortalService {
 
     let deliveryPerson:
       | {
+          userId: string | null;
           name: string;
           position: string | null;
           phone: string | null;

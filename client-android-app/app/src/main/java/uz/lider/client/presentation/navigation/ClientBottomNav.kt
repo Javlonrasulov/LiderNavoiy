@@ -68,7 +68,6 @@ private val stackOnlyRoutes = setOf(
     ClientRoutes.DEBT,
     ClientRoutes.PROMOTIONS,
     ClientRoutes.NOTIFICATIONS,
-    ClientRoutes.CHAT,
     ClientRoutes.SETTINGS,
 )
 
@@ -76,7 +75,13 @@ fun showsClientBottomNav(route: String?): Boolean {
     if (route == null) return false
     if (route in tabRoutes) return true
     if (route in stackOnlyRoutes) return false
-    if (route.startsWith("productDetail/") || route.startsWith("orderTracking/")) return false
+    if (
+        route.startsWith("productDetail/") ||
+        route.startsWith("orderTracking/") ||
+        route.startsWith("chat/")
+    ) {
+        return false
+    }
     return false
 }
 
@@ -93,12 +98,33 @@ fun clientBottomNavSelectedTab(route: String?): ClientTab? = when {
 fun NavHostController.navigateClientTab(tab: ClientTab) {
     if (currentBackStackEntry?.destination?.route == tab.route) return
 
+    // Quick actions push tab screens on top of dashboard — pop back instead of stacking again.
+    if (popBackStack(tab.route, inclusive = false)) {
+        return
+    }
+
     navigate(tab.route) {
         popUpTo(graph.id) {
             saveState = true
         }
         launchSingleTop = true
         restoreState = true
+    }
+}
+
+fun NavHostController.navigateClientRoute(route: String) {
+    val tab = when (route) {
+        ClientRoutes.DASHBOARD -> ClientTab.DASHBOARD
+        ClientRoutes.CATALOG -> ClientTab.CATALOG
+        ClientRoutes.ORDERS -> ClientTab.ORDERS
+        ClientRoutes.ANALYTICS -> ClientTab.ANALYTICS
+        ClientRoutes.PROFILE -> ClientTab.PROFILE
+        else -> null
+    }
+    if (tab != null) {
+        navigateClientTab(tab)
+    } else {
+        navigate(route)
     }
 }
 
@@ -387,9 +413,11 @@ object ClientRoutes {
     const val DEBT = "debt"
     const val PROMOTIONS = "promotions"
     const val NOTIFICATIONS = "notifications"
-    const val CHAT = "chat"
+    const val CHAT = "chat/{userId}?name={name}&position={position}"
     const val SETTINGS = "settings"
 
     fun productDetail(productId: String) = "productDetail/$productId"
     fun orderTracking(orderId: String) = "orderTracking/$orderId"
+    fun chat(userId: String, name: String = "", position: String = "") =
+        "chat/$userId?name=${android.net.Uri.encode(name)}&position=${android.net.Uri.encode(position)}"
 }

@@ -48,6 +48,7 @@ class ProfileRepository @Inject constructor(
         val personName = name?.trim().orEmpty()
         if (personName.isEmpty()) return null
         return ContactPerson(
+            userId = userId?.trim(),
             name = personName,
             position = position?.trim(),
             phone = phone?.trim(),
@@ -68,6 +69,7 @@ class ProfileRepository @Inject constructor(
         agentName = agentName,
         agentPosition = agentPosition,
         agentPhone = agentPhone,
+        agentUserId = agentUserId,
         deliveryPerson = deliveryPerson?.toDomain(),
     )
 }

@@ -79,10 +79,18 @@ export class MessagesService {
     return a < b ? [a, b] : [b, a];
   }
 
-  private toUserDto(user: User): ChatUserDto {
+  private formatChatDisplayName(user: User, viewerRole?: UserRole): string {
+    const base = user.fullName?.trim() || user.username || 'Noma\'lum';
+    if (user.role === UserRole.CLIENT && viewerRole && viewerRole !== UserRole.CLIENT) {
+      return `${base} (klient)`;
+    }
+    return base;
+  }
+
+  private toUserDto(user: User, viewerRole?: UserRole): ChatUserDto {
     return {
       id: user.id,
-      fullName: user.fullName,
+      fullName: this.formatChatDisplayName(user, viewerRole),
       role: user.role,
       username: user.username,
     };
@@ -124,7 +132,8 @@ export class MessagesService {
       );
     }
 
-    return this.toConversationDto(conv, userId);
+    const viewer = await this.userRepo.findOne({ where: { id: userId } });
+    return this.toConversationDto(conv, userId, viewer?.role);
   }
 
   async getConversations(userId: string): Promise<ConversationDto[]> {
@@ -133,7 +142,8 @@ export class MessagesService {
       order: { updatedAt: 'DESC' },
     });
 
-    return Promise.all(convs.map((c) => this.toConversationDto(c, userId)));
+    const viewer = await this.userRepo.findOne({ where: { id: userId } });
+    return Promise.all(convs.map((c) => this.toConversationDto(c, userId, viewer?.role)));
   }
 
   async getConversationForUser(
@@ -142,7 +152,8 @@ export class MessagesService {
   ): Promise<ConversationDto | null> {
     try {
       const conv = await this.assertParticipant(conversationId, userId);
-      return this.toConversationDto(conv, userId);
+      const viewer = await this.userRepo.findOne({ where: { id: userId } });
+      return this.toConversationDto(conv, userId, viewer?.role);
     } catch {
       return null;
     }
@@ -217,12 +228,18 @@ export class MessagesService {
     const recipientId = conv.userLowId === senderId ? conv.userHighId : conv.userLowId;
 
     if (!skipPush) {
-      const sender = await this.userRepo.findOne({ where: { id: senderId } });
+      const [sender, recipient] = await Promise.all([
+        this.userRepo.findOne({ where: { id: senderId } }),
+        this.userRepo.findOne({ where: { id: recipientId } }),
+      ]);
+      const senderLabel = sender
+        ? this.formatChatDisplayName(sender, recipient?.role)
+        : 'Yangi xabar';
       const preview = trimmed
         || (messageType === 'image' ? '📷 Rasm' : `📎 ${attachment?.fileName ?? 'Fayl'}`);
       await this.notifications.sendToUser(
         recipientId,
-        sender?.fullName ?? 'Yangi xabar',
+        senderLabel,
         preview.length > 80 ? preview.slice(0, 80) + '…' : preview,
         NotificationType.MESSAGE,
         { conversationId, messageId: msg.id, type: 'message' },
@@ -318,7 +335,11 @@ export class MessagesService {
       .getOne();
   }
 
-  private async toConversationDto(conv: Conversation, viewerId: string): Promise<ConversationDto> {
+  private async toConversationDto(
+    conv: Conversation,
+    viewerId: string,
+    viewerRole?: UserRole,
+  ): Promise<ConversationDto> {
     const otherId = conv.userLowId === viewerId ? conv.userHighId : conv.userLowId;
     const other = await this.userRepo.findOne({ where: { id: otherId } });
 
@@ -335,7 +356,7 @@ export class MessagesService {
     return {
       id: conv.id,
       otherUser: other
-        ? this.toUserDto(other)
+        ? this.toUserDto(other, viewerRole)
         : { id: otherId, fullName: 'Noma\'lum', role: 'unknown', username: '' },
       lastMessage: last ? this.toLastMessageDto(last) : null,
       unreadCount,

@@ -128,23 +128,23 @@ fun ClientNavHost(
                 )
             }
             composable(ClientRoutes.DASHBOARD) {
-                DashboardScreen(onNavigate = navController::navigate)
+                DashboardScreen(onNavigate = navController::navigateClientRoute)
             }
             composable(ClientRoutes.CATALOG) {
                 CatalogScreen(
-                    onNavigate = navController::navigate,
+                    onNavigate = navController::navigateClientRoute,
                     cartCount = cartBadgeCount(cartItems),
                 )
             }
             composable(ClientRoutes.ORDERS) {
-                OrdersScreen(onNavigate = navController::navigate)
+                OrdersScreen(onNavigate = navController::navigateClientRoute)
             }
             composable(ClientRoutes.ANALYTICS) {
-                AnalyticsScreen(onNavigate = navController::navigate)
+                AnalyticsScreen(onNavigate = navController::navigateClientRoute)
             }
             composable(ClientRoutes.PROFILE) {
                 ProfileScreen(
-                    onNavigate = navController::navigate,
+                    onNavigate = navController::navigateClientRoute,
                     onLogout = {
                         navController.navigate(ClientRoutes.LOGIN) {
                             popUpTo(0) { inclusive = true }
@@ -190,7 +190,20 @@ fun ClientNavHost(
             composable(ClientRoutes.NOTIFICATIONS) {
                 NotificationsScreen(onBack = { navController.popBackStack() })
             }
-            composable(ClientRoutes.CHAT) {
+            composable(
+                route = ClientRoutes.CHAT,
+                arguments = listOf(
+                    navArgument("userId") { type = NavType.StringType },
+                    navArgument("name") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                    navArgument("position") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) {
                 ChatScreen(onBack = { navController.popBackStack() })
             }
             composable(ClientRoutes.SETTINGS) {

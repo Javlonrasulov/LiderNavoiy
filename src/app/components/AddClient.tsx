@@ -7,6 +7,7 @@ import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitc
 import type { ClientRow } from '../data/adminData';
 import { api } from '../api/client';
 import { clientNameToLogin, DEFAULT_CLIENT_APP_PASSWORD } from '../utils/clientApi';
+import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../utils/phoneFormat';
 
 export interface AgentOption {
   id: string;
@@ -179,10 +180,10 @@ function clientToForm(client: ClientRow) {
     : `${NAVOIY.lat.toFixed(6)},${NAVOIY.lng.toFixed(6)}`;
   return {
     form: {
-      kod: client.code, liniya: client.line, status: 'active', onTradeId: client.onTradeId ?? client.code,
+      kod: client.code, liniya: client.line, status: 'active',
       category: client.category || 'Standard',
       name: client.name, officialName: client.fullName, legalAddr: client.legalAddr,
-      landmark: '', phones: client.phone, bankAcc: '', mfo: '', bank: '',
+      landmark: '', phones: formatUzPhoneInput(client.phone || ''), bankAcc: '', mfo: '', bank: '',
       cls: client.cls, type: '', director: '', chiefAcc: '', channel: '',
       gps: gpsStr, priceZone: client.priceCat || '',
       budget: '', mainContract: '', note: '',
@@ -191,8 +192,8 @@ function clientToForm(client: ClientRow) {
       noDelay: false, routeList: false, sizeW: '', sizeH: '', regDate: '', comment: '',
     },
     contacts: client.contact
-      ? [{ name: client.contact, phone: client.phone, role: '' }]
-      : [{ name: '', phone: '', role: '' }],
+      ? [{ name: client.contact, phone: formatUzPhoneInput(client.phone || ''), role: '' }]
+      : [{ name: '', phone: UZ_PHONE_DEFAULT, role: '' }],
     gpsCoords: coords,
   };
 }
@@ -212,11 +213,11 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const [activeTab, setActiveTab]     = useState<TabKey>('rekvizit');
   const [isMaximized, setIsMaximized] = useState(false);
   const [openDrop, setOpenDrop]       = useState<string | null>(null);
-  const [contacts, setContacts]       = useState(initial?.contacts ?? [{ name: '', phone: '', role: '' }]);
+  const [contacts, setContacts]       = useState(initial?.contacts ?? [{ name: '', phone: UZ_PHONE_DEFAULT, role: '' }]);
   const [photos, setPhotos]           = useState<string[]>([]);
   const [form, setForm] = useState(initial?.form ?? {
-    kod: '', liniya: '', status: 'active', onTradeId: '', category: 'Standard',
-    name: '', officialName: '', legalAddr: '', landmark: '', phones: '',
+    kod: '', liniya: '', status: 'active', category: 'Standard',
+    name: '', officialName: '', legalAddr: '', landmark: '', phones: UZ_PHONE_DEFAULT,
     bankAcc: '', mfo: '', bank: '', cls: '', type: '',
     director: '', chiefAcc: '', channel: '', gps: '', priceZone: '',
     budget: '', mainContract: '', note: '',
@@ -315,7 +316,6 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       hasAppLogin?: boolean;
     } = {
       code: form.kod,
-      onTradeId: form.onTradeId || undefined,
       name: form.name,
       fullName: form.officialName || form.name,
       line: form.liniya,
@@ -531,8 +531,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
   /* ── Single cell: label on top, input below ── */
   const Cell = ({
-    label, field, type = 'text', mono = false, span = false,
-  }: { label: string; field: string; type?: string; mono?: boolean; span?: boolean }) => (
+    label, field, type = 'text', mono = false, span = false, phone = false,
+  }: { label: string; field: string; type?: string; mono?: boolean; span?: boolean; phone?: boolean }) => (
     <div style={{
       padding: '8px 12px',
       borderRight: span ? 'none' : `1px solid ${divClr}`,
@@ -541,10 +541,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     }}>
       <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{label}</div>
       <input
-        type={type}
+        type={phone ? 'tel' : type}
         value={(form as any)[field]}
-        onChange={e => set(field, e.target.value)}
-        placeholder="..."
+        onChange={e => set(field, phone ? formatUzPhoneInput(e.target.value) : e.target.value)}
+        placeholder={phone ? '+998 99 999 99 99' : '...'}
         style={inpStyle({ fontFamily: mono ? 'monospace' : 'inherit' })}
         onFocus={onFoc} onBlur={onBlr}
       />
@@ -780,10 +780,6 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               </>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, color: lblClr, whiteSpace: 'nowrap' }}>{t.onTradeId}:</span>
-            <MetaInp field="onTradeId" width={60} mono />
-          </div>
         </div>
 
         {/* ── TABS ── */}
@@ -820,7 +816,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               <Cell label={t.landmark}  field="landmark" />
             </Grid2>
             <Grid2>
-              <Cell label={t.phones}  field="phones" type="tel" />
+              <Cell label={t.phones} field="phones" phone />
               <Cell label={t.bankAcc} field="bankAcc" mono />
             </Grid2>
 
@@ -1053,8 +1049,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   {/* Phone */}
                   <div style={{ padding: '8px 12px', background: bg }}>
                     <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.contactPhone}</div>
-                    <input type="tel" value={c.phone} onChange={e => setContacts(contacts.map((x, j) => j === i ? { ...x, phone: e.target.value } : x))}
-                      placeholder="..." style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
+                    <input type="tel" value={c.phone} onChange={e => setContacts(contacts.map((x, j) => j === i ? { ...x, phone: formatUzPhoneInput(e.target.value) } : x))}
+                      placeholder="+998 99 999 99 99" style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
                   </div>
                 </Grid2>
                 {/* Role - full width */}
@@ -1066,7 +1062,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               </div>
             ))}
             <div style={{ padding: 12 }}>
-              <button onClick={() => setContacts([...contacts, { name: '', phone: '', role: '' }])}
+              <button onClick={() => setContacts([...contacts, { name: '', phone: UZ_PHONE_DEFAULT, role: '' }])}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
                   border: `1.5px solid ${inpBdr}`, background: inpBg,
                   color: focClr, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>

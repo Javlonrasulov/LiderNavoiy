@@ -1,6 +1,7 @@
 package uz.lider.client.presentation.debt
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,13 +20,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +44,8 @@ import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
+import uz.lider.client.presentation.dashboard.DashboardDateFilter
+import uz.lider.client.presentation.dashboard.DashboardDateRangeDialog
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
@@ -62,14 +69,44 @@ fun DebtScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val usedPct = (state.currentDebt / state.creditLimit).toFloat().coerceIn(0f, 1f)
-    val history = listOf(
-        DebtPayment("05.06.2026", "1,500,000", localized("debt_payment"), true),
-        DebtPayment("28.05.2026", "2,000,000", localized("debt_payment"), true),
-        DebtPayment("20.05.2026", "800,000", localized("debt_added"), false),
-        DebtPayment("15.05.2026", "3,200,000", localized("debt_payment"), true),
+    var showDatePicker by remember { mutableStateOf(false) }
+    val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
+
+    DashboardDateRangeDialog(
+        visible = showDatePicker,
+        onDismiss = { showDatePicker = false },
+        onApply = { start, end -> viewModel.setDateRange(start, end) },
+        onClear = { viewModel.resetToLastMonth() },
+        initialStartMillis = state.dateRange.takeIf { it.isCustom }
+            ?.let { DashboardDateFilter.toStartMillis(it.start) },
+        initialEndMillis = state.dateRange.takeIf { it.isCustom }
+            ?.let { DashboardDateFilter.toStartMillis(it.end) },
+        title = localized("dash_select_dates"),
+        applyLabel = localized("dash_apply_dates"),
+        cancelLabel = localized("com_cancel"),
     )
 
-    ClientStackScaffold(title = localized("debt_title"), onBack = onBack) { padding ->
+    ClientStackScaffold(
+        title = localized("debt_title"),
+        onBack = onBack,
+        actions = {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(onClick = { showDatePicker = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Outlined.CalendarMonth,
+                        contentDescription = localized("dash_select_dates"),
+                        tint = LiquidTheme.textMuted,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        },
+    ) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
             if (state.loading) {
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -81,6 +118,25 @@ fun DebtScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    if (state.dateRange.isCustom) {
+                        item {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                    .background(LiquidGlass.GradientPrimary)
+                                    .clickable { showDatePicker = true }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    periodLabel,
+                                    color = LiquidGlass.TextWhite,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
+
                     // Gradient hero debt card (red/rose)
                     item {
                         Box(
@@ -140,7 +196,6 @@ fun DebtScreen(
                                     )
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                // Glass progress bar with gradient fill
                                 Box(
                                     Modifier
                                         .fillMaxWidth()
@@ -160,70 +215,37 @@ fun DebtScreen(
                         }
                     }
 
-                    // Info mini glass cards
                     item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Column(
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidGlassThemed()
+                                .padding(16.dp),
+                        ) {
+                            Box(
                                 Modifier
-                                    .weight(1f)
-                                    .liquidGlassThemed()
-                                    .padding(16.dp),
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(LiquidGlass.Emerald.copy(alpha = 0.22f)),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Box(
-                                    Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(LiquidGlass.Emerald.copy(alpha = 0.22f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.CheckCircle,
-                                        null,
-                                        tint = LiquidGlass.Emerald,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Text(localized("debt_total_paid"), color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                Text(
-                                    "${(state.totalPaid / 1_000_000).toString().take(4)}M ${localized("com_som")}",
-                                    color = LiquidTheme.text,
-                                    fontWeight = FontWeight.Bold,
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    null,
+                                    tint = LiquidGlass.Emerald,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
-                            Column(
-                                Modifier
-                                    .weight(1f)
-                                    .liquidGlassThemed()
-                                    .padding(16.dp),
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(LiquidGlass.Amber.copy(alpha = 0.22f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.Schedule,
-                                        null,
-                                        tint = LiquidGlass.Amber,
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Text(localized("debt_due_date"), color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                Text(state.dueDate, color = LiquidGlass.Amber, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "${state.daysLeft} ${localized("debt_days_left")}",
-                                    color = LiquidTheme.textMuted,
-                                    fontSize = 11.sp,
-                                )
-                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(localized("debt_total_paid"), color = LiquidTheme.textMuted, fontSize = 12.sp)
+                            Text(
+                                "${formatMoney(state.totalPaid)} ${localized("com_som")}",
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
 
-                    // Debt dynamics area chart — glass container
                     item {
                         Column(
                             Modifier
@@ -251,7 +273,6 @@ fun DebtScreen(
                         }
                     }
 
-                    // History section header
                     item {
                         Text(
                             localized("debt_history"),
@@ -261,8 +282,7 @@ fun DebtScreen(
                         )
                     }
 
-                    // History items — glass cards
-                    items(history) { payment ->
+                    items(state.filteredPayments) { payment ->
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -283,7 +303,7 @@ fun DebtScreen(
                                             if (payment.isPayment)
                                                 LiquidGlass.Emerald.copy(alpha = 0.2f)
                                             else
-                                                LiquidGlass.Rose.copy(alpha = 0.2f)
+                                                LiquidGlass.Rose.copy(alpha = 0.2f),
                                         ),
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -297,7 +317,7 @@ fun DebtScreen(
                                 Column {
                                     Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
                                     Text(
-                                        payment.type,
+                                        localized(payment.typeKey),
                                         color = LiquidTheme.text,
                                         fontWeight = FontWeight.SemiBold,
                                     )
@@ -311,7 +331,6 @@ fun DebtScreen(
                         }
                     }
 
-                    // Pay button — gradient pill
                     item {
                         Box(
                             Modifier

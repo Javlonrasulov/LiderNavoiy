@@ -58,6 +58,7 @@ data class ClientOrder(
 )
 
 data class ContactPerson(
+    val userId: String? = null,
     val name: String,
     val position: String? = null,
     val phone: String? = null,
@@ -77,6 +78,7 @@ data class ClientProfile(
     val agentName: String? = null,
     val agentPosition: String? = null,
     val agentPhone: String? = null,
+    val agentUserId: String? = null,
     val deliveryPerson: ContactPerson? = null,
 )
 
@@ -134,6 +136,7 @@ data class OrderTrackingInfo(
 )
 
 data class DeliveryPersonTracking(
+    val userId: String? = null,
     val name: String,
     val position: String? = null,
     val phone: String? = null,

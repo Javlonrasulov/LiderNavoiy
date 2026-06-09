@@ -26,6 +26,7 @@ android {
         }
         val apiHost = localProperties.getProperty("api.host", "10.0.2.2")
         buildConfigField("String", "API_BASE_URL", "\"http://$apiHost:3000/api/v1/\"")
+        buildConfigField("String", "WS_BASE_URL", "\"http://$apiHost:3000\"")
     }
 
     buildFeatures {
@@ -73,6 +74,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.socket:socket.io-client:2.1.1") {
+        exclude(group = "org.json", module = "json")
+    }
 
     // Xarita — agent APK va admin bilan bir xil OSM tile qatlamlari
     implementation("org.osmdroid:osmdroid-android:6.1.18")

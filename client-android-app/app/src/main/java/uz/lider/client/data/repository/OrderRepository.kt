@@ -67,6 +67,7 @@ class OrderRepository @Inject constructor(
         etaMinutes = etaMinutes,
         deliveryPerson = deliveryPerson?.let {
             DeliveryPersonTracking(
+                userId = it.userId,
                 name = it.name,
                 position = it.position,
                 phone = it.phone,

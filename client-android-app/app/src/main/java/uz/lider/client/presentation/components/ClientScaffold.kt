@@ -72,6 +72,7 @@ fun ClientTabScaffold(
 fun ClientStackScaffold(
     title: String,
     onBack: () -> Unit,
+    actions: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -95,7 +96,9 @@ fun ClientStackScaffold(
                     )
                 },
                 navigationIcon = { ClientBackButton(onBack = onBack) },
+                actions = { actions() },
                 colors = TopAppBarDefaults.topAppBarColors(
+                    actionIconContentColor = LiquidTheme.textMuted,
                     containerColor = LiquidTheme.bgMid.copy(alpha = 0.88f),
                     titleContentColor = LiquidTheme.text,
                     navigationIconContentColor = LiquidGlass.IndigoLight,
