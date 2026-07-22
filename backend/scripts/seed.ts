@@ -114,7 +114,7 @@ async function seed() {
   if (!admin) {
     admin = userRepo.create({
       username: 'admin',
-      passwordHash: await bcrypt.hash('admin123', 12),
+      passwordHash: await bcrypt.hash('123456', 12),
       fullName: 'Super Admin',
       role: UserRole.ADMIN,
       position: 'Admin',
@@ -122,18 +122,19 @@ async function seed() {
       isActive: true,
     });
     await userRepo.save(admin);
-  } else if (!admin.position) {
-    admin.position = 'Admin';
+  } else {
+    admin.passwordHash = await bcrypt.hash('123456', 12);
+    if (!admin.position) admin.position = 'Admin';
     await userRepo.save(admin);
   }
 
-  // Agent user + profile
-  let agent = await userRepo.findOne({ where: { username: 'agent001' }, relations: ['distributorProfile'] });
+  // Agent user + profile (APK: agent / 123456)
+  let agent = await userRepo.findOne({ where: { username: 'agent' }, relations: ['distributorProfile'] });
   if (!agent) {
     agent = userRepo.create({
-      username: 'agent001',
-      passwordHash: await bcrypt.hash('agent123', 12),
-      fullName: 'Абдужакимов Диёрбек',
+      username: 'agent',
+      passwordHash: await bcrypt.hash('123456', 12),
+      fullName: 'Demo Agent',
       role: UserRole.DISTRIBUTOR,
       isActive: true,
     });
@@ -149,6 +150,10 @@ async function seed() {
       isOnline: false,
     });
     await profileRepo.save(profile);
+  } else {
+    agent.passwordHash = await bcrypt.hash('123456', 12);
+    agent.isActive = true;
+    await userRepo.save(agent);
   }
 
   const agentProfile = await profileRepo.findOne({
@@ -230,27 +235,32 @@ async function seed() {
   const productCount = await productRepo.count();
   const lineCount = await lineRepo.count();
 
-  // Demo client app login (first client)
+  // Demo client app login (APK: mijoz / 123456)
   const demoClient = await clientRepo.findOne({ where: { code: '29072' } });
   if (demoClient) {
-    let clientUser = await userRepo.findOne({ where: { username: 'client29072' } });
+    let clientUser = await userRepo.findOne({ where: { username: 'mijoz' } });
     if (!clientUser) {
       clientUser = userRepo.create({
-        username: 'client29072',
-        passwordHash: await bcrypt.hash('client123456', 12),
+        username: 'mijoz',
+        passwordHash: await bcrypt.hash('123456', 12),
         fullName: demoClient.fullName ?? demoClient.name,
         role: UserRole.CLIENT,
         clientId: demoClient.id,
         isActive: true,
       });
       await userRepo.save(clientUser);
+    } else {
+      clientUser.passwordHash = await bcrypt.hash('123456', 12);
+      clientUser.clientId = demoClient.id;
+      clientUser.isActive = true;
+      await userRepo.save(clientUser);
     }
   }
 
   console.log(`Seed complete:`);
-  console.log(`  admin / admin123`);
-  console.log(`  agent001 / agent123`);
-  console.log(`  client29072 / client123456  (client app demo)`);
+  console.log(`  admin / 123456`);
+  console.log(`  agent / 123456`);
+  console.log(`  mijoz / 123456  (client app)`);
   console.log(`  ${lineCount} lines, ${clientCount} clients, ${productCount} products, ${COMPANIES.length} companies`);
   await ds.destroy();
 }

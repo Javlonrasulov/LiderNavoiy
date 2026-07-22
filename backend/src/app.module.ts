@@ -22,6 +22,8 @@ import { PlansModule } from './plans/plans.module';
 import { RedisModule } from './common/redis/redis.module';
 import { User } from './auth/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
+import { Client } from './clients/entities/client.entity';
+import { DistributorProfile } from './distributors/entities/distributor-profile.entity';
 import { BootSeedService } from './common/boot-seed.service';
 
 @Module({
@@ -59,7 +61,7 @@ import { BootSeedService } from './common/boot-seed.service';
         };
       },
     }),
-    TypeOrmModule.forFeature([User, Company]),
+    TypeOrmModule.forFeature([User, Company, Client, DistributorProfile]),
     RedisModule,
     AuthModule,
     DistributorsModule,

@@ -22,7 +22,9 @@ netlify env:set VITE_UPLOADS_URL "https://lider-navoiy-api.onrender.com" --conte
 
 Keyin Netlifyda **Trigger deploy** (clear cache).
 
-Login: `admin` / `admin123`
+Login: `admin` / `123456`  
+Agent APK: `agent` / `123456`  
+Mijoz APK: `mijoz` / `123456`
 
 ## Eslatma
 

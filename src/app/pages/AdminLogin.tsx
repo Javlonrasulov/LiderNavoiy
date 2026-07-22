@@ -278,7 +278,7 @@ export default function AdminLogin() {
             {/* Hint */}
             <div className="text-center pt-1">
               <p className={`text-xs ${sub}`}>
-                {t.demo}: <span className={`font-mono ${D ? 'text-gray-300' : 'text-gray-600'}`}>admin / admin123</span>
+                {t.demo}: <span className={`font-mono ${D ? 'text-gray-300' : 'text-gray-600'}`}>admin / 123456</span>
               </p>
             </div>
           </form>
