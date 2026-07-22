@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { DistributorsModule } from './distributors/distributors.module';
 import { GpsModule } from './gps/gps.module';
@@ -29,35 +29,33 @@ import { BootSeedService } from './common/boot-seed.service';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
+      useFactory: (config: ConfigService): TypeOrmModuleOptions => {
         const databaseUrl = config.get<string>('DATABASE_URL');
         const sync =
           config.get('TYPEORM_SYNC') === 'true' ||
           config.get('NODE_ENV') !== 'production';
 
-        const common = {
-          autoLoadEntities: true as const,
-          synchronize: sync,
-          logging: config.get('NODE_ENV') === 'development',
-        };
-
         if (databaseUrl) {
           return {
-            type: 'postgres' as const,
+            type: 'postgres',
             url: databaseUrl,
             ssl: { rejectUnauthorized: false },
-            ...common,
+            autoLoadEntities: true,
+            synchronize: sync,
+            logging: config.get('NODE_ENV') === 'development',
           };
         }
 
         return {
-          type: 'postgres' as const,
-          host: config.get('DB_HOST', 'localhost'),
+          type: 'postgres',
+          host: config.get<string>('DB_HOST', 'localhost'),
           port: config.get<number>('DB_PORT', 5432),
-          username: config.get('DB_USERNAME', 'crm_user'),
-          password: config.get('DB_PASSWORD', 'crm_password'),
-          database: config.get('DB_DATABASE', 'distributor_crm'),
-          ...common,
+          username: config.get<string>('DB_USERNAME', 'crm_user'),
+          password: config.get<string>('DB_PASSWORD', 'crm_password'),
+          database: config.get<string>('DB_DATABASE', 'distributor_crm'),
+          autoLoadEntities: true,
+          synchronize: sync,
+          logging: config.get('NODE_ENV') === 'development',
         };
       },
     }),

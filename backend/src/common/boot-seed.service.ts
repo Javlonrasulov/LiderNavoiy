@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User } from '../../auth/entities/user.entity';
-import { Company } from '../../companies/entities/company.entity';
-import { UserRole } from '../../common/enums';
+import { User } from '../auth/entities/user.entity';
+import { Company } from '../companies/entities/company.entity';
+import { UserRole } from './enums';
 
 /**
  * Render / production: SEED_ON_BOOT=true bo'lsa admin va kompaniyalarni yaratadi.
@@ -22,12 +22,12 @@ export class BootSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    try {
-      await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
-      await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS postgis');
-      this.logger.log('DB extensions ready');
-    } catch (err) {
-      this.logger.warn(`PostGIS/uuid extension skipped: ${(err as Error).message}`);
+    for (const ext of ['"uuid-ossp"', 'postgis']) {
+      try {
+        await this.dataSource.query(`CREATE EXTENSION IF NOT EXISTS ${ext}`);
+      } catch (err) {
+        this.logger.warn(`Extension ${ext} skipped: ${(err as Error).message}`);
+      }
     }
 
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
