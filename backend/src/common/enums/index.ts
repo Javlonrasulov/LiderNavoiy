@@ -23,6 +23,8 @@ export enum OrderStatus {
   DRAFT = 'draft',
   PENDING = 'pending',
   CONFIRMED = 'confirmed',
+  PACKING = 'packing',
+  ON_WAY = 'on_way',
   DELIVERED = 'delivered',
   CANCELLED = 'cancelled',
 }

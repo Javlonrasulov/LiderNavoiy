@@ -39,6 +39,23 @@ export class BootSeedService implements OnModuleInit {
 
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
+    // Eski postgres enum -> varchar (on_way / packing uchun)
+    try {
+      await this.dataSource.query(`
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'orders' AND column_name = 'status'
+              AND udt_name LIKE '%enum%'
+          ) THEN
+            ALTER TABLE orders ALTER COLUMN status TYPE varchar USING status::text;
+          END IF;
+        END $$;
+      `);
+    } catch (err) {
+      this.logger.warn(`orders.status migrate: ${(err as Error).message}`);
+    }
+
     const companies = [
       {
         id: 'boran',

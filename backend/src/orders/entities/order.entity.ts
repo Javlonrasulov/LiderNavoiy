@@ -27,7 +27,7 @@ export class Order {
   @Column({ type: 'uuid', nullable: true })
   visitId: string | null;
 
-  @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
+  @Column({ type: 'varchar', default: OrderStatus.PENDING })
   status: OrderStatus;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
