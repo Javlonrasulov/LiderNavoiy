@@ -24,6 +24,9 @@ Thumbs.db
 .vscode/
 *.swp
 
+# Netlify
+.netlify/
+
 # Test
 coverage/
 

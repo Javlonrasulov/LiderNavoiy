@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA routing — /admin/* va boshqa yo'llar index.html ga qaytadi
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
