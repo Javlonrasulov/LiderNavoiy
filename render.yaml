@@ -1,6 +1,5 @@
 # Lider Navoiy — Render Blueprint
-# Dashboard: New → Blueprint → Javlonrasulov/LiderNavoiy
-# Deploy button: https://render.com/deploy?repo=https://github.com/Javlonrasulov/LiderNavoiy
+# https://render.com/deploy?repo=https://github.com/Javlonrasulov/LiderNavoiy
 
 services:
   - type: web
@@ -8,7 +7,8 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
+    # --include=dev: nest/typescript build uchun (NODE_ENV=production bo'lsa ham)
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start:prod
     healthCheckPath: /api/v1/health
     envVars:
@@ -16,8 +16,6 @@ services:
         value: production
       - key: NODE_VERSION
         value: "20"
-      - key: PORT
-        value: "10000"
       - key: API_PREFIX
         value: api/v1
       - key: TYPEORM_SYNC
@@ -38,16 +36,11 @@ services:
         fromDatabase:
           name: lider-navoiy-db
           property: connectionString
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           name: lider-navoiy-redis
           type: keyvalue
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          name: lider-navoiy-redis
-          type: keyvalue
-          property: port
+          property: connectionString
 
   - type: keyvalue
     name: lider-navoiy-redis
