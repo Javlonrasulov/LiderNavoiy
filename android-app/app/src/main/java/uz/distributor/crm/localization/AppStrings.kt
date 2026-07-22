@@ -162,9 +162,9 @@ object AppStrings {
         else -> role
     }
     fun serverHint(lang: AppLanguage, host: String) = when (lang) {
-        AppLanguage.UZ_LATIN -> "Server: $host — telefonda local.properties da api.host=kompyuter IP"
-        AppLanguage.UZ_CYRILLIC -> "Сервер: $host — телефонда api.host=компьютер IP"
-        AppLanguage.RUS -> "Сервер: $host — на телефоне укажите api.host=IP компьютера"
+        AppLanguage.UZ_LATIN -> "Server: $host — Render cloud (lokal uchun api.host=IP)"
+        AppLanguage.UZ_CYRILLIC -> "Сервер: $host — Render cloud (локал учун api.host=IP)"
+        AppLanguage.RUS -> "Сервер: $host — Render cloud (локально: api.host=IP)"
     }
     fun chatPlaceholder(lang: AppLanguage) = tr(lang, "Xabar...", "Хабар...", "Сообщение...")
     fun attachPhoto(lang: AppLanguage) = tr(lang, "Rasm yoki video", "Расм ёки видео", "Фото или видео")

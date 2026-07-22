@@ -80,7 +80,11 @@ fun MessagesScreen(
 
     val totalUnread = state.conversations.sumOf { it.unreadCount }
     val apiHost = remember {
-        BuildConfig.API_BASE_URL.removePrefix("http://").substringBefore(":").ifBlank { "?" }
+        BuildConfig.API_BASE_URL
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .substringBefore("/")
+            .ifBlank { "?" }
     }
 
     Box(Modifier.fillMaxSize().background(listBg)) {

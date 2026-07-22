@@ -25,10 +25,16 @@ android {
         if (localPropertiesFile.exists()) {
             localProperties.load(localPropertiesFile.inputStream())
         }
-        // Emulator: 10.0.2.2 | Real phone: PC LAN IP, e.g. api.host=192.168.1.5 in local.properties
-        val apiHost = localProperties.getProperty("api.host", "10.0.2.2")
-        buildConfigField("String", "API_BASE_URL", "\"http://$apiHost:3000/api/v1/\"")
-        buildConfigField("String", "WS_BASE_URL", "\"http://$apiHost:3000/tracking\"")
+        // Default: Render. Local: api.host=192.168.x.x yoki api.base.url=...
+        val renderApi = "https://lider-navoiy-api.onrender.com/api/v1/"
+        val renderWs = "https://lider-navoiy-api.onrender.com/tracking"
+        val apiHost = localProperties.getProperty("api.host")
+        val apiBaseUrl = localProperties.getProperty("api.base.url")
+            ?: if (apiHost != null) "http://$apiHost:3000/api/v1/" else renderApi
+        val wsBaseUrl = localProperties.getProperty("api.ws.url")
+            ?: if (apiHost != null) "http://$apiHost:3000/tracking" else renderWs
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
     }
 
     buildFeatures {
