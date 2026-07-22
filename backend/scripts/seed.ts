@@ -62,16 +62,27 @@ const DEPRECATED_PRODUCT_CODES = [
 ];
 
 async function seed() {
-  const ds = new DataSource({
-    type: 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    port: Number(process.env.DB_PORT || 5432),
-    username: process.env.DB_USERNAME || 'crm_user',
-    password: process.env.DB_PASSWORD || 'crm_password',
-    database: process.env.DB_DATABASE || 'distributor_crm',
-    entities: [User, DistributorProfile, Client, Product, SalesLine, Company],
-    synchronize: true,
-  });
+  const databaseUrl = process.env.DATABASE_URL;
+  const ds = new DataSource(
+    databaseUrl
+      ? {
+          type: 'postgres',
+          url: databaseUrl,
+          ssl: { rejectUnauthorized: false },
+          entities: [User, DistributorProfile, Client, Product, SalesLine, Company],
+          synchronize: true,
+        }
+      : {
+          type: 'postgres',
+          host: process.env.DB_HOST || 'localhost',
+          port: Number(process.env.DB_PORT || 5432),
+          username: process.env.DB_USERNAME || 'crm_user',
+          password: process.env.DB_PASSWORD || 'crm_password',
+          database: process.env.DB_DATABASE || 'distributor_crm',
+          entities: [User, DistributorProfile, Client, Product, SalesLine, Company],
+          synchronize: true,
+        },
+  );
 
   await ds.initialize();
   console.log('Connected to database');
@@ -80,8 +91,6 @@ async function seed() {
   const profileRepo = ds.getRepository(DistributorProfile);
   const clientRepo = ds.getRepository(Client);
   const productRepo = ds.getRepository(Product);
-  const lineRepo = ds.getRepository(SalesLine);
-
   const lineRepo = ds.getRepository(SalesLine);
   const companyRepo = ds.getRepository(Company);
 

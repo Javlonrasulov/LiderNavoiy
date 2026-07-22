@@ -20,24 +20,48 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
 import { RedisModule } from './common/redis/redis.module';
+import { User } from './auth/entities/user.entity';
+import { Company } from './companies/entities/company.entity';
+import { BootSeedService } from './common/boot-seed.service';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get('DB_USERNAME', 'crm_user'),
-        password: config.get('DB_PASSWORD', 'crm_password'),
-        database: config.get('DB_DATABASE', 'distributor_crm'),
-        autoLoadEntities: true,
-        synchronize: config.get('NODE_ENV') !== 'production',
-        logging: config.get('NODE_ENV') === 'development',
-      }),
+      useFactory: (config: ConfigService) => {
+        const databaseUrl = config.get<string>('DATABASE_URL');
+        const sync =
+          config.get('TYPEORM_SYNC') === 'true' ||
+          config.get('NODE_ENV') !== 'production';
+
+        const common = {
+          autoLoadEntities: true as const,
+          synchronize: sync,
+          logging: config.get('NODE_ENV') === 'development',
+        };
+
+        if (databaseUrl) {
+          return {
+            type: 'postgres' as const,
+            url: databaseUrl,
+            ssl: { rejectUnauthorized: false },
+            ...common,
+          };
+        }
+
+        return {
+          type: 'postgres' as const,
+          host: config.get('DB_HOST', 'localhost'),
+          port: config.get<number>('DB_PORT', 5432),
+          username: config.get('DB_USERNAME', 'crm_user'),
+          password: config.get('DB_PASSWORD', 'crm_password'),
+          database: config.get('DB_DATABASE', 'distributor_crm'),
+          ...common,
+        };
+      },
     }),
+    TypeOrmModule.forFeature([User, Company]),
     RedisModule,
     AuthModule,
     DistributorsModule,
@@ -58,5 +82,6 @@ import { RedisModule } from './common/redis/redis.module';
     CompaniesModule,
     PlansModule,
   ],
+  providers: [BootSeedService],
 })
 export class AppModule {}
