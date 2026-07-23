@@ -91,8 +91,8 @@ interface AdminAuthContextType {
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
 const ADMIN_CREDENTIALS = [
-  { username: 'admin', password: 'admin123', name: 'Super Admin', role: 'Bosh administrator' },
-  { username: 'manager', password: 'manager123', name: 'Mansur Toshev', role: 'Menejer' },
+  { username: 'admin', password: '123456', name: 'Super Admin', role: 'Bosh administrator' },
+  { username: 'manager', password: '123456', name: 'Mansur Toshev', role: 'Menejer' },
 ];
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
