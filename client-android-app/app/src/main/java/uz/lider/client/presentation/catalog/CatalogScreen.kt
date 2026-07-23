@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,9 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -52,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,7 +62,6 @@ import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.theme.FixedHeroBackdrop
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
@@ -78,9 +73,6 @@ import uz.lider.client.presentation.theme.PremiumHeaderActionPill
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
-
-/** Scroll distance (px) before hero fully fades to page background. */
-private const val HeroFadeScrollPx = 700f
 
 @Composable
 fun CatalogScreen(
@@ -95,19 +87,6 @@ fun CatalogScreen(
     val products = viewModel.filteredProducts()
     val categories = listOf(localized("cat_all"), localized("cat_favorites")) + state.categories
     val lifecycleOwner = LocalLifecycleOwner.current
-    val gridState = rememberLazyGridState()
-    val density = LocalDensity.current
-    val fadeProgress by remember {
-        derivedStateOf {
-            val index = gridState.firstVisibleItemIndex
-            val offset = gridState.firstVisibleItemScrollOffset
-            val approx = when {
-                index == 0 -> offset.toFloat()
-                else -> offset + index * with(density) { 160.dp.toPx() }
-            }
-            (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
-        }
-    }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -121,104 +100,96 @@ fun CatalogScreen(
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
         } else {
-            Box(Modifier.fillMaxSize()) {
-                FixedHeroBackdrop(
-                    fadeProgress = fadeProgress,
-                    height = 420.dp,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
-
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        bottom = ClientBottomNavHeight + 16.dp,
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(vertical = 10.dp),
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = ClientBottomNavHeight + 16.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(vertical = 10.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                PremiumHeaderButton(
-                                    icon = Icons.Default.Menu,
-                                    onClick = onOpenDrawer,
-                                    contentDescription = "Menu",
-                                )
-                                PremiumHeaderActionPill {
-                                    Box {
-                                        PremiumHeaderPillIcon(
-                                            icon = Icons.Default.Sort,
-                                            onClick = { viewModel.toggleSortMenu() },
-                                        )
-                                        LiquidGlassDropdownMenu(
-                                            expanded = state.sortMenuOpen,
-                                            onDismissRequest = { viewModel.toggleSortMenu() },
-                                        ) {
-                                            sortOptions().forEach { (sort, label) ->
-                                                LiquidGlassDropdownItem(
-                                                    text = label,
-                                                    selected = state.sort == sort,
-                                                    onClick = { viewModel.onSortChange(sort) },
-                                                )
-                                            }
+                            PremiumHeaderButton(
+                                icon = Icons.Default.Menu,
+                                onClick = onOpenDrawer,
+                                contentDescription = "Menu",
+                            )
+                            PremiumHeaderActionPill {
+                                Box {
+                                    PremiumHeaderPillIcon(
+                                        icon = Icons.Default.Sort,
+                                        onClick = { viewModel.toggleSortMenu() },
+                                    )
+                                    LiquidGlassDropdownMenu(
+                                        expanded = state.sortMenuOpen,
+                                        onDismissRequest = { viewModel.toggleSortMenu() },
+                                    ) {
+                                        sortOptions().forEach { (sort, label) ->
+                                            LiquidGlassDropdownItem(
+                                                text = label,
+                                                selected = state.sort == sort,
+                                                onClick = { viewModel.onSortChange(sort) },
+                                            )
                                         }
                                     }
-                                    Box {
-                                        PremiumHeaderPillIcon(
-                                            icon = Icons.Default.ShoppingCart,
-                                            onClick = { onNavigate(ClientRoutes.CART) },
-                                        )
-                                        if (cartCount > 0) {
-                                            Box(
-                                                Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .offset(x = 2.dp, y = 2.dp)
-                                                    .size(16.dp)
-                                                    .clip(CircleShape)
-                                                    .background(LiquidGlass.Rose),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                Text(
-                                                    if (cartCount > 99) "99+" else "$cartCount",
-                                                    color = Color.White,
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                )
-                                            }
+                                }
+                                Box {
+                                    PremiumHeaderPillIcon(
+                                        icon = Icons.Default.ShoppingCart,
+                                        onClick = { onNavigate(ClientRoutes.CART) },
+                                    )
+                                    if (cartCount > 0) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 2.dp, y = 2.dp)
+                                                .size(16.dp)
+                                                .clip(CircleShape)
+                                                .background(LiquidGlass.Rose),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text(
+                                                if (cartCount > 99) "99+" else "$cartCount",
+                                                color = Color.White,
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Bold,
+                                            )
                                         }
                                     }
                                 }
                             }
-                            Spacer(Modifier.height(28.dp))
-                            Text(
-                                localized("cat_title"),
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
-                                lineHeight = 34.sp,
-                            )
-                            Text(
-                                "${products.size} ${localized("cat_products")}",
-                                color = Color.White.copy(alpha = 0.90f),
-                                fontSize = 15.sp,
-                                lineHeight = 22.sp,
-                            )
-                            Spacer(Modifier.height(20.dp))
                         }
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            localized("cat_title"),
+                            color = LiquidTheme.text,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 26.sp,
+                            lineHeight = 32.sp,
+                        )
+                        Text(
+                            "${products.size} ${localized("cat_products")}",
+                            color = LiquidTheme.textMuted,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                        )
+                        Spacer(Modifier.height(12.dp))
                     }
+                }
 
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

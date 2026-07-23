@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,16 +33,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,7 +59,6 @@ import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.theme.FixedHeroBackdrop
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
@@ -73,9 +68,6 @@ import uz.lider.client.presentation.theme.PremiumHeaderActionPill
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
-
-/** Scroll distance (px) before hero fully fades to page background. */
-private const val HeroFadeScrollPx = 700f
 
 @Composable
 fun OrdersScreen(
@@ -102,19 +94,6 @@ fun OrdersScreen(
         "received" to localized("ord_status_received"),
         "cancelled" to localized("ord_status_cancelled"),
     )
-    val listState = rememberLazyListState()
-    val density = LocalDensity.current
-    val fadeProgress by remember {
-        derivedStateOf {
-            val index = listState.firstVisibleItemIndex
-            val offset = listState.firstVisibleItemScrollOffset
-            val approx = when {
-                index == 0 -> offset.toFloat()
-                else -> offset + index * with(density) { 160.dp.toPx() }
-            }
-            (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
-        }
-    }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
         if (state.loading) {
@@ -122,102 +101,80 @@ fun OrdersScreen(
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
         } else {
-            Box(Modifier.fillMaxSize()) {
-                FixedHeroBackdrop(
-                    fadeProgress = fadeProgress,
-                    height = 480.dp,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            localized("ord_title"),
+                            color = LiquidTheme.text,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PremiumHeaderButton(
+                                icon = Icons.Default.Menu,
+                                onClick = onOpenDrawer,
+                                contentDescription = "Menu",
+                            )
+                            PremiumHeaderActionPill {
+                                PremiumHeaderPillIcon(
+                                    icon = Icons.Default.Refresh,
+                                    onClick = viewModel::load,
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    GlassSearchField(
+                        value = state.search,
+                        onValueChange = viewModel::onSearchChange,
+                        placeholder = localized("ord_search"),
+                        leadingIcon = Icons.Default.Search,
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        filters.forEach { (filterKey, label) ->
+                            key(filterKey) {
+                                GlassFilterChip(
+                                    label = label,
+                                    selected = state.statusFilter == filterKey,
+                                    onClick = { viewModel.onStatusFilterChange(filterKey) },
+                                )
+                            }
+                        }
+                    }
+                }
 
                 LazyColumn(
-                    state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = ClientBottomNavHeight + 16.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    item {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                PremiumHeaderButton(
-                                    icon = Icons.Default.Menu,
-                                    onClick = onOpenDrawer,
-                                    contentDescription = "Menu",
-                                )
-                                PremiumHeaderActionPill {
-                                    PremiumHeaderPillIcon(
-                                        icon = Icons.Default.Refresh,
-                                        onClick = viewModel::load,
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(28.dp))
-                            Text(
-                                localized("ord_title"),
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
-                                lineHeight = 34.sp,
-                            )
-                            Text(
-                                "${orders.size} ${localized("ord_count")}",
-                                color = Color.White.copy(alpha = 0.90f),
-                                fontSize = 15.sp,
-                                lineHeight = 22.sp,
-                            )
-                            Spacer(Modifier.height(20.dp))
-                        }
-                    }
-
-                    item {
-                        GlassSearchField(
-                            value = state.search,
-                            onValueChange = viewModel::onSearchChange,
-                            placeholder = localized("ord_search"),
-                            leadingIcon = Icons.Default.Search,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    item {
-                        Row(
-                            Modifier
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            filters.forEach { (filterKey, label) ->
-                                key(filterKey) {
-                                    GlassFilterChip(
-                                        label = label,
-                                        selected = state.statusFilter == filterKey,
-                                        onClick = { viewModel.onStatusFilterChange(filterKey) },
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "${orders.size} ${localized("ord_count")}",
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
-                    }
-
-                    item {
+                    item(key = "summary") {
                         Box(
                             Modifier
-                                .padding(horizontal = 16.dp)
                                 .fillMaxWidth()
                                 .shadow(
                                     elevation = 16.dp,
@@ -271,25 +228,20 @@ fun OrdersScreen(
                                 }
                             }
                         }
-                        Spacer(Modifier.height(20.dp))
                     }
 
-                    item(key = "orders-header-${state.statusFilter}-${orders.size}") {
+                    item(key = "orders-count-${state.statusFilter}-${orders.size}") {
                         Text(
                             "${orders.size} ${localized("ord_count")}",
-                            color = LiquidTheme.text,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = LiquidTheme.textMuted,
+                            fontSize = 13.sp,
                         )
-                        Spacer(Modifier.height(12.dp))
                     }
 
                     if (orders.isEmpty()) {
                         item(key = "orders-empty") {
                             Box(
                                 Modifier
-                                    .padding(horizontal = 16.dp)
                                     .fillMaxWidth()
                                     .liquidGlassThemed()
                                     .padding(28.dp),
@@ -322,15 +274,13 @@ fun OrdersScreen(
                         }
                     } else {
                         items(orders, key = { it.id }) { order ->
-                            Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                                OrderCard(
-                                    order = order,
-                                    lang = lang,
-                                    palette = palette,
-                                    onClick = { onNavigate(ClientRoutes.orderTracking(order.id)) },
-                                    onReorder = { onNavigate(ClientRoutes.CATALOG) },
-                                )
-                            }
+                            OrderCard(
+                                order = order,
+                                lang = lang,
+                                palette = palette,
+                                onClick = { onNavigate(ClientRoutes.orderTracking(order.id)) },
+                                onReorder = { onNavigate(ClientRoutes.CATALOG) },
+                            )
                         }
                     }
                 }

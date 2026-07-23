@@ -78,8 +78,13 @@ class DashboardViewModel @Inject constructor(
                     filtered = filtered,
                 )
             }
-            startLiveDeliveryPolling(allOrders)
+            ensureLiveDeliveryPolling()
         }
+    }
+
+    /** Call when Asosiy becomes visible again — restarts map if poll died. */
+    fun onDashboardVisible() {
+        ensureLiveDeliveryPolling()
     }
 
     fun setDateRange(startMillis: Long, endMillis: Long) {
@@ -109,46 +114,91 @@ class DashboardViewModel @Inject constructor(
 
     fun dateRangeLabel(): String = DashboardDateFilter.formatRange(_uiState.value.dateRange)
 
-    private fun startLiveDeliveryPolling(orders: List<ClientOrder>) {
-        livePollJob?.cancel()
-        val onWay = orders.firstOrNull { OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY }
-        if (onWay == null) {
-            _uiState.update { it.copy(liveDelivery = null) }
+    private fun ensureLiveDeliveryPolling() {
+        if (livePollJob?.isActive == true) {
+            // Still kick a refresh so UI updates immediately on return
+            viewModelScope.launch { syncLiveDeliveryOnce() }
             return
         }
         livePollJob = viewModelScope.launch {
-            var orderId = onWay.id
             while (isActive) {
-                refreshLiveDelivery(orderId)
+                syncLiveDeliveryOnce()
                 delay(8_000)
-                val latest = orderRepository.getOrders()
-                _uiState.update { it.copy(allOrders = latest) }
-                val current = latest.firstOrNull {
-                    OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY
-                }
-                if (current == null) {
-                    _uiState.update { it.copy(liveDelivery = null) }
-                    break
-                }
-                orderId = current.id
             }
         }
     }
 
-    private suspend fun refreshLiveDelivery(orderId: String) {
-        val tracking = orderRepository.getOrderTracking(orderId) ?: return
-        if (OrderStatus.fromKey(tracking.status) != OrderStatus.ON_WAY) {
+    private suspend fun syncLiveDeliveryOnce() {
+        val previousId = _uiState.value.liveDelivery?.orderId
+
+        // Prefer a successful orders fetch; on failure keep previous live card.
+        val latest = runCatching { orderRepository.getOrders() }.getOrNull()
+        if (latest != null) {
+            _uiState.update { it.copy(allOrders = latest) }
+        }
+        val orders = latest ?: _uiState.value.allOrders
+
+        val onWay = orders.firstOrNull { OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY }
+            ?: previousId?.let { id ->
+                // List may lag; keep tracking known on-way order until confirmed finished
+                orders.firstOrNull { it.id == id }?.takeIf {
+                    val s = OrderStatus.fromKey(it.status)
+                    s != OrderStatus.DELIVERED && s != OrderStatus.CANCELLED
+                }
+            }
+
+        if (onWay == null) {
+            // Only clear when we successfully loaded orders and none are on the way
+            if (latest != null) {
+                _uiState.update { it.copy(liveDelivery = null) }
+            }
+            return
+        }
+
+        refreshLiveDelivery(onWay.id, keepOnTrackingMiss = true)
+    }
+
+    private suspend fun refreshLiveDelivery(
+        orderId: String,
+        keepOnTrackingMiss: Boolean,
+    ) {
+        val tracking = orderRepository.getOrderTracking(orderId)
+        if (tracking == null) {
+            // Network glitch — do not hide the card
+            return
+        }
+
+        val status = OrderStatus.fromKey(tracking.status)
+        if (status == OrderStatus.DELIVERED || status == OrderStatus.CANCELLED) {
             _uiState.update { it.copy(liveDelivery = null) }
             return
         }
+        // Show while packing/on_way/etc. as long as order is still active delivery flow.
+        // Prefer ON_WAY; still show if list said on_way but tracking string is odd.
+        val listSaysOnWay = _uiState.value.allOrders
+            .firstOrNull { it.id == orderId }
+            ?.let { OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY }
+            ?: false
+        if (status != OrderStatus.ON_WAY && !listSaysOnWay) {
+            if (!keepOnTrackingMiss) {
+                _uiState.update { it.copy(liveDelivery = null) }
+            }
+            return
+        }
+
         val courierLat = tracking.deliveryPerson?.latitude
         val courierLng = tracking.deliveryPerson?.longitude
         val deliveryLat = tracking.deliveryLatitude
         val deliveryLng = tracking.deliveryLongitude
 
-        var routePoints = emptyList<LatLngPoint>()
-        var distanceLabel = tracking.distanceKm?.let { formatDistance(it) } ?: "—"
-        var etaLabel = tracking.etaMinutes?.let { "$it min" } ?: "—"
+        val previous = _uiState.value.liveDelivery?.takeIf { it.orderId == orderId }
+        var routePoints = previous?.routePoints.orEmpty()
+        var distanceLabel = tracking.distanceKm?.let { formatDistance(it) }
+            ?: previous?.distanceLabel
+            ?: "—"
+        var etaLabel = tracking.etaMinutes?.let { "$it min" }
+            ?: previous?.etaLabel
+            ?: "—"
 
         if (courierLat != null && courierLng != null && deliveryLat != null && deliveryLng != null) {
             val route = roadRouteService.fetchDrivingRoute(
