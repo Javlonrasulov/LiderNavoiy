@@ -2,17 +2,33 @@ package uz.lider.client.presentation.theme
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -20,22 +36,27 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import uz.lider.client.R
 
 // ─── Liquid Glass Color Tokens ───────────────────────────────────────────────
 
 object LiquidGlass {
 
-    // Dark backgrounds
-    val BgDark      = Color(0xFF060B18)
-    val BgMidDark   = Color(0xFF0D1428)
+    // Dark backgrounds (fintech deep black)
+    val BgDark      = Color(0xFF05070F)
+    val BgMidDark   = Color(0xFF0B1220)
 
     // Light backgrounds
-    val BgLight     = Color(0xFFF0F4FF)
-    val BgMidLight  = Color(0xFFE8EEFF)
+    val BgLight     = Color(0xFFF5F7FC)
+    val BgMidLight  = Color(0xFFEEF2FA)
 
     // Dark glass layers
     val GlassDark            = Color(0x22FFFFFF)
@@ -44,15 +65,15 @@ object LiquidGlass {
     val GlassDarkBorderStrong= Color(0x77FFFFFF)
 
     // Light glass layers
-    val GlassLight           = Color(0xBBFFFFFF)
+    val GlassLight           = Color(0xB8FFFFFF)
     val GlassLightStrong     = Color(0xDDFFFFFF)
     val GlassLightBorder     = Color(0x88FFFFFF)
 
-    // Accent palette (same in both modes)
-    val Indigo   = Color(0xFF6366F1)
-    val IndigoLight = Color(0xFF818CF8)
+    // Accent palette — Primary Blue + Accent Cyan (premium fintech)
+    val Indigo   = Color(0xFF2563EB)
+    val IndigoLight = Color(0xFF3B82F6)
     val Cyan     = Color(0xFF22D3EE)
-    val Violet   = Color(0xFFA78BFA)
+    val Violet   = Color(0xFF7C3AED)
     val Pink     = Color(0xFFF472B6)
     val Emerald  = Color(0xFF34D399)
     val Amber    = Color(0xFFFBBF24)
@@ -66,16 +87,39 @@ object LiquidGlass {
     val TextDark       = Color(0xFF0F172A)
     val TextDarkMuted  = Color(0xFF64748B)
 
-    // Corner radii
+    // Corner radii (Premium UI spec)
     val RadiusCard  = 24.dp
+    val RadiusButton = 20.dp
+    val RadiusNav   = 28.dp
+    val RadiusSearch = 20.dp
+    val RadiusDialog = 24.dp
+    val RadiusWidget = 22.dp
     val RadiusChip  = 50.dp
-    val RadiusInput = 16.dp
-    val RadiusSheet = 32.dp
+    val RadiusInput = 20.dp
+    val RadiusSheet = 28.dp
+
+    // Soft premium shadows (never harsh black)
+    val ShadowAmbient = Color(0x332563EB)
+    val ShadowSpot = Color(0x287C3AED)
 
     // Static gradients
     val GradientPrimary = Brush.linearGradient(
         listOf(Indigo, Violet, Cyan),
         start = Offset(0f, 0f), end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+    )
+    val GradientHeroDark = Brush.verticalGradient(
+        listOf(
+            Color(0x9905070F),
+            Color(0xCC05070F),
+            Color(0xFF05070F),
+        ),
+    )
+    val GradientHeroLight = Brush.verticalGradient(
+        listOf(
+            Color(0x6605070F),
+            Color(0xAA0B1220),
+            Color(0xFFF5F7FC),
+        ),
     )
 }
 
@@ -104,7 +148,7 @@ object LiquidTheme {
 
     val glassAlpha: Float
         @Composable @ReadOnlyComposable get() =
-            if (LocalClientDark.current) 0.18f else 0.72f
+            if (LocalClientDark.current) 0.16f else 0.55f
 
     val glassBorderAlpha: Float
         @Composable @ReadOnlyComposable get() =
@@ -116,11 +160,17 @@ object LiquidTheme {
 /** Dark-mode liquid glass card */
 fun Modifier.liquidGlassDark(
     radius: Dp = LiquidGlass.RadiusCard,
-    alpha: Float = 0.18f,
+    alpha: Float = 0.16f,
     borderAlpha: Float = 0.28f,
 ): Modifier {
     val shape = RoundedCornerShape(radius)
     return this
+        .shadow(
+            elevation = 12.dp,
+            shape = shape,
+            ambientColor = LiquidGlass.ShadowAmbient,
+            spotColor = LiquidGlass.ShadowSpot,
+        )
         .clip(shape)
         .background(Color.White.copy(alpha = alpha))
         .border(
@@ -128,7 +178,7 @@ fun Modifier.liquidGlassDark(
             brush = Brush.linearGradient(
                 listOf(
                     Color.White.copy(alpha = borderAlpha * 2f),
-                    Color.White.copy(alpha = borderAlpha),
+                    LiquidGlass.Indigo.copy(alpha = 0.22f),
                     Color.White.copy(alpha = borderAlpha * 0.3f),
                 )
             ),
@@ -142,14 +192,21 @@ fun Modifier.liquidGlassLight(
 ): Modifier {
     val shape = RoundedCornerShape(radius)
     return this
+        .shadow(
+            elevation = 10.dp,
+            shape = shape,
+            ambientColor = LiquidGlass.ShadowAmbient,
+            spotColor = LiquidGlass.ShadowSpot,
+        )
         .clip(shape)
-        .background(Color.White.copy(alpha = 0.72f))
+        .background(Color.White.copy(alpha = 0.62f))
         .border(
             width = 1.dp,
             brush = Brush.linearGradient(
                 listOf(
                     Color.White.copy(alpha = 0.95f),
-                    Color.White.copy(alpha = 0.60f),
+                    LiquidGlass.Cyan.copy(alpha = 0.25f),
+                    Color.White.copy(alpha = 0.55f),
                 )
             ),
             shape = shape,
@@ -161,6 +218,38 @@ fun Modifier.liquidGlassLight(
 fun Modifier.liquidGlassThemed(
     radius: Dp = LiquidGlass.RadiusCard,
 ): Modifier = if (LocalClientDark.current) liquidGlassDark(radius) else liquidGlassLight(radius)
+
+/** Extra-transparent glass for floating bottom nav — content behind stays visible. */
+@Composable
+fun Modifier.liquidGlassNav(
+    radius: Dp = LiquidGlass.RadiusNav,
+): Modifier {
+    val isDark = LocalClientDark.current
+    val shape = RoundedCornerShape(radius)
+    return this
+        .shadow(
+            elevation = 18.dp,
+            shape = shape,
+            ambientColor = LiquidGlass.ShadowAmbient,
+            spotColor = LiquidGlass.ShadowSpot,
+        )
+        .clip(shape)
+        .background(
+            if (isDark) Color.White.copy(alpha = 0.12f)
+            else Color.White.copy(alpha = 0.38f),
+        )
+        .border(
+            width = 1.dp,
+            brush = Brush.linearGradient(
+                listOf(
+                    Color.White.copy(alpha = if (isDark) 0.45f else 0.85f),
+                    LiquidGlass.Indigo.copy(alpha = 0.18f),
+                    Color.White.copy(alpha = if (isDark) 0.12f else 0.35f),
+                ),
+            ),
+            shape = shape,
+        )
+}
 
 fun Modifier.glowEffect(
     color: Color = LiquidGlass.Indigo,
@@ -188,6 +277,318 @@ fun GlassCard(
         modifier = modifier.liquidGlassThemed(radius),
         content = content,
     )
+}
+
+@Composable
+fun GlassFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(LiquidGlass.RadiusChip)
+    Box(
+        modifier = modifier
+            .then(
+                if (selected) {
+                    Modifier
+                        .clip(shape)
+                        .background(LiquidGlass.GradientPrimary)
+                } else {
+                    Modifier.liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                },
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            label,
+            color = if (selected) Color.White else LiquidTheme.textMuted,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+@Composable
+fun GlassIconButton(
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = LiquidTheme.text,
+    contentDescription: String? = null,
+    size: Dp = 42.dp,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+fun PremiumPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val shape = RoundedCornerShape(LiquidGlass.RadiusButton)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                if (enabled) LiquidGlass.GradientPrimary
+                else Brush.linearGradient(listOf(Color.Gray, Color.Gray)),
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    }
+}
+
+@Composable
+fun GlassSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    leadingIcon: ImageVector? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .liquidGlassThemed(radius = LiquidGlass.RadiusSearch)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingIcon != null) {
+            Icon(leadingIcon, null, tint = LiquidTheme.textMuted, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = LiquidTheme.text,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+            ),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                if (value.isEmpty()) {
+                    Text(placeholder, color = LiquidTheme.textMuted, fontSize = 15.sp)
+                }
+                inner()
+            },
+        )
+        if (trailing != null) {
+            Spacer(Modifier.width(8.dp))
+            trailing()
+        }
+    }
+}
+
+@Composable
+fun HeroHeaderBackground(
+    modifier: Modifier = Modifier,
+    height: Dp = 280.dp,
+    clipBottom: Boolean = true,
+    content: @Composable BoxScope.() -> Unit = {},
+) {
+    val isDark = LiquidTheme.isDark
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .then(
+                if (clipBottom) Modifier.clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                else Modifier,
+            ),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.bg_home_hero),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(if (isDark) LiquidGlass.GradientHeroDark else LiquidGlass.GradientHeroLight),
+        )
+        content()
+    }
+}
+
+/**
+ * Fixed hero image behind scrolling content.
+ * [fadeProgress] 0 = full photo, 1 = fully covered by theme background (after deep scroll).
+ */
+@Composable
+fun FixedHeroBackdrop(
+    fadeProgress: Float,
+    modifier: Modifier = Modifier,
+    height: Dp = 560.dp,
+) {
+    val isDark = LiquidTheme.isDark
+    val fade = fadeProgress.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.bg_home_hero),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // Soft bottom blend so cards sit cleanly on the photo
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Black.copy(alpha = if (isDark) 0.45f else 0.28f),
+                            0.45f to Color.Black.copy(alpha = if (isDark) 0.35f else 0.18f),
+                            0.78f to (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = 0.55f),
+                            1.0f to (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = 0.92f),
+                        ),
+                    ),
+                ),
+        )
+        // Deep-scroll white/dark wash
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = fade),
+                ),
+        )
+    }
+}
+
+/** Elevated white/glass circle — MyGov-style header control (not a frosted chip). */
+@Composable
+fun PremiumHeaderButton(
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = LiquidGlass.TextDark,
+    contentDescription: String? = null,
+    size: Dp = 40.dp,
+) {
+    val isDark = LiquidTheme.isDark
+    Box(
+        modifier = modifier
+            .size(size)
+            .shadow(
+                elevation = 10.dp,
+                shape = CircleShape,
+                ambientColor = Color.Black.copy(alpha = 0.10f),
+                spotColor = Color.Black.copy(alpha = 0.14f),
+            )
+            .clip(CircleShape)
+            .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.94f))
+            .border(
+                1.dp,
+                if (isDark) Color.White.copy(alpha = 0.28f) else Color.White,
+                CircleShape,
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isDark) Color.White else tint,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/** Grouped header actions in one elevated pill (chat/bell style from MyGov). */
+@Composable
+fun PremiumHeaderActionPill(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val isDark = LiquidTheme.isDark
+    Row(
+        modifier = modifier
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(50),
+                ambientColor = Color.Black.copy(alpha = 0.10f),
+                spotColor = Color.Black.copy(alpha = 0.14f),
+            )
+            .clip(RoundedCornerShape(50))
+            .background(if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.94f))
+            .border(
+                1.dp,
+                if (isDark) Color.White.copy(alpha = 0.25f) else Color.White,
+                RoundedCornerShape(50),
+            )
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        content = content,
+    )
+}
+
+@Composable
+fun PremiumHeaderPillIcon(
+    icon: ImageVector,
+    onClick: () -> Unit,
+    tint: Color = LiquidGlass.TextDark,
+    contentDescription: String? = null,
+) {
+    val isDark = LiquidTheme.isDark
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isDark) Color.White else tint,
+            modifier = Modifier.size(20.dp),
+        )
+    }
 }
 
 @Composable
@@ -278,7 +679,6 @@ fun LiquidBackground(
         modifier = modifier
             .background(if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight)
             .drawBehind {
-                // Top-left glow orb
                 drawCircle(
                     brush = Brush.radialGradient(
                         listOf(
@@ -291,7 +691,6 @@ fun LiquidBackground(
                     radius = size.width * 0.6f,
                     center = Offset(size.width * 0.2f, size.height * 0.15f),
                 )
-                // Bottom-right glow orb
                 drawCircle(
                     brush = Brush.radialGradient(
                         listOf(
@@ -304,7 +703,6 @@ fun LiquidBackground(
                     radius = size.width * 0.5f,
                     center = Offset(size.width * 0.85f, size.height * 0.7f),
                 )
-                // Bottom-center orb
                 drawCircle(
                     brush = Brush.radialGradient(
                         listOf(

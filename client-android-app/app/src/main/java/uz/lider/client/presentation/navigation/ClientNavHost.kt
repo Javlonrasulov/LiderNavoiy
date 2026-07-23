@@ -1,14 +1,17 @@
 package uz.lider.client.presentation.navigation
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
@@ -27,12 +30,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
-import uz.lider.client.presentation.components.cartBadgeCount
 import uz.lider.client.presentation.analytics.AnalyticsScreen
 import uz.lider.client.presentation.auth.LoginScreen
 import uz.lider.client.presentation.cart.CartScreen
 import uz.lider.client.presentation.catalog.CatalogScreen
 import uz.lider.client.presentation.chat.ChatScreen
+import uz.lider.client.presentation.components.cartBadgeCount
 import uz.lider.client.presentation.dashboard.DashboardScreen
 import uz.lider.client.presentation.debt.DebtScreen
 import uz.lider.client.presentation.notifications.NotificationsScreen
@@ -43,7 +46,6 @@ import uz.lider.client.presentation.promotions.PromotionsScreen
 import uz.lider.client.presentation.settings.SettingsScreen
 import uz.lider.client.presentation.theme.ClientColors
 import uz.lider.client.presentation.tracking.OrderTrackingScreen
-import androidx.compose.material3.MaterialTheme
 import javax.inject.Inject
 
 @HiltViewModel
@@ -59,11 +61,19 @@ class SplashViewModel @Inject constructor(
 
 @HiltViewModel
 class ClientNavigationViewModel @Inject constructor(
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
     cartRepository: CartRepository,
 ) : ViewModel() {
     val sessionExpired = authRepository.sessionExpired
     val cartItems = cartRepository.items
+    val user = authRepository.getUserFlow()
+
+    fun logout(onDone: () -> Unit) {
+        viewModelScope.launch {
+            authRepository.logout()
+            onDone()
+        }
+    }
 }
 
 @Composable
@@ -77,6 +87,9 @@ fun ClientNavHost(
     val showBottomNav = showsClientBottomNav(currentRoute)
     val selectedTab = clientBottomNavSelectedTab(currentRoute) ?: ClientTab.DASHBOARD
     val cartItems by navViewModel.cartItems.collectAsState()
+    val user by navViewModel.user.collectAsState(initial = null)
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
@@ -86,141 +99,151 @@ fun ClientNavHost(
         }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        NavHost(
-            navController = navController,
-            startDestination = ClientRoutes.SPLASH,
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (showBottomNav) {
-                        Modifier.padding(bottom = ClientBottomNavHeight)
-                    } else {
-                        Modifier
-                    },
-                ),
-        ) {
-            composable(ClientRoutes.SPLASH) {
-                SplashRoute(
-                    onLoggedIn = {
-                        navController.navigate(ClientRoutes.DASHBOARD) {
-                            popUpTo(ClientRoutes.SPLASH) { inclusive = true }
-                        }
-                    },
-                    onNotLoggedIn = {
-                        navController.navigate(ClientRoutes.LOGIN) {
-                            popUpTo(ClientRoutes.SPLASH) { inclusive = true }
-                        }
-                    },
-                )
-            }
-            composable(ClientRoutes.LOGIN) {
-                LoginScreen(
-                    onLoginSuccess = {
-                        navController.navigate(ClientRoutes.DASHBOARD) {
-                            popUpTo(ClientRoutes.LOGIN) { inclusive = true }
-                        }
-                    },
-                )
-            }
-            composable(ClientRoutes.DASHBOARD) {
-                DashboardScreen(onNavigate = navController::navigateClientRoute)
-            }
-            composable(ClientRoutes.CATALOG) {
-                CatalogScreen(
-                    onNavigate = navController::navigateClientRoute,
-                    cartCount = cartBadgeCount(cartItems),
-                )
-            }
-            composable(ClientRoutes.ORDERS) {
-                OrdersScreen(onNavigate = navController::navigateClientRoute)
-            }
-            composable(ClientRoutes.ANALYTICS) {
-                AnalyticsScreen(onNavigate = navController::navigateClientRoute)
-            }
-            composable(ClientRoutes.PROFILE) {
-                ProfileScreen(
-                    onNavigate = navController::navigateClientRoute,
-                    onLogout = {
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = showBottomNav,
+        drawerContent = {
+            ClientDrawerContent(
+                user = user,
+                onNavigate = { route -> navController.navigateClientRoute(route) },
+                onLogout = {
+                    navViewModel.logout {
                         navController.navigate(ClientRoutes.LOGIN) {
                             popUpTo(0) { inclusive = true }
                         }
-                    },
-                )
-            }
-            composable(ClientRoutes.CART) {
-                CartScreen(
-                    onBack = { navController.popBackStack() },
-                    onCheckoutSuccess = {
-                        navController.navigate(ClientRoutes.ORDERS) {
-                            popUpTo(ClientRoutes.CATALOG) { inclusive = false }
-                        }
-                    },
-                )
-            }
-            composable(
-                route = ClientRoutes.PRODUCT_DETAIL,
-                arguments = listOf(navArgument("productId") { type = NavType.StringType }),
-            ) { entry ->
-                ProductDetailScreen(
-                    productId = entry.arguments?.getString("productId").orEmpty(),
-                    onBack = { navController.popBackStack() },
-                    onOpenCart = { navController.navigate(ClientRoutes.CART) },
-                )
-            }
-            composable(
-                route = ClientRoutes.ORDER_TRACKING,
-                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
-            ) { entry ->
-                OrderTrackingScreen(
-                    orderId = entry.arguments?.getString("orderId").orEmpty(),
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable(ClientRoutes.DEBT) {
-                DebtScreen(onBack = { navController.popBackStack() })
-            }
-            composable(ClientRoutes.PROMOTIONS) {
-                PromotionsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(ClientRoutes.NOTIFICATIONS) {
-                NotificationsScreen(onBack = { navController.popBackStack() })
-            }
-            composable(
-                route = ClientRoutes.CHAT,
-                arguments = listOf(
-                    navArgument("userId") { type = NavType.StringType },
-                    navArgument("name") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    },
-                    navArgument("position") {
-                        type = NavType.StringType
-                        defaultValue = ""
-                    },
-                ),
-            ) {
-                ChatScreen(onBack = { navController.popBackStack() })
-            }
-            composable(ClientRoutes.SETTINGS) {
-                SettingsScreen(onBack = { navController.popBackStack() })
-            }
-        }
-
-        if (showBottomNav) {
-            ClientBottomNav(
-                selected = selectedTab,
-                cartCount = cartBadgeCount(cartItems),
-                onTabSelected = { tab -> navController.navigateClientTab(tab) },
-                isDark = isDark,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .zIndex(100f),
+                    }
+                },
+                onClose = { scope.launch { drawerState.close() } },
             )
+        },
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            NavHost(
+                navController = navController,
+                startDestination = ClientRoutes.SPLASH,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                composable(ClientRoutes.SPLASH) {
+                    SplashRoute(
+                        onLoggedIn = {
+                            navController.navigate(ClientRoutes.DASHBOARD) {
+                                popUpTo(ClientRoutes.SPLASH) { inclusive = true }
+                            }
+                        },
+                        onNotLoggedIn = {
+                            navController.navigate(ClientRoutes.LOGIN) {
+                                popUpTo(ClientRoutes.SPLASH) { inclusive = true }
+                            }
+                        },
+                    )
+                }
+                composable(ClientRoutes.LOGIN) {
+                    LoginScreen(
+                        onLoginSuccess = {
+                            navController.navigate(ClientRoutes.DASHBOARD) {
+                                popUpTo(ClientRoutes.LOGIN) { inclusive = true }
+                            }
+                        },
+                    )
+                }
+                composable(ClientRoutes.DASHBOARD) {
+                    DashboardScreen(
+                        onNavigate = navController::navigateClientRoute,
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                    )
+                }
+                composable(ClientRoutes.CATALOG) {
+                    CatalogScreen(
+                        onNavigate = navController::navigateClientRoute,
+                        cartCount = cartBadgeCount(cartItems),
+                    )
+                }
+                composable(ClientRoutes.ORDERS) {
+                    OrdersScreen(onNavigate = navController::navigateClientRoute)
+                }
+                composable(ClientRoutes.ANALYTICS) {
+                    AnalyticsScreen(onNavigate = navController::navigateClientRoute)
+                }
+                composable(ClientRoutes.PROFILE) {
+                    ProfileScreen(
+                        onNavigate = navController::navigateClientRoute,
+                        onLogout = {
+                            navController.navigate(ClientRoutes.LOGIN) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                    )
+                }
+                composable(ClientRoutes.CART) {
+                    CartScreen(
+                        onBack = { navController.popBackStack() },
+                        onCheckoutSuccess = {
+                            navController.navigate(ClientRoutes.ORDERS) {
+                                popUpTo(ClientRoutes.CATALOG) { inclusive = false }
+                            }
+                        },
+                    )
+                }
+                composable(
+                    route = ClientRoutes.PRODUCT_DETAIL,
+                    arguments = listOf(navArgument("productId") { type = NavType.StringType }),
+                ) { entry ->
+                    ProductDetailScreen(
+                        productId = entry.arguments?.getString("productId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                        onOpenCart = { navController.navigate(ClientRoutes.CART) },
+                    )
+                }
+                composable(
+                    route = ClientRoutes.ORDER_TRACKING,
+                    arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+                ) { entry ->
+                    OrderTrackingScreen(
+                        orderId = entry.arguments?.getString("orderId").orEmpty(),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(ClientRoutes.DEBT) {
+                    DebtScreen(onBack = { navController.popBackStack() })
+                }
+                composable(ClientRoutes.PROMOTIONS) {
+                    PromotionsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(ClientRoutes.NOTIFICATIONS) {
+                    NotificationsScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    route = ClientRoutes.CHAT,
+                    arguments = listOf(
+                        navArgument("userId") { type = NavType.StringType },
+                        navArgument("name") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                        navArgument("position") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        },
+                    ),
+                ) {
+                    ChatScreen(onBack = { navController.popBackStack() })
+                }
+                composable(ClientRoutes.SETTINGS) {
+                    SettingsScreen(onBack = { navController.popBackStack() })
+                }
+            }
+
+            if (showBottomNav) {
+                ClientBottomNav(
+                    selected = selectedTab,
+                    cartCount = cartBadgeCount(cartItems),
+                    onTabSelected = { tab -> navController.navigateClientTab(tab) },
+                    isDark = isDark,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .zIndex(100f),
+                )
+            }
         }
     }
 }

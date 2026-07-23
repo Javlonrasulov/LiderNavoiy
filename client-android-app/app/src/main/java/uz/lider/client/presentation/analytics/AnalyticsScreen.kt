@@ -46,6 +46,7 @@ import uz.lider.client.presentation.components.localized
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
+import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
@@ -60,8 +61,8 @@ fun AnalyticsScreen(
     val state by viewModel.uiState.collectAsState()
     val data = state.data
 
-    ClientTabScaffold(title = localized("an_title")) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        ClientTabScaffold(title = localized("an_title")) { padding ->
             if (state.loading && data == null) {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
@@ -82,38 +83,18 @@ fun AnalyticsScreen(
                                 Modifier
                                     .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
                                     .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 listOf(
                                     "week" to localized("an_week"),
                                     "month" to localized("an_month"),
                                     "year" to localized("an_year"),
                                 ).forEach { (key, label) ->
-                                    val selected = state.period == key
-                                    if (selected) {
-                                        Box(
-                                            Modifier
-                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                                .background(LiquidGlass.GradientPrimary)
-                                                .clickable { viewModel.setPeriod(key) }
-                                                .padding(horizontal = 14.dp, vertical = 7.dp),
-                                        ) {
-                                            Text(
-                                                label,
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                            )
-                                        }
-                                    } else {
-                                        Box(
-                                            Modifier
-                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                                .clickable { viewModel.setPeriod(key) }
-                                                .padding(horizontal = 14.dp, vertical = 7.dp),
-                                        ) {
-                                            Text(label, color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                        }
-                                    }
+                                    GlassFilterChip(
+                                        label = label,
+                                        selected = state.period == key,
+                                        onClick = { viewModel.setPeriod(key) },
+                                    )
                                 }
                             }
                         }
@@ -176,33 +157,18 @@ fun AnalyticsScreen(
                                 Modifier
                                     .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
                                     .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 listOf(
                                     ChartVisualStyle.BAR to localized("an_style_bar"),
                                     ChartVisualStyle.WAVE to localized("an_style_wave"),
                                     ChartVisualStyle.CIRCLE to localized("an_style_circle"),
                                 ).forEach { (style, label) ->
-                                    val selected = state.chartStyle == style
-                                    if (selected) {
-                                        Box(
-                                            Modifier
-                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                                .background(LiquidGlass.GradientPrimary)
-                                                .clickable { viewModel.setChartStyle(style) }
-                                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                                        ) {
-                                            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        }
-                                    } else {
-                                        Box(
-                                            Modifier
-                                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                                .clickable { viewModel.setChartStyle(style) }
-                                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                                        ) {
-                                            Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp)
-                                        }
-                                    }
+                                    GlassFilterChip(
+                                        label = label,
+                                        selected = state.chartStyle == style,
+                                        onClick = { viewModel.setChartStyle(style) },
+                                    )
                                 }
                             }
                         }

@@ -48,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -61,6 +60,7 @@ import uz.lider.client.domain.model.ContactPerson
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.HeroHeaderBackground
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
@@ -124,8 +124,8 @@ fun ProfileScreen(
         )
     }
 
-    ClientTabScaffold(title = localized("prof_title")) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        ClientTabScaffold(title = localized("prof_title")) { padding ->
             if (state.loading) {
                 Box(
                     Modifier.fillMaxSize().padding(padding),
@@ -141,26 +141,13 @@ fun ProfileScreen(
                 ) {
                     // ── Hero banner ───────────────────────────────────────────
                     item {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(
-                                            Color(0xFF4F46E5),
-                                            LiquidGlass.Violet,
-                                            Color(0xFF7C3AED),
-                                        ),
-                                        start = Offset(0f, 0f),
-                                        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-                                    )
-                                )
-                                .padding(vertical = 28.dp, horizontal = 24.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
+                        HeroHeaderBackground(height = 220.dp) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 24.dp, vertical = 20.dp),
                             ) {
                                 Box(
                                     Modifier
@@ -180,13 +167,13 @@ fun ProfileScreen(
                                 Spacer(Modifier.height(12.dp))
                                 Text(
                                     profile?.fullName ?: profile?.name ?: "—",
-                                    color = text,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 20.sp,
                                 )
                                 Text(
                                     profile?.name ?: "",
-                                    color = textMuted,
+                                    color = Color.White.copy(alpha = 0.75f),
                                     fontSize = 14.sp,
                                 )
                                 profileCategoryStyle(profile?.category)?.let { categoryStyle ->

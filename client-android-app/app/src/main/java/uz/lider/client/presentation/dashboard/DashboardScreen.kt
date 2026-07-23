@@ -1,8 +1,10 @@
 package uz.lider.client.presentation.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,32 +16,35 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CardGiftcard
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.SettingsBrightness
-import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,10 +52,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,27 +69,35 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPalette
-import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
+import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.notifications.MockNotificationIds
 import uz.lider.client.presentation.notifications.NotificationsViewModel
 import uz.lider.client.presentation.settings.SettingsViewModel
+import uz.lider.client.presentation.theme.FixedHeroBackdrop
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
 import uz.lider.client.presentation.theme.LiquidGlassDropdownMenu
 import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.PremiumHeaderActionPill
+import uz.lider.client.presentation.theme.PremiumHeaderButton
+import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
+
+/** Scroll distance (px) before hero fully fades to page background. */
+private const val HeroFadeScrollPx = 900f
 
 @Composable
 fun DashboardScreen(
     onNavigate: (String) -> Unit,
+    onOpenDrawer: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     notificationsViewModel: NotificationsViewModel = hiltViewModel(),
@@ -95,6 +111,20 @@ fun DashboardScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     val filtered = state.filtered
     val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val fadeProgress by remember {
+        derivedStateOf {
+            val index = listState.firstVisibleItemIndex
+            val offset = listState.firstVisibleItemScrollOffset
+            // Approximate scrolled distance: first items are in the hero zone
+            val approx = when {
+                index == 0 -> offset.toFloat()
+                else -> offset + index * with(density) { 180.dp.toPx() }
+            }
+            (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
+        }
+    }
 
     DashboardDateRangeDialog(
         visible = showDatePicker,
@@ -110,34 +140,93 @@ fun DashboardScreen(
         cancelLabel = t("com_cancel"),
     )
 
-    ClientTabScaffold(
-        title = t("nav_home"),
-        actions = {
-            DashboardHeaderActions(
-                settingsViewModel = settingsViewModel,
-                onCalendarClick = { showDatePicker = true },
-                calendarLabel = t("dash_select_dates"),
-            )
-        },
-    ) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize()) {
-            if (state.loading) {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = LiquidGlass.Indigo)
-                }
-            } else {
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        if (state.loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = LiquidGlass.Indigo)
+            }
+        } else {
+            Box(Modifier.fillMaxSize()) {
+                // Fixed hero — stays while content scrolls; fades only after deep scroll
+                FixedHeroBackdrop(
+                    fadeProgress = fadeProgress,
+                    height = 560.dp,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+
                 LazyColumn(
-                    modifier = Modifier.padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PremiumHeaderButton(
+                                    icon = Icons.Default.Menu,
+                                    onClick = onOpenDrawer,
+                                    contentDescription = "Menu",
+                                )
+                                PremiumHeaderActionPill {
+                                    DashboardHeaderPillActions(
+                                        settingsViewModel = settingsViewModel,
+                                        onCalendarClick = { showDatePicker = true },
+                                        calendarLabel = t("dash_select_dates"),
+                                    )
+                                    Box {
+                                        PremiumHeaderPillIcon(
+                                            icon = Icons.Default.Notifications,
+                                            onClick = { onNavigate(ClientRoutes.NOTIFICATIONS) },
+                                        )
+                                        if (hasUnreadNotifications) {
+                                            Box(
+                                                Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(6.dp)
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(LiquidGlass.Rose),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(28.dp))
+                            Text(
+                                t("dash_welcome"),
+                                color = Color.White.copy(alpha = 0.90f),
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                            )
+                            Text(
+                                state.clientName,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 28.sp,
+                                lineHeight = 34.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+
                     if (state.dateRange.isCustom) {
                         item {
                             Box(
                                 Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp)
                                     .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
                                     .background(LiquidGlass.GradientPrimary)
                                     .clickable { showDatePicker = true }
@@ -145,7 +234,7 @@ fun DashboardScreen(
                             ) {
                                 Text(
                                     periodLabel,
-                                    color = LiquidGlass.TextWhite,
+                                    color = Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -153,58 +242,58 @@ fun DashboardScreen(
                         }
                     }
 
+                    // Premium service slider over hero
                     item {
+                        Text(
+                            t("dash_quick_actions"),
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
                         Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
+                            Modifier
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Column {
-                                Text(
-                                    t("dash_welcome"),
-                                    color = LiquidTheme.textMuted,
-                                    fontSize = 14.sp,
-                                )
-                                Text(
-                                    state.clientName,
-                                    color = LiquidTheme.text,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            Box(
-                                Modifier
-                                    .size(44.dp)
-                                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                                    .clickable { onNavigate(ClientRoutes.NOTIFICATIONS) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.Notifications,
-                                    null,
-                                    tint = LiquidGlass.Indigo,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                if (hasUnreadNotifications) {
-                                    Box(
-                                        Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(8.dp)
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(LiquidGlass.Rose),
-                                    )
-                                }
-                            }
+                            PremiumServiceCard(
+                                icon = Icons.Default.ShoppingCart,
+                                label = t("dash_order"),
+                                gradient = listOf(LiquidGlass.Indigo, LiquidGlass.Cyan),
+                            ) { onNavigate(ClientRoutes.CATALOG) }
+                            PremiumServiceCard(
+                                icon = Icons.Default.ShoppingBag,
+                                label = t("nav_orders"),
+                                gradient = listOf(LiquidGlass.Violet, LiquidGlass.Pink),
+                            ) { onNavigate(ClientRoutes.ORDERS) }
+                            PremiumServiceCard(
+                                icon = Icons.Default.CreditCard,
+                                label = t("dash_payment"),
+                                gradient = listOf(LiquidGlass.Cyan, LiquidGlass.Emerald),
+                            ) { onNavigate(ClientRoutes.DEBT) }
+                            PremiumServiceCard(
+                                icon = Icons.Default.TrendingUp,
+                                label = t("dash_promotions"),
+                                gradient = listOf(LiquidGlass.Amber, LiquidGlass.Rose),
+                            ) { onNavigate(ClientRoutes.PROMOTIONS) }
                         }
+                        Spacer(Modifier.height(16.dp))
                     }
 
+                    // Total purchases — still over hero zone
                     item {
                         Box(
                             Modifier
+                                .padding(horizontal = 16.dp)
                                 .fillMaxWidth()
+                                .shadow(
+                                    elevation = 16.dp,
+                                    shape = RoundedCornerShape(LiquidGlass.RadiusCard),
+                                    ambientColor = LiquidGlass.ShadowAmbient,
+                                    spotColor = LiquidGlass.ShadowSpot,
+                                )
                                 .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
                                 .background(LiquidGlass.GradientPrimary)
                                 .padding(20.dp),
@@ -212,14 +301,15 @@ fun DashboardScreen(
                             Column {
                                 Text(
                                     t("dash_total_purchases"),
-                                    color = Color.White.copy(alpha = 0.70f),
+                                    color = Color.White.copy(alpha = 0.75f),
                                     fontSize = 13.sp,
                                 )
                                 Text(
                                     "${formatMoney(filtered.totalPurchases)} ${t("com_som")}",
-                                    color = LiquidGlass.TextWhite,
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 28.sp,
+                                    lineHeight = 34.sp,
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 SimpleAreaChart(
@@ -229,83 +319,66 @@ fun DashboardScreen(
                                 )
                             }
                         }
+                        Spacer(Modifier.height(20.dp))
                     }
 
+                    // Below: content on page bg (hero already fading)
                     item {
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             StatCard(
-                                icon = Icons.Default.CreditCard,
-                                label = t("dash_debt"),
-                                value = formatMoney(state.data?.balance ?: 2_500_000.0),
-                                unit = t("com_som"),
-                                iconColor = LiquidGlass.Rose,
-                                modifier = Modifier.weight(1f),
+                                Icons.Default.CreditCard,
+                                t("dash_debt"),
+                                formatMoney(state.data?.balance ?: 0.0),
+                                t("com_som"),
+                                LiquidGlass.Rose,
+                                Modifier.weight(1f),
                             )
                             StatCard(
-                                icon = Icons.Default.CardGiftcard,
-                                label = t("dash_bonus"),
-                                value = "4,850",
-                                unit = "ball",
-                                iconColor = LiquidGlass.Emerald,
-                                modifier = Modifier.weight(1f),
+                                Icons.Default.CardGiftcard,
+                                t("dash_bonus"),
+                                "4,850",
+                                "ball",
+                                LiquidGlass.Emerald,
+                                Modifier.weight(1f),
                             )
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             StatCard(
-                                icon = Icons.Default.ShoppingBag,
-                                label = t("dash_active_orders"),
-                                value = "${filtered.activeOrderCount}",
-                                unit = "ta",
-                                iconColor = LiquidGlass.Cyan,
-                                modifier = Modifier.weight(1f),
+                                Icons.Default.ShoppingBag,
+                                t("dash_active_orders"),
+                                "${filtered.activeOrderCount}",
+                                "ta",
+                                LiquidGlass.Cyan,
+                                Modifier.weight(1f),
                             )
                             StatCard(
-                                icon = Icons.Default.Star,
-                                label = t("dash_discount_level"),
-                                value = state.data?.profile?.category?.trim().takeIf { !it.isNullOrBlank() } ?: "—",
-                                unit = "",
-                                iconColor = LiquidGlass.Amber,
-                                modifier = Modifier.weight(1f),
+                                Icons.Default.Star,
+                                t("dash_discount_level"),
+                                "VIP",
+                                "Gold",
+                                LiquidGlass.Amber,
+                                Modifier.weight(1f),
                             )
                         }
-                    }
-
-                    item {
-                        Text(
-                            t("dash_quick_actions"),
-                            color = LiquidTheme.textMuted,
-                            fontSize = 14.sp,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            QuickAction(Icons.Default.ShoppingCart, t("dash_order"), LiquidGlass.Indigo) {
-                                onNavigate(ClientRoutes.CATALOG)
-                            }
-                            QuickAction(Icons.Default.ShoppingBag, t("nav_orders"), LiquidGlass.Violet) {
-                                onNavigate(ClientRoutes.ORDERS)
-                            }
-                            QuickAction(Icons.Default.CreditCard, t("dash_payment"), LiquidGlass.Cyan) {
-                                onNavigate(ClientRoutes.DEBT)
-                            }
-                            QuickAction(Icons.Default.TrendingUp, t("dash_promotions"), LiquidGlass.Amber) {
-                                onNavigate(ClientRoutes.PROMOTIONS)
-                            }
-                        }
+                        Spacer(Modifier.height(20.dp))
                     }
 
                     item {
                         Row(
-                            Modifier.fillMaxWidth(),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -313,6 +386,7 @@ fun DashboardScreen(
                                 t("dash_latest_promotions"),
                                 color = LiquidTheme.text,
                                 fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
                             )
                             Row(
                                 Modifier.clickable { onNavigate(ClientRoutes.PROMOTIONS) },
@@ -327,24 +401,27 @@ fun DashboardScreen(
                                 )
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(12.dp))
                         Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
+                            Modifier
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             PromoCard(
-                                title = promoTitle(lang, 0),
-                                desc = promoDesc(lang, 0),
-                                emoji = "🎁",
-                                colors = listOf(LiquidGlass.Indigo, LiquidGlass.Pink),
+                                promoTitle(lang, 0),
+                                promoDesc(lang, 0),
+                                "🎁",
+                                listOf(LiquidGlass.Indigo, LiquidGlass.Violet),
                             )
                             PromoCard(
-                                title = promoTitle(lang, 1),
-                                desc = promoDesc(lang, 1),
-                                emoji = "💰",
-                                colors = listOf(LiquidGlass.Cyan, LiquidGlass.Violet),
+                                promoTitle(lang, 1),
+                                promoDesc(lang, 1),
+                                "💰",
+                                listOf(LiquidGlass.Cyan, LiquidGlass.Indigo),
                             )
                         }
+                        Spacer(Modifier.height(20.dp))
                     }
 
                     item {
@@ -352,18 +429,105 @@ fun DashboardScreen(
                             t("dash_recent_orders"),
                             color = LiquidTheme.text,
                             fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp),
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                     val orders = filtered.recentOrders
-                    items(orders.take(3), key = { it.id }) { order ->
-                        RecentOrderRow(order, lang, palette) {
-                            onNavigate(ClientRoutes.orderTracking(order.id))
+                    if (orders.isEmpty()) {
+                        item {
+                            Box(
+                                Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    t("ord_empty"),
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    } else {
+                        items(orders.take(3), key = { it.id }) { order ->
+                            Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                                RecentOrderRow(order, lang, palette) {
+                                    onNavigate(ClientRoutes.orderTracking(order.id))
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PremiumServiceCard(
+    icon: ImageVector,
+    label: String,
+    gradient: List<Color>,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = Modifier
+            .width(132.dp)
+            .height(168.dp)
+            .shadow(
+                elevation = 14.dp,
+                shape = shape,
+                ambientColor = gradient.first().copy(alpha = 0.22f),
+                spotColor = gradient.last().copy(alpha = 0.28f),
+            )
+            .clip(shape)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onClick,
+            ),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(Brush.linearGradient(gradient)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.22f))
+                    .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = if (LiquidTheme.isDark) 0.14f else 0.92f))
+                .padding(horizontal = 10.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                color = LiquidTheme.text,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                lineHeight = 16.sp,
+            )
         }
     }
 }
@@ -379,51 +543,27 @@ private fun StatCard(
 ) {
     Column(
         modifier
-            .liquidGlassThemed()
+            .liquidGlassThemed(radius = LiquidGlass.RadiusWidget)
             .padding(14.dp),
     ) {
         Box(
             Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(iconColor.copy(alpha = 0.20f)),
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(iconColor.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(17.dp))
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(16.dp))
         }
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        Text(label, color = LiquidTheme.textMuted, fontSize = 11.sp, lineHeight = 14.sp)
         Text(value, color = LiquidTheme.text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(unit, color = LiquidTheme.textMuted, fontSize = 11.sp)
     }
 }
 
 @Composable
-private fun QuickAction(
-    icon: ImageVector,
-    label: String,
-    color: Color,
-    onClick: () -> Unit,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick),
-    ) {
-        Box(
-            Modifier
-                .size(52.dp)
-                .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(label, color = LiquidTheme.textMuted, fontSize = 10.sp, maxLines = 1)
-    }
-}
-
-@Composable
-private fun DashboardHeaderActions(
+private fun DashboardHeaderPillActions(
     settingsViewModel: SettingsViewModel,
     onCalendarClick: () -> Unit,
     calendarLabel: String,
@@ -443,83 +583,51 @@ private fun DashboardHeaderActions(
         ThemeMode.SYSTEM to "com_theme_system",
     )
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GlassHeaderIconButton(
-            onClick = onCalendarClick,
-            contentDescription = calendarLabel,
-            icon = Icons.Outlined.CalendarMonth,
-            tint = LiquidTheme.textMuted,
+    PremiumHeaderPillIcon(
+        icon = Icons.Outlined.CalendarMonth,
+        onClick = onCalendarClick,
+        contentDescription = calendarLabel,
+    )
+    Box {
+        PremiumHeaderPillIcon(
+            icon = themeIcon,
+            onClick = { showThemeMenu = true },
         )
-        Box {
-            GlassHeaderIconButton(
-                onClick = { showThemeMenu = true },
-                icon = themeIcon,
-                tint = LiquidGlass.Indigo,
-            )
-            LiquidGlassDropdownMenu(
-                expanded = showThemeMenu,
-                onDismissRequest = { showThemeMenu = false },
-            ) {
-                themeOptions.forEach { (mode, labelKey) ->
-                    LiquidGlassDropdownItem(
-                        text = AppStrings.t(language, labelKey),
-                        selected = themeMode == mode,
-                        onClick = {
-                            settingsViewModel.setThemeMode(mode)
-                            showThemeMenu = false
-                        },
-                    )
-                }
-            }
-        }
-        Box {
-            GlassHeaderIconButton(
-                onClick = { showLangMenu = true },
-                icon = Icons.Default.Language,
-                tint = LiquidGlass.Indigo,
-            )
-            LiquidGlassDropdownMenu(
-                expanded = showLangMenu,
-                onDismissRequest = { showLangMenu = false },
-            ) {
-                AppLanguage.menuOrder.forEach { option ->
-                    LiquidGlassDropdownItem(
-                        text = option.menuLabel,
-                        selected = language == option,
-                        onClick = {
-                            settingsViewModel.setLanguage(option)
-                            showLangMenu = false
-                        },
-                    )
-                }
+        LiquidGlassDropdownMenu(
+            expanded = showThemeMenu,
+            onDismissRequest = { showThemeMenu = false },
+        ) {
+            themeOptions.forEach { (mode, labelKey) ->
+                LiquidGlassDropdownItem(
+                    text = AppStrings.t(language, labelKey),
+                    selected = themeMode == mode,
+                    onClick = {
+                        settingsViewModel.setThemeMode(mode)
+                        showThemeMenu = false
+                    },
+                )
             }
         }
     }
-}
-
-@Composable
-private fun GlassHeaderIconButton(
-    onClick: () -> Unit,
-    icon: ImageVector,
-    tint: Color,
-    contentDescription: String? = null,
-) {
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
-        contentAlignment = Alignment.Center,
-    ) {
-        IconButton(onClick = onClick, modifier = Modifier.size(36.dp)) {
-            Icon(
-                icon,
-                contentDescription = contentDescription,
-                tint = tint,
-                modifier = Modifier.size(20.dp),
-            )
+    Box {
+        PremiumHeaderPillIcon(
+            icon = Icons.Default.Language,
+            onClick = { showLangMenu = true },
+        )
+        LiquidGlassDropdownMenu(
+            expanded = showLangMenu,
+            onDismissRequest = { showLangMenu = false },
+        ) {
+            AppLanguage.menuOrder.forEach { option ->
+                LiquidGlassDropdownItem(
+                    text = option.menuLabel,
+                    selected = language == option,
+                    onClick = {
+                        settingsViewModel.setLanguage(option)
+                        showLangMenu = false
+                    },
+                )
+            }
         }
     }
 }
@@ -529,7 +637,7 @@ private fun PromoCard(title: String, desc: String, emoji: String, colors: List<C
     Box(
         Modifier
             .width(240.dp)
-            .height(108.dp)
+            .height(112.dp)
             .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
             .background(Brush.linearGradient(colors))
             .padding(16.dp),

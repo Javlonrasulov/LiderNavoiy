@@ -14,11 +14,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,9 +52,9 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
-import uz.lider.client.presentation.theme.liquidGlassThemed
+import uz.lider.client.presentation.theme.liquidGlassNav
 
-val ClientBottomNavHeight = 84.dp
+val ClientBottomNavHeight = 96.dp
 
 enum class ClientTab(val route: String) {
     DASHBOARD("dashboard"),
@@ -164,16 +167,16 @@ fun ClientBottomNav(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(ClientBottomNavHeight)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        // Glass pill container
+        // Floating liquid-glass pill — page content shows through (no opaque wall)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                .liquidGlassNav(radius = LiquidGlass.RadiusNav)
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,

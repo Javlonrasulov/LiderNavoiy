@@ -1,11 +1,11 @@
 package uz.lider.client.presentation.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -15,9 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 
@@ -29,11 +30,12 @@ private val topBarBorder = LiquidGlass.GlassDarkBorder
 fun ClientTabScaffold(
     title: String? = null,
     titleContent: (@Composable () -> Unit)? = null,
+    bottomPadding: Boolean = true,
     actions: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
-        containerColor = LiquidTheme.bg,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 modifier = Modifier.drawBehind {
@@ -57,12 +59,16 @@ fun ClientTabScaffold(
                 },
                 actions = { actions() },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = LiquidTheme.bgMid.copy(alpha = 0.88f),
+                    containerColor = LiquidTheme.bgMid.copy(alpha = 0.55f),
                     titleContentColor = LiquidTheme.text,
                     actionIconContentColor = LiquidTheme.textMuted,
                     navigationIconContentColor = LiquidTheme.textMuted,
                 ),
             )
+        },
+        bottomBar = {
+            // Reserve space so list content can scroll under the floating glass nav
+            if (bottomPadding) Spacer(Modifier.height(ClientBottomNavHeight))
         },
     ) { padding -> content(padding) }
 }

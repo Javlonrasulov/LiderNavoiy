@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Refresh
@@ -33,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,6 +47,8 @@ import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.GlassFilterChip
+import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
@@ -73,72 +73,27 @@ fun OrdersScreen(
         "cancelled" to localized("ord_status_cancelled"),
     )
 
-    ClientTabScaffold(title = localized("ord_title")) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+    LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        ClientTabScaffold(title = localized("ord_title")) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    // Glass pill search bar
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Search,
-                            null,
-                            tint = LiquidTheme.textMuted,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        BasicTextField(
-                            value = state.search,
-                            onValueChange = viewModel::onSearchChange,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 10.dp),
-                            textStyle = TextStyle(color = LiquidTheme.text, fontSize = 14.sp),
-                            decorationBox = { inner ->
-                                if (state.search.isEmpty()) {
-                                    Text(localized("ord_search"), color = LiquidTheme.textMuted, fontSize = 14.sp)
-                                }
-                                inner()
-                            },
-                        )
-                    }
+                    GlassSearchField(
+                        value = state.search,
+                        onValueChange = viewModel::onSearchChange,
+                        placeholder = localized("ord_search"),
+                        leadingIcon = Icons.Default.Search,
+                    )
                     Spacer(Modifier.size(12.dp))
-                    // Glass chip filters, active = gradient
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         filters.forEach { (key, label) ->
-                            val selected = state.statusFilter == key
-                            if (selected) {
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                        .background(LiquidGlass.GradientPrimary)
-                                        .clickable { viewModel.onStatusFilterChange(key) }
-                                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                                ) {
-                                    Text(
-                                        label,
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
-                            } else {
-                                Box(
-                                    Modifier
-                                        .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                                        .clickable { viewModel.onStatusFilterChange(key) }
-                                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                                ) {
-                                    Text(label, color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                }
-                            }
+                            GlassFilterChip(
+                                label = label,
+                                selected = state.statusFilter == key,
+                                onClick = { viewModel.onStatusFilterChange(key) },
+                            )
                         }
                     }
                 }

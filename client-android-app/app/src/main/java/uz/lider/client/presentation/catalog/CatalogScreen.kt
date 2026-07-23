@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
@@ -58,7 +57,11 @@ import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
+import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.GlassFilterChip
+import uz.lider.client.presentation.theme.GlassIconButton
+import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
@@ -100,20 +103,11 @@ fun CatalogScreen(
                         fontSize = 22.sp,
                     )
                     Box {
-                        Box(
-                            Modifier
-                                .size(42.dp)
-                                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                                .clickable { onNavigate(ClientRoutes.CART) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Default.ShoppingCart,
-                                null,
-                                tint = LiquidGlass.Indigo,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
+                        GlassIconButton(
+                            icon = Icons.Default.ShoppingCart,
+                            onClick = { onNavigate(ClientRoutes.CART) },
+                            tint = LiquidGlass.Indigo,
+                        )
                         if (cartCount > 0) {
                             Box(
                                 Modifier
@@ -138,62 +132,33 @@ fun CatalogScreen(
                 Spacer(Modifier.height(12.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        Modifier
-                            .weight(1f)
-                            .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Search,
-                            null,
-                            tint = LiquidTheme.textMuted,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        BasicTextField(
-                            value = state.search,
-                            onValueChange = viewModel::onSearchChange,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 8.dp),
-                            textStyle = TextStyle(
-                                color = LiquidTheme.text,
-                                fontSize = 14.sp,
-                            ),
-                            decorationBox = { inner ->
-                                if (state.search.isEmpty()) {
-                                    Text(
-                                        localized("cat_search"),
-                                        color = LiquidTheme.textMuted,
-                                        fontSize = 14.sp,
-                                    )
-                                }
-                                inner()
-                            },
-                        )
-                        if (state.search.isNotEmpty()) {
-                            Icon(
-                                Icons.Default.Close,
-                                null,
-                                tint = LiquidTheme.textMuted,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clickable { viewModel.onSearchChange("") },
-                            )
-                        }
-                    }
+                    GlassSearchField(
+                        value = state.search,
+                        onValueChange = viewModel::onSearchChange,
+                        placeholder = localized("cat_search"),
+                        leadingIcon = Icons.Default.Search,
+                        modifier = Modifier.weight(1f),
+                        trailing = if (state.search.isNotEmpty()) {
+                            {
+                                Icon(
+                                    Icons.Default.Close,
+                                    null,
+                                    tint = LiquidTheme.textMuted,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .clickable { viewModel.onSearchChange("") },
+                                )
+                            }
+                        } else null,
+                    )
 
                     Box {
-                        Box(
-                            Modifier
-                                .size(44.dp)
-                                .liquidGlassThemed(radius = 16.dp)
-                                .clickable { viewModel.toggleSortMenu() },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(Icons.Default.Sort, null, tint = LiquidGlass.Indigo)
-                        }
+                        GlassIconButton(
+                            icon = Icons.Default.Sort,
+                            onClick = { viewModel.toggleSortMenu() },
+                            tint = LiquidGlass.Indigo,
+                            size = 44.dp,
+                        )
                         LiquidGlassDropdownMenu(
                             expanded = state.sortMenuOpen,
                             onDismissRequest = { viewModel.toggleSortMenu() },
@@ -217,27 +182,11 @@ fun CatalogScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 categories.forEachIndexed { index, cat ->
-                    val selected = state.activeCategoryIndex == index
-                    Box(
-                        Modifier
-                            .then(
-                                if (selected)
-                                    Modifier
-                                        .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                        .background(LiquidGlass.GradientPrimary)
-                                else
-                                    Modifier.liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                            )
-                            .clickable { viewModel.onCategorySelected(index) }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            cat,
-                            color = if (selected) Color.White else LiquidTheme.textMuted,
-                            fontSize = 13.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
+                    GlassFilterChip(
+                        label = cat,
+                        selected = state.activeCategoryIndex == index,
+                        onClick = { viewModel.onCategorySelected(index) },
+                    )
                 }
             }
 
@@ -294,7 +243,7 @@ fun CatalogScreen(
                     }
                 }
             }
-            Spacer(Modifier.height(80.dp))
+            Spacer(Modifier.height(ClientBottomNavHeight))
         }
     }
 
@@ -396,7 +345,7 @@ private fun ProductGridItem(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(LiquidGlass.RadiusButton))
                     .background(LiquidGlass.GradientPrimary)
                     .clickable(onClick = onAdd)
                     .padding(vertical = 8.dp),
