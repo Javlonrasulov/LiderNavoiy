@@ -156,10 +156,14 @@ fun ClientNavHost(
                     CatalogScreen(
                         onNavigate = navController::navigateClientRoute,
                         cartCount = cartBadgeCount(cartItems),
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
                     )
                 }
                 composable(ClientRoutes.ORDERS) {
-                    OrdersScreen(onNavigate = navController::navigateClientRoute)
+                    OrdersScreen(
+                        onNavigate = navController::navigateClientRoute,
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                    )
                 }
                 composable(ClientRoutes.ANALYTICS) {
                     AnalyticsScreen(onNavigate = navController::navigateClientRoute)

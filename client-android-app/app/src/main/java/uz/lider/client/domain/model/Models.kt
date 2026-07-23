@@ -156,18 +156,3 @@ data class OrderTrackingDetails(
     val etaMinutes: Int?,
     val deliveryPerson: DeliveryPersonTracking? = null,
 )
-
-enum class OrderStatus(val key: String) {
-    PENDING("pending"),
-    CONFIRMED("confirmed"),
-    PACKING("packing"),
-    ON_WAY("on_way"),
-    DELIVERED("delivered"),
-    CANCELLED("cancelled"),
-    ;
-
-    companion object {
-        fun fromKey(key: String): OrderStatus =
-            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: PENDING
-    }
-}

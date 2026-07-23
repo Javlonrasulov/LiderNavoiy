@@ -86,6 +86,7 @@ fun OrderTrackingScreen(
             deliveryLng = tracking?.deliveryLongitude,
             courierLat = deliveryPerson?.latitude,
             courierLng = deliveryPerson?.longitude,
+            routePoints = state.routePoints,
             distance = state.distance,
             isDark = isDark,
             onDismiss = { showFullScreenMap = false },
@@ -93,23 +94,23 @@ fun OrderTrackingScreen(
     }
 
     ClientStackScaffold(title = localized("track_title"), onBack = onBack) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        LiquidBackground(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (state.loading) {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.padding(padding),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // Map with glass overlay controls
                     item {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
+                                .height(280.dp)
                                 .clip(RoundedCornerShape(LiquidGlass.RadiusCard)),
                         ) {
                             OrderTrackingMapView(
@@ -117,6 +118,7 @@ fun OrderTrackingScreen(
                                 deliveryLng = tracking?.deliveryLongitude,
                                 courierLat = deliveryPerson?.latitude,
                                 courierLng = deliveryPerson?.longitude,
+                                routePoints = state.routePoints,
                                 isDark = isDark,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -382,13 +384,19 @@ private fun FullScreenOrderTrackingMapDialog(
     deliveryLng: Double?,
     courierLat: Double?,
     courierLng: Double?,
+    routePoints: List<uz.lider.client.data.repository.LatLngPoint>,
     distance: String,
     isDark: Boolean,
     onDismiss: () -> Unit,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+        ),
     ) {
         Box(
             Modifier
@@ -400,8 +408,11 @@ private fun FullScreenOrderTrackingMapDialog(
                 deliveryLng = deliveryLng,
                 courierLat = courierLat,
                 courierLng = courierLng,
+                routePoints = routePoints,
                 isDark = isDark,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .align(Alignment.Center),
             )
             Row(
                 Modifier

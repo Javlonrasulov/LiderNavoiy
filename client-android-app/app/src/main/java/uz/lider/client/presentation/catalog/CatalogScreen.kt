@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Sort
@@ -36,7 +40,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -46,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,20 +66,27 @@ import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
+import uz.lider.client.presentation.theme.FixedHeroBackdrop
 import uz.lider.client.presentation.theme.GlassFilterChip
-import uz.lider.client.presentation.theme.GlassIconButton
 import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
 import uz.lider.client.presentation.theme.LiquidGlassDropdownMenu
 import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.PremiumHeaderActionPill
+import uz.lider.client.presentation.theme.PremiumHeaderButton
+import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
+
+/** Scroll distance (px) before hero fully fades to page background. */
+private const val HeroFadeScrollPx = 700f
 
 @Composable
 fun CatalogScreen(
     onNavigate: (String) -> Unit,
     cartCount: Int,
+    onOpenDrawer: () -> Unit = {},
     viewModel: CatalogViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -81,6 +95,19 @@ fun CatalogScreen(
     val products = viewModel.filteredProducts()
     val categories = listOf(localized("cat_all"), localized("cat_favorites")) + state.categories
     val lifecycleOwner = LocalLifecycleOwner.current
+    val gridState = rememberLazyGridState()
+    val density = LocalDensity.current
+    val fadeProgress by remember {
+        derivedStateOf {
+            val index = gridState.firstVisibleItemIndex
+            val offset = gridState.firstVisibleItemScrollOffset
+            val approx = when {
+                index == 0 -> offset.toFloat()
+                else -> offset + index * with(density) { 160.dp.toPx() }
+            }
+            (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
+        }
+    }
 
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -89,161 +116,202 @@ fun CatalogScreen(
     }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        localized("cat_title"),
-                        color = LiquidTheme.text,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                    )
-                    Box {
-                        GlassIconButton(
-                            icon = Icons.Default.ShoppingCart,
-                            onClick = { onNavigate(ClientRoutes.CART) },
-                            tint = LiquidGlass.Indigo,
-                        )
-                        if (cartCount > 0) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 4.dp, y = (-4).dp)
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(LiquidGlass.Rose),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "$cartCount",
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassSearchField(
-                        value = state.search,
-                        onValueChange = viewModel::onSearchChange,
-                        placeholder = localized("cat_search"),
-                        leadingIcon = Icons.Default.Search,
-                        modifier = Modifier.weight(1f),
-                        trailing = if (state.search.isNotEmpty()) {
-                            {
-                                Icon(
-                                    Icons.Default.Close,
-                                    null,
-                                    tint = LiquidTheme.textMuted,
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .clickable { viewModel.onSearchChange("") },
-                                )
-                            }
-                        } else null,
-                    )
-
-                    Box {
-                        GlassIconButton(
-                            icon = Icons.Default.Sort,
-                            onClick = { viewModel.toggleSortMenu() },
-                            tint = LiquidGlass.Indigo,
-                            size = 44.dp,
-                        )
-                        LiquidGlassDropdownMenu(
-                            expanded = state.sortMenuOpen,
-                            onDismissRequest = { viewModel.toggleSortMenu() },
-                        ) {
-                            sortOptions().forEach { (sort, label) ->
-                                LiquidGlassDropdownItem(
-                                    text = label,
-                                    selected = state.sort == sort,
-                                    onClick = { viewModel.onSortChange(sort) },
-                                )
-                            }
-                        }
-                    }
-                }
+        if (state.loading && state.allProducts.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
+        } else {
+            Box(Modifier.fillMaxSize()) {
+                FixedHeroBackdrop(
+                    fadeProgress = fadeProgress,
+                    height = 420.dp,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
 
-            Row(
-                Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                categories.forEachIndexed { index, cat ->
-                    GlassFilterChip(
-                        label = cat,
-                        selected = state.activeCategoryIndex == index,
-                        onClick = { viewModel.onCategorySelected(index) },
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            if (state.loading) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = LiquidGlass.Indigo)
-                }
-            } else if (
-                state.activeCategoryIndex == CatalogViewModel.INDEX_FAVORITES && products.isEmpty()
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.FavoriteBorder,
-                            null,
-                            tint = LiquidTheme.textMuted,
-                            modifier = Modifier.size(48.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            localized("cat_favorites_empty"),
-                            color = LiquidTheme.textMuted,
-                            fontSize = 14.sp,
-                        )
-                    }
-                }
-            } else {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    Text(
-                        "${products.size} ${localized("cat_products")}",
-                        color = LiquidTheme.textMuted,
-                        fontSize = 13.sp,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(16.dp),
+                    state = gridState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = ClientBottomNavHeight + 16.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f),
                 ) {
-                    items(products, key = { it.id }) { product ->
-                        ProductGridItem(
-                            product = product,
-                            imageUrl = viewModel.resolveImage(product.imageUrl).takeIf { it.isNotBlank() },
-                            isFavorite = state.favorites.contains(product.id),
-                            onFavorite = { viewModel.toggleFavorite(product.id) },
-                            onClick = { onNavigate(ClientRoutes.productDetail(product.id)) },
-                            onAdd = { viewModel.showAddToCart(product) },
-                        )
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PremiumHeaderButton(
+                                    icon = Icons.Default.Menu,
+                                    onClick = onOpenDrawer,
+                                    contentDescription = "Menu",
+                                )
+                                PremiumHeaderActionPill {
+                                    Box {
+                                        PremiumHeaderPillIcon(
+                                            icon = Icons.Default.Sort,
+                                            onClick = { viewModel.toggleSortMenu() },
+                                        )
+                                        LiquidGlassDropdownMenu(
+                                            expanded = state.sortMenuOpen,
+                                            onDismissRequest = { viewModel.toggleSortMenu() },
+                                        ) {
+                                            sortOptions().forEach { (sort, label) ->
+                                                LiquidGlassDropdownItem(
+                                                    text = label,
+                                                    selected = state.sort == sort,
+                                                    onClick = { viewModel.onSortChange(sort) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Box {
+                                        PremiumHeaderPillIcon(
+                                            icon = Icons.Default.ShoppingCart,
+                                            onClick = { onNavigate(ClientRoutes.CART) },
+                                        )
+                                        if (cartCount > 0) {
+                                            Box(
+                                                Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .offset(x = 2.dp, y = 2.dp)
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .background(LiquidGlass.Rose),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    if (cartCount > 99) "99+" else "$cartCount",
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(28.dp))
+                            Text(
+                                localized("cat_title"),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 28.sp,
+                                lineHeight = 34.sp,
+                            )
+                            Text(
+                                "${products.size} ${localized("cat_products")}",
+                                color = Color.White.copy(alpha = 0.90f),
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                            )
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GlassSearchField(
+                                value = state.search,
+                                onValueChange = viewModel::onSearchChange,
+                                placeholder = localized("cat_search"),
+                                leadingIcon = Icons.Default.Search,
+                                modifier = Modifier.weight(1f),
+                                trailing = if (state.search.isNotEmpty()) {
+                                    {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            null,
+                                            tint = LiquidTheme.textMuted,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clickable { viewModel.onSearchChange("") },
+                                        )
+                                    }
+                                } else null,
+                            )
+                        }
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            categories.forEachIndexed { index, cat ->
+                                GlassFilterChip(
+                                    label = cat,
+                                    selected = state.activeCategoryIndex == index,
+                                    onClick = { viewModel.onCategorySelected(index) },
+                                )
+                            }
+                        }
+                    }
+
+                    when {
+                        state.loading -> {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(160.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(color = LiquidGlass.Indigo)
+                                }
+                            }
+                        }
+                        state.activeCategoryIndex == CatalogViewModel.INDEX_FAVORITES &&
+                            products.isEmpty() -> {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 48.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Icon(
+                                        Icons.Default.FavoriteBorder,
+                                        null,
+                                        tint = LiquidTheme.textMuted,
+                                        modifier = Modifier.size(48.dp),
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        localized("cat_favorites_empty"),
+                                        color = LiquidTheme.textMuted,
+                                        fontSize = 14.sp,
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            items(products, key = { it.id }) { product ->
+                                ProductGridItem(
+                                    product = product,
+                                    imageUrl = viewModel.resolveImage(product.imageUrl)
+                                        .takeIf { it.isNotBlank() },
+                                    isFavorite = state.favorites.contains(product.id),
+                                    onFavorite = { viewModel.toggleFavorite(product.id) },
+                                    onClick = { onNavigate(ClientRoutes.productDetail(product.id)) },
+                                    onAdd = { viewModel.showAddToCart(product) },
+                                )
+                            }
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(ClientBottomNavHeight))
         }
     }
 
@@ -269,7 +337,11 @@ private fun ProductGridItem(
         Modifier
             .then(
                 if (isFavorite) {
-                    Modifier.border(2.dp, LiquidGlass.Rose.copy(alpha = 0.65f), RoundedCornerShape(LiquidGlass.RadiusCard))
+                    Modifier.border(
+                        2.dp,
+                        LiquidGlass.Rose.copy(alpha = 0.65f),
+                        RoundedCornerShape(LiquidGlass.RadiusCard),
+                    )
                 } else {
                     Modifier
                 },

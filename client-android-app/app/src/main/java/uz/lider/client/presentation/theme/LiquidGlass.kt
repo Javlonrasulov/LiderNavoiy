@@ -287,6 +287,7 @@ fun GlassFilterChip(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(LiquidGlass.RadiusChip)
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
             .then(
@@ -300,7 +301,7 @@ fun GlassFilterChip(
             )
             .clickable(
                 indication = null,
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 onClick = onClick,
             )
             .padding(horizontal = 14.dp, vertical = 8.dp),

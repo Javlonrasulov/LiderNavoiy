@@ -3,7 +3,6 @@ package uz.lider.client.presentation.navigation
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
@@ -39,12 +38,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -54,7 +54,7 @@ import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassNav
 
-val ClientBottomNavHeight = 96.dp
+val ClientBottomNavHeight = 104.dp
 
 enum class ClientTab(val route: String) {
     DASHBOARD("dashboard"),
@@ -171,13 +171,12 @@ fun ClientBottomNav(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        // Floating liquid-glass pill — page content shows through (no opaque wall)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(72.dp)
                 .liquidGlassNav(radius = LiquidGlass.RadiusNav)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = 2.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -206,9 +205,8 @@ private fun NavTabItem(
 ) {
     val textMuted = LiquidTheme.textMuted
 
-    // Animated icon scale — bounces up on activation
     val iconScale by animateFloatAsState(
-        targetValue = if (isActive) 1.18f else 1.0f,
+        targetValue = if (isActive) 1.06f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium,
@@ -216,148 +214,115 @@ private fun NavTabItem(
         label = "iconScale",
     )
 
-    // Icon lift (translateY) — floats up when active
-    val iconLift by animateDpAsState(
-        targetValue = if (isActive) (-3).dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "iconLift",
-    )
-
-    // Icon color transition
     val iconTint by animateColorAsState(
         targetValue = if (isActive) Color.White else textMuted,
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "iconTint",
     )
 
-    // Label alpha fades in/out
     val labelAlpha by animateFloatAsState(
         targetValue = if (isActive) 1f else 0.55f,
         animationSpec = tween(durationMillis = 200),
         label = "labelAlpha",
     )
 
-    // Glow bubble alpha behind icon
     val glowAlpha by animateFloatAsState(
         targetValue = if (isActive) 1f else 0f,
         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
         label = "glowAlpha",
     )
 
-    Box(
-        contentAlignment = Alignment.Center,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
         modifier = modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-            ) { onClick() },
+            ) { onClick() }
+            .padding(horizontal = 1.dp),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(horizontal = 2.dp),
+        // Fixed icon slot so the active circle never overlaps the label
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(34.dp),
         ) {
-            // Icon with glow bubble
-            Box(contentAlignment = Alignment.Center) {
-                // Glow orb behind icon
-                if (glowAlpha > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .blur(12.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(
-                                        accent.copy(alpha = 0.55f * glowAlpha),
-                                        Color.Transparent,
-                                    ),
-                                ),
-                                CircleShape,
-                            ),
-                    )
-                }
-                // Solid accent bubble (filled circle when active)
+            if (glowAlpha > 0f) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .drawBehind {
-                            if (glowAlpha > 0f) {
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        listOf(
-                                            accent.copy(alpha = 0.30f * glowAlpha),
-                                            Color.Transparent,
-                                        ),
+                        .size(34.dp)
+                        .blur(10.dp)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    accent.copy(alpha = 0.45f * glowAlpha),
+                                    Color.Transparent,
+                                ),
+                            ),
+                            CircleShape,
+                        ),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .then(
+                        if (isActive) {
+                            Modifier
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(accent, accent.copy(alpha = 0.75f)),
                                     ),
                                 )
-                            }
-                        }
-                        .then(
-                            if (isActive) {
-                                Modifier
-                                    .clip(CircleShape)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(accent, accent.copy(alpha = 0.7f)),
-                                        ),
-                                    )
-                            } else {
-                                Modifier
-                            },
-                        ),
+                        } else {
+                            Modifier
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = tab.icon,
+                    contentDescription = tab.label,
+                    tint = iconTint,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .scale(iconScale),
+                )
+            }
+            if (tab.showBadge) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 2.dp, y = (-2).dp)
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(LiquidGlass.Rose),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .offset(y = iconLift)
-                            .scale(iconScale),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = tab.icon,
-                            contentDescription = tab.label,
-                            tint = iconTint,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    // Cart badge
-                    if (tab.showBadge) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-4).dp)
-                                .size(13.dp)
-                                .clip(CircleShape)
-                                .background(LiquidGlass.Rose),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = tab.badgeCount.coerceAtMost(99).toString(),
-                                color = Color.White,
-                                fontSize = 7.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
+                    Text(
+                        text = tab.badgeCount.coerceAtMost(99).toString(),
+                        color = Color.White,
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
-
-            // Label — always visible, just dimmed when inactive
-            Text(
-                text = tab.label,
-                fontSize = 8.5.sp,
-                color = if (isActive) accent else textMuted.copy(alpha = labelAlpha),
-                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.padding(top = 2.dp),
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-            )
         }
+
+        Spacer(Modifier.height(3.dp))
+
+        Text(
+            text = tab.label,
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+            color = if (isActive) accent else textMuted.copy(alpha = labelAlpha),
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

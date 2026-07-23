@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class OrdersUiState(
     val loading: Boolean = true,
     val orders: List<ClientOrder> = emptyList(),
+    val visibleOrders: List<ClientOrder> = emptyList(),
     val search: String = "",
     val statusFilter: String = "all",
 )
@@ -36,31 +37,27 @@ class OrdersViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
             val orders = orderRepository.getOrders()
-            _uiState.update { it.copy(loading = false, orders = orders) }
+            _uiState.update { it.copy(loading = false, orders = orders).withVisibleOrders() }
         }
     }
 
-    fun onSearchChange(value: String) = _uiState.update { it.copy(search = value) }
-    fun onStatusFilterChange(filter: String) = _uiState.update { it.copy(statusFilter = filter) }
+    fun onSearchChange(value: String) {
+        _uiState.update { it.copy(search = value).withVisibleOrders() }
+    }
 
-    fun filteredOrders(): List<ClientOrder> {
-        val state = _uiState.value
-        val query = state.search.trim().lowercase()
-        return state.orders.filter { order ->
-            val statusKey = when (OrderStatus.fromKey(order.status)) {
-                OrderStatus.PENDING, OrderStatus.CONFIRMED -> "received"
-                OrderStatus.PACKING -> "packing"
-                OrderStatus.ON_WAY -> "onway"
-                OrderStatus.DELIVERED -> "delivered"
-                OrderStatus.CANCELLED -> "cancelled"
-                else -> "received"
-            }
-            val matchStatus = state.statusFilter == "all" || state.statusFilter == statusKey
+    fun onStatusFilterChange(filter: String) {
+        _uiState.update { it.copy(statusFilter = filter).withVisibleOrders() }
+    }
+
+    private fun OrdersUiState.withVisibleOrders(): OrdersUiState {
+        val query = search.trim().lowercase()
+        val visible = orders.filter { order ->
+            val matchStatus = OrderStatus.matchesFilter(order.status, statusFilter)
+            if (!matchStatus) return@filter false
+            if (query.isEmpty()) return@filter true
             val productNames = order.items.joinToString(" ") { it.productName }.lowercase()
-            val matchSearch = query.isEmpty() ||
-                order.id.lowercase().contains(query) ||
-                productNames.contains(query)
-            matchStatus && matchSearch
+            order.id.lowercase().contains(query) || productNames.contains(query)
         }
+        return copy(visibleOrders = visible)
     }
 }

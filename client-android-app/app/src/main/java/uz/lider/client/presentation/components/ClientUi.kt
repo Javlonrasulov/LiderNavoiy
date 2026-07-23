@@ -162,7 +162,8 @@ fun orderDisplayLabel(lang: AppLanguage, id: String): String =
     "${AppStrings.t(lang, "dash_order")} ${formatOrderId(id)}"
 
 fun orderStatusKey(status: String): String = when (OrderStatus.fromKey(status)) {
-    OrderStatus.PENDING, OrderStatus.CONFIRMED -> "ord_status_received"
+    OrderStatus.PENDING -> "ord_status_received"
+    OrderStatus.CONFIRMED -> "ord_status_warehouse"
     OrderStatus.PACKING -> "ord_status_packing"
     OrderStatus.ON_WAY -> "ord_status_onway"
     OrderStatus.DELIVERED -> "ord_status_delivered"
@@ -173,7 +174,8 @@ fun orderStatusLabel(lang: AppLanguage, status: String): String =
     AppStrings.t(lang, orderStatusKey(status))
 
 fun orderStatusColor(status: String, palette: ClientPalette): Color = when (OrderStatus.fromKey(status)) {
-    OrderStatus.PENDING, OrderStatus.CONFIRMED -> palette.primary
+    OrderStatus.PENDING -> palette.primary
+    OrderStatus.CONFIRMED -> palette.secondary
     OrderStatus.PACKING -> palette.warning
     OrderStatus.ON_WAY -> palette.secondary
     OrderStatus.DELIVERED -> palette.success

@@ -27,8 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Notifications
@@ -41,6 +45,7 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -62,6 +67,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.domain.model.ClientOrder
@@ -90,6 +97,7 @@ import uz.lider.client.presentation.theme.PremiumHeaderActionPill
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
+import uz.lider.client.presentation.tracking.OrderTrackingMapView
 
 /** Scroll distance (px) before hero fully fades to page background. */
 private const val HeroFadeScrollPx = 900f
@@ -109,10 +117,13 @@ fun DashboardScreen(
     val palette = rememberClientPalette()
     val t = remember(lang) { { key: String -> AppStrings.t(lang, key) } }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showLiveMapFullscreen by remember { mutableStateOf(false) }
     val filtered = state.filtered
+    val live = state.liveDelivery
     val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
     val listState = rememberLazyListState()
     val density = LocalDensity.current
+    val isDark = LiquidTheme.isDark
     val fadeProgress by remember {
         derivedStateOf {
             val index = listState.firstVisibleItemIndex
@@ -124,6 +135,19 @@ fun DashboardScreen(
             }
             (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
         }
+    }
+
+    if (showLiveMapFullscreen && live != null) {
+        DashboardLiveMapFullscreen(
+            live = live,
+            isDark = isDark,
+            title = t("dash_live_delivery"),
+            onDismiss = { showLiveMapFullscreen = false },
+            onOpenTracking = {
+                showLiveMapFullscreen = false
+                onNavigate(ClientRoutes.orderTracking(live.orderId))
+            },
+        )
     }
 
     DashboardDateRangeDialog(
@@ -217,6 +241,21 @@ fun DashboardScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            live?.let { delivery ->
+                                Spacer(Modifier.height(16.dp))
+                                LiveDeliveryMapCard(
+                                    live = delivery,
+                                    isDark = isDark,
+                                    title = t("dash_live_delivery"),
+                                    watchLabel = t("dash_live_watch"),
+                                    distanceLabel = "${t("track_distance")}: ${delivery.distanceLabel}",
+                                    etaLabel = "${t("dash_live_eta")}: ${delivery.etaLabel}",
+                                    onOpenFullscreen = { showLiveMapFullscreen = true },
+                                    onOpenTracking = {
+                                        onNavigate(ClientRoutes.orderTracking(delivery.orderId))
+                                    },
+                                )
+                            }
                             Spacer(Modifier.height(20.dp))
                         }
                     }
@@ -256,27 +295,27 @@ fun DashboardScreen(
                             Modifier
                                 .horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             PremiumServiceCard(
                                 icon = Icons.Default.ShoppingCart,
                                 label = t("dash_order"),
-                                gradient = listOf(LiquidGlass.Indigo, LiquidGlass.Cyan),
+                                accent = LiquidGlass.Indigo,
                             ) { onNavigate(ClientRoutes.CATALOG) }
                             PremiumServiceCard(
                                 icon = Icons.Default.ShoppingBag,
                                 label = t("nav_orders"),
-                                gradient = listOf(LiquidGlass.Violet, LiquidGlass.Pink),
+                                accent = LiquidGlass.Violet,
                             ) { onNavigate(ClientRoutes.ORDERS) }
                             PremiumServiceCard(
                                 icon = Icons.Default.CreditCard,
                                 label = t("dash_payment"),
-                                gradient = listOf(LiquidGlass.Cyan, LiquidGlass.Emerald),
+                                accent = LiquidGlass.Cyan,
                             ) { onNavigate(ClientRoutes.DEBT) }
                             PremiumServiceCard(
                                 icon = Icons.Default.TrendingUp,
                                 label = t("dash_promotions"),
-                                gradient = listOf(LiquidGlass.Amber, LiquidGlass.Rose),
+                                accent = LiquidGlass.Amber,
                             ) { onNavigate(ClientRoutes.PROMOTIONS) }
                         }
                         Spacer(Modifier.height(16.dp))
@@ -473,61 +512,130 @@ fun DashboardScreen(
 private fun PremiumServiceCard(
     icon: ImageVector,
     label: String,
-    gradient: List<Color>,
+    accent: Color,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(22.dp)
-    Column(
+    val isDark = LiquidTheme.isDark
+    val shape = RoundedCornerShape(26.dp)
+    val glassFill = if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.78f)
+    val labelFill = if (isDark) Color.Black.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.55f)
+
+    Box(
         modifier = Modifier
-            .width(132.dp)
-            .height(168.dp)
+            .width(126.dp)
+            .height(158.dp)
             .shadow(
-                elevation = 14.dp,
+                elevation = 12.dp,
                 shape = shape,
-                ambientColor = gradient.first().copy(alpha = 0.22f),
-                spotColor = gradient.last().copy(alpha = 0.28f),
+                ambientColor = accent.copy(alpha = 0.18f),
+                spotColor = accent.copy(alpha = 0.22f),
             )
             .clip(shape)
+            .background(glassFill)
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (isDark) 0.40f else 0.95f),
+                        accent.copy(alpha = 0.28f),
+                        Color.White.copy(alpha = if (isDark) 0.12f else 0.45f),
+                    ),
+                ),
+                shape = shape,
+            )
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onClick,
             ),
     ) {
+        // Soft accent wash (not a solid color block)
         Box(
             Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .background(Brush.linearGradient(gradient)),
-            contentAlignment = Alignment.Center,
+                .height(108.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            accent.copy(alpha = if (isDark) 0.38f else 0.28f),
+                            accent.copy(alpha = 0.08f),
+                            Color.Transparent,
+                        ),
+                        radius = 160f,
+                    ),
+                ),
+        )
+
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
                 Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White.copy(alpha = 0.22f))
-                    .border(1.dp, Color.White.copy(alpha = 0.45f), RoundedCornerShape(20.dp)),
+                    .weight(1f)
+                    .fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                // Soft glow behind icon
+                Box(
+                    Modifier
+                        .size(72.dp)
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    accent.copy(alpha = 0.35f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                            CircleShape,
+                        ),
+                )
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    accent.copy(alpha = 0.92f),
+                                    accent.copy(alpha = 0.70f),
+                                ),
+                            ),
+                        )
+                        .border(
+                            1.dp,
+                            Color.White.copy(alpha = 0.35f),
+                            RoundedCornerShape(18.dp),
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                }
             }
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(Color.White.copy(alpha = if (LiquidTheme.isDark) 0.14f else 0.92f))
-                .padding(horizontal = 10.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label,
-                color = LiquidTheme.text,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                lineHeight = 16.sp,
-            )
+
+            // Frosted label strip — translucent, not solid white slab
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(labelFill)
+                    .border(
+                        width = 0.5.dp,
+                        color = Color.White.copy(alpha = if (isDark) 0.12f else 0.50f),
+                    )
+                    .padding(horizontal = 8.dp, vertical = 11.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    color = LiquidTheme.text,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    lineHeight = 15.sp,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -734,5 +842,242 @@ private fun promoDesc(lang: AppLanguage, index: Int) = when (index) {
         AppLanguage.RU -> "При покупке от 100 000 сум"
         AppLanguage.EN -> "On orders over 100,000"
         else -> "100,000 so'mdan yuqori xaridlarda"
+    }
+}
+
+@Composable
+private fun LiveDeliveryMapCard(
+    live: LiveDeliveryUi,
+    isDark: Boolean,
+    title: String,
+    watchLabel: String,
+    distanceLabel: String,
+    etaLabel: String,
+    onOpenFullscreen: () -> Unit,
+    onOpenTracking: () -> Unit,
+) {
+    val tracking = live.tracking
+    val person = tracking.deliveryPerson
+    val shape = RoundedCornerShape(LiquidGlass.RadiusCard)
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 14.dp,
+                shape = shape,
+                ambientColor = LiquidGlass.ShadowAmbient,
+                spotColor = LiquidGlass.ShadowSpot,
+            )
+            .clip(shape)
+            .background(if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.88f))
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.70f),
+                        LiquidGlass.Indigo.copy(alpha = 0.30f),
+                    ),
+                ),
+                shape,
+            ),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(LiquidGlass.GradientPrimary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.LocalShipping,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Column {
+                    Text(
+                        title,
+                        color = LiquidTheme.text,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        listOf(distanceLabel, etaLabel).joinToString(" · "),
+                        color = LiquidTheme.textMuted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                IconButton(
+                    onClick = onOpenFullscreen,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .liquidGlassThemed(radius = 12.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Fullscreen,
+                        contentDescription = watchLabel,
+                        tint = LiquidGlass.Indigo,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(168.dp)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onOpenTracking,
+                ),
+        ) {
+            OrderTrackingMapView(
+                deliveryLat = tracking.deliveryLatitude,
+                deliveryLng = tracking.deliveryLongitude,
+                courierLat = person?.latitude,
+                courierLng = person?.longitude,
+                routePoints = live.routePoints,
+                isDark = isDark,
+                interactive = false,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LiquidGlass.GradientPrimary)
+                    .clickable(onClick = onOpenTracking)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    watchLabel,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardLiveMapFullscreen(
+    live: LiveDeliveryUi,
+    isDark: Boolean,
+    title: String,
+    onDismiss: () -> Unit,
+    onOpenTracking: () -> Unit,
+) {
+    val tracking = live.tracking
+    val person = tracking.deliveryPerson
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            OrderTrackingMapView(
+                deliveryLat = tracking.deliveryLatitude,
+                deliveryLng = tracking.deliveryLongitude,
+                courierLat = person?.latitude,
+                courierLng = person?.longitude,
+                routePoints = live.routePoints,
+                isDark = isDark,
+                interactive = true,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .liquidGlassThemed(radius = 12.dp),
+                ) {
+                    Icon(Icons.Default.Close, null, tint = Color.White)
+                }
+                Text(
+                    title,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    modifier = Modifier
+                        .liquidGlassThemed(radius = 12.dp)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .liquidGlassThemed(radius = 12.dp),
+                ) {
+                    Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
+                }
+            }
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "${live.distanceLabel} · ETA ${live.etaLabel}",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(LiquidGlass.RadiusButton))
+                        .background(LiquidGlass.GradientPrimary)
+                        .clickable(onClick = onOpenTracking)
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        title,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
     }
 }
