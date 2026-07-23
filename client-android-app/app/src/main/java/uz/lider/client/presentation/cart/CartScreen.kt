@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.domain.model.CartItem
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.cartBadgeCount
@@ -53,6 +54,7 @@ import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
+import kotlinx.coroutines.delay
 
 @Composable
 fun CartScreen(
@@ -117,7 +119,11 @@ fun CartScreen(
                     }
                 }
             } else {
-                Column(Modifier.fillMaxSize().padding(padding)) {
+                ClientPullToRefresh(
+                    onRefresh = { delay(400) },
+                    modifier = Modifier.padding(padding),
+                ) {
+                Column(Modifier.fillMaxSize()) {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(16.dp),
@@ -163,6 +169,7 @@ fun CartScreen(
                             )
                         }
                     }
+                }
                 }
             }
         }

@@ -36,9 +36,18 @@ class OrdersViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val orders = orderRepository.getOrders()
-            _uiState.update { it.copy(loading = false, orders = orders).withVisibleOrders() }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
         }
+    }
+
+    suspend fun refresh() {
+        reloadQuiet()
+    }
+
+    private suspend fun reloadQuiet() {
+        val orders = orderRepository.getOrders()
+        _uiState.update { it.copy(orders = orders).withVisibleOrders() }
     }
 
     fun onSearchChange(value: String) {

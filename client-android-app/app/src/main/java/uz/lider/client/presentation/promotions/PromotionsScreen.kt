@@ -42,12 +42,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
+import kotlinx.coroutines.delay
 
 @Composable
 fun PromotionsScreen(onBack: () -> Unit) {
@@ -63,7 +65,11 @@ fun PromotionsScreen(onBack: () -> Unit) {
 
     ClientStackScaffold(title = localized("promo_title"), onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(padding)) {
+            ClientPullToRefresh(
+                onRefresh = { delay(450) },
+                modifier = Modifier.padding(padding),
+            ) {
+            Column(Modifier.fillMaxSize()) {
                 // ── Glass pill tab bar ────────────────────────────────────────
                 Box(
                     Modifier
@@ -174,6 +180,7 @@ fun PromotionsScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
             }
         }
     }

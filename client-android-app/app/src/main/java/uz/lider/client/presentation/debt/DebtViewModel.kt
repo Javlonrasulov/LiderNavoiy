@@ -66,17 +66,25 @@ class DebtViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val profile = profileRepository.getProfile()
-            val range = _uiState.value.dateRange
-            _uiState.update { state ->
-                val payments = state.allPayments
-                state.copy(
-                    loading = false,
-                    currentDebt = profile?.balance?.takeIf { it > 0 } ?: state.currentDebt,
-                    filteredPayments = filterPayments(payments, range),
-                    totalPaid = computeTotalPaid(payments, range),
-                )
-            }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
+        }
+    }
+
+    suspend fun refresh() {
+        reloadQuiet()
+    }
+
+    private suspend fun reloadQuiet() {
+        val profile = profileRepository.getProfile()
+        val range = _uiState.value.dateRange
+        _uiState.update { state ->
+            val payments = state.allPayments
+            state.copy(
+                currentDebt = profile?.balance?.takeIf { it > 0 } ?: state.currentDebt,
+                filteredPayments = filterPayments(payments, range),
+                totalPaid = computeTotalPaid(payments, range),
+            )
         }
     }
 

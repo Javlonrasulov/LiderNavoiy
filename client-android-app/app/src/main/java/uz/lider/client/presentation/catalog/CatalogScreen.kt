@@ -1,4 +1,4 @@
-package uz.lider.client.presentation.catalog
+﻿package uz.lider.client.presentation.catalog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +57,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.domain.model.Product
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
@@ -100,6 +101,7 @@ fun CatalogScreen(
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
         } else {
+            ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
@@ -281,7 +283,7 @@ fun CatalogScreen(
                             }
                         }
                     }
-                }
+            }
             }
         }
     }

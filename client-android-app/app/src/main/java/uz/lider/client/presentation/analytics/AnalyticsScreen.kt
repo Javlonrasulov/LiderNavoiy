@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.AnalyticsTrendChart
 import uz.lider.client.presentation.components.ChartPoint
@@ -71,8 +72,12 @@ fun AnalyticsScreen(
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
             } else {
+                ClientPullToRefresh(
+                    onRefresh = { viewModel.refreshSuspend() },
+                    modifier = Modifier.padding(padding),
+                ) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
@@ -362,6 +367,7 @@ fun AnalyticsScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }

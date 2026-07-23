@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
@@ -113,8 +114,11 @@ fun DebtScreen(
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
             } else {
-                LazyColumn(
+                ClientPullToRefresh(
+                    onRefresh = { viewModel.refresh() },
                     modifier = Modifier.padding(padding),
+                ) {
+                LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
@@ -348,6 +352,7 @@ fun DebtScreen(
                             )
                         }
                     }
+                }
                 }
             }
         }

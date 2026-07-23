@@ -40,8 +40,8 @@ class ProductDetailViewModel @Inject constructor(
     fun load(productId: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val product = productRepository.getProduct(productId)
-            _uiState.update { it.copy(loading = false, product = product) }
+            reloadQuiet(productId)
+            _uiState.update { it.copy(loading = false) }
         }
         ratingJob?.cancel()
         ratingJob = viewModelScope.launch {
@@ -55,6 +55,15 @@ class ProductDetailViewModel @Inject constructor(
                 _uiState.update { it.copy(liked = productId in ids) }
             }
         }
+    }
+
+    suspend fun refresh(productId: String) {
+        reloadQuiet(productId)
+    }
+
+    private suspend fun reloadQuiet(productId: String) {
+        val product = productRepository.getProduct(productId)
+        _uiState.update { it.copy(product = product) }
     }
 
     fun incQty() = _uiState.update { it.copy(qty = it.qty + 1.0) }

@@ -40,12 +40,14 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.localization.AppLanguage
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
+import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
@@ -59,10 +61,12 @@ fun SettingsScreen(
 
     ClientStackScaffold(title = localized("com_settings"), onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
+            ClientPullToRefresh(
+                onRefresh = { delay(350) },
+                modifier = Modifier.padding(padding),
+            ) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
@@ -213,6 +217,7 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
             }
         }
     }

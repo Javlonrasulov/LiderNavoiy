@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -78,6 +79,7 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPalette
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
@@ -188,12 +190,13 @@ fun DashboardScreen(
                     modifier = Modifier.align(Alignment.TopCenter),
                 )
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
+                ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
                     item {
                         Column(
                             Modifier
@@ -472,6 +475,7 @@ fun DashboardScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }
@@ -795,7 +799,7 @@ private fun LiveDeliveryMapCard(
                 courierLat = person?.latitude,
                 courierLng = person?.longitude,
                 routePoints = live.routePoints,
-                isDark = isDark,
+                isDark = false,
                 interactive = false,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -829,6 +833,7 @@ private fun DashboardLiveMapFullscreen(
 ) {
     val tracking = live.tracking
     val person = tracking.deliveryPerson
+    val overlayBg = Color(0xF00B1220)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -841,15 +846,16 @@ private fun DashboardLiveMapFullscreen(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color(0xFFF5F7FC)),
         ) {
+            // Always light map tiles (even when app is dark)
             OrderTrackingMapView(
                 deliveryLat = tracking.deliveryLatitude,
                 deliveryLng = tracking.deliveryLongitude,
                 courierLat = person?.latitude,
                 courierLng = person?.longitude,
                 routePoints = live.routePoints,
-                isDark = isDark,
+                isDark = false,
                 interactive = true,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -857,7 +863,7 @@ private fun DashboardLiveMapFullscreen(
                 Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -865,7 +871,9 @@ private fun DashboardLiveMapFullscreen(
                     onClick = onDismiss,
                     modifier = Modifier
                         .size(44.dp)
-                        .liquidGlassThemed(radius = 12.dp),
+                        .shadow(8.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(overlayBg),
                 ) {
                     Icon(Icons.Default.Close, null, tint = Color.White)
                 }
@@ -875,14 +883,18 @@ private fun DashboardLiveMapFullscreen(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                     modifier = Modifier
-                        .liquidGlassThemed(radius = 12.dp)
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .shadow(8.dp, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(overlayBg)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
                         .size(44.dp)
-                        .liquidGlassThemed(radius = 12.dp),
+                        .shadow(8.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(overlayBg),
                 ) {
                     Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
                 }
@@ -891,8 +903,8 @@ private fun DashboardLiveMapFullscreen(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
@@ -900,19 +912,28 @@ private fun DashboardLiveMapFullscreen(
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
+                    modifier = Modifier
+                        .shadow(8.dp, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(overlayBg)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 Spacer(Modifier.height(10.dp))
                 Box(
                     Modifier
+                        .fillMaxWidth()
+                        .shadow(10.dp, RoundedCornerShape(LiquidGlass.RadiusButton))
                         .clip(RoundedCornerShape(LiquidGlass.RadiusButton))
                         .background(LiquidGlass.GradientPrimary)
                         .clickable(onClick = onOpenTracking)
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         title,
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
                     )
                 }
             }

@@ -34,9 +34,18 @@ class ProfileViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val profile = profileRepository.getProfile()
-            _uiState.update { it.copy(loading = false, profile = profile) }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
         }
+    }
+
+    suspend fun refresh() {
+        reloadQuiet()
+    }
+
+    private suspend fun reloadQuiet() {
+        val profile = profileRepository.getProfile()
+        _uiState.update { it.copy(profile = profile) }
     }
 
     suspend fun logout() = authRepository.logout()

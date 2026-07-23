@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +43,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
@@ -100,6 +104,7 @@ fun OrderTrackingScreen(
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
             } else {
+                ClientPullToRefresh(onRefresh = { viewModel.refresh(orderId) }) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
@@ -119,7 +124,7 @@ fun OrderTrackingScreen(
                                 courierLat = deliveryPerson?.latitude,
                                 courierLng = deliveryPerson?.longitude,
                                 routePoints = state.routePoints,
-                                isDark = isDark,
+                                isDark = false,
                                 modifier = Modifier.fillMaxSize(),
                             )
                             IconButton(
@@ -344,6 +349,7 @@ fun OrderTrackingScreen(
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -354,25 +360,25 @@ private fun TrackingMapInfoOverlay(
     distance: String,
     modifier: Modifier = Modifier,
 ) {
-    val text = LiquidTheme.text
-    val textMuted = LiquidTheme.textMuted
-
     Column(
         modifier
             .fillMaxWidth()
-            .background(LiquidGlass.GlassDark)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .shadow(8.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xF00B1220))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            "🗺 ${localized("track_active")}",
-            color = text,
+            localized("track_active"),
+            color = Color.White,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
         )
         Text(
             "${localized("track_distance")}: $distance",
-            color = textMuted,
+            color = Color.White.copy(alpha = 0.80f),
             fontSize = 13.sp,
         )
     }
@@ -389,6 +395,7 @@ private fun FullScreenOrderTrackingMapDialog(
     isDark: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val overlayBg = Color(0xF00B1220)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -401,7 +408,7 @@ private fun FullScreenOrderTrackingMapDialog(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color(0xFFF5F7FC)),
         ) {
             OrderTrackingMapView(
                 deliveryLat = deliveryLat,
@@ -409,7 +416,7 @@ private fun FullScreenOrderTrackingMapDialog(
                 courierLat = courierLat,
                 courierLng = courierLng,
                 routePoints = routePoints,
-                isDark = isDark,
+                isDark = false,
                 modifier = Modifier
                     .fillMaxSize()
                     .align(Alignment.Center),
@@ -418,7 +425,8 @@ private fun FullScreenOrderTrackingMapDialog(
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -426,7 +434,9 @@ private fun FullScreenOrderTrackingMapDialog(
                     onClick = onDismiss,
                     modifier = Modifier
                         .size(44.dp)
-                        .liquidGlassThemed(radius = 12.dp),
+                        .shadow(8.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(overlayBg),
                 ) {
                     Icon(
                         Icons.Default.Close,
@@ -440,14 +450,18 @@ private fun FullScreenOrderTrackingMapDialog(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                     modifier = Modifier
-                        .liquidGlassThemed(radius = 12.dp)
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .shadow(8.dp, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(overlayBg)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
                         .size(44.dp)
-                        .liquidGlassThemed(radius = 12.dp),
+                        .shadow(8.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(overlayBg),
                 ) {
                     Icon(
                         Icons.Default.FullscreenExit,
@@ -458,7 +472,9 @@ private fun FullScreenOrderTrackingMapDialog(
             }
             TrackingMapInfoOverlay(
                 distance = distance,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
             )
         }
     }

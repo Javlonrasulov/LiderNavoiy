@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import uz.lider.client.domain.model.ContactPerson
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientRoutes
@@ -134,8 +135,11 @@ fun ProfileScreen(
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
                 }
             } else {
-                LazyColumn(
+                ClientPullToRefresh(
+                    onRefresh = { viewModel.refresh() },
                     modifier = Modifier.padding(padding),
+                ) {
+                LazyColumn(
                     contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
@@ -409,6 +413,7 @@ fun ProfileScreen(
                             }
                         }
                     }
+                }
                 }
             }
         }

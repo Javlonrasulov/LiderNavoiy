@@ -38,11 +38,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
+import kotlinx.coroutines.delay
 
 private data class NotifItem(
     val id: String,
@@ -69,7 +71,11 @@ fun NotificationsScreen(
 
     ClientStackScaffold(title = localized("notif_title"), onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(padding)) {
+            ClientPullToRefresh(
+                onRefresh = { delay(400) },
+                modifier = Modifier.padding(padding),
+            ) {
+            Column(Modifier.fillMaxSize()) {
                 // ── Mark all button ───────────────────────────────────────────
                 Row(
                     Modifier
@@ -144,6 +150,7 @@ fun NotificationsScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

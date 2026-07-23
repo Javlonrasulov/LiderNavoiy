@@ -52,9 +52,26 @@ class AnalyticsViewModel @Inject constructor(
         viewModelScope.launch { appSettingsRepository.setChartStyle(style) }
     }
 
-    private fun load(period: String) {
+    fun refresh() {
+        load(_uiState.value.period, showLoading = false)
+    }
+
+    suspend fun refreshSuspend() {
+        val period = _uiState.value.period
+        val data = analyticsRepository.getAnalytics(period)
+        _uiState.update {
+            it.copy(
+                data = data,
+                loadFailed = data == null,
+            )
+        }
+    }
+
+    private fun load(period: String, showLoading: Boolean = true) {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, loadFailed = false) }
+            if (showLoading) {
+                _uiState.update { it.copy(loading = true, loadFailed = false) }
+            }
             val data = analyticsRepository.getAnalytics(period)
             _uiState.update {
                 it.copy(

@@ -101,22 +101,32 @@ class ChatViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val conv = messageRepository.startConversation(otherUserId)
-                val messages = messageRepository.getMessages(conv.id)
-                messageRepository.markRead(conv.id)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        conversation = conv,
-                        messages = messages.sortedBy { m -> m.createdAt },
-                        contactName = conv.otherUser.fullName.ifBlank { fallbackName },
-                        contactPosition = fallbackPosition,
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = ApiErrorMapper.toKey(e)) }
+            reloadQuiet()
+            _uiState.update { it.copy(isLoading = false) }
+        }
+    }
+
+    suspend fun refresh() {
+        reloadQuiet()
+    }
+
+    private suspend fun reloadQuiet() {
+        if (otherUserId.isBlank()) return
+        try {
+            val conv = messageRepository.startConversation(otherUserId)
+            val messages = messageRepository.getMessages(conv.id)
+            messageRepository.markRead(conv.id)
+            _uiState.update {
+                it.copy(
+                    conversation = conv,
+                    messages = messages.sortedBy { m -> m.createdAt },
+                    contactName = conv.otherUser.fullName.ifBlank { fallbackName },
+                    contactPosition = fallbackPosition,
+                    error = null,
+                )
             }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(error = ApiErrorMapper.toKey(e)) }
         }
     }
 

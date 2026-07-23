@@ -43,21 +43,26 @@ class OrderTrackingViewModel @Inject constructor(
         pollJob?.cancel()
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val order = orderRepository.getOrder(orderId)
-            val tracking = orderRepository.getOrderTracking(orderId)
-            applyTracking(order, tracking)
+            reloadQuiet(orderId)
             _uiState.update { it.copy(loading = false) }
-            refreshRoadRoute(tracking)
         }
         pollJob = viewModelScope.launch {
             while (isActive) {
                 delay(8_000)
-                val tracking = orderRepository.getOrderTracking(orderId)
-                val order = _uiState.value.order ?: orderRepository.getOrder(orderId)
-                applyTracking(order, tracking)
-                refreshRoadRoute(tracking)
+                reloadQuiet(orderId)
             }
         }
+    }
+
+    suspend fun refresh(orderId: String) {
+        reloadQuiet(orderId)
+    }
+
+    private suspend fun reloadQuiet(orderId: String) {
+        val order = orderRepository.getOrder(orderId) ?: _uiState.value.order
+        val tracking = orderRepository.getOrderTracking(orderId)
+        applyTracking(order, tracking)
+        refreshRoadRoute(tracking)
     }
 
     override fun onCleared() {

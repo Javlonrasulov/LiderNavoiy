@@ -90,6 +90,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import uz.lider.client.data.remote.dto.ChatMessageDto
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.FullScreenImageViewer
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.theme.LiquidBackground
@@ -241,11 +242,14 @@ fun ChatScreen(
                             Text(localized("chat_empty"), color = textMuted, fontSize = 14.sp)
                         }
                     } else {
+                        ClientPullToRefresh(
+                            onRefresh = { viewModel.refresh() },
+                            modifier = Modifier.weight(1f),
+                        ) {
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
+                                .fillMaxSize()
                                 .padding(horizontal = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(vertical = 12.dp),
@@ -286,6 +290,7 @@ fun ChatScreen(
                                     }
                                 }
                             }
+                        }
                         }
                     }
 

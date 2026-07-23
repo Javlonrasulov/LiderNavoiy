@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.FullScreenImageViewer
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.formatQty
@@ -89,6 +90,7 @@ fun ProductDetailScreen(
             val codeLabel = localized("pd_code")
             val somLabel = localized("com_som")
 
+            ClientPullToRefresh(onRefresh = { viewModel.refresh(productId) }) {
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 120.dp),
@@ -241,6 +243,7 @@ fun ProductDetailScreen(
                         }
                     }
                 }
+            }
             }
 
             GlassHeaderRow(

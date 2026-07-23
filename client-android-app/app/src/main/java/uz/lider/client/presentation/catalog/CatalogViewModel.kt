@@ -56,15 +56,22 @@ class CatalogViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val allProducts = productRepository.getProducts(null)
-            val categories = productRepository.getCategories()
-            _uiState.update {
-                it.copy(loading = false, allProducts = allProducts, categories = categories)
-            }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
         }
     }
 
-    fun refresh() = load()
+    suspend fun refresh() {
+        reloadQuiet()
+    }
+
+    private suspend fun reloadQuiet() {
+        val allProducts = productRepository.getProducts(null)
+        val categories = productRepository.getCategories()
+        _uiState.update {
+            it.copy(allProducts = allProducts, categories = categories)
+        }
+    }
 
     fun onSearchChange(value: String) = _uiState.update { it.copy(search = value) }
 

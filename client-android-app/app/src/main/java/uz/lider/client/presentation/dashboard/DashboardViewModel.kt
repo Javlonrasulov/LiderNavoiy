@@ -62,23 +62,33 @@ class DashboardViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val authUser = authRepository.getUserFlow().first()
-            val profile = profileRepository.getProfile()
-            val data = profileRepository.getDashboardData()
-            val allOrders = profileRepository.getAllOrders()
-            val range = _uiState.value.dateRange
-            val filtered = DashboardDateFilter.computeFiltered(allOrders, range)
-            _uiState.update {
-                it.copy(
-                    loading = false,
-                    data = data,
-                    clientName = resolveClientName(profile, authUser),
-                    allOrders = allOrders,
-                    dateRange = range,
-                    filtered = filtered,
-                )
-            }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
             ensureLiveDeliveryPolling()
+        }
+    }
+
+    /** Pull-to-refresh: updates data without full-screen spinner. */
+    suspend fun refresh() {
+        reloadQuiet()
+        ensureLiveDeliveryPolling()
+    }
+
+    private suspend fun reloadQuiet() {
+        val authUser = authRepository.getUserFlow().first()
+        val profile = profileRepository.getProfile()
+        val data = profileRepository.getDashboardData()
+        val allOrders = profileRepository.getAllOrders()
+        val range = _uiState.value.dateRange
+        val filtered = DashboardDateFilter.computeFiltered(allOrders, range)
+        _uiState.update {
+            it.copy(
+                data = data,
+                clientName = resolveClientName(profile, authUser),
+                allOrders = allOrders,
+                dateRange = range,
+                filtered = filtered,
+            )
         }
     }
 

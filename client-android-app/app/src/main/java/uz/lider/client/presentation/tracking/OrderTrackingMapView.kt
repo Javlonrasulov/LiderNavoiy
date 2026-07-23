@@ -95,7 +95,7 @@ private fun updateMapContent(
     deliveryIcon: GradientDrawable,
     courierIcon: GradientDrawable,
 ) {
-    map.setTileSource(MapTileSources.source(MapLayerId.STANDARD, isDark))
+    map.setTileSource(MapTileSources.source(MapLayerId.STANDARD, dark = false))
     map.setMultiTouchControls(interactive)
     map.isClickable = interactive
     map.isFocusable = interactive
@@ -219,7 +219,7 @@ fun OrderTrackingMapView(
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 minZoomLevel = 5.0
                 maxZoomLevel = 19.0
-                setTileSource(MapTileSources.source(MapLayerId.STANDARD, isDark))
+                setTileSource(MapTileSources.source(MapLayerId.STANDARD, dark = false))
                 controller.setZoom(NAVOIY_ZOOM)
                 controller.setCenter(NAVOIY)
                 mapRef.value = this

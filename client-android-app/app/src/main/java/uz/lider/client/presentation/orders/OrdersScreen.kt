@@ -51,6 +51,7 @@ import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPalette
+import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderDisplayLabel
@@ -101,6 +102,7 @@ fun OrdersScreen(
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
             }
         } else {
+            ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
             Column(
                 Modifier
                     .fillMaxSize()
@@ -284,6 +286,7 @@ fun OrdersScreen(
                         }
                     }
                 }
+            }
             }
         }
     }
