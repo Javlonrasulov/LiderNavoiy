@@ -16,6 +16,8 @@ import javax.inject.Inject
 
 enum class CatalogSort { DEFAULT, PRICE_ASC, PRICE_DESC, RATING }
 
+enum class CatalogViewMode { GRID, LIST }
+
 data class CatalogUiState(
     val loading: Boolean = true,
     val allProducts: List<Product> = emptyList(),
@@ -24,6 +26,7 @@ data class CatalogUiState(
     val activeCategoryIndex: Int = 0,
     val sort: CatalogSort = CatalogSort.DEFAULT,
     val sortMenuOpen: Boolean = false,
+    val viewMode: CatalogViewMode = CatalogViewMode.GRID,
     val favorites: Set<String> = emptySet(),
     val addToCartProduct: Product? = null,
 )
@@ -80,6 +83,16 @@ class CatalogViewModel @Inject constructor(
     fun onSortChange(sort: CatalogSort) = _uiState.update { it.copy(sort = sort, sortMenuOpen = false) }
 
     fun toggleSortMenu() = _uiState.update { it.copy(sortMenuOpen = !it.sortMenuOpen) }
+
+    fun toggleViewMode() = _uiState.update {
+        it.copy(
+            viewMode = if (it.viewMode == CatalogViewMode.GRID) {
+                CatalogViewMode.LIST
+            } else {
+                CatalogViewMode.GRID
+            },
+        )
+    }
 
     fun toggleFavorite(productId: String) {
         viewModelScope.launch {

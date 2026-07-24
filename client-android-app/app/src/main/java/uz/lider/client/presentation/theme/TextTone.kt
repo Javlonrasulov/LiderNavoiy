@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
  */
 enum class TextTone(val code: String) {
     DEFAULT("default"),
+    INK("ink"),
     NAVY("navy"),
     TEAL("teal"),
     VIOLET("violet"),
@@ -22,6 +23,7 @@ enum class TextTone(val code: String) {
     val swatch: Color
         get() = when (this) {
             DEFAULT -> Color(0xFF0F172A)
+            INK -> Color(0xFF000000)
             NAVY -> Color(0xFF2563EB)
             TEAL -> Color(0xFF0D9488)
             VIOLET -> Color(0xFF7C3AED)
@@ -33,6 +35,8 @@ enum class TextTone(val code: String) {
 
     fun primary(isDark: Boolean): Color = when (this) {
         DEFAULT -> if (isDark) LiquidGlass.TextWhite else LiquidGlass.TextDark
+        // Tim o'kir qora — light: pure black; dark: near-white for contrast
+        INK -> if (isDark) Color(0xFFF5F5F5) else Color(0xFF000000)
         NAVY -> if (isDark) Color(0xFFBFDBFE) else Color(0xFF1E3A8A)
         TEAL -> if (isDark) Color(0xFF99F6E4) else Color(0xFF115E59)
         VIOLET -> if (isDark) Color(0xFFE9D5FF) else Color(0xFF5B21B6)
@@ -44,6 +48,7 @@ enum class TextTone(val code: String) {
 
     fun muted(isDark: Boolean): Color = when (this) {
         DEFAULT -> if (isDark) LiquidGlass.TextWhiteMuted else LiquidGlass.TextDarkMuted
+        INK -> if (isDark) Color(0x99F5F5F5) else Color(0xFF2A2A2A)
         NAVY -> if (isDark) Color(0x99BFDBFE) else Color(0xFF64748B)
         TEAL -> if (isDark) Color(0x9999F6E4) else Color(0xFF0F766E)
         VIOLET -> if (isDark) Color(0x99E9D5FF) else Color(0xFF7C3AED)

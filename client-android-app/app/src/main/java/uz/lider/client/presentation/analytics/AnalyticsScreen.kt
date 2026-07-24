@@ -2,6 +2,7 @@ package uz.lider.client.presentation.analytics
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +14,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,7 +41,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPullToRefresh
-import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.AnalyticsTrendChart
 import uz.lider.client.presentation.components.ChartPoint
 import uz.lider.client.presentation.components.ChartVisualStyle
@@ -47,60 +51,104 @@ import uz.lider.client.presentation.components.localized
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
+import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.PremiumHeaderActionPill
+import uz.lider.client.presentation.theme.PremiumHeaderButton
+import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
 fun AnalyticsScreen(
     onNavigate: (String) -> Unit,
+    onOpenDrawer: () -> Unit = {},
     viewModel: AnalyticsViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
     val state by viewModel.uiState.collectAsState()
     val data = state.data
+    val periodLabel = when (state.period) {
+        "week" -> localized("an_week")
+        "year" -> localized("an_year")
+        else -> localized("an_month")
+    }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
-        ClientTabScaffold(title = localized("an_title")) { padding ->
-            if (state.loading && data == null) {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = LiquidGlass.Indigo)
-                }
-            } else {
-                ClientPullToRefresh(
-                    onRefresh = { viewModel.refreshSuspend() },
-                    modifier = Modifier.padding(padding),
-                ) {
+        if (state.loading && data == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = LiquidGlass.Indigo)
+            }
+        } else {
+            ClientPullToRefresh(onRefresh = { viewModel.refreshSuspend() }) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = ClientBottomNavHeight + 16.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    // Period toggle — glass pill with gradient active tab
                     item {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(vertical = 10.dp),
+                        ) {
                             Row(
-                                Modifier
-                                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                listOf(
-                                    "week" to localized("an_week"),
-                                    "month" to localized("an_month"),
-                                    "year" to localized("an_year"),
-                                ).forEach { (key, label) ->
-                                    GlassFilterChip(
-                                        label = label,
-                                        selected = state.period == key,
-                                        onClick = { viewModel.setPeriod(key) },
+                                PremiumHeaderButton(
+                                    icon = Icons.Default.Menu,
+                                    onClick = onOpenDrawer,
+                                    contentDescription = "Menu",
+                                )
+                                PremiumHeaderActionPill {
+                                    PremiumHeaderPillIcon(
+                                        icon = Icons.Default.Refresh,
+                                        onClick = { viewModel.refresh() },
                                     )
                                 }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                localized("an_title"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 26.sp,
+                                lineHeight = 32.sp,
+                            )
+                            Text(
+                                periodLabel,
+                                color = LiquidTheme.textMuted,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+
+                    item {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            listOf(
+                                "week" to localized("an_week"),
+                                "month" to localized("an_month"),
+                                "year" to localized("an_year"),
+                            ).forEach { (key, label) ->
+                                GlassFilterChip(
+                                    label = label,
+                                    selected = state.period == key,
+                                    onClick = { viewModel.setPeriod(key) },
+                                )
                             }
                         }
                     }
@@ -367,7 +415,6 @@ fun AnalyticsScreen(
                             }
                         }
                     }
-                }
                 }
             }
         }

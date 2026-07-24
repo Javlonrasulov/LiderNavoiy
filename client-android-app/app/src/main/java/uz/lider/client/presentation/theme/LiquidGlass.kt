@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
@@ -433,13 +435,26 @@ fun HeroHeaderBackground(
         Image(
             painter = painterResource(R.drawable.bg_home_hero),
             contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            // FillWidth + TopCenter — same as Asosiy; avoids cropping the side pillar into view
+            contentScale = ContentScale.FillWidth,
+            alignment = Alignment.TopCenter,
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight(align = Alignment.Top)
+                .align(Alignment.TopCenter),
         )
         Box(
             Modifier
                 .fillMaxSize()
-                .background(if (isDark) LiquidGlass.GradientHeroDark else LiquidGlass.GradientHeroLight),
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Black.copy(alpha = if (isDark) 0.28f else 0.14f),
+                            0.45f to Color.Black.copy(alpha = if (isDark) 0.12f else 0.05f),
+                            1.0f to Color.Transparent,
+                        ),
+                    ),
+                ),
         )
         content()
     }
@@ -457,39 +472,43 @@ fun FixedHeroBackdrop(
     val isDark = LiquidTheme.isDark
     val fade = fadeProgress.coerceIn(0f, 1f)
     val wash = (fade * fade * 0.35f + fade * 0.65f).coerceIn(0f, 1f)
-    val blurRadius = (fade * 26f).dp
+    val blurRadius = (fade * 22f).dp
     val pageBg = if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight
-    Box(modifier = modifier) {
+    Box(modifier = modifier.clipToBounds()) {
         Image(
             painter = painterResource(R.drawable.bg_home_hero),
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            // Fill width so the photo isn’t over-cropped; pin to top so domes/sky stay visible.
+            contentScale = ContentScale.FillWidth,
             alignment = Alignment.TopCenter,
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .wrapContentHeight(align = Alignment.Top)
+                .align(Alignment.TopCenter)
                 .then(
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && fade > 0.02f) {
                         Modifier.blur(radius = blurRadius)
                     } else {
                         Modifier
                     },
                 ),
         )
-        // Soft vignette for readable white header text
+        // Light top shade only — keep photo clear; just enough for white header text
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = if (isDark) 0.40f else 0.24f),
-                            0.55f to Color.Black.copy(alpha = if (isDark) 0.28f else 0.14f),
-                            1.0f to Color.Black.copy(alpha = if (isDark) 0.22f else 0.10f),
+                            0.0f to Color.Black.copy(alpha = if (isDark) 0.22f else 0.10f),
+                            0.28f to Color.Black.copy(alpha = if (isDark) 0.10f else 0.04f),
+                            0.55f to Color.Transparent,
+                            1.0f to Color.Transparent,
                         ),
                     ),
                 ),
         )
-        // Soft bottom edge → page bg (hero ends at “Jami xaridlar”, not full screen)
+        // Soft bottom edge → page bg (only the last strip)
         Box(
             Modifier
                 .fillMaxSize()
@@ -497,18 +516,20 @@ fun FixedHeroBackdrop(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
                             0.0f to Color.Transparent,
-                            0.72f to Color.Transparent,
+                            0.82f to Color.Transparent,
                             1.0f to pageBg,
                         ),
                     ),
                 ),
         )
-        // Scroll wash → blur + white/dark
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(pageBg.copy(alpha = wash)),
-        )
+        // Scroll wash → blur + white/dark (only while scrolling)
+        if (wash > 0f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(pageBg.copy(alpha = wash)),
+            )
+        }
     }
 }
 
@@ -533,10 +554,10 @@ fun PremiumHeaderButton(
                 spotColor = Color.Black.copy(alpha = 0.14f),
             )
             .clip(CircleShape)
-            .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.94f))
+            .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.48f))
             .border(
                 1.dp,
-                if (isDark) Color.White.copy(alpha = 0.28f) else Color.White,
+                if (isDark) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.65f),
                 CircleShape,
             )
             .clickable(
@@ -571,10 +592,10 @@ fun PremiumHeaderActionPill(
                 spotColor = Color.Black.copy(alpha = 0.14f),
             )
             .clip(RoundedCornerShape(50))
-            .background(if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.94f))
+            .background(if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.48f))
             .border(
                 1.dp,
-                if (isDark) Color.White.copy(alpha = 0.25f) else Color.White,
+                if (isDark) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.65f),
                 RoundedCornerShape(50),
             )
             .padding(horizontal = 6.dp, vertical = 4.dp),

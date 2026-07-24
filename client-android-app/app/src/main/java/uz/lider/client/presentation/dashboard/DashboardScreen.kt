@@ -289,7 +289,6 @@ fun DashboardScreen(
                                     title = t("dash_live_delivery"),
                                     watchLabel = t("dash_live_watch"),
                                     distanceLabel = "${t("track_distance")}: ${delivery.distanceLabel}",
-                                    etaLabel = "${t("dash_live_eta")}: ${delivery.etaLabel}",
                                     onOpenFullscreen = { showLiveMapFullscreen = true },
                                     onOpenTracking = {
                                         onNavigate(ClientRoutes.orderTracking(delivery.orderId))
@@ -589,6 +588,7 @@ private fun DashboardHeaderPillActions(
     val toneLabelKey = remember(textTone) {
         when (textTone) {
             TextTone.DEFAULT -> "com_tone_default"
+            TextTone.INK -> "com_tone_ink"
             TextTone.NAVY -> "com_tone_navy"
             TextTone.TEAL -> "com_tone_teal"
             TextTone.VIOLET -> "com_tone_violet"
@@ -812,7 +812,6 @@ private fun LiveDeliveryMapCard(
     title: String,
     watchLabel: String,
     distanceLabel: String,
-    etaLabel: String,
     onOpenFullscreen: () -> Unit,
     onOpenTracking: () -> Unit,
 ) {
@@ -876,7 +875,7 @@ private fun LiveDeliveryMapCard(
                         fontSize = 14.sp,
                     )
                     Text(
-                        listOf(distanceLabel, etaLabel).joinToString(" · "),
+                        distanceLabel,
                         color = LiquidTheme.textMuted,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -1016,7 +1015,7 @@ private fun DashboardLiveMapFullscreen(
                 }
             }
             Text(
-                "${live.distanceLabel} · ETA ${live.etaLabel}",
+                live.distanceLabel,
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,

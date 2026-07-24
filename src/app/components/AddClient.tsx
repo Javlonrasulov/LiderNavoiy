@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FocusEvent, type ReactNode, type Ref } from 'react';
 import { X, Check, Save, MapPin, ChevronDown, Maximize2, Minimize2, Camera, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from './ThemeContext';
 import { useLang } from './LangContext';
@@ -167,6 +167,253 @@ const TYPES       = ["Torgovaya tochka", "Ulgurji", "Distributtor", "Restorant /
 const CHANNELS    = ["Retail", "Horeca", "Wholesale", "Online"];
 const CATEGORIES  = ["Standard", "VIP", "Premium"];
 
+type FieldTokens = {
+  bg: string;
+  divClr: string;
+  lblClr: string;
+  valClr: string;
+  inpBg: string;
+  inpBdr: string;
+  focClr: string;
+  dropBg: string;
+  dropBdr: string;
+  D: boolean;
+};
+
+function fieldInpStyle(t: FieldTokens, extra?: CSSProperties): CSSProperties {
+  return {
+    width: '100%', boxSizing: 'border-box',
+    background: t.inpBg, border: `1.5px solid ${t.inpBdr}`,
+    borderRadius: 8, padding: '7px 10px',
+    fontSize: 13, color: t.valClr, outline: 'none',
+    transition: 'border-color .15s, box-shadow .15s',
+    ...extra,
+  };
+}
+
+function FormSec({ label, secBg, secClr, divClr }: {
+  label: string; secBg: string; secClr: string; divClr: string;
+}) {
+  return (
+    <div style={{
+      background: secBg, padding: '6px 16px',
+      fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: secClr,
+      borderTop: `1px solid ${divClr}`, borderBottom: `1px solid ${divClr}`,
+    }}>{label}</div>
+  );
+}
+
+function FormGrid2({ children, divClr }: { children: ReactNode; divClr: string }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr 1fr',
+      gap: 0, borderBottom: `1px solid ${divClr}`,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function FormCell({
+  label, value, onChange, tokens, type = 'text', mono = false, span = false, phone = false, inputRef,
+  onFocusExtra, onBlurExtra,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  tokens: FieldTokens;
+  type?: string;
+  mono?: boolean;
+  span?: boolean;
+  phone?: boolean;
+  inputRef?: Ref<HTMLInputElement>;
+  onFocusExtra?: () => void;
+  onBlurExtra?: () => void;
+}) {
+  const { bg, divClr, lblClr, focClr, inpBdr } = tokens;
+  return (
+    <div style={{
+      padding: '8px 12px',
+      borderRight: span ? 'none' : `1px solid ${divClr}`,
+      gridColumn: span ? '1 / -1' : undefined,
+      background: bg,
+    }}>
+      <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{label}</div>
+      <input
+        ref={inputRef}
+        type={phone ? 'tel' : type}
+        value={value}
+        onChange={e => onChange(phone ? formatUzPhoneInput(e.target.value) : e.target.value)}
+        placeholder={phone ? '+998 99 999 99 99' : '...'}
+        style={fieldInpStyle(tokens, { fontFamily: mono ? 'monospace' : 'inherit' })}
+        onFocus={e => {
+          e.target.style.borderColor = focClr;
+          e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)';
+          onFocusExtra?.();
+        }}
+        onBlur={e => {
+          e.target.style.borderColor = inpBdr;
+          e.target.style.boxShadow = 'none';
+          onBlurExtra?.();
+        }}
+      />
+    </div>
+  );
+}
+
+function FormDropCell({
+  label, value, options, open, onToggle, onPick, onClose, tokens, span = false,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  open: boolean;
+  onToggle: () => void;
+  onPick: (v: string) => void;
+  onClose: () => void;
+  tokens: FieldTokens;
+  span?: boolean;
+}) {
+  const { bg, divClr, lblClr, valClr, focClr, inpBdr, dropBg, dropBdr, D } = tokens;
+  return (
+    <div style={{
+      padding: '8px 12px', position: 'relative',
+      borderRight: span ? 'none' : `1px solid ${divClr}`,
+      gridColumn: span ? '1 / -1' : undefined,
+      background: bg,
+    }}>
+      <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{label}</div>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          ...fieldInpStyle(tokens, { cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }),
+          borderColor: open ? focClr : inpBdr,
+          boxShadow: open ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
+        } as CSSProperties}
+      >
+        <span style={{ fontSize: 13, color: value ? valClr : lblClr, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+          {value || '...'}
+        </span>
+        <ChevronDown size={14} color={lblClr} style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : '', transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={onClose} />
+          <div style={{
+            position: 'absolute', left: 12, right: 12, top: 'calc(100% - 4px)', zIndex: 401,
+            background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
+            boxShadow: '0 8px 28px rgba(0,0,0,0.18)', overflow: 'hidden',
+          }}>
+            {options.map(o => (
+              <button
+                type="button"
+                key={o}
+                onClick={() => onPick(o)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13,
+                  background: value === o ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'none',
+                  color: value === o ? focClr : valClr,
+                  border: 'none', borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
+                }}
+                onMouseEnter={e => { if (value !== o) (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
+                onMouseLeave={e => { if (value !== o) (e.currentTarget as HTMLElement).style.background = 'none'; }}
+              >{o}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function FormMetaInp({
+  value, onChange, width, mono, placeholder = '...', tokens,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  width: number;
+  mono?: boolean;
+  placeholder?: string;
+  tokens: FieldTokens;
+}) {
+  const { inpBg, inpBdr, valClr, focClr } = tokens;
+  return (
+    <input
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{
+        width, background: inpBg, border: `1.5px solid ${inpBdr}`,
+        borderRadius: 7, padding: '4px 8px', fontSize: 12,
+        fontFamily: mono ? 'monospace' : 'inherit',
+        color: valClr, outline: 'none',
+      }}
+      onFocus={e => { e.target.style.borderColor = focClr; }}
+      onBlur={e => { e.target.style.borderColor = inpBdr; }}
+    />
+  );
+}
+
+function FormMetaDrop({
+  value, options, width, open, onToggle, onPick, onClose, tokens,
+}: {
+  value: string;
+  options: string[];
+  width: number;
+  open: boolean;
+  onToggle: () => void;
+  onPick: (v: string) => void;
+  onClose: () => void;
+  tokens: FieldTokens;
+}) {
+  const { inpBg, inpBdr, valClr, lblClr, focClr, dropBg, dropBdr, divClr, D } = tokens;
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          width, background: inpBg, border: `1.5px solid ${open ? focClr : inpBdr}`,
+          borderRadius: 7, padding: '4px 8px', fontSize: 12,
+          color: value ? valClr : lblClr,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, cursor: 'pointer',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {value || '...'}
+        </span>
+        <ChevronDown size={11} color={lblClr} style={{ flexShrink: 0 }} />
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={onClose} />
+          <div style={{
+            position: 'absolute', left: 0, top: '100%', marginTop: 3, zIndex: 401,
+            background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 200, overflow: 'hidden',
+          }}>
+            {options.map(o => (
+              <button
+                type="button"
+                key={o}
+                onClick={() => onPick(o)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+                  fontSize: 12, background: 'none', color: valClr, border: 'none',
+                  borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+              >{o}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function clientToForm(client: ClientRow) {
   let lat: number | null = null;
   let lng: number | null = null;
@@ -245,6 +492,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const [appCredLoading, setAppCredLoading] = useState(false);
   const [appCredError, setAppCredError] = useState<string | null>(null);
   const [appLoginTouched, setAppLoginTouched] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const keepNameFocus = useRef(false);
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
@@ -389,8 +638,20 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     if (hasAppLogin || appLoginTouched || appCredLoading) return;
     const name = form.name.trim();
     if (!name) return;
-    setAppLogin(clientNameToLogin(name, form.kod || client?.code));
+    const next = clientNameToLogin(name, form.kod || client?.code);
+    setAppLogin(prev => (prev === next ? prev : next));
   }, [form.name, form.kod, client?.code, hasAppLogin, appLoginTouched, appCredLoading]);
+
+  useLayoutEffect(() => {
+    if (!keepNameFocus.current) return;
+    keepNameFocus.current = false;
+    const el = nameInputRef.current;
+    if (el && document.activeElement !== el) {
+      el.focus();
+      const len = el.value.length;
+      try { el.setSelectionRange(len, len); } catch { /* ignore */ }
+    }
+  });
 
   useEffect(() => {
     if (activeTab !== 'xarita' || !mapContainerRef.current || mapRef.current) return;
@@ -491,8 +752,12 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     label: lbl,
   }));
 
+  const fieldTokens: FieldTokens = useMemo(() => ({
+    bg, divClr, lblClr, valClr, inpBg, inpBdr, focClr, dropBg, dropBdr, D,
+  }), [bg, divClr, lblClr, valClr, inpBg, inpBdr, focClr, dropBg, dropBdr, D]);
+
   /* ── Helpers ── */
-  const inpStyle = (extra?: React.CSSProperties): React.CSSProperties => ({
+  const inpStyle = (extra?: CSSProperties): CSSProperties => ({
     width: '100%', boxSizing: 'border-box',
     background: inpBg, border: `1.5px solid ${inpBdr}`,
     borderRadius: 8, padding: '7px 10px',
@@ -501,187 +766,17 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     ...extra,
   });
 
-  const onFoc = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const onFoc = (e: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.style.borderColor = focClr;
     e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)';
   };
-  const onBlr = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const onBlr = (e: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.style.borderColor = inpBdr;
     e.target.style.boxShadow = 'none';
   };
 
-  /* ── Section header ── */
-  const Sec = ({ label }: { label: string }) => (
-    <div style={{
-      background: secBg, padding: '6px 16px',
-      fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: secClr,
-      borderTop: `1px solid ${divClr}`, borderBottom: `1px solid ${divClr}`,
-    }}>{label}</div>
-  );
-
-  /* ── 2-column grid row ── */
-  const Grid2 = ({ children }: { children: React.ReactNode }) => (
-    <div style={{
-      display: 'grid', gridTemplateColumns: '1fr 1fr',
-      gap: 0, borderBottom: `1px solid ${divClr}`,
-    }}>
-      {children}
-    </div>
-  );
-
-  /* ── Single cell: label on top, input below ── */
-  const Cell = ({
-    label, field, type = 'text', mono = false, span = false, phone = false,
-  }: { label: string; field: string; type?: string; mono?: boolean; span?: boolean; phone?: boolean }) => (
-    <div style={{
-      padding: '8px 12px',
-      borderRight: span ? 'none' : `1px solid ${divClr}`,
-      gridColumn: span ? '1 / -1' : undefined,
-      background: bg,
-    }}>
-      <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{label}</div>
-      <input
-        type={phone ? 'tel' : type}
-        value={(form as any)[field]}
-        onChange={e => set(field, phone ? formatUzPhoneInput(e.target.value) : e.target.value)}
-        placeholder={phone ? '+998 99 999 99 99' : '...'}
-        style={inpStyle({ fontFamily: mono ? 'monospace' : 'inherit' })}
-        onFocus={onFoc} onBlur={onBlr}
-      />
-    </div>
-  );
-
-  /* ── Dropdown cell ── */
-  const DropCell = ({
-    label, field, options, span = false,
-  }: { label: string; field: string; options: string[]; span?: boolean }) => (
-    <div style={{
-      padding: '8px 12px', position: 'relative',
-      borderRight: span ? 'none' : `1px solid ${divClr}`,
-      gridColumn: span ? '1 / -1' : undefined,
-      background: bg,
-    }}>
-      <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{label}</div>
-      <button
-        onClick={() => setOpenDrop(openDrop === field ? null : field)}
-        style={{
-          ...inpStyle({ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }),
-          borderColor: openDrop === field ? focClr : inpBdr,
-          boxShadow: openDrop === field ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
-        } as React.CSSProperties}
-      >
-        <span style={{ fontSize: 13, color: (form as any)[field] ? valClr : lblClr, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-          {(form as any)[field] || '...'}
-        </span>
-        <ChevronDown size={14} color={lblClr} style={{ flexShrink: 0, transform: openDrop === field ? 'rotate(180deg)' : '', transition: 'transform .15s' }} />
-      </button>
-      {openDrop === field && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={() => setOpenDrop(null)} />
-          <div style={{
-            position: 'absolute', left: 12, right: 12, top: 'calc(100% - 4px)', zIndex: 401,
-            background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
-            boxShadow: '0 8px 28px rgba(0,0,0,0.18)', overflow: 'hidden',
-          }}>
-            {options.map(o => (
-              <button key={o} onClick={() => { set(field, o); setOpenDrop(null); }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13,
-                  background: (form as any)[field] === o ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'none',
-                  color: (form as any)[field] === o ? focClr : valClr,
-                  border: 'none', borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
-                }}
-                onMouseEnter={e => { if ((form as any)[field] !== o) (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
-                onMouseLeave={e => { if ((form as any)[field] !== o) (e.currentTarget as HTMLElement).style.background = 'none'; }}
-              >{o}</button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-
-  /* ── Checkbox cell (spans full width) ── */
-  const ChkCell = ({ label, field }: { label: string; field: string }) => (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '11px 12px', borderBottom: `1px solid ${divClr}`, background: bg,
-    }}>
-      <span style={{ fontSize: 13, color: valClr }}>{label}</span>
-      <button
-        onClick={() => set(field, !(form as any)[field])}
-        style={{
-          width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-          border: `2px solid ${(form as any)[field] ? focClr : inpBdr}`,
-          background: (form as any)[field] ? focClr : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', transition: 'all .15s',
-        }}>
-        {(form as any)[field] && <Check size={11} color="#fff" />}
-      </button>
-    </div>
-  );
-
-  /* ── Small meta input ── */
-  const MetaInp = ({ field, width, mono, placeholder = '...' }: { field: string; width: number; mono?: boolean; placeholder?: string }) => (
-    <input
-      value={(form as any)[field]}
-      onChange={e => set(field, e.target.value)}
-      placeholder={placeholder}
-      style={{
-        width, background: inpBg, border: `1.5px solid ${inpBdr}`,
-        borderRadius: 7, padding: '4px 8px', fontSize: 12,
-        fontFamily: mono ? 'monospace' : 'inherit',
-        color: valClr, outline: 'none',
-      }}
-      onFocus={e => { e.target.style.borderColor = focClr; }}
-      onBlur={e  => { e.target.style.borderColor = inpBdr; }}
-    />
-  );
-
-  /* ── Meta dropdown ── */
-  const MetaDrop = ({ field, options, width }: { field: string; options: string[]; width: number }) => (
-    <div style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpenDrop(openDrop === field ? null : field)}
-        style={{
-          width, background: inpBg, border: `1.5px solid ${openDrop === field ? focClr : inpBdr}`,
-          borderRadius: 7, padding: '4px 8px', fontSize: 12,
-          color: (form as any)[field] ? valClr : lblClr,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, cursor: 'pointer',
-        }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {(form as any)[field] || '...'}
-        </span>
-        <ChevronDown size={11} color={lblClr} style={{ flexShrink: 0 }} />
-      </button>
-      {openDrop === field && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={() => setOpenDrop(null)} />
-          <div style={{
-            position: 'absolute', left: 0, top: '100%', marginTop: 3, zIndex: 401,
-            background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 200, overflow: 'hidden',
-          }}>
-            {options.map(o => (
-              <button key={o} onClick={() => { set(field, o); setOpenDrop(null); }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-                  fontSize: 12, background: 'none', color: valClr, border: 'none',
-                  borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
-                }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-              >{o}</button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-
   /* ── Modal size ── */
-  const modalWrap: React.CSSProperties = isMaximized
+  const modalWrap: CSSProperties = isMaximized
     ? { position: 'fixed', inset: 12, borderRadius: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
     : { position: 'relative', width: '100%', maxWidth: 680, maxHeight: '92vh', borderRadius: 16,
         display: 'flex', flexDirection: 'column', overflow: 'hidden', margin: '0 16px' };
@@ -734,11 +829,20 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 12, color: lblClr }}>{t.kod}:</span>
-            {MetaInp({ field: "kod", width: 60, mono: true })}
+            {FormMetaInp({ value: form.kod, onChange: v => set('kod', v), width: 60, mono: true, tokens: fieldTokens })}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 240 }}>
             <span style={{ fontSize: 12, color: lblClr, flexShrink: 0 }}>{t.liniya}:</span>
-            {MetaDrop({ field: "liniya", options: lineOptions, width: 160 })}
+            {FormMetaDrop({
+              value: form.liniya,
+              options: lineOptions,
+              width: 160,
+              open: openDrop === 'liniya',
+              onToggle: () => setOpenDrop(openDrop === 'liniya' ? null : 'liniya'),
+              onPick: v => { set('liniya', v); setOpenDrop(null); },
+              onClose: () => setOpenDrop(null),
+              tokens: fieldTokens,
+            })}
           </div>
           <button onClick={() => set('status', form.status === 'active' ? 'inactive' : 'active')}
             style={{
@@ -806,37 +910,73 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ REKVIZITLAR ════ */}
           {activeTab === 'rekvizit' && (<>
-            {Sec({ label: t.secNomi })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.name, field: "name" })}
-              {Cell({ label: t.officialName, field: "officialName" })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.legalAddr, field: "legalAddr" })}
-              {Cell({ label: t.landmark, field: "landmark" })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.phones, field: "phones", phone: true })}
-              {Cell({ label: t.bankAcc, field: "bankAcc", mono: true })}
-            </>) })}
+            {FormSec({ label: t.secNomi, secBg, secClr, divClr })}
+            <FormGrid2 divClr={divClr}>
+              <FormCell
+                label={t.name}
+                value={form.name}
+                onChange={v => {
+                  keepNameFocus.current = true;
+                  set('name', v);
+                }}
+                tokens={fieldTokens}
+                inputRef={nameInputRef}
+              />
+              <FormCell label={t.officialName} value={form.officialName} onChange={v => set('officialName', v)} tokens={fieldTokens} />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.legalAddr} value={form.legalAddr} onChange={v => set('legalAddr', v)} tokens={fieldTokens} />
+              <FormCell label={t.landmark} value={form.landmark} onChange={v => set('landmark', v)} tokens={fieldTokens} />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.phones} value={form.phones} onChange={v => set('phones', v)} tokens={fieldTokens} phone />
+              <FormCell label={t.bankAcc} value={form.bankAcc} onChange={v => set('bankAcc', v)} tokens={fieldTokens} mono />
+            </FormGrid2>
 
-            {Sec({ label: t.secBank })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.mfo, field: "mfo", mono: true })}
-              {Cell({ label: t.bank, field: "bank" })}
-            </>) })}
+            {FormSec({ label: t.secBank, secBg, secClr, divClr })}
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.mfo} value={form.mfo} onChange={v => set('mfo', v)} tokens={fieldTokens} mono />
+              <FormCell label={t.bank} value={form.bank} onChange={v => set('bank', v)} tokens={fieldTokens} />
+            </FormGrid2>
 
-            {Sec({ label: t.secOrg })}
-            {Grid2({ children: (<>
-              {DropCell({ label: t.cls, field: "cls", options: CLASSES })}
-              {DropCell({ label: t.type, field: "type", options: TYPES })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.director, field: "director" })}
-              {Cell({ label: t.chiefAcc, field: "chiefAcc" })}
-            </>) })}
-            {Grid2({ children: (<>
-              {DropCell({ label: t.channel, field: "channel", options: CHANNELS })}
+            {FormSec({ label: t.secOrg, secBg, secClr, divClr })}
+            <FormGrid2 divClr={divClr}>
+              <FormDropCell
+                label={t.cls}
+                value={form.cls}
+                options={CLASSES}
+                open={openDrop === 'cls'}
+                onToggle={() => setOpenDrop(openDrop === 'cls' ? null : 'cls')}
+                onPick={v => { set('cls', v); setOpenDrop(null); }}
+                onClose={() => setOpenDrop(null)}
+                tokens={fieldTokens}
+              />
+              <FormDropCell
+                label={t.type}
+                value={form.type}
+                options={TYPES}
+                open={openDrop === 'type'}
+                onToggle={() => setOpenDrop(openDrop === 'type' ? null : 'type')}
+                onPick={v => { set('type', v); setOpenDrop(null); }}
+                onClose={() => setOpenDrop(null)}
+                tokens={fieldTokens}
+              />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.director} value={form.director} onChange={v => set('director', v)} tokens={fieldTokens} />
+              <FormCell label={t.chiefAcc} value={form.chiefAcc} onChange={v => set('chiefAcc', v)} tokens={fieldTokens} />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormDropCell
+                label={t.channel}
+                value={form.channel}
+                options={CHANNELS}
+                open={openDrop === 'channel'}
+                onToggle={() => setOpenDrop(openDrop === 'channel' ? null : 'channel')}
+                onPick={v => { set('channel', v); setOpenDrop(null); }}
+                onClose={() => setOpenDrop(null)}
+                tokens={fieldTokens}
+              />
               <div style={{
                 padding: '8px 12px', position: 'relative',
                 borderRight: `1px solid ${divClr}`, background: bg,
@@ -848,7 +988,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     ...inpStyle({ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }),
                     borderColor: openDrop === 'agent' ? focClr : inpBdr,
                     boxShadow: openDrop === 'agent' ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
-                  } as React.CSSProperties}
+                  } as CSSProperties}
                 >
                   <span style={{ fontSize: 13, color: form.agent ? valClr : lblClr, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
                     {form.agent || (agents.length === 0 ? '...' : '...')}
@@ -884,10 +1024,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   </>
                 )}
               </div>
-            </>) })}
+            </FormGrid2>
 
-            {Sec({ label: t.secGps })}
-            {Grid2({ children: (<>
+            {FormSec({ label: t.secGps, secBg, secClr, divClr })}
+            <FormGrid2 divClr={divClr}>
               {/* GPS cell custom */}
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                 <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.gps}</div>
@@ -906,36 +1046,45 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   </button>
                 </div>
               </div>
-              {DropCell({ label: t.priceZone, field: "priceZone", options: priceZoneOptions })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.budget, field: "budget" })}
-              {Cell({ label: t.mainContract, field: "mainContract" })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.note, field: "note", span: true })}
-            </>) })}
+              <FormDropCell
+                label={t.priceZone}
+                value={form.priceZone}
+                options={priceZoneOptions}
+                open={openDrop === 'priceZone'}
+                onToggle={() => setOpenDrop(openDrop === 'priceZone' ? null : 'priceZone')}
+                onPick={v => { set('priceZone', v); setOpenDrop(null); }}
+                onClose={() => setOpenDrop(null)}
+                tokens={fieldTokens}
+              />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.budget} value={form.budget} onChange={v => set('budget', v)} tokens={fieldTokens} />
+              <FormCell label={t.mainContract} value={form.mainContract} onChange={v => set('mainContract', v)} tokens={fieldTokens} />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.note} value={form.note} onChange={v => set('note', v)} tokens={fieldTokens} span />
+            </FormGrid2>
 
-            {Sec({ label: t.secInn })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.inn, field: "inn", mono: true })}
-              {Cell({ label: t.territory, field: "territory" })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.settlement, field: "settlement" })}
-              {Cell({ label: t.pinfl, field: "pinfl", mono: true })}
-            </>) })}
-            {Grid2({ children: (<>
-              {Cell({ label: t.telegram, field: "telegram" })}
+            {FormSec({ label: t.secInn, secBg, secClr, divClr })}
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.inn} value={form.inn} onChange={v => set('inn', v)} tokens={fieldTokens} mono />
+              <FormCell label={t.territory} value={form.territory} onChange={v => set('territory', v)} tokens={fieldTokens} />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.settlement} value={form.settlement} onChange={v => set('settlement', v)} tokens={fieldTokens} />
+              <FormCell label={t.pinfl} value={form.pinfl} onChange={v => set('pinfl', v)} tokens={fieldTokens} mono />
+            </FormGrid2>
+            <FormGrid2 divClr={divClr}>
+              <FormCell label={t.telegram} value={form.telegram} onChange={v => set('telegram', v)} tokens={fieldTokens} />
               {/* empty right cell */}
               <div style={{ padding: '8px 12px', background: bg }} />
-            </>) })}
+            </FormGrid2>
 
           </>)}
 
           {/* ════ KIRISH (APK) ════ */}
           {activeTab === 'kirish' && (<>
-            {Sec({ label: t.appLoginTitle.toUpperCase() })}
+            {FormSec({ label: t.appLoginTitle.toUpperCase(), secBg, secClr, divClr })}
             <div style={{
               margin: '0 12px 12px',
               padding: '14px 16px',
@@ -1039,7 +1188,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     </button>
                   )}
                 </div>
-                {Grid2({ children: (<>
+                <FormGrid2 divClr={divClr}>
                   {/* Name */}
                   <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                     <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.contactPerson}</div>
@@ -1052,7 +1201,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     <input type="tel" value={c.phone} onChange={e => setContacts(contacts.map((x, j) => j === i ? { ...x, phone: formatUzPhoneInput(e.target.value) } : x))}
                       placeholder="+998 99 999 99 99" style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
                   </div>
-                </>) })}
+                </FormGrid2>
                 {/* Role - full width */}
                 <div style={{ padding: '8px 12px', borderBottom: `1px solid ${divClr}`, background: bg }}>
                   <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.contactRole}</div>
@@ -1139,7 +1288,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ FOTO ════ */}
           {activeTab === 'foto' && (<>
-            {Sec({ label: t.photoSection.toUpperCase() })}
+            {FormSec({ label: t.photoSection.toUpperCase(), secBg, secClr, divClr })}
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, background: bg }}>
               {photos.map((src, i) => (
                 <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden' }}>
@@ -1163,7 +1312,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ HOLAT ════ */}
           {activeTab === 'status' && (<>
-            {Sec({ label: t.statusSection.toUpperCase() })}
+            {FormSec({ label: t.statusSection.toUpperCase(), secBg, secClr, divClr })}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '10px 16px', borderBottom: `1px solid ${divClr}`, background: bg }}>
               <span style={{ fontSize: 13, color: lblClr }}>{t.statusSection}</span>
@@ -1179,19 +1328,19 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                 ))}
               </div>
             </div>
-            {Grid2({ children: (<>
+            <FormGrid2 divClr={divClr}>
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                 <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.registrationDate}</div>
                 <input type="date" value={form.regDate} onChange={e => set('regDate', e.target.value)}
                   style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
               </div>
               <div style={{ padding: '8px 12px', background: bg }} />
-            </>) })}
+            </FormGrid2>
             <div style={{ padding: '8px 12px', borderBottom: `1px solid ${divClr}`, background: bg }}>
               <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.comment}</div>
               <textarea rows={4} value={form.comment} onChange={e => set('comment', e.target.value)}
                 placeholder="..."
-                style={{ ...inpStyle({}), resize: 'none' } as React.CSSProperties}
+                style={{ ...inpStyle({}), resize: 'none' } as CSSProperties}
                 onFocus={onFoc} onBlur={onBlr} />
             </div>
           </>)}

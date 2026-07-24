@@ -42,7 +42,8 @@ export function clientNameToLogin(name: string, codeFallback?: string): string {
     login = `${login}${codeFallback.replace(/\D/g, '')}`.slice(0, 32);
   }
   if (login.length < 3) {
-    login = `mijoz${Date.now().toString(36).slice(-5)}`;
+    // Typing paytida barqaror qolishi uchun Date.now ishlatilmaydi
+    login = (login + 'xxx').slice(0, 3);
   }
   return login;
 }

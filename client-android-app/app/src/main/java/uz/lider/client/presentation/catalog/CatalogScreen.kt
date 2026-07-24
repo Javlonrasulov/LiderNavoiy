@@ -29,10 +29,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -102,8 +106,9 @@ fun CatalogScreen(
             }
         } else {
             ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
+            val isList = state.viewMode == CatalogViewMode.LIST
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Fixed(if (isList) 1 else 2),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -131,9 +136,19 @@ fun CatalogScreen(
                                 contentDescription = "Menu",
                             )
                             PremiumHeaderActionPill {
+                                PremiumHeaderPillIcon(
+                                    icon = if (isList) Icons.Default.GridView
+                                    else Icons.AutoMirrored.Filled.ViewList,
+                                    onClick = viewModel::toggleViewMode,
+                                    contentDescription = if (isList) {
+                                        localized("cat_view_grid")
+                                    } else {
+                                        localized("cat_view_list")
+                                    },
+                                )
                                 Box {
                                     PremiumHeaderPillIcon(
-                                        icon = Icons.Default.Sort,
+                                        icon = Icons.AutoMirrored.Filled.Sort,
                                         onClick = { viewModel.toggleSortMenu() },
                                     )
                                     LiquidGlassDropdownMenu(
@@ -271,15 +286,32 @@ fun CatalogScreen(
                         }
                         else -> {
                             items(products, key = { it.id }) { product ->
-                                ProductGridItem(
-                                    product = product,
-                                    imageUrl = viewModel.resolveImage(product.imageUrl)
-                                        .takeIf { it.isNotBlank() },
-                                    isFavorite = state.favorites.contains(product.id),
-                                    onFavorite = { viewModel.toggleFavorite(product.id) },
-                                    onClick = { onNavigate(ClientRoutes.productDetail(product.id)) },
-                                    onAdd = { viewModel.showAddToCart(product) },
-                                )
+                                val imageUrl = viewModel.resolveImage(product.imageUrl)
+                                    .takeIf { it.isNotBlank() }
+                                val isFavorite = state.favorites.contains(product.id)
+                                if (isList) {
+                                    ProductListItem(
+                                        product = product,
+                                        imageUrl = imageUrl,
+                                        isFavorite = isFavorite,
+                                        onFavorite = { viewModel.toggleFavorite(product.id) },
+                                        onClick = {
+                                            onNavigate(ClientRoutes.productDetail(product.id))
+                                        },
+                                        onAdd = { viewModel.showAddToCart(product) },
+                                    )
+                                } else {
+                                    ProductGridItem(
+                                        product = product,
+                                        imageUrl = imageUrl,
+                                        isFavorite = isFavorite,
+                                        onFavorite = { viewModel.toggleFavorite(product.id) },
+                                        onClick = {
+                                            onNavigate(ClientRoutes.productDetail(product.id))
+                                        },
+                                        onAdd = { viewModel.showAddToCart(product) },
+                                    )
+                                }
                             }
                         }
                     }
@@ -400,6 +432,125 @@ private fun ProductGridItem(
                     localized("cat_add_cart"),
                     color = Color.White,
                     fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductListItem(
+    product: Product,
+    imageUrl: String?,
+    isFavorite: Boolean,
+    onFavorite: () -> Unit,
+    onClick: () -> Unit,
+    onAdd: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(
+                if (isFavorite) {
+                    Modifier.border(
+                        2.dp,
+                        LiquidGlass.Rose.copy(alpha = 0.65f),
+                        RoundedCornerShape(LiquidGlass.RadiusCard),
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .liquidGlassThemed()
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(96.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(LiquidGlass.BgMidDark),
+        ) {
+            ProductImageBox(
+                imageUrl = imageUrl,
+                contentDescription = product.name,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            if (!product.brand.isNullOrBlank()) {
+                Text(
+                    product.brand,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    product.name,
+                    color = LiquidTheme.text,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = null,
+                    tint = if (isFavorite) LiquidGlass.Rose else LiquidTheme.textMuted,
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(22.dp)
+                        .clickable(onClick = onFavorite),
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${formatMoney(product.price)} ${localized("com_som")}",
+                style = TextStyle(
+                    brush = Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                ),
+            )
+            Text(
+                "${localized("cat_stock")}: ${product.stockBalance.toInt()} ${product.unit}",
+                color = LiquidTheme.textMuted,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(LiquidGlass.RadiusButton))
+                    .background(LiquidGlass.GradientPrimary)
+                    .clickable(onClick = onAdd)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    localized("cat_add_cart"),
+                    color = Color.White,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }

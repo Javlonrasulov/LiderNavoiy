@@ -103,68 +103,6 @@ fun OrdersScreen(
             }
         } else {
             ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding(),
-            ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            localized("ord_title"),
-                            color = LiquidTheme.text,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            PremiumHeaderButton(
-                                icon = Icons.Default.Menu,
-                                onClick = onOpenDrawer,
-                                contentDescription = "Menu",
-                            )
-                            PremiumHeaderActionPill {
-                                PremiumHeaderPillIcon(
-                                    icon = Icons.Default.Refresh,
-                                    onClick = viewModel::load,
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
-
-                    GlassSearchField(
-                        value = state.search,
-                        onValueChange = viewModel::onSearchChange,
-                        placeholder = localized("ord_search"),
-                        leadingIcon = Icons.Default.Search,
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        filters.forEach { (filterKey, label) ->
-                            key(filterKey) {
-                                GlassFilterChip(
-                                    label = label,
-                                    selected = state.statusFilter == filterKey,
-                                    onClick = { viewModel.onStatusFilterChange(filterKey) },
-                                )
-                            }
-                        }
-                    }
-                }
-
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
@@ -174,6 +112,74 @@ fun OrdersScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    item(key = "header") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(vertical = 10.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PremiumHeaderButton(
+                                    icon = Icons.Default.Menu,
+                                    onClick = onOpenDrawer,
+                                    contentDescription = "Menu",
+                                )
+                                PremiumHeaderActionPill {
+                                    PremiumHeaderPillIcon(
+                                        icon = Icons.Default.Refresh,
+                                        onClick = viewModel::load,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                localized("ord_title"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 26.sp,
+                                lineHeight = 32.sp,
+                            )
+                            Text(
+                                "${orders.size} ${localized("ord_count")}",
+                                color = LiquidTheme.textMuted,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+
+                    item(key = "search") {
+                        GlassSearchField(
+                            value = state.search,
+                            onValueChange = viewModel::onSearchChange,
+                            placeholder = localized("ord_search"),
+                            leadingIcon = Icons.Default.Search,
+                        )
+                    }
+
+                    item(key = "filters") {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            filters.forEach { (filterKey, label) ->
+                                key(filterKey) {
+                                    GlassFilterChip(
+                                        label = label,
+                                        selected = state.statusFilter == filterKey,
+                                        onClick = { viewModel.onStatusFilterChange(filterKey) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item(key = "summary") {
                         Box(
                             Modifier
@@ -232,14 +238,6 @@ fun OrdersScreen(
                         }
                     }
 
-                    item(key = "orders-count-${state.statusFilter}-${orders.size}") {
-                        Text(
-                            "${orders.size} ${localized("ord_count")}",
-                            color = LiquidTheme.textMuted,
-                            fontSize = 13.sp,
-                        )
-                    }
-
                     if (orders.isEmpty()) {
                         item(key = "orders-empty") {
                             Box(
@@ -286,7 +284,6 @@ fun OrdersScreen(
                         }
                     }
                 }
-            }
             }
         }
     }

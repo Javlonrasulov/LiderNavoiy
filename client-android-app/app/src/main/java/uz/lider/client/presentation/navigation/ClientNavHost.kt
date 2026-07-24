@@ -166,7 +166,10 @@ fun ClientNavHost(
                     )
                 }
                 composable(ClientRoutes.ANALYTICS) {
-                    AnalyticsScreen(onNavigate = navController::navigateClientRoute)
+                    AnalyticsScreen(
+                        onNavigate = navController::navigateClientRoute,
+                        onOpenDrawer = { scope.launch { drawerState.open() } },
+                    )
                 }
                 composable(ClientRoutes.PROFILE) {
                     ProfileScreen(

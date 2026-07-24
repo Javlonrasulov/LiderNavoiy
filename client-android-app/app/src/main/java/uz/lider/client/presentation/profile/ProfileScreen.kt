@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,8 +40,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,27 +51,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import uz.lider.client.domain.model.ContactPerson
 import uz.lider.client.presentation.components.ClientPullToRefresh
-import uz.lider.client.presentation.components.ClientTabScaffold
 import uz.lider.client.presentation.components.localized
+import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.theme.HeroHeaderBackground
+import uz.lider.client.presentation.theme.FixedHeroBackdrop
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 private const val HELP_TELEGRAM_URL = "https://t.me/javlon_abdurasulov_dev"
+private const val ProfileHeroFadeScrollPx = 280f
+private val ProfileHeroHeightFallback = 280.dp
 
 @Composable
 fun ProfileScreen(
@@ -78,10 +91,38 @@ fun ProfileScreen(
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val density = LocalDensity.current
     val profile = state.profile
     val text = LiquidTheme.text
     val textMuted = LiquidTheme.textMuted
     var showHelpDialog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    var heroScrollPx by remember { mutableFloatStateOf(0f) }
+    var heroHeightPx by remember { mutableFloatStateOf(0f) }
+    var rootCoords by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
+    val heroScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                heroScrollPx = (heroScrollPx - consumed.y).coerceAtLeast(0f)
+                return Offset.Zero
+            }
+        }
+    }
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+            heroScrollPx = 0f
+        }
+    }
+    val fadeProgress = (heroScrollPx / ProfileHeroFadeScrollPx).coerceIn(0f, 1f)
+    val heroHeight = if (heroHeightPx > 0f) {
+        with(density) { heroHeightPx.toDp() }
+    } else {
+        ProfileHeroHeightFallback
+    }
 
     if (showHelpDialog) {
         AlertDialog(
@@ -126,98 +167,124 @@ fun ProfileScreen(
     }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
-        ClientTabScaffold(title = localized("prof_title")) { padding ->
-            if (state.loading) {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = LiquidGlass.Indigo)
-                }
-            } else {
-                ClientPullToRefresh(
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.padding(padding),
-                ) {
+        if (state.loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = LiquidGlass.Indigo)
+            }
+            return@LiquidBackground
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .nestedScroll(heroScrollConnection)
+                .onGloballyPositioned { rootCoords = it },
+        ) {
+            // Same hero as Asosiy — FillWidth + TopCenter (no side pillar crop)
+            FixedHeroBackdrop(
+                fadeProgress = fadeProgress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight)
+                    .align(Alignment.TopCenter),
+            )
+
+            ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
                 LazyColumn(
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
-                    // ── Hero banner ───────────────────────────────────────────
+                    // ── Hero (Asosiy uslubi) ─────────────────────────────────
                     item {
-                        HeroHeaderBackground(height = 220.dp) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.Center)
-                                    .padding(horizontal = 24.dp, vertical = 20.dp),
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(72.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.18f))
-                                        .border(2.dp, Color.White.copy(alpha = 0.55f), CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 14.dp, bottom = 20.dp),
+                        ) {
+                            Text(
+                                localized("prof_title"),
+                                color = Color.White.copy(alpha = 0.90f),
+                                fontSize = 15.sp,
+                                lineHeight = 22.sp,
+                            )
+                            Text(
+                                profile?.fullName ?: profile?.name ?: "—",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 28.sp,
+                                lineHeight = 34.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            profile?.name
+                                ?.takeIf { it.isNotBlank() && it != profile.fullName }
+                                ?.let { company ->
+                                    Spacer(Modifier.height(4.dp))
                                     Text(
-                                        profileInitials(profile?.fullName ?: profile?.name),
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 22.sp,
+                                        company,
+                                        color = Color.White.copy(alpha = 0.78f),
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
                                 }
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    profile?.fullName ?: profile?.name ?: "—",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp,
-                                )
-                                Text(
-                                    profile?.name ?: "",
-                                    color = Color.White.copy(alpha = 0.75f),
-                                    fontSize = 14.sp,
-                                )
-                                profileCategoryStyle(profile?.category)?.let { categoryStyle ->
-                                    Spacer(Modifier.height(12.dp))
-                                    Box(
-                                        Modifier
-                                            .clip(RoundedCornerShape(50.dp))
-                                            .background(categoryStyle.gradient)
-                                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                            profileCategoryStyle(profile?.category)?.let { categoryStyle ->
+                                Spacer(Modifier.height(14.dp))
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(50.dp))
+                                        .background(categoryStyle.gradient)
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Star,
-                                                null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(13.dp),
-                                            )
-                                            Text(
-                                                categoryStyle.label,
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                            )
-                                        }
+                                        Icon(
+                                            Icons.Default.Star,
+                                            null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(13.dp),
+                                        )
+                                        Text(
+                                            categoryStyle.label,
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                 }
                             }
                         }
                     }
 
-                    // ── Stats row ─────────────────────────────────────────────
+                    // ── Stats — hero shu yerdan tugaydi ───────────────────────
                     item {
                         Row(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
-                                .padding(top = 16.dp),
+                                .onGloballyPositioned { cardCoords ->
+                                    val root = rootCoords ?: return@onGloballyPositioned
+                                    if (listState.firstVisibleItemIndex != 0 ||
+                                        listState.firstVisibleItemScrollOffset > 2
+                                    ) {
+                                        return@onGloballyPositioned
+                                    }
+                                    val bottomInRoot = root.localPositionOf(
+                                        cardCoords,
+                                        Offset(0f, cardCoords.size.height.toFloat()),
+                                    ).y
+                                    val minPx = with(density) { 220.dp.toPx() }
+                                    val next = bottomInRoot.coerceAtLeast(minPx)
+                                    if (kotlin.math.abs(next - heroHeightPx) > 2f) {
+                                        heroHeightPx = next
+                                    }
+                                },
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             GlassStatCard(
@@ -378,8 +445,8 @@ fun ProfileScreen(
                                         listOf(
                                             LiquidGlass.Rose.copy(alpha = 0.28f),
                                             Color(0xFFFB2D48).copy(alpha = 0.18f),
-                                        )
-                                    )
+                                        ),
+                                    ),
                                 )
                                 .border(
                                     1.dp,
@@ -387,7 +454,7 @@ fun ProfileScreen(
                                         listOf(
                                             LiquidGlass.Rose.copy(alpha = 0.65f),
                                             LiquidGlass.Rose.copy(alpha = 0.20f),
-                                        )
+                                        ),
                                     ),
                                     RoundedCornerShape(LiquidGlass.RadiusCard),
                                 )
@@ -413,7 +480,6 @@ fun ProfileScreen(
                             }
                         }
                     }
-                }
                 }
             }
         }
@@ -446,15 +512,6 @@ private fun profileCategoryStyle(category: String?): ProfileCategoryStyle? {
             Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Violet)),
         )
     }
-}
-
-private fun profileInitials(name: String?): String {
-    if (name.isNullOrBlank()) return "—"
-    return name.split(Regex("\\s+"))
-        .filter { it.isNotBlank() }
-        .map { it.first().uppercaseChar() }
-        .take(2)
-        .joinToString("")
 }
 
 @Composable
