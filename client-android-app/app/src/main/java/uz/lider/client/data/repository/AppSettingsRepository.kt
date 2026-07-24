@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.presentation.components.ChartVisualStyle
+import uz.lider.client.presentation.theme.TextTone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,7 @@ class AppSettingsRepository @Inject constructor(
     private val themeModeKey = stringPreferencesKey("theme_mode")
     private val languageKey  = stringPreferencesKey("language")
     private val chartStyleKey = stringPreferencesKey("chart_style")
+    private val textToneKey = stringPreferencesKey("text_tone")
 
     val themeMode: Flow<ThemeMode> = context.settingsDataStore.data.map { prefs ->
         ThemeMode.fromCode(prefs[themeModeKey])
@@ -51,6 +53,10 @@ class AppSettingsRepository @Inject constructor(
         ChartVisualStyle.fromKey(prefs[chartStyleKey])
     }
 
+    val textTone: Flow<TextTone> = context.settingsDataStore.data.map { prefs ->
+        TextTone.fromCode(prefs[textToneKey])
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.settingsDataStore.edit { it[themeModeKey] = mode.code }
     }
@@ -61,5 +67,9 @@ class AppSettingsRepository @Inject constructor(
 
     suspend fun setChartStyle(style: ChartVisualStyle) {
         context.settingsDataStore.edit { it[chartStyleKey] = style.key }
+    }
+
+    suspend fun setTextTone(tone: TextTone) {
+        context.settingsDataStore.edit { it[textToneKey] = tone.code }
     }
 }

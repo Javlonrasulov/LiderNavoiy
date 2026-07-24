@@ -4,15 +4,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
@@ -25,7 +30,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -125,129 +129,138 @@ fun LoginScreen(
             }
         }
 
-        // Center form column
-        Column(
+        // Form lifts above keyboard via imePadding; scrollable if space is tight
+        BoxWithConstraints(
             modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .fillMaxSize()
+                .imePadding(),
         ) {
-
-            // Gradient logo icon with ambient glow
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .glowEffect(color = LiquidGlass.Indigo, radius = 180f)
-                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
-                    .background(LiquidGlass.GradientPrimary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Login,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(36.dp),
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                loginTitle(lang),
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = LiquidTheme.text,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                loginSubtitle(lang),
-                fontSize = 14.sp,
-                color = LiquidTheme.textMuted,
-            )
-
-            Spacer(Modifier.height(32.dp))
-
-            // Frosted glass card wrapping the form fields
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .heightIn(min = maxHeight)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                OutlinedTextField(
-                    value = state.username,
-                    onValueChange = viewModel::onUsernameChange,
-                    label = { Text(loginUsername(lang)) },
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(LiquidGlass.RadiusInput),
-                    colors = glassFieldColors,
-                )
 
-                OutlinedTextField(
-                    value = state.password,
-                    onValueChange = viewModel::onPasswordChange,
-                    label = { Text(loginPassword(lang)) },
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Outlined.VisibilityOff,
-                                contentDescription = null,
-                            )
-                        }
-                    },
-                    shape = RoundedCornerShape(LiquidGlass.RadiusInput),
-                    colors = glassFieldColors,
-                )
-            }
+                // Gradient logo icon with ambient glow
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .glowEffect(color = LiquidGlass.Indigo, radius = 180f)
+                        .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                        .background(LiquidGlass.GradientPrimary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Login,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
 
-            state.errorKey?.let { key ->
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(20.dp))
+
                 Text(
-                    apiErrorMessage(lang, key),
-                    color = LiquidGlass.Rose,
-                    fontSize = 13.sp,
+                    loginTitle(lang),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LiquidTheme.text,
                 )
-            }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    loginSubtitle(lang),
+                    fontSize = 14.sp,
+                    color = LiquidTheme.textMuted,
+                )
 
-            Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(32.dp))
 
-            // Gradient "Kirish" button
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                    .background(
-                        if (!state.isLoading) LiquidGlass.GradientPrimary
-                        else Brush.linearGradient(
-                            listOf(LiquidGlass.GlassDarkStrong, LiquidGlass.GlassDarkStrong),
-                        ),
+                // Frosted glass card wrapping the form fields
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = state.username,
+                        onValueChange = viewModel::onUsernameChange,
+                        label = { Text(loginUsername(lang)) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(LiquidGlass.RadiusInput),
+                        colors = glassFieldColors,
                     )
-                    .clickable(enabled = !state.isLoading) { viewModel.login() },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (state.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp,
+
+                    OutlinedTextField(
+                        value = state.password,
+                        onValueChange = viewModel::onPasswordChange,
+                        label = { Text(loginPassword(lang)) },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Outlined.VisibilityOff,
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(LiquidGlass.RadiusInput),
+                        colors = glassFieldColors,
                     )
-                } else {
+                }
+
+                state.errorKey?.let { key ->
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        loginButton(lang),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
+                        apiErrorMessage(lang, key),
+                        color = LiquidGlass.Rose,
+                        fontSize = 13.sp,
                     )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Gradient "Kirish" button
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                        .background(
+                            if (!state.isLoading) LiquidGlass.GradientPrimary
+                            else Brush.linearGradient(
+                                listOf(LiquidGlass.GlassDarkStrong, LiquidGlass.GlassDarkStrong),
+                            ),
+                        )
+                        .clickable(enabled = !state.isLoading) { viewModel.login() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (state.isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(
+                            loginButton(lang),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
         }

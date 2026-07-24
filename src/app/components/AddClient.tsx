@@ -734,11 +734,11 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 12, color: lblClr }}>{t.kod}:</span>
-            <MetaInp field="kod" width={60} mono />
+            {MetaInp({ field: "kod", width: 60, mono: true })}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 240 }}>
             <span style={{ fontSize: 12, color: lblClr, flexShrink: 0 }}>{t.liniya}:</span>
-            <MetaDrop field="liniya" options={lineOptions} width={160} />
+            {MetaDrop({ field: "liniya", options: lineOptions, width: 160 })}
           </div>
           <button onClick={() => set('status', form.status === 'active' ? 'inactive' : 'active')}
             style={{
@@ -806,37 +806,37 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ REKVIZITLAR ════ */}
           {activeTab === 'rekvizit' && (<>
-            <Sec label={t.secNomi} />
-            <Grid2>
-              <Cell label={t.name}         field="name" />
-              <Cell label={t.officialName} field="officialName" />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.legalAddr} field="legalAddr" />
-              <Cell label={t.landmark}  field="landmark" />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.phones} field="phones" phone />
-              <Cell label={t.bankAcc} field="bankAcc" mono />
-            </Grid2>
+            {Sec({ label: t.secNomi })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.name, field: "name" })}
+              {Cell({ label: t.officialName, field: "officialName" })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.legalAddr, field: "legalAddr" })}
+              {Cell({ label: t.landmark, field: "landmark" })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.phones, field: "phones", phone: true })}
+              {Cell({ label: t.bankAcc, field: "bankAcc", mono: true })}
+            </>) })}
 
-            <Sec label={t.secBank} />
-            <Grid2>
-              <Cell label={t.mfo}  field="mfo"  mono />
-              <Cell label={t.bank} field="bank" />
-            </Grid2>
+            {Sec({ label: t.secBank })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.mfo, field: "mfo", mono: true })}
+              {Cell({ label: t.bank, field: "bank" })}
+            </>) })}
 
-            <Sec label={t.secOrg} />
-            <Grid2>
-              <DropCell label={t.cls}      field="cls"      options={CLASSES} />
-              <DropCell label={t.type}     field="type"     options={TYPES} />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.director} field="director" />
-              <Cell label={t.chiefAcc} field="chiefAcc" />
-            </Grid2>
-            <Grid2>
-              <DropCell label={t.channel} field="channel" options={CHANNELS} />
+            {Sec({ label: t.secOrg })}
+            {Grid2({ children: (<>
+              {DropCell({ label: t.cls, field: "cls", options: CLASSES })}
+              {DropCell({ label: t.type, field: "type", options: TYPES })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.director, field: "director" })}
+              {Cell({ label: t.chiefAcc, field: "chiefAcc" })}
+            </>) })}
+            {Grid2({ children: (<>
+              {DropCell({ label: t.channel, field: "channel", options: CHANNELS })}
               <div style={{
                 padding: '8px 12px', position: 'relative',
                 borderRight: `1px solid ${divClr}`, background: bg,
@@ -884,10 +884,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   </>
                 )}
               </div>
-            </Grid2>
+            </>) })}
 
-            <Sec label={t.secGps} />
-            <Grid2>
+            {Sec({ label: t.secGps })}
+            {Grid2({ children: (<>
               {/* GPS cell custom */}
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                 <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.gps}</div>
@@ -906,36 +906,36 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   </button>
                 </div>
               </div>
-              <DropCell label={t.priceZone} field="priceZone" options={priceZoneOptions} />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.budget}       field="budget" />
-              <Cell label={t.mainContract} field="mainContract" />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.note} field="note" span />
-            </Grid2>
+              {DropCell({ label: t.priceZone, field: "priceZone", options: priceZoneOptions })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.budget, field: "budget" })}
+              {Cell({ label: t.mainContract, field: "mainContract" })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.note, field: "note", span: true })}
+            </>) })}
 
-            <Sec label={t.secInn} />
-            <Grid2>
-              <Cell label={t.inn}       field="inn"       mono />
-              <Cell label={t.territory} field="territory" />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.settlement} field="settlement" />
-              <Cell label={t.pinfl}      field="pinfl" mono />
-            </Grid2>
-            <Grid2>
-              <Cell label={t.telegram} field="telegram" />
+            {Sec({ label: t.secInn })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.inn, field: "inn", mono: true })}
+              {Cell({ label: t.territory, field: "territory" })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.settlement, field: "settlement" })}
+              {Cell({ label: t.pinfl, field: "pinfl", mono: true })}
+            </>) })}
+            {Grid2({ children: (<>
+              {Cell({ label: t.telegram, field: "telegram" })}
               {/* empty right cell */}
               <div style={{ padding: '8px 12px', background: bg }} />
-            </Grid2>
+            </>) })}
 
           </>)}
 
           {/* ════ KIRISH (APK) ════ */}
           {activeTab === 'kirish' && (<>
-            <Sec label={t.appLoginTitle.toUpperCase()} />
+            {Sec({ label: t.appLoginTitle.toUpperCase() })}
             <div style={{
               margin: '0 12px 12px',
               padding: '14px 16px',
@@ -1039,7 +1039,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     </button>
                   )}
                 </div>
-                <Grid2>
+                {Grid2({ children: (<>
                   {/* Name */}
                   <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                     <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.contactPerson}</div>
@@ -1052,7 +1052,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     <input type="tel" value={c.phone} onChange={e => setContacts(contacts.map((x, j) => j === i ? { ...x, phone: formatUzPhoneInput(e.target.value) } : x))}
                       placeholder="+998 99 999 99 99" style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
                   </div>
-                </Grid2>
+                </>) })}
                 {/* Role - full width */}
                 <div style={{ padding: '8px 12px', borderBottom: `1px solid ${divClr}`, background: bg }}>
                   <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.contactRole}</div>
@@ -1139,7 +1139,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ FOTO ════ */}
           {activeTab === 'foto' && (<>
-            <Sec label={t.photoSection.toUpperCase()} />
+            {Sec({ label: t.photoSection.toUpperCase() })}
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, background: bg }}>
               {photos.map((src, i) => (
                 <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden' }}>
@@ -1163,7 +1163,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
 
           {/* ════ HOLAT ════ */}
           {activeTab === 'status' && (<>
-            <Sec label={t.statusSection.toUpperCase()} />
+            {Sec({ label: t.statusSection.toUpperCase() })}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '10px 16px', borderBottom: `1px solid ${divClr}`, background: bg }}>
               <span style={{ fontSize: 13, color: lblClr }}>{t.statusSection}</span>
@@ -1179,14 +1179,14 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                 ))}
               </div>
             </div>
-            <Grid2>
+            {Grid2({ children: (<>
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                 <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.registrationDate}</div>
                 <input type="date" value={form.regDate} onChange={e => set('regDate', e.target.value)}
                   style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
               </div>
               <div style={{ padding: '8px 12px', background: bg }} />
-            </Grid2>
+            </>) })}
             <div style={{ padding: '8px 12px', borderBottom: `1px solid ${divClr}`, background: bg }}>
               <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.comment}</div>
               <textarea rows={4} value={form.comment} onChange={e => set('comment', e.target.value)}

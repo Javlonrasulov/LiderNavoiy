@@ -31,6 +31,7 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.theme.ClientColors
+import uz.lider.client.presentation.theme.LocalTextTone
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
@@ -101,11 +102,14 @@ data class ClientPalette(
 @Composable
 fun rememberClientPalette(): ClientPalette {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    return remember(isDark) {
+    val tone = LocalTextTone.current
+    val text = tone.primary(isDark)
+    val textMuted = tone.muted(isDark)
+    return remember(isDark, tone) {
         if (isDark) {
             ClientPalette(
-                text = ClientColors.Text,
-                textMuted = ClientColors.TextMuted,
+                text = text,
+                textMuted = textMuted,
                 primary = ClientColors.Primary,
                 secondary = ClientColors.Secondary,
                 accent = ClientColors.Accent,
@@ -121,8 +125,8 @@ fun rememberClientPalette(): ClientPalette {
             )
         } else {
             ClientPalette(
-                text = ClientColors.TextLight,
-                textMuted = ClientColors.TextMutedLight,
+                text = text,
+                textMuted = textMuted,
                 primary = ClientColors.PrimaryLight,
                 secondary = ClientColors.SecondaryLight,
                 accent = ClientColors.AccentLight,

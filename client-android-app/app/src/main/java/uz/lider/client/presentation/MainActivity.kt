@@ -15,6 +15,8 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.navigation.ClientNavHost
 import uz.lider.client.presentation.theme.ClientTheme
+import uz.lider.client.presentation.theme.LocalTextTone
+import uz.lider.client.presentation.theme.TextTone
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -29,11 +31,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by appSettingsRepository.themeMode.collectAsState(initial = ThemeMode.DARK)
             val language  by appSettingsRepository.language.collectAsState(initial = AppLanguage.DEFAULT)
+            val textTone by appSettingsRepository.textTone.collectAsState(initial = TextTone.DEFAULT)
             val isSystemDark = isSystemInDarkTheme()
             val isDark = appSettingsRepository.resolvedDark(themeMode, isSystemDark)
 
             ClientTheme(darkTheme = isDark) {
-                CompositionLocalProvider(LocalAppLanguage provides language) {
+                CompositionLocalProvider(
+                    LocalAppLanguage provides language,
+                    LocalTextTone provides textTone,
+                ) {
                     ClientNavHost()
                 }
             }

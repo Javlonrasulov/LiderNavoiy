@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +36,7 @@ data class LiveDeliveryUi(
 )
 
 data class DashboardUiState(
+    /** Soft content load — shell stays visible (no full-screen block). */
     val loading: Boolean = true,
     val data: DashboardData? = null,
     val clientName: String = "",
@@ -61,24 +64,35 @@ class DashboardViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
-            reloadQuiet()
+            // Paint shell immediately with cached auth name (no network wait).
+            val authUser = authRepository.getUserFlow().first()
+            _uiState.update {
+                it.copy(
+                    clientName = resolveClientName(null, authUser),
+                    loading = true,
+                )
+            }
+            reloadQuiet(authUser)
             _uiState.update { it.copy(loading = false) }
-            ensureLiveDeliveryPolling()
+            // First live sync reuses orders just loaded — skip extra GET /orders.
+            ensureLiveDeliveryPolling(reuseOrdersOnce = true)
         }
     }
 
     /** Pull-to-refresh: updates data without full-screen spinner. */
     suspend fun refresh() {
         reloadQuiet()
-        ensureLiveDeliveryPolling()
+        ensureLiveDeliveryPolling(reuseOrdersOnce = true)
     }
 
-    private suspend fun reloadQuiet() {
-        val authUser = authRepository.getUserFlow().first()
-        val profile = profileRepository.getProfile()
-        val data = profileRepository.getDashboardData()
-        val allOrders = profileRepository.getAllOrders()
+    private suspend fun reloadQuiet(authUserHint: AuthUser? = null) = coroutineScope {
+        val authUser = authUserHint ?: authRepository.getUserFlow().first()
+        // One parallel round-trip each (previously 4 sequential calls via getDashboardData).
+        val profileDeferred = async { profileRepository.getProfile() }
+        val ordersDeferred = async { profileRepository.getAllOrders() }
+        val profile = profileDeferred.await()
+        val allOrders = ordersDeferred.await()
+        val data = buildDashboardData(profile, allOrders)
         val range = _uiState.value.dateRange
         val filtered = DashboardDateFilter.computeFiltered(allOrders, range)
         _uiState.update {
@@ -90,6 +104,27 @@ class DashboardViewModel @Inject constructor(
                 filtered = filtered,
             )
         }
+    }
+
+    private fun buildDashboardData(
+        profile: ClientProfile?,
+        orders: List<ClientOrder>,
+    ): DashboardData {
+        val effective = profile ?: ClientProfile(
+            id = "",
+            code = "",
+            name = "",
+            balance = 0.0,
+            totalPurchases = 0.0,
+            orderCount = orders.size,
+        )
+        return DashboardData(
+            profile = effective,
+            recentOrders = orders.take(5),
+            totalPurchases = profile?.totalPurchases ?: 0.0,
+            orderCount = profile?.orderCount ?: orders.size,
+            balance = profile?.balance ?: 0.0,
+        )
     }
 
     /** Call when Asosiy becomes visible again — restarts map if poll died. */
@@ -124,27 +159,33 @@ class DashboardViewModel @Inject constructor(
 
     fun dateRangeLabel(): String = DashboardDateFilter.formatRange(_uiState.value.dateRange)
 
-    private fun ensureLiveDeliveryPolling() {
+    private fun ensureLiveDeliveryPolling(reuseOrdersOnce: Boolean = false) {
         if (livePollJob?.isActive == true) {
             // Still kick a refresh so UI updates immediately on return
-            viewModelScope.launch { syncLiveDeliveryOnce() }
+            viewModelScope.launch { syncLiveDeliveryOnce(reuseOrders = reuseOrdersOnce) }
             return
         }
         livePollJob = viewModelScope.launch {
+            var first = reuseOrdersOnce
             while (isActive) {
-                syncLiveDeliveryOnce()
+                syncLiveDeliveryOnce(reuseOrders = first)
+                first = false
                 delay(8_000)
             }
         }
     }
 
-    private suspend fun syncLiveDeliveryOnce() {
+    private suspend fun syncLiveDeliveryOnce(reuseOrders: Boolean = false) {
         val previousId = _uiState.value.liveDelivery?.orderId
 
         // Prefer a successful orders fetch; on failure keep previous live card.
-        val latest = runCatching { orderRepository.getOrders() }.getOrNull()
-        if (latest != null) {
-            _uiState.update { it.copy(allOrders = latest) }
+        // First tick after dashboard load can reuse orders already fetched.
+        val latest = if (reuseOrders && _uiState.value.allOrders.isNotEmpty()) {
+            _uiState.value.allOrders
+        } else {
+            runCatching { orderRepository.getOrders() }.getOrNull()?.also { fetched ->
+                _uiState.update { it.copy(allOrders = fetched) }
+            }
         }
         val orders = latest ?: _uiState.value.allOrders
 

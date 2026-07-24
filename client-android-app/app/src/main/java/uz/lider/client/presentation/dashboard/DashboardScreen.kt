@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
@@ -49,8 +50,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -61,9 +62,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -100,11 +106,15 @@ import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.PremiumHeaderActionPill
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
+import uz.lider.client.presentation.theme.TextTone
 import uz.lider.client.presentation.theme.liquidGlassThemed
 import uz.lider.client.presentation.tracking.OrderTrackingMapView
 
-/** Scroll distance (px) before hero fully fades to page background. */
-private const val HeroFadeScrollPx = 900f
+/** Scroll distance (px) before hero is fully blurred + whitewashed. */
+private const val HeroFadeScrollPx = 320f
+
+/** Fallback hero height until “Jami xaridlar” is measured. */
+private val HeroHeightFallback = 420.dp
 
 @Composable
 fun DashboardScreen(
@@ -136,29 +146,44 @@ fun DashboardScreen(
             viewModel.onDashboardVisible()
         }
     }
-    val fadeProgress by remember {
-        derivedStateOf {
-            val index = listState.firstVisibleItemIndex
-            val offset = listState.firstVisibleItemScrollOffset
-            // Approximate scrolled distance: first items are in the hero zone
-            val approx = when {
-                index == 0 -> offset.toFloat()
-                else -> offset + index * with(density) { 180.dp.toPx() }
+
+    // Monotonic scroll distance — avoids LazyList index*avgSize jumps that
+    // made the hero go white then show the photo again.
+    var heroScrollPx by remember { mutableFloatStateOf(0f) }
+    val heroScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                heroScrollPx = (heroScrollPx - consumed.y).coerceAtLeast(0f)
+                return Offset.Zero
             }
-            (approx / HeroFadeScrollPx).coerceIn(0f, 1f)
         }
+    }
+    // Snap-reset when list is fully at top (pull-to-refresh / bounce)
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+            heroScrollPx = 0f
+        }
+    }
+    val fadeProgress = (heroScrollPx / HeroFadeScrollPx).coerceIn(0f, 1f)
+
+    // Hero height = bottom of “Jami xaridlar” card (measured at scroll top)
+    var heroHeightPx by remember { mutableFloatStateOf(0f) }
+    var dashboardRootCoords by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
+    val heroHeight = if (heroHeightPx > 0f) {
+        with(density) { heroHeightPx.toDp() }
+    } else {
+        HeroHeightFallback
     }
 
     if (showLiveMapFullscreen && live != null) {
         DashboardLiveMapFullscreen(
             live = live,
-            isDark = isDark,
             title = t("dash_live_delivery"),
             onDismiss = { showLiveMapFullscreen = false },
-            onOpenTracking = {
-                showLiveMapFullscreen = false
-                onNavigate(ClientRoutes.orderTracking(live.orderId))
-            },
         )
     }
 
@@ -177,26 +202,28 @@ fun DashboardScreen(
     )
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
-        if (state.loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = LiquidGlass.Indigo)
-            }
-        } else {
-            Box(Modifier.fillMaxSize()) {
-                // Fixed hero — stays while content scrolls; fades only after deep scroll
-                FixedHeroBackdrop(
-                    fadeProgress = fadeProgress,
-                    height = 560.dp,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .nestedScroll(heroScrollConnection)
+                .onGloballyPositioned { dashboardRootCoords = it },
+        ) {
+            // Hero only down to “Jami xaridlar” — not full screen
+            FixedHeroBackdrop(
+                fadeProgress = fadeProgress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(heroHeight)
+                    .align(Alignment.TopCenter),
+            )
 
-                ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp),
-                    ) {
+            ClientPullToRefresh(onRefresh = { viewModel.refresh() }) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                ) {
                     item {
                         Column(
                             Modifier
@@ -294,12 +321,30 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Total purchases — still over hero zone
+                    // Total purchases — hero ends at this card’s bottom
                     item {
                         Box(
                             Modifier
                                 .padding(horizontal = 16.dp)
                                 .fillMaxWidth()
+                                .onGloballyPositioned { cardCoords ->
+                                    val root = dashboardRootCoords ?: return@onGloballyPositioned
+                                    // Only lock height while list is at top (avoid shrink while scrolling)
+                                    if (listState.firstVisibleItemIndex != 0 ||
+                                        listState.firstVisibleItemScrollOffset > 2
+                                    ) {
+                                        return@onGloballyPositioned
+                                    }
+                                    val bottomInRoot = root.localPositionOf(
+                                        cardCoords,
+                                        Offset(0f, cardCoords.size.height.toFloat()),
+                                    ).y
+                                    val minPx = with(density) { 280.dp.toPx() }
+                                    val next = bottomInRoot.coerceAtLeast(minPx)
+                                    if (kotlin.math.abs(next - heroHeightPx) > 2f) {
+                                        heroHeightPx = next
+                                    }
+                                }
                                 .shadow(
                                     elevation = 16.dp,
                                     shape = RoundedCornerShape(LiquidGlass.RadiusCard),
@@ -476,7 +521,14 @@ fun DashboardScreen(
                         }
                     }
                 }
-                }
+            }
+            if (state.loading && state.data == null) {
+                CircularProgressIndicator(
+                    color = LiquidGlass.Indigo,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(bottom = 48.dp),
+                )
             }
         }
     }
@@ -520,8 +572,10 @@ private fun DashboardHeaderPillActions(
 ) {
     val themeMode by settingsViewModel.themeMode.collectAsState()
     val language by settingsViewModel.language.collectAsState()
+    val textTone by settingsViewModel.textTone.collectAsState()
     var showThemeMenu by remember { mutableStateOf(false) }
     var showLangMenu by remember { mutableStateOf(false) }
+    var showToneMenu by remember { mutableStateOf(false) }
     val themeIcon = when (themeMode) {
         ThemeMode.LIGHT -> Icons.Default.WbSunny
         ThemeMode.SYSTEM -> Icons.Default.SettingsBrightness
@@ -532,6 +586,18 @@ private fun DashboardHeaderPillActions(
         ThemeMode.LIGHT to "com_theme_light",
         ThemeMode.SYSTEM to "com_theme_system",
     )
+    val toneLabelKey = remember(textTone) {
+        when (textTone) {
+            TextTone.DEFAULT -> "com_tone_default"
+            TextTone.NAVY -> "com_tone_navy"
+            TextTone.TEAL -> "com_tone_teal"
+            TextTone.VIOLET -> "com_tone_violet"
+            TextTone.ROSE -> "com_tone_rose"
+            TextTone.AMBER -> "com_tone_amber"
+            TextTone.EMERALD -> "com_tone_emerald"
+            TextTone.SLATE -> "com_tone_slate"
+        }
+    }
 
     PremiumHeaderPillIcon(
         icon = Icons.Outlined.CalendarMonth,
@@ -578,6 +644,58 @@ private fun DashboardHeaderPillActions(
                     },
                 )
             }
+        }
+    }
+    Box {
+        PremiumHeaderPillIcon(
+            icon = Icons.Default.Palette,
+            onClick = { showToneMenu = true },
+            contentDescription = AppStrings.t(language, "com_text_color"),
+            tint = textTone.swatch,
+        )
+        LiquidGlassDropdownMenu(
+            expanded = showToneMenu,
+            onDismissRequest = { showToneMenu = false },
+        ) {
+            Text(
+                AppStrings.t(language, "com_text_color"),
+                color = LiquidTheme.textMuted,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
+            Row(
+                Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextTone.entries.forEach { tone ->
+                    val selected = textTone == tone
+                    Box(
+                        Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(tone.swatch)
+                            .then(
+                                if (selected) {
+                                    Modifier.border(2.dp, LiquidGlass.Indigo, CircleShape)
+                                } else {
+                                    Modifier.border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                                },
+                            )
+                            .clickable {
+                                settingsViewModel.setTextTone(tone)
+                                showToneMenu = false
+                            },
+                    )
+                }
+            }
+            Text(
+                AppStrings.t(language, toneLabelKey),
+                color = LiquidTheme.text,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            )
         }
     }
 }
@@ -826,10 +944,8 @@ private fun LiveDeliveryMapCard(
 @Composable
 private fun DashboardLiveMapFullscreen(
     live: LiveDeliveryUi,
-    isDark: Boolean,
     title: String,
     onDismiss: () -> Unit,
-    onOpenTracking: () -> Unit,
 ) {
     val tracking = live.tracking
     val person = tracking.deliveryPerson
@@ -899,44 +1015,20 @@ private fun DashboardLiveMapFullscreen(
                     Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
                 }
             }
-            Column(
-                Modifier
+            Text(
+                "${live.distanceLabel} · ETA ${live.etaLabel}",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    "${live.distanceLabel} · ETA ${live.etaLabel}",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .shadow(8.dp, RoundedCornerShape(14.dp))
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(overlayBg)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-                Spacer(Modifier.height(10.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .shadow(10.dp, RoundedCornerShape(LiquidGlass.RadiusButton))
-                        .clip(RoundedCornerShape(LiquidGlass.RadiusButton))
-                        .background(LiquidGlass.GradientPrimary)
-                        .clickable(onClick = onOpenTracking)
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        title,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                    )
-                }
-            }
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .shadow(8.dp, RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(overlayBg)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            )
         }
     }
 }

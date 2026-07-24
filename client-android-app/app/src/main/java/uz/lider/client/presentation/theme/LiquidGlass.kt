@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import android.os.Build
 import uz.lider.client.R
 
 // ─── Liquid Glass Color Tokens ───────────────────────────────────────────────
@@ -140,11 +142,11 @@ object LiquidTheme {
 
     val text: Color
         @Composable @ReadOnlyComposable get() =
-            if (LocalClientDark.current) LiquidGlass.TextWhite else LiquidGlass.TextDark
+            LocalTextTone.current.primary(LocalClientDark.current)
 
     val textMuted: Color
         @Composable @ReadOnlyComposable get() =
-            if (LocalClientDark.current) LiquidGlass.TextWhiteMuted else LiquidGlass.TextDarkMuted
+            LocalTextTone.current.muted(LocalClientDark.current)
 
     val glassAlpha: Float
         @Composable @ReadOnlyComposable get() =
@@ -444,50 +446,68 @@ fun HeroHeaderBackground(
 }
 
 /**
- * Fixed hero image behind scrolling content.
- * [fadeProgress] 0 = full photo, 1 = fully covered by theme background (after deep scroll).
+ * Fixed hero image behind the top of the dashboard (header → “Jami xaridlar”).
+ * [fadeProgress] 0 = sharp photo, 1 = blurred + fully washed to page background.
  */
 @Composable
 fun FixedHeroBackdrop(
     fadeProgress: Float,
     modifier: Modifier = Modifier,
-    height: Dp = 560.dp,
 ) {
     val isDark = LiquidTheme.isDark
     val fade = fadeProgress.coerceIn(0f, 1f)
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height),
-    ) {
+    val wash = (fade * fade * 0.35f + fade * 0.65f).coerceIn(0f, 1f)
+    val blurRadius = (fade * 26f).dp
+    val pageBg = if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight
+    Box(modifier = modifier) {
         Image(
             painter = painterResource(R.drawable.bg_home_hero),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            alignment = Alignment.TopCenter,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Modifier.blur(radius = blurRadius)
+                    } else {
+                        Modifier
+                    },
+                ),
         )
-        // Soft bottom blend so cards sit cleanly on the photo
+        // Soft vignette for readable white header text
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.0f to Color.Black.copy(alpha = if (isDark) 0.45f else 0.28f),
-                            0.45f to Color.Black.copy(alpha = if (isDark) 0.35f else 0.18f),
-                            0.78f to (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = 0.55f),
-                            1.0f to (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = 0.92f),
+                            0.0f to Color.Black.copy(alpha = if (isDark) 0.40f else 0.24f),
+                            0.55f to Color.Black.copy(alpha = if (isDark) 0.28f else 0.14f),
+                            1.0f to Color.Black.copy(alpha = if (isDark) 0.22f else 0.10f),
                         ),
                     ),
                 ),
         )
-        // Deep-scroll white/dark wash
+        // Soft bottom edge → page bg (hero ends at “Jami xaridlar”, not full screen)
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
-                    (if (isDark) LiquidGlass.BgDark else LiquidGlass.BgLight).copy(alpha = fade),
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Transparent,
+                            0.72f to Color.Transparent,
+                            1.0f to pageBg,
+                        ),
+                    ),
                 ),
+        )
+        // Scroll wash → blur + white/dark
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(pageBg.copy(alpha = wash)),
         )
     }
 }
@@ -586,7 +606,11 @@ fun PremiumHeaderPillIcon(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (isDark) Color.White else tint,
+            tint = when {
+                tint != LiquidGlass.TextDark -> tint
+                isDark -> Color.White
+                else -> tint
+            },
             modifier = Modifier.size(20.dp),
         )
     }
