@@ -15,7 +15,9 @@ export class DistributorsService {
 
   async findAll(companyId?: string) {
     const qb = this.repo.createQueryBuilder('d').leftJoinAndSelect('d.user', 'user');
-    if (companyId) qb.where('d.companyId = :companyId', { companyId });
+    if (companyId) {
+      qb.where('(d.companyId = :companyId OR d.companyId IS NULL)', { companyId });
+    }
     return qb.getMany();
   }
 

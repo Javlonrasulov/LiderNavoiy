@@ -12,7 +12,7 @@ import { useLang } from '../components/LangContext';
 
 import {
   AP, NAV_ITEMS_BASE, COMPANY_DATA, COMPANY_AGENTS,
-  COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES, ORG_EMPLOYEES,
+  COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES,
   UZ_CENTER, catPie, weeklyData,
   fmt,
   allClients,
@@ -37,10 +37,57 @@ import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 import { AdminSystemUsersTab } from '../components/admin/tabs/AdminSystemUsersTab';
 import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
 import { useMessagesUnreadCount } from '../hooks/useMessagesUnread';
-import { api, connectTracking, type AdminDashboardData } from '../api/client';
+import { api, connectTracking, type AdminDashboardData, type Distributor } from '../api/client';
 import { clientIdHash } from '../utils/clientApi';
 import { hasPageAccess } from '../utils/pagePermissions';
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
+
+function initialsOf(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || 'A';
+}
+
+function detectEmpRole(position?: string | null): 'agent' | 'delivery' {
+  const p = (position ?? '').toLowerCase();
+  if (p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer') || p.includes('dostav') || p.includes('haydov')) {
+    return 'delivery';
+  }
+  return 'agent';
+}
+
+function formatEmpLastSeen(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const mins = Math.floor((Date.now() - d.getTime()) / 60_000);
+  if (mins < 1) return 'hozir';
+  if (mins < 60) return `${mins} daqiqa oldin`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} soat oldin`;
+  return d.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function distributorToMarker(d: Distributor): EmployeeMarker | null {
+  const lat = d.lastLatitude != null ? Number(d.lastLatitude) : NaN;
+  const lng = d.lastLongitude != null ? Number(d.lastLongitude) : NaN;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat === 0 && lng === 0) return null;
+  const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
+  const fresh = d.lastLocationAt
+    ? (Date.now() - new Date(d.lastLocationAt).getTime()) < 5 * 60_000
+    : false;
+  return {
+    id: clientIdHash(d.id),
+    name,
+    avatar: initialsOf(name),
+    role: detectEmpRole(d.position),
+    online: !!d.isOnline || fresh,
+    lastSeen: formatEmpLastSeen(d.lastLocationAt),
+    lat,
+    lng,
+    orgId: d.companyId ?? '',
+    distributorId: d.id,
+  };
+}
 
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
@@ -65,6 +112,7 @@ export default function AdminPanel() {
   const messagesUnread = useMessagesUnreadCount(isLoggedIn && !!selectedCompany);
   const [clientsForBell, setClientsForBell] = useState<ClientRow[]>([]);
   const [dashData, setDashData] = useState<AdminDashboardData | null>(null);
+  const [mapDistributors, setMapDistributors] = useState<Distributor[]>([]);
   const [liveLocations, setLiveLocations] = useState<Record<string, {
     lat: number;
     lng: number;
@@ -153,6 +201,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (!isLoggedIn || !localStorage.getItem('api_access_token')) {
       setDashData(null);
+      setMapDistributors([]);
       return;
     }
     const ids = viewOrg === 'all' ? Array.from(selectedCompanyIds) : [viewOrg];
@@ -161,11 +210,24 @@ export default function AdminPanel() {
     const load = () => {
       api.getAdminDashboard(ids)
         .then(data => { if (!cancelled) setDashData(data); })
-        .catch(() => { if (!cancelled) setDashData(null); });
+        .catch(() => { /* KPI fail bo'lsa ham xarita ishlasin */ });
+
+      // Xarita uchun alohida — barcha GPS'li agent/dostavchilar
+      const distPromises = ids.length > 0
+        ? ids.map(id => api.getDistributors(id).catch(() => [] as Distributor[]))
+        : [api.getDistributors().catch(() => [] as Distributor[])];
+
+      Promise.all(distPromises).then(lists => {
+        if (cancelled) return;
+        const byId = new Map<string, Distributor>();
+        for (const list of lists) {
+          for (const d of list) byId.set(d.id, d);
+        }
+        setMapDistributors([...byId.values()]);
+      });
     };
 
     load();
-    // Agent GPS har 10 soniyada yangilanadi
     const interval = window.setInterval(load, 10_000);
     return () => {
       cancelled = true;
@@ -317,9 +379,18 @@ export default function AdminPanel() {
   const aggSalesChartDay  = dashData?.salesChart?.day   ?? buildOrgChart('day',   activeIds);
 
   const activeMapEmployees: EmployeeMarker[] = (() => {
-    const hasApi = !!localStorage.getItem('api_access_token');
-    const base: EmployeeMarker[] = dashData
-      ? dashData.employeeLocations.map(e => ({
+    const byDist = new Map<string, EmployeeMarker>();
+
+    // 1) Distributors API — asosiy manba (online + offline)
+    for (const d of mapDistributors) {
+      const m = distributorToMarker(d);
+      if (m?.distributorId) byDist.set(m.distributorId, m);
+    }
+
+    // 2) Dashboard employeeLocations — qo'shimcha / yangiroq
+    if (dashData?.employeeLocations) {
+      for (const e of dashData.employeeLocations) {
+        byDist.set(e.distributorId, {
           id: clientIdHash(e.distributorId),
           name: e.name,
           avatar: e.avatar,
@@ -330,16 +401,11 @@ export default function AdminPanel() {
           lng: e.lng,
           orgId: e.orgId,
           distributorId: e.distributorId,
-        }))
-      : hasApi
-        ? []
-        : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
-
-    const byDist = new Map<string, EmployeeMarker>();
-    for (const e of base) {
-      if (e.distributorId) byDist.set(e.distributorId, e);
+        });
+      }
     }
 
+    // 3) WebSocket jonli yangilanish
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
       const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
@@ -356,14 +422,13 @@ export default function AdminPanel() {
         continue;
       }
 
-      // Backendda hali yo'q, lekin WebSocket jonli GPS yuborgan — qo'shamiz
-      if (hasCoords && live.online) {
+      if (hasCoords) {
         byDist.set(distributorId, {
           id: clientIdHash(distributorId),
           name: live.name || 'Agent',
-          avatar: (live.name || 'A').slice(0, 2).toUpperCase(),
+          avatar: initialsOf(live.name || 'A'),
           role: 'agent',
-          online: true,
+          online: live.online,
           lastSeen: live.lastSeen || 'hozir',
           lat: live.lat,
           lng: live.lng,

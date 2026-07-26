@@ -60,9 +60,7 @@ function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
   return 'agent';
 }
 
-/** GPS 15 daqiqadan yangi bo'lsa xaritada ko'rinsin */
-const LOCATION_VISIBLE_MAX_AGE_MS = 15 * 60_000;
-/** 5 daqiqadan yangi — online badge */
+/** 5 daqiqadan yangi GPS yoki Redis — online badge */
 const LOCATION_ONLINE_MAX_AGE_MS = 5 * 60_000;
 
 function formatLastSeen(date: Date | null | undefined): string {
@@ -387,66 +385,84 @@ export class DashboardService {
       };
     });
 
+    // Barcha faol agent/dostavchilar — GPS bo'lsa xaritada (online + offline)
     const locQb = this.profileRepo
       .createQueryBuilder('d')
       .innerJoinAndSelect('d.user', 'u')
       .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
-      .andWhere('u.isActive = true')
-      .andWhere('d.lastLatitude IS NOT NULL')
-      .andWhere('d.lastLongitude IS NOT NULL');
+      .andWhere('u.isActive = true');
 
     if (companyIds?.length) {
-      // companyId bo'sh agentlar ham (UI da tashkilot tanlanmagan) ko'rinsin
       locQb.andWhere('(d.companyId IN (:...companyIds) OR d.companyId IS NULL)', { companyIds });
     }
 
-    const [profiles, onlineIds, liveMap] = await Promise.all([
-      locQb.getMany(),
-      this.getOnlineIds(),
-      this.getLiveLocationMap(),
-    ]);
+    let profiles: DistributorProfile[] = [];
+    let onlineIds = new Set<string>();
+    let liveMap = new Map<string, { latitude: number; longitude: number; recordedAt?: string }>();
 
-    // Redis da jonli joylashuv bor, lekin DB da hali GPS yo'q — qo'shib qo'yamiz
+    try {
+      profiles = await locQb.getMany();
+    } catch {
+      profiles = [];
+    }
+
+    try {
+      onlineIds = await this.getOnlineIds();
+    } catch {
+      onlineIds = new Set();
+    }
+
+    try {
+      liveMap = await this.getLiveLocationMap();
+    } catch {
+      liveMap = new Map();
+    }
+
     const profileById = new Map(profiles.map(p => [p.id, p]));
     for (const [id, live] of liveMap) {
       if (profileById.has(id)) continue;
-      const missing = await this.profileRepo.findOne({
-        where: { id },
-        relations: ['user'],
-      });
-      if (!missing?.user) continue;
-      if (missing.user.role !== UserRole.DISTRIBUTOR || !missing.user.isActive) continue;
-      if (
-        companyIds?.length
-        && missing.companyId
-        && !companyIds.includes(missing.companyId)
-      ) {
-        continue;
+      try {
+        const missing = await this.profileRepo.findOne({
+          where: { id },
+          relations: ['user'],
+        });
+        if (!missing?.user) continue;
+        if (missing.user.role !== UserRole.DISTRIBUTOR || !missing.user.isActive) continue;
+        if (
+          companyIds?.length
+          && missing.companyId
+          && !companyIds.includes(missing.companyId)
+        ) {
+          continue;
+        }
+        missing.lastLatitude = live.latitude;
+        missing.lastLongitude = live.longitude;
+        if (live.recordedAt) missing.lastLocationAt = new Date(live.recordedAt);
+        profiles.push(missing);
+        profileById.set(id, missing);
+      } catch {
+        /* ignore */
       }
-      missing.lastLatitude = live.latitude;
-      missing.lastLongitude = live.longitude;
-      if (live.recordedAt) missing.lastLocationAt = new Date(live.recordedAt);
-      profiles.push(missing);
-      profileById.set(id, missing);
     }
 
     const now = Date.now();
     const employeeLocations = profiles.map(d => {
       const live = liveMap.get(d.id);
-      const lat = live?.latitude ?? Number(d.lastLatitude);
-      const lng = live?.longitude ?? Number(d.lastLongitude);
+      const lat = live?.latitude ?? (d.lastLatitude != null ? Number(d.lastLatitude) : NaN);
+      const lng = live?.longitude ?? (d.lastLongitude != null ? Number(d.lastLongitude) : NaN);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+      if (lat === 0 && lng === 0) return null;
+
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
       const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
-      const inRedisOnline = onlineIds.has(d.id);
-      const inRedisLive = liveMap.has(d.id);
-      const freshGps = ageMs <= LOCATION_ONLINE_MAX_AGE_MS;
-      const recentlySeen = ageMs <= LOCATION_VISIBLE_MAX_AGE_MS;
-      const online = inRedisOnline || inRedisLive || freshGps || (d.isOnline && recentlySeen);
-
-      // Redis ishlamasa ham DB dagi yangi GPS ko'rinsin
-      if (!online && !recentlySeen) return null;
+      const online =
+        onlineIds.has(d.id)
+        || liveMap.has(d.id)
+        || ageMs <= LOCATION_ONLINE_MAX_AGE_MS
+        || d.isOnline === true;
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {
@@ -460,11 +476,7 @@ export class DashboardService {
         lng,
         orgId: d.companyId ?? '',
       };
-    }).filter((e): e is NonNullable<typeof e> =>
-      e != null && Number.isFinite(e.lat) && Number.isFinite(e.lng)
-        && Math.abs(e.lat) <= 90 && Math.abs(e.lng) <= 180
-        && !(e.lat === 0 && e.lng === 0),
-    );
+    }).filter((e): e is NonNullable<typeof e> => e != null);
 
     return {
       kpi: {
