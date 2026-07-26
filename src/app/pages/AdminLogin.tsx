@@ -24,6 +24,7 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Login va parolni kiriting",
     errWrong:    "Login yoki parol noto'g'ri",
     errBackend:  "Backend ulanmagan. Keyinroq qayta urinib ko'ring.",
+    waking:      "Server uyg'onmoqda... 20–60 soniya kuting",
     demo:        'Demo',
     footer:      'Lider CRM tizimi — v2.0 · Barcha huquqlar himoyalangan',
   },
@@ -37,6 +38,7 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Логин ва паролни киритинг",
     errWrong:    "Логин ёки парол нотўғри",
     errBackend:  "Backend уланмаган. Кейинроқ қайта уриниб кўринг.",
+    waking:      "Сервер уйғонмоқда... 20–60 сония кутинг",
     demo:        'Демо',
     footer:      'Lider CRM тизими — v2.0 · Барча ҳуқуқлар ҳимояланган',
   },
@@ -50,6 +52,7 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Введите логин и пароль",
     errWrong:    "Неверный логин или пароль",
     errBackend:  "Backend недоступен. Попробуйте позже.",
+    waking:      "Сервер просыпается... подождите 20–60 сек",
     demo:        'Демо',
     footer:      'Lider CRM система — v2.0 · Все права защищены',
   },
@@ -81,6 +84,48 @@ export default function AdminLogin() {
     ? 'bg-[#1e1e1e] border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500'
     : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400';
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const isNetworkError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid')) return false;
+    return (
+      msg.includes('fetch') ||
+      msg.includes('network') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('refused') ||
+      msg.includes('connection') ||
+      msg.includes('timeout') ||
+      msg.includes('ulanmagan') ||
+      msg.includes('abort')
+    );
+  };
+
+  /** Render free cold-start: health bilan uyg'otib, keyin login */
+  const wakeAndLogin = async (user: string, pass: string) => {
+    setError(t.waking);
+    for (let i = 0; i < 8; i++) {
+      try {
+        await api.health();
+        break;
+      } catch {
+        await sleep(4000);
+      }
+    }
+    let lastErr: unknown;
+    for (let i = 0; i < 4; i++) {
+      try {
+        return await api.login(user, pass);
+      } catch (err) {
+        lastErr = err;
+        if (!isNetworkError(err)) throw err;
+        setError(t.waking);
+        await sleep(5000);
+      }
+    }
+    throw lastErr;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
@@ -90,7 +135,7 @@ export default function AdminLogin() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.login(username.trim(), password.trim());
+      const res = await wakeAndLogin(username.trim(), password.trim());
       if (res.user.role !== 'admin' && res.user.role !== 'manager') {
         clearTokens();
         setError(t.errWrong);
@@ -113,14 +158,7 @@ export default function AdminLogin() {
       clearTokens();
       const msg = err instanceof Error ? err.message.toLowerCase() : '';
       const isAuth = msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid');
-      const isNetwork =
-        !isAuth &&
-        (msg.includes('fetch') ||
-          msg.includes('network') ||
-          msg.includes('failed to fetch') ||
-          msg.includes('refused') ||
-          msg.includes('ulanmagan'));
-      setError(isNetwork ? t.errBackend : isAuth ? t.errWrong : (err instanceof Error ? err.message : t.errWrong));
+      setError(isNetworkError(err) ? t.errBackend : isAuth ? t.errWrong : (err instanceof Error ? err.message : t.errWrong));
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
