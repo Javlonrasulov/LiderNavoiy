@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
@@ -65,7 +65,7 @@ fun PlanScreen(
     )
 
     Box(Modifier.fillMaxSize().background(sherinPageBackground(isDark))) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = BottomNavHeight + 16.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = bottomNavHeight() + 16.dp)) {
             Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 40.dp),

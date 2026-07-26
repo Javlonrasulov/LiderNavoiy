@@ -3,7 +3,10 @@ package uz.distributor.crm.data.location
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -14,6 +17,12 @@ import uz.distributor.crm.domain.model.LocationPoint
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+
+enum class LocationAccessState {
+    READY,
+    PERMISSION_DENIED,
+    GPS_DISABLED,
+}
 
 @Singleton
 class DeviceLocationProvider @Inject constructor(
@@ -31,6 +40,26 @@ class DeviceLocationProvider @Inject constructor(
                 context,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED
+
+    fun isSystemLocationEnabled(): Boolean {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            LocationManagerCompat.isLocationEnabled(lm)
+        } else {
+            @Suppress("DEPRECATION")
+            lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
+    }
+
+    /** Ilovaga kirish / GPS kuzatuv uchun: ruxsat + tizim GPS yoqilgan bo‘lishi shart. */
+    fun locationAccessState(): LocationAccessState = when {
+        !hasLocationPermission() -> LocationAccessState.PERMISSION_DENIED
+        !isSystemLocationEnabled() -> LocationAccessState.GPS_DISABLED
+        else -> LocationAccessState.READY
+    }
+
+    fun isReadyForTracking(): Boolean = locationAccessState() == LocationAccessState.READY
 
     suspend fun getCurrentLocation(): LocationPoint? {
         if (!hasLocationPermission()) {

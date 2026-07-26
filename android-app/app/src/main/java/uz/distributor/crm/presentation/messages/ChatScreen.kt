@@ -204,11 +204,21 @@ fun ChatScreen(
                     }
                 }
                 if (state.isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         CircularProgressIndicator(color = Color(0xFF6AB2F2))
                     }
                 } else if (state.messages.isEmpty() && state.error == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(AppStrings.noChats(lang), color = textMuted, fontSize = 14.sp)
                     }
                 } else {

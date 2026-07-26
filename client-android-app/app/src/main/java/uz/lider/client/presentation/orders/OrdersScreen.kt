@@ -32,9 +32,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,7 +62,7 @@ import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
-import uz.lider.client.presentation.navigation.ClientBottomNavHeight
+import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
@@ -95,6 +99,13 @@ fun OrdersScreen(
         "received" to localized("ord_status_received"),
         "cancelled" to localized("ord_status_cancelled"),
     )
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refresh()
+        }
+    }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
         if (state.loading) {
@@ -108,7 +119,7 @@ fun OrdersScreen(
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        bottom = ClientBottomNavHeight + 16.dp,
+                        bottom = clientBottomContentPadding(),
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {

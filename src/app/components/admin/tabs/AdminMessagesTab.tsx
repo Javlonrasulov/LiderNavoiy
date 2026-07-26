@@ -49,6 +49,56 @@ function previewText(msg: ChatMessage, t: Record<string, string>) {
   return '';
 }
 
+function ChatImageBubble({
+  fileUrl,
+  fileName,
+  isMine,
+  dark,
+  fallbackLabel,
+}: {
+  fileUrl?: string | null;
+  fileName?: string | null;
+  isMine: boolean;
+  dark: boolean;
+  fallbackLabel: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const src = fileUrl ? resolveFileUrl(fileUrl) : '';
+
+  if (!src || failed) {
+    return (
+      <div
+        className={`flex items-center gap-2 min-w-[160px] max-w-[280px] rounded-lg mb-1 px-3 py-3 ${
+          isMine ? 'bg-white/10' : dark ? 'bg-[#242f3d]' : 'bg-gray-100'
+        }`}
+      >
+        <ImageIcon className="w-8 h-8 opacity-70 flex-shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">📷 {fallbackLabel}</p>
+          {fileName && <p className={`text-xs truncate ${isMine ? 'text-white/60' : 'opacity-60'}`}>{fileName}</p>}
+          {src && failed && (
+            <a href={src} target="_blank" rel="noreferrer" className="text-xs underline opacity-80">
+              Ochish
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="block mb-1">
+      <img
+        src={src}
+        alt={fileName ?? 'Rasm'}
+        className="block w-full max-w-[280px] min-h-[120px] max-h-[240px] rounded-lg object-cover bg-black/20"
+        loading="lazy"
+        onError={() => setFailed(true)}
+      />
+    </a>
+  );
+}
+
 function userRoleLabel(role: string, t: Record<string, string>) {
   switch (role.toLowerCase()) {
     case 'admin': return t.msgRoleAdmin ?? 'Admin';
@@ -347,34 +397,42 @@ export function AdminMessagesTab() {
 
   const renderMessageBody = (msg: ChatMessage, isMine: boolean) => (
     <>
-      {msg.messageType === 'image' && msg.fileUrl && (
-        <a href={resolveFileUrl(msg.fileUrl)} target="_blank" rel="noreferrer">
-          <img
-            src={resolveFileUrl(msg.fileUrl)}
-            alt={msg.fileName ?? 'Rasm'}
-            className="max-w-[280px] max-h-[240px] rounded-lg mb-1 object-cover cursor-pointer"
-          />
-        </a>
+      {(msg.messageType === 'image' || (!!msg.fileUrl && msg.fileMime?.startsWith('image/'))) && (
+        <ChatImageBubble
+          fileUrl={msg.fileUrl}
+          fileName={msg.fileName}
+          isMine={isMine}
+          dark={D}
+          fallbackLabel={t.msgPreviewImage}
+        />
       )}
-      {msg.messageType === 'document' && msg.fileUrl && (
-        <a
-          href={resolveFileUrl(msg.fileUrl)}
-          target="_blank"
-          rel="noreferrer"
-          className={`flex items-center gap-2 p-2 rounded-lg mb-1 ${
-            isMine ? 'bg-white/10' : D ? 'bg-[#242f3d]' : 'bg-gray-100'
-          }`}
-        >
-          <FileText className="w-8 h-8 flex-shrink-0 opacity-70" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{msg.fileName}</p>
-            {msg.fileSize != null && (
-              <p className={`text-xs ${isMine ? 'text-white/60' : sub}`}>{formatBytes(msg.fileSize)}</p>
-            )}
-          </div>
-        </a>
+      {msg.messageType === 'document' && (
+        msg.fileUrl ? (
+          <a
+            href={resolveFileUrl(msg.fileUrl)}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex items-center gap-2 p-2 rounded-lg mb-1 ${
+              isMine ? 'bg-white/10' : D ? 'bg-[#242f3d]' : 'bg-gray-100'
+            }`}
+          >
+            <FileText className="w-8 h-8 flex-shrink-0 opacity-70" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{msg.fileName}</p>
+              {msg.fileSize != null && (
+                <p className={`text-xs ${isMine ? 'text-white/60' : sub}`}>{formatBytes(msg.fileSize)}</p>
+              )}
+            </div>
+          </a>
+        ) : (
+          <p className={`text-sm mb-1 ${isMine ? 'text-white/70' : sub}`}>
+            📎 {msg.fileName ?? t.msgPreviewFile}
+          </p>
+        )
       )}
-      {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
+      {msg.text ? (
+        <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+      ) : null}
     </>
   );
 

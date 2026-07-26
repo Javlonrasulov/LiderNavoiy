@@ -6,10 +6,11 @@ import {
   IsUUID,
   IsNumber,
   IsIn,
-  ValidateIf,
   IsArray,
   IsBoolean,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MessageAttachmentDto {
@@ -44,8 +45,10 @@ export class SendMessageDto {
   @MaxLength(4000)
   text?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: MessageAttachmentDto })
   @IsOptional()
+  @ValidateNested()
+  @Type(() => MessageAttachmentDto)
   attachment?: MessageAttachmentDto;
 }
 

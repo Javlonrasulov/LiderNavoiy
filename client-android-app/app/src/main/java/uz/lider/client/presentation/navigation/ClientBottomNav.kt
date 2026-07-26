@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -36,25 +38,37 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.PulsingCartChip
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassNav
 
-val ClientBottomNavHeight = 104.dp
+val ClientBottomNavHeight = 120.dp
+
+/** Bottom inset for scrollable screens so content clears the floating glass nav + system bars. */
+@Composable
+fun clientBottomContentPadding(extra: Dp = 16.dp): Dp {
+    val density = LocalDensity.current
+    val systemBars = with(density) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    }
+    return ClientBottomNavHeight + systemBars + extra
+}
 
 enum class ClientTab(val route: String) {
     DASHBOARD("dashboard"),
@@ -145,6 +159,7 @@ fun ClientBottomNav(
     selected: ClientTab,
     cartCount: Int,
     onTabSelected: (ClientTab) -> Unit,
+    onOpenCart: () -> Unit = {},
     isDark: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -152,13 +167,7 @@ fun ClientBottomNav(
 
     val tabs = listOf(
         TabItem(ClientTab.DASHBOARD, Icons.Default.Dashboard, tabLabel(lang, ClientTab.DASHBOARD)),
-        TabItem(
-            ClientTab.CATALOG,
-            Icons.Default.Inventory2,
-            tabLabel(lang, ClientTab.CATALOG),
-            showBadge = cartCount > 0,
-            badgeCount = cartCount,
-        ),
+        TabItem(ClientTab.CATALOG, Icons.Default.Inventory2, tabLabel(lang, ClientTab.CATALOG)),
         TabItem(ClientTab.ORDERS, Icons.Default.ShoppingBag, tabLabel(lang, ClientTab.ORDERS)),
         TabItem(ClientTab.ANALYTICS, Icons.Default.BarChart, tabLabel(lang, ClientTab.ANALYTICS)),
         TabItem(ClientTab.PROFILE, Icons.Default.Person, tabLabel(lang, ClientTab.PROFILE)),
@@ -169,27 +178,36 @@ fun ClientBottomNav(
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp)
-                .liquidGlassNav(radius = LiquidGlass.RadiusNav)
-                .padding(horizontal = 2.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            tabs.forEach { tab ->
-                val isActive = selected == tab.tab
-                val accent = tabAccents[tab.tab] ?: LiquidGlass.Indigo
-                NavTabItem(
-                    tab = tab,
-                    isActive = isActive,
-                    accent = accent,
-                    onClick = { onTabSelected(tab.tab) },
-                    modifier = Modifier.weight(1f),
-                )
+            PulsingCartChip(
+                count = cartCount,
+                onClick = onOpenCart,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .liquidGlassNav(radius = LiquidGlass.RadiusNav)
+                    .padding(horizontal = 4.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                tabs.forEach { tab ->
+                    val isActive = selected == tab.tab
+                    val accent = tabAccents[tab.tab] ?: LiquidGlass.Indigo
+                    NavTabItem(
+                        tab = tab,
+                        isActive = isActive,
+                        accent = accent,
+                        onClick = { onTabSelected(tab.tab) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
@@ -226,12 +244,6 @@ private fun NavTabItem(
         label = "labelAlpha",
     )
 
-    val glowAlpha by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0f,
-        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
-        label = "glowAlpha",
-    )
-
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -242,75 +254,33 @@ private fun NavTabItem(
             ) { onClick() }
             .padding(horizontal = 1.dp),
     ) {
-        // Fixed icon slot so the active circle never overlaps the label
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(34.dp),
+            modifier = Modifier.size(30.dp),
         ) {
-            if (glowAlpha > 0f) {
+            if (isActive) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
-                        .blur(10.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
                         .background(
-                            Brush.radialGradient(
-                                listOf(
-                                    accent.copy(alpha = 0.45f * glowAlpha),
-                                    Color.Transparent,
-                                ),
+                            Brush.linearGradient(
+                                listOf(accent, accent.copy(alpha = 0.75f)),
                             ),
-                            CircleShape,
                         ),
                 )
             }
-            Box(
+            Icon(
+                imageVector = tab.icon,
+                contentDescription = tab.label,
+                tint = iconTint,
                 modifier = Modifier
-                    .size(30.dp)
-                    .then(
-                        if (isActive) {
-                            Modifier
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(accent, accent.copy(alpha = 0.75f)),
-                                    ),
-                                )
-                        } else {
-                            Modifier
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = tab.icon,
-                    contentDescription = tab.label,
-                    tint = iconTint,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .scale(iconScale),
-                )
-            }
-            if (tab.showBadge) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 2.dp, y = (-2).dp)
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(LiquidGlass.Rose),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = tab.badgeCount.coerceAtMost(99).toString(),
-                        color = Color.White,
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
+                    .size(18.dp)
+                    .scale(iconScale),
+            )
         }
 
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(4.dp))
 
         Text(
             text = tab.label,
@@ -330,8 +300,6 @@ private data class TabItem(
     val tab: ClientTab,
     val icon: ImageVector,
     val label: String,
-    val showBadge: Boolean = false,
-    val badgeCount: Int = 0,
 )
 
 private fun tabLabel(lang: AppLanguage, tab: ClientTab): String = when (tab) {

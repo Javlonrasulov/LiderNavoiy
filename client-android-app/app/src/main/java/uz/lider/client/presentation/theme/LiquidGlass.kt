@@ -223,7 +223,7 @@ fun Modifier.liquidGlassThemed(
     radius: Dp = LiquidGlass.RadiusCard,
 ): Modifier = if (LocalClientDark.current) liquidGlassDark(radius) else liquidGlassLight(radius)
 
-/** Extra-transparent glass for floating bottom nav — content behind stays visible. */
+/** Floating bottom nav glass — no clip so tab badges are not cut off. */
 @Composable
 fun Modifier.liquidGlassNav(
     radius: Dp = LiquidGlass.RadiusNav,
@@ -234,13 +234,14 @@ fun Modifier.liquidGlassNav(
         .shadow(
             elevation = 18.dp,
             shape = shape,
+            clip = false,
             ambientColor = LiquidGlass.ShadowAmbient,
             spotColor = LiquidGlass.ShadowSpot,
         )
-        .clip(shape)
         .background(
-            if (isDark) Color.White.copy(alpha = 0.12f)
-            else Color.White.copy(alpha = 0.38f),
+            if (isDark) Color.White.copy(alpha = 0.18f)
+            else Color.White.copy(alpha = 0.92f),
+            shape,
         )
         .border(
             width = 1.dp,
@@ -550,6 +551,7 @@ fun PremiumHeaderButton(
             .shadow(
                 elevation = 10.dp,
                 shape = CircleShape,
+                clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.10f),
                 spotColor = Color.Black.copy(alpha = 0.14f),
             )
@@ -583,22 +585,27 @@ fun PremiumHeaderActionPill(
     content: @Composable RowScope.() -> Unit,
 ) {
     val isDark = LiquidTheme.isDark
+    val shape = RoundedCornerShape(50)
     Row(
         modifier = modifier
             .shadow(
                 elevation = 10.dp,
-                shape = RoundedCornerShape(50),
+                shape = shape,
+                clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.10f),
                 spotColor = Color.Black.copy(alpha = 0.14f),
             )
-            .clip(RoundedCornerShape(50))
-            .background(if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.48f))
+            // No clip — cart badges must draw fully (shadow defaults to clip=true).
+            .background(
+                if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.48f),
+                shape,
+            )
             .border(
                 1.dp,
                 if (isDark) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.65f),
-                RoundedCornerShape(50),
+                shape,
             )
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         content = content,

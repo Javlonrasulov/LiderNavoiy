@@ -3,6 +3,8 @@ package uz.distributor.crm.presentation.dashboard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,7 +30,7 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinDashboardHeader
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
@@ -43,6 +45,7 @@ fun DashboardScreen(
     onProfileClick: () -> Unit = {},
     onOrderSummaryClick: () -> Unit = {},
     onProductsClick: () -> Unit = {},
+    onClientOrdersClick: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -58,6 +61,16 @@ fun DashboardScreen(
 
     val statItems = buildList {
         add(StatItem(AppStrings.clientsList(lang), "${state.stats.totalClients} / ${state.stats.visitedClients} / ${state.stats.pendingClients}", Icons.Default.Person, Color(0xFF10B981), badge = "${String.format("%.1f", state.stats.clientProgressPercent)}%", onClick = onClientsClick))
+        add(
+            StatItem(
+                AppStrings.clientOrders(lang),
+                "${state.stats.pendingClientOrders}",
+                Icons.Default.LocalShipping,
+                Color(0xFFEA580C),
+                badge = if (state.stats.pendingClientOrders > 0) "${state.stats.pendingClientOrders}" else null,
+                onClick = onClientOrdersClick,
+            ),
+        )
         add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%"))
         add(StatItem(AppStrings.totalSales(lang), cartValue, Icons.Default.ShoppingCart, Color(0xFF3B82F6), cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null, onClick = onOrderSummaryClick))
         add(StatItem(AppStrings.products(lang), if (state.productCount > 0) "${state.productCount}" else "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))
@@ -67,7 +80,7 @@ fun DashboardScreen(
         add(StatItem(AppStrings.terminalPayments(lang), "0", Icons.Default.CheckCircle, Color(0xFF06B6D4)))
         add(StatItem(AppStrings.bonusStickers(lang), "0", Icons.Default.EmojiEvents, Color(0xFFEC4899)))
     }
-    val displayed = if (state.showAll) statItems else statItems.take(3)
+    val displayed = if (state.showAll) statItems else statItems.take(4)
 
     Box(
         modifier = Modifier
@@ -78,7 +91,7 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = BottomNavHeight + 16.dp),
+                .padding(bottom = bottomNavHeight() + 16.dp),
         ) {
             SherinDashboardHeader(
                 companyName = state.user?.companyName ?: "OOO \"BORAN LEADERS\"",
@@ -215,17 +228,25 @@ private fun SherinRefreshAction(
     state: RefreshButtonState,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(enabled = state != RefreshButtonState.LOADING, onClick = onClick),
+        modifier = Modifier.clickable(
+            enabled = state != RefreshButtonState.LOADING,
+            indication = null,
+            interactionSource = interaction,
+            onClick = onClick,
+        ),
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
                 .clip(CircleShape)
                 .background(
-                    when (state) {
-                        RefreshButtonState.SUCCESS -> Color(0xFF10B981).copy(0.35f)
+                    when {
+                        state == RefreshButtonState.SUCCESS -> Color(0xFF10B981).copy(0.35f)
+                        pressed -> Color.White.copy(0.28f)
                         else -> Color.White.copy(0.10f)
                     },
                 )
@@ -325,15 +346,21 @@ private fun RefreshResultCard(
 
 @Composable
 private fun SherinQuickAction(icon: ImageVector, label: String, onClick: () -> Unit = {}) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(
+            indication = null,
+            interactionSource = interaction,
+            onClick = onClick,
+        ),
     ) {
         Box(
             modifier = Modifier
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(0.10f))
+                .background(Color.White.copy(if (pressed) 0.28f else 0.10f))
                 .border(1.dp, Color.White.copy(0.20f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {

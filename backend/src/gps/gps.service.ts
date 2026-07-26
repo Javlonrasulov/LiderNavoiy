@@ -164,15 +164,26 @@ export class GpsService {
     return this.locationRepo.save(entity);
   }
 
+  /** WebSocket orqali kelgan joylashuv — DB + Redis yangilanadi, nuqta saqlanmaydi */
+  async touchLiveLocation(distributorId: string, dto: LocationPointDto) {
+    await this.updateLiveLocation(distributorId, dto);
+  }
+
   private async updateLiveLocation(distributorId: string, dto: LocationPointDto) {
+    const recordedAt = dto.recordedAt ? new Date(dto.recordedAt) : new Date();
     await this.distributorRepo.update(distributorId, {
       lastLatitude: dto.latitude,
       lastLongitude: dto.longitude,
-      lastLocationAt: new Date(dto.recordedAt),
+      lastLocationAt: Number.isNaN(recordedAt.getTime()) ? new Date() : recordedAt,
       status: DistributorStatus.ON_ROUTE,
       isOnline: true,
     });
 
     await this.redis.setJson(`location:live:${distributorId}`, dto, LIVE_LOCATION_TTL);
+    // Socket online TTL bilan bir xil ushlab turish
+    await this.redis.setJson(`online:${distributorId}`, {
+      updatedAt: new Date().toISOString(),
+      source: 'gps',
+    }, LIVE_LOCATION_TTL);
   }
 }

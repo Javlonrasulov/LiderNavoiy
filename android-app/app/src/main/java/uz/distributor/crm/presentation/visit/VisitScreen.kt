@@ -56,7 +56,7 @@ import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -101,7 +101,7 @@ fun VisitScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().padding(bottom = BottomNavHeight)) {
+    Box(modifier = Modifier.fillMaxSize().padding(bottom = bottomNavHeight())) {
     Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
         when (state.viewLevel) {
             VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
@@ -358,7 +358,7 @@ fun VisitScreen(
         hostState = snackbarHostState,
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(bottom = BottomNavHeight + 8.dp),
+            .padding(bottom = bottomNavHeight() + 8.dp),
     )
 
     if (state.showCartSheet) {

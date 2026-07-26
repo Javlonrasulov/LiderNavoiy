@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.location.DeviceLocationProvider
+import uz.distributor.crm.data.location.LocationAccessState
 import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
@@ -29,6 +31,7 @@ class LoginViewModel @Inject constructor(
     private val pushRepository: PushRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val messagesRealtime: MessagesRealtimeCoordinator,
+    private val deviceLocationProvider: DeviceLocationProvider,
 ) : ViewModel() {
 
     fun setLanguage(language: AppLanguage) {
@@ -43,11 +46,38 @@ class LoginViewModel @Inject constructor(
     fun onUsernameChange(v: String) = _uiState.update { it.copy(username = v, errorKey = null) }
     fun onPasswordChange(v: String) = _uiState.update { it.copy(password = v, errorKey = null) }
 
+    fun locationErrorKey(): String? = when (deviceLocationProvider.locationAccessState()) {
+        LocationAccessState.PERMISSION_DENIED -> "location_permission_denied"
+        LocationAccessState.GPS_DISABLED -> "gps_disabled"
+        LocationAccessState.READY -> null
+    }
+
+    fun isLocationReady(): Boolean = deviceLocationProvider.isReadyForTracking()
+
+    fun setLocationError() {
+        _uiState.update {
+            it.copy(
+                errorKey = locationErrorKey() ?: "gps_disabled",
+                isLoading = false,
+                isSuccess = false,
+            )
+        }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorKey = null) }
+    }
+
     fun login() {
         val username = _uiState.value.username.trim()
         val password = _uiState.value.password
         if (username.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorKey = "credentials_required") }
+            return
+        }
+
+        locationErrorKey()?.let { key ->
+            _uiState.update { it.copy(errorKey = key) }
             return
         }
 

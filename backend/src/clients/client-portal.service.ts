@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus, UserRole } from '../common/enums';
+import { OrderStatus, OrderSource, UserRole } from '../common/enums';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
 import { CreateOrderDto } from '../orders/dto/order.dto';
@@ -267,14 +267,20 @@ export class ClientPortalService {
 
   async createOrder(user: User, dto: CreateOrderDto) {
     const clientId = this.clientId(user);
+    if (!clientId) {
+      throw new BadRequestException('Client account is not linked');
+    }
     if (dto.clientId !== clientId) {
       throw new BadRequestException('Invalid client');
+    }
+    if (!dto.items?.length) {
+      throw new BadRequestException('Order items are required');
     }
     const client = await this.clientRepo.findOne({ where: { id: clientId } });
     if (!client?.distributorId) {
       throw new BadRequestException('Client has no assigned agent');
     }
-    return this.ordersService.create(client.distributorId, dto);
+    return this.ordersService.create(client.distributorId, dto, false, OrderSource.CLIENT);
   }
 
   async getDashboard(user: User) {

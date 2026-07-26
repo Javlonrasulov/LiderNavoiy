@@ -245,6 +245,7 @@ fun ClientNavHost(
                     selected = selectedTab,
                     cartCount = cartBadgeCount(cartItems),
                     onTabSelected = { tab -> navController.navigateClientTab(tab) },
+                    onOpenCart = { navController.navigate(ClientRoutes.CART) },
                     isDark = isDark,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

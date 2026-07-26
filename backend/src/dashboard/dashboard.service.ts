@@ -6,7 +6,7 @@ import { Visit } from '../visits/entities/visit.entity';
 import { Order } from '../orders/entities/order.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus } from '../common/enums';
+import { OrderStatus, OrderSource } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
 
 const DEFAULT_AGENT_MONTHLY_PLAN = 15_000_000;
@@ -58,12 +58,15 @@ function formatLastSeen(date: Date | null | undefined): string {
   if (!date) return '—';
   const diffMs = Date.now() - date.getTime();
   const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return '1 daqiqa oldin';
+  if (mins < 1) return 'hozir';
   if (mins < 60) return `${mins} daqiqa oldin`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours} soat oldin`;
   return date.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
+
+/** Oxirgi GPS 5 daqiqadan yangi bo'lsa — online deb hisobla */
+const ONLINE_LOCATION_MAX_AGE_MS = 5 * 60_000;
 
 const WEEKDAY_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const MONTH_LABELS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
@@ -158,6 +161,14 @@ export class DashboardService {
       ? Math.round((visitsToday / totalClients) * 1000) / 10
       : 0;
 
+    const pendingClientOrders = await this.orderRepo.count({
+      where: {
+        distributorId,
+        source: OrderSource.CLIENT,
+        status: OrderStatus.PENDING,
+      },
+    });
+
     return {
       totalClients,
       visitedClients: visitsToday,
@@ -166,6 +177,7 @@ export class DashboardService {
       completedVisits: visitsToday,
       pendingVisits: 0,
       totalSales,
+      pendingClientOrders,
       clientProgressPercent: clientProgress,
       visitProgressPercent: 0,
     };
@@ -232,6 +244,25 @@ export class DashboardService {
     } catch {
       return new Set();
     }
+  }
+
+  private async getLiveLocationMap(): Promise<Map<string, { latitude: number; longitude: number; recordedAt?: string }>> {
+    const map = new Map<string, { latitude: number; longitude: number; recordedAt?: string }>();
+    try {
+      const keys = await this.redis.getClient().keys('location:live:*');
+      await Promise.all(
+        keys.map(async key => {
+          const id = key.replace('location:live:', '');
+          const cached = await this.redis.getJson<{ latitude: number; longitude: number; recordedAt?: string }>(key);
+          if (cached?.latitude != null && cached?.longitude != null) {
+            map.set(id, cached);
+          }
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+    return map;
   }
 
   private async aggregateChartBuckets(
@@ -351,31 +382,60 @@ export class DashboardService {
     const locQb = this.profileRepo
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.user', 'u')
-      .where('d.lastLatitude IS NOT NULL')
-      .andWhere('d.lastLongitude IS NOT NULL');
+      .where('(d.lastLatitude IS NOT NULL AND d.lastLongitude IS NOT NULL)');
 
     if (companyIds?.length) {
-      locQb.andWhere('d.companyId IN (:...companyIds)', { companyIds });
+      locQb.andWhere('(d.companyId IN (:...companyIds) OR d.companyId IS NULL)', { companyIds });
     }
 
-    const profiles = await locQb.getMany();
-    const onlineIds = await this.getOnlineIds();
+    const [profiles, onlineIds, liveMap] = await Promise.all([
+      locQb.getMany(),
+      this.getOnlineIds(),
+      this.getLiveLocationMap(),
+    ]);
+
+    // Redis da jonli joylashuv bor, lekin DB da hali yo'q (yoki boshqa company) — qo'shib qo'yamiz
+    const profileById = new Map(profiles.map(p => [p.id, p]));
+    for (const [id, live] of liveMap) {
+      if (profileById.has(id)) continue;
+      const missing = await this.profileRepo.findOne({
+        where: { id },
+        relations: ['user'],
+      });
+      if (!missing) continue;
+      if (companyIds?.length && missing.companyId && !companyIds.includes(missing.companyId)) {
+        continue;
+      }
+      // Redis dan lat/lng bilan to'ldiramiz
+      missing.lastLatitude = live.latitude;
+      missing.lastLongitude = live.longitude;
+      if (live.recordedAt) missing.lastLocationAt = new Date(live.recordedAt);
+      profiles.push(missing);
+      profileById.set(id, missing);
+    }
 
     const employeeLocations = profiles.map(d => {
+      const live = liveMap.get(d.id);
+      const lat = live?.latitude ?? Number(d.lastLatitude);
+      const lng = live?.longitude ?? Number(d.lastLongitude);
+      const lastAt = live?.recordedAt
+        ? new Date(live.recordedAt)
+        : d.lastLocationAt;
+      const freshGps = lastAt != null && (Date.now() - lastAt.getTime()) <= ONLINE_LOCATION_MAX_AGE_MS;
+      const online = onlineIds.has(d.id) || freshGps;
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
-      const online = onlineIds.has(d.id) || d.isOnline;
       return {
         distributorId: d.id,
         name,
         avatar: initials(name),
         role: detectRole(d.position),
         online,
-        lastSeen: formatLastSeen(d.lastLocationAt),
-        lat: Number(d.lastLatitude),
-        lng: Number(d.lastLongitude),
+        lastSeen: formatLastSeen(lastAt),
+        lat,
+        lng,
         orgId: d.companyId ?? '',
       };
-    });
+    }).filter(e => Number.isFinite(e.lat) && Number.isFinite(e.lng));
 
     return {
       kpi: {

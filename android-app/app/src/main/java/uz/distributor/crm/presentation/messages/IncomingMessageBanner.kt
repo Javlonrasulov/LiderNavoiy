@@ -5,7 +5,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,7 +20,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -80,72 +79,68 @@ fun IncomingMessageBannerOverlay(
     val textMuted = if (isDark) Color(0xFF708499) else Color(0xFF6B7280)
     val barBg = if (isDark) Color(0xFF1F2937) else Color.White
 
-    Box(
-        modifier
-            .fillMaxSize()
-            .zIndex(1000f),
+    // fillMaxSize ISHLATILMAYDI — aks holda butun ekranni yopib, listni "blok" qilib qo'yadi
+    AnimatedVisibility(
+        visible = alert != null,
+        enter = slideInVertically { -it },
+        exit = slideOutVertically { -it },
+        modifier = modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .statusBarsPadding()
+            .padding(top = 8.dp, start = 12.dp, end = 12.dp),
     ) {
-        AnimatedVisibility(
-            visible = alert != null,
-            enter = slideInVertically { -it },
-            exit = slideOutVertically { -it },
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 8.dp, start = 12.dp, end = 12.dp),
-        ) {
-            alert?.let { item ->
-                val avatarColor = avatarColorForId(item.conversationId)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .shadow(12.dp, RoundedCornerShape(16.dp))
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(barBg)
-                        .clickable {
-                            viewModel.dismiss()
-                            navController.navigate("chat/${item.conversationId}") {
-                                launchSingleTop = true
-                            }
+        alert?.let { item ->
+            val avatarColor = avatarColorForId(item.conversationId)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .shadow(12.dp, RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(barBg)
+                    .clickable {
+                        viewModel.dismiss()
+                        navController.navigate("chat/${item.conversationId}") {
+                            launchSingleTop = true
                         }
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(avatarColor),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(avatarColor),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            initialsFromName(item.senderName),
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp,
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            item.senderName,
-                            color = textPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            item.preview,
-                            color = textMuted,
-                            fontSize = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    IconButton(onClick = { viewModel.dismiss() }) {
-                        Icon(Icons.Default.Close, contentDescription = null, tint = textMuted)
-                    }
+                    Text(
+                        initialsFromName(item.senderName),
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        item.senderName,
+                        color = textPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        item.preview,
+                        color = textMuted,
+                        fontSize = 14.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = { viewModel.dismiss() }) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = textMuted)
                 }
             }
         }

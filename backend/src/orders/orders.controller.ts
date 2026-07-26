@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto } from './dto/order.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
-import { UserRole } from '../common/enums';
+import { UserRole, OrderStatus } from '../common/enums';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -26,6 +26,18 @@ export class OrdersController {
     return this.service.syncBatch(req.user.distributorProfile!.id, dto.orders);
   }
 
+  @Get('client')
+  @ApiOperation({ summary: 'List client-submitted orders for agent (review / warehouse)' })
+  findClientOrders(
+    @Request() req: { user: User },
+    @Query('status') status?: OrderStatus,
+  ) {
+    return this.service.findClientOrdersForAgent(
+      req.user.distributorProfile!.id,
+      status,
+    );
+  }
+
   @Get()
   @ApiOperation({ summary: 'List orders (admin: all, agent: own)' })
   findAll(
@@ -42,6 +54,18 @@ export class OrdersController {
   @ApiOperation({ summary: 'Get order by ID' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
+  }
+
+  @Patch(':id/send-to-warehouse')
+  @ApiOperation({ summary: 'Agent confirms client order and sends to warehouse' })
+  sendToWarehouse(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.service.sendToWarehouse(id, req.user.distributorProfile!.id);
+  }
+
+  @Patch(':id/reject')
+  @ApiOperation({ summary: 'Agent rejects a pending client order' })
+  rejectClientOrder(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.service.rejectClientOrder(id, req.user.distributorProfile!.id);
   }
 
   @Patch(':id')

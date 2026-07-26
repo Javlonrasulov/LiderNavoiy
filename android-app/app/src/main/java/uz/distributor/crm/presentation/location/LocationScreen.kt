@@ -37,7 +37,7 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -181,7 +181,7 @@ fun LocationScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(sheetFraction)
-                .padding(bottom = BottomNavHeight)
+                .padding(bottom = bottomNavHeight())
                 .zIndex(5f),
         ) {
             Surface(

@@ -63,9 +63,10 @@ import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ProductImageBox
+import uz.lider.client.presentation.components.PulsingCountBadge
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.navigation.ClientBottomNavHeight
+import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
@@ -113,7 +114,7 @@ fun CatalogScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = ClientBottomNavHeight + 16.dp,
+                    bottom = clientBottomContentPadding(),
                 ),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -135,58 +136,56 @@ fun CatalogScreen(
                                 onClick = onOpenDrawer,
                                 contentDescription = "Menu",
                             )
-                            PremiumHeaderActionPill {
-                                PremiumHeaderPillIcon(
-                                    icon = if (isList) Icons.Default.GridView
-                                    else Icons.AutoMirrored.Filled.ViewList,
-                                    onClick = viewModel::toggleViewMode,
-                                    contentDescription = if (isList) {
-                                        localized("cat_view_grid")
-                                    } else {
-                                        localized("cat_view_list")
-                                    },
-                                )
-                                Box {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                PremiumHeaderActionPill {
                                     PremiumHeaderPillIcon(
-                                        icon = Icons.AutoMirrored.Filled.Sort,
-                                        onClick = { viewModel.toggleSortMenu() },
+                                        icon = if (isList) Icons.Default.GridView
+                                        else Icons.AutoMirrored.Filled.ViewList,
+                                        onClick = viewModel::toggleViewMode,
+                                        contentDescription = if (isList) {
+                                            localized("cat_view_grid")
+                                        } else {
+                                            localized("cat_view_list")
+                                        },
                                     )
-                                    LiquidGlassDropdownMenu(
-                                        expanded = state.sortMenuOpen,
-                                        onDismissRequest = { viewModel.toggleSortMenu() },
-                                    ) {
-                                        sortOptions().forEach { (sort, label) ->
-                                            LiquidGlassDropdownItem(
-                                                text = label,
-                                                selected = state.sort == sort,
-                                                onClick = { viewModel.onSortChange(sort) },
-                                            )
+                                    Box {
+                                        PremiumHeaderPillIcon(
+                                            icon = Icons.AutoMirrored.Filled.Sort,
+                                            onClick = { viewModel.toggleSortMenu() },
+                                        )
+                                        LiquidGlassDropdownMenu(
+                                            expanded = state.sortMenuOpen,
+                                            onDismissRequest = { viewModel.toggleSortMenu() },
+                                        ) {
+                                            sortOptions().forEach { (sort, label) ->
+                                                LiquidGlassDropdownItem(
+                                                    text = label,
+                                                    selected = state.sort == sort,
+                                                    onClick = { viewModel.onSortChange(sort) },
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                                Box {
-                                    PremiumHeaderPillIcon(
+                                // Cart button + pulsing badge in a roomy box (never clipped).
+                                Box(
+                                    Modifier.size(52.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    PremiumHeaderButton(
                                         icon = Icons.Default.ShoppingCart,
                                         onClick = { onNavigate(ClientRoutes.CART) },
+                                        contentDescription = localized("cat_add_cart"),
+                                        tint = LiquidGlass.Indigo,
+                                        size = 42.dp,
                                     )
-                                    if (cartCount > 0) {
-                                        Box(
-                                            Modifier
-                                                .align(Alignment.TopEnd)
-                                                .offset(x = 2.dp, y = 2.dp)
-                                                .size(16.dp)
-                                                .clip(CircleShape)
-                                                .background(LiquidGlass.Rose),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Text(
-                                                if (cartCount > 99) "99+" else "$cartCount",
-                                                color = Color.White,
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                        }
-                                    }
+                                    PulsingCountBadge(
+                                        count = cartCount,
+                                        modifier = Modifier.align(Alignment.TopEnd),
+                                    )
                                 }
                             }
                         }

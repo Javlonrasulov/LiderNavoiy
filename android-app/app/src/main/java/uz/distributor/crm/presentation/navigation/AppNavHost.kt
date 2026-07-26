@@ -1,7 +1,9 @@
 package uz.distributor.crm.presentation.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -21,7 +23,9 @@ import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.repository.AuthRepository
+import uz.distributor.crm.presentation.auth.LocationRequiredScreen
 import uz.distributor.crm.presentation.auth.LoginScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
 import uz.distributor.crm.presentation.clients.AddClientScreen
@@ -34,6 +38,7 @@ import uz.distributor.crm.presentation.location.LocationScreen
 import uz.distributor.crm.presentation.messages.ChatScreen
 import uz.distributor.crm.presentation.messages.IncomingMessageBannerOverlay
 import uz.distributor.crm.presentation.messages.MessagesScreen
+import uz.distributor.crm.presentation.order.ClientOrdersScreen
 import uz.distributor.crm.presentation.order.OrderSummaryScreen
 import uz.distributor.crm.presentation.plan.PlanScreen
 import uz.distributor.crm.presentation.products.ProductsScreen
@@ -45,11 +50,17 @@ import javax.inject.Inject
 @HiltViewModel
 class SplashViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val deviceLocationProvider: DeviceLocationProvider,
 ) : ViewModel() {
-    fun checkAuth(onResult: (Boolean) -> Unit) {
+    /** true = main, false = login, null = location_required (sessiya bor, GPS yo'q) */
+    fun checkAuth(onResult: (Boolean?) -> Unit) {
         viewModelScope.launch {
             val loggedIn = authRepository.restoreSession()
-            onResult(loggedIn)
+            when {
+                !loggedIn -> onResult(false)
+                deviceLocationProvider.isReadyForTracking() -> onResult(true)
+                else -> onResult(null)
+            }
         }
     }
 }
@@ -89,18 +100,33 @@ fun AppNavHost(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-    NavHost(navController = navController, startDestination = "splash") {
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            NavHost(navController = navController, startDestination = "splash") {
         composable("splash") {
             SplashRoute(
                 onLoggedIn = { navController.navigate("main") { popUpTo("splash") { inclusive = true } } },
                 onNotLoggedIn = { navController.navigate("login") { popUpTo("splash") { inclusive = true } } },
+                onLocationRequired = {
+                    navController.navigate("location_required") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                },
             )
         }
         composable("login") {
             LoginScreen(onLoginSuccess = {
                 navController.navigate("main") { popUpTo("login") { inclusive = true } }
             })
+        }
+        composable("location_required") {
+            LocationRequiredScreen(
+                onReady = {
+                    navController.navigate("main") {
+                        popUpTo("location_required") { inclusive = true }
+                    }
+                },
+            )
         }
         composable("main") {
             DashboardScreen(
@@ -110,7 +136,11 @@ fun AppNavHost(
                 onProfileClick = { navController.navigate("profile") },
                 onOrderSummaryClick = { navController.navigate("order/cart") },
                 onProductsClick = { navController.navigate("products") },
+                onClientOrdersClick = { navController.navigate("client_orders") },
             )
+        }
+        composable("client_orders") {
+            ClientOrdersScreen(onBack = { navController.popBackStack() })
         }
         composable("add_client") {
             AddClientScreen(
@@ -213,30 +243,40 @@ fun AppNavHost(
                 onLogout = { navController.navigate("login") { popUpTo(0) { inclusive = true } } },
             )
         }
-    }
-    IncomingMessageBannerOverlay(
-        navController = navController,
-        modifier = Modifier.zIndex(1000f),
-    )
-
-    if (showBottomNav) {
-        BottomNavBar(
-            selected = selectedTab,
-            onTabSelected = { tab -> navController.navigateBottomTab(tab) },
-            isDark = isDark,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .zIndex(100f),
-        )
-    }
+            }
+            IncomingMessageBannerOverlay(
+                navController = navController,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .zIndex(1000f),
+            )
+        }
+        if (showBottomNav) {
+            BottomNavBar(
+                selected = selectedTab,
+                onTabSelected = { tab -> navController.navigateBottomTab(tab) },
+                isDark = isDark,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
 @Composable
-private fun SplashRoute(onLoggedIn: () -> Unit, onNotLoggedIn: () -> Unit) {
+private fun SplashRoute(
+    onLoggedIn: () -> Unit,
+    onNotLoggedIn: () -> Unit,
+    onLocationRequired: () -> Unit,
+) {
     val viewModel: SplashViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
-        viewModel.checkAuth { if (it) onLoggedIn() else onNotLoggedIn() }
+        viewModel.checkAuth { result ->
+            when (result) {
+                true -> onLoggedIn()
+                false -> onNotLoggedIn()
+                null -> onLocationRequired()
+            }
+        }
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()

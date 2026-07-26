@@ -168,7 +168,13 @@ fun DashboardScreen(
             heroScrollPx = 0f
         }
     }
-    val fadeProgress = (heroScrollPx / HeroFadeScrollPx).coerceIn(0f, 1f)
+    val scrollFade = (heroScrollPx / HeroFadeScrollPx).coerceIn(0f, 1f)
+    // Yo‘ldagi buyurtma borida fon oq bilan xiralashib qo‘shiladi; yo‘qida aniq qoladi.
+    val fadeProgress = if (live != null) {
+        (0.55f + scrollFade * 0.45f).coerceIn(0f, 1f)
+    } else {
+        scrollFade
+    }
 
     // Hero height = bottom of “Jami xaridlar” card (measured at scroll top)
     var heroHeightPx by remember { mutableFloatStateOf(0f) }

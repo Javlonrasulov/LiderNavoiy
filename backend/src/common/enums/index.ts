@@ -29,6 +29,11 @@ export enum OrderStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum OrderSource {
+  AGENT = 'agent',
+  CLIENT = 'client',
+}
+
 export enum SyncStatus {
   PENDING = 'pending',
   SYNCED = 'synced',

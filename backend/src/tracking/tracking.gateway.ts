@@ -7,13 +7,14 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis/redis.service';
 import { LocationPointDto } from '../gps/dto/gps.dto';
 import { JwtPayload } from '../auth/auth.service';
+import { GpsService } from '../gps/gps.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -29,6 +30,8 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly redis: RedisService,
+    @Inject(forwardRef(() => GpsService))
+    private readonly gpsService: GpsService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -85,12 +88,18 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   @SubscribeMessage('location:update')
-  handleLocationUpdate(
+  async handleLocationUpdate(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: LocationPointDto,
   ) {
     const { distributorId } = client.data;
     if (!distributorId) return;
+
+    try {
+      await this.gpsService.touchLiveLocation(distributorId, data);
+    } catch (e) {
+      this.logger.warn(`Failed to persist live location for ${distributorId}: ${e}`);
+    }
 
     this.broadcastLocationUpdate(distributorId, data);
     return { status: 'ok' };

@@ -30,7 +30,7 @@ import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.components.SherinPageHeader
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
@@ -67,15 +67,23 @@ fun MessagesScreen(
 
     val filteredContacts = remember(search, state.contacts) {
         state.contacts
+            .distinctBy { it.id }
             .filter { contact ->
-                contact.fullName.contains(search, ignoreCase = true) ||
-                    contact.username.contains(search, ignoreCase = true)
+                val name = contact.fullName.orEmpty()
+                val user = contact.username.orEmpty()
+                name.contains(search, ignoreCase = true) ||
+                    user.contains(search, ignoreCase = true)
             }
-            .sortedBy { it.fullName.lowercase() }
+            .sortedWith(
+                compareBy(
+                    { sectionLetter(it.fullName.orEmpty()) },
+                    { it.fullName.orEmpty().lowercase() },
+                ),
+            )
     }
 
-    val contactSections = remember(filteredContacts) {
-        groupContactsByLetter(filteredContacts)
+    val contactListItems = remember(filteredContacts) {
+        buildContactListItems(filteredContacts)
     }
 
     val totalUnread = state.conversations.sumOf { it.unreadCount }
@@ -88,7 +96,7 @@ fun MessagesScreen(
     }
 
     Box(Modifier.fillMaxSize().background(listBg)) {
-        Column(Modifier.fillMaxSize().padding(bottom = BottomNavHeight)) {
+        Column(Modifier.fillMaxSize()) {
             val onContactsTab = state.selectedTab == MessagesListTab.CONTACTS
             SherinPageHeader(
                 title = if (onContactsTab) AppStrings.contactsTab(lang) else AppStrings.messagesTitle(lang),
@@ -136,12 +144,11 @@ fun MessagesScreen(
                 MessagesListTab.CONTACTS -> ContactsTabContent(
                     modifier = Modifier.weight(1f),
                     isLoading = state.contactsLoading,
-                    sections = contactSections,
-                    totalCount = state.contacts.size,
+                    listItems = contactListItems,
                     error = state.error,
                     isDark = isDark,
                     lang = lang,
-                    onReload = { viewModel.loadContacts() },
+                    onReload = { viewModel.loadContacts(force = true) },
                     onContactClick = { viewModel.startConversation(it, onChatClick) },
                 )
             }
@@ -257,7 +264,8 @@ private fun ChatsTabContent(
         }
         else -> {
             LazyColumn(
-                modifier = modifier.fillMaxSize().padding(bottom = 88.dp),
+                modifier = modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 8.dp),
             ) {
                 items(filtered, key = { it.id }) { conv ->
                     ConversationRow(
@@ -281,27 +289,29 @@ private fun ChatsTabContent(
 private fun ContactsTabContent(
     modifier: Modifier = Modifier,
     isLoading: Boolean,
-    sections: List<ContactSection>,
-    totalCount: Int,
+    listItems: List<ContactListItem>,
     error: String?,
     isDark: Boolean,
     lang: uz.distributor.crm.localization.AppLanguage,
     onReload: () -> Unit,
     onContactClick: (String) -> Unit,
 ) {
-    val listBg = if (isDark) Color(0xFF0E1621) else Color.White
+    val listBg = if (isDark) Color(0xFF0E1621) else Color(0xFFF7F8FA)
+    val rowBg = if (isDark) Color(0xFF0E1621) else Color.White
     val dividerColor = if (isDark) Color(0xFF1A2634) else Color(0xFFE8EDF2)
+    val hasContacts = listItems.any { it is ContactListItem.Row }
 
     when {
-        isLoading -> {
-            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        isLoading && !hasContacts -> {
+            Box(modifier.fillMaxSize().background(listBg), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Color(0xFF6AB2F2))
             }
         }
-        sections.isEmpty() -> {
+        !hasContacts -> {
             Column(
                 modifier
                     .fillMaxSize()
+                    .background(listBg)
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
@@ -324,42 +334,45 @@ private fun ContactsTabContent(
             LazyColumn(
                 modifier = modifier
                     .fillMaxSize()
-                    .background(listBg)
-                    .padding(bottom = 88.dp),
+                    .background(listBg),
+                contentPadding = PaddingValues(bottom = 16.dp),
             ) {
-                item(key = "contacts_summary") {
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                    ) {
-                        Text(
-                            AppStrings.contactsCount(lang, totalCount),
-                            fontSize = 14.sp,
-                            color = Color(0xFF6AB2F2),
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
-                sections.forEach { section ->
-                    item(key = "header_${section.letter}") {
-                        TelegramContactSectionHeader(
-                            letter = section.letter,
-                            isDark = isDark,
-                        )
-                    }
-                    items(section.contacts, key = { it.id }) { contact ->
-                        TelegramContactRow(
-                            contact = contact,
-                            isDark = isDark,
-                            lang = lang,
-                            onClick = { onContactClick(contact.id) },
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 78.dp),
-                            color = dividerColor,
-                            thickness = 0.5.dp,
-                        )
+                items(
+                    items = listItems,
+                    key = { it.key },
+                    contentType = { it.contentType },
+                ) { item ->
+                    when (item) {
+                        is ContactListItem.Summary -> {
+                            Text(
+                                AppStrings.contactsCount(lang, item.count),
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                                fontSize = 14.sp,
+                                color = Color(0xFF6AB2F2),
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                        is ContactListItem.Header -> {
+                            TelegramContactSectionHeader(
+                                letter = item.letter,
+                                isDark = isDark,
+                            )
+                        }
+                        is ContactListItem.Row -> {
+                            Column(Modifier.background(rowBg)) {
+                                TelegramContactRow(
+                                    contact = item.contact,
+                                    isDark = isDark,
+                                    lang = lang,
+                                    onClick = { onContactClick(item.contact.id) },
+                                )
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(start = 78.dp),
+                                    color = dividerColor,
+                                    thickness = 0.5.dp,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -367,13 +380,40 @@ private fun ContactsTabContent(
     }
 }
 
-private data class ContactSection(val letter: String, val contacts: List<ChatContactDto>)
+private sealed class ContactListItem {
+    abstract val key: String
+    abstract val contentType: String
 
-private fun groupContactsByLetter(contacts: List<ChatContactDto>): List<ContactSection> {
-    return contacts
-        .groupBy { sectionLetter(it.fullName) }
-        .map { (letter, list) -> ContactSection(letter, list.sortedBy { it.fullName.lowercase() }) }
-        .sortedWith(compareBy { if (it.letter == "#") "ZZ" else it.letter })
+    data class Summary(val count: Int) : ContactListItem() {
+        override val key = "summary"
+        override val contentType = "summary"
+    }
+
+    data class Header(val letter: String) : ContactListItem() {
+        override val key = "header_$letter"
+        override val contentType = "header"
+    }
+
+    data class Row(val contact: ChatContactDto, val index: Int) : ContactListItem() {
+        override val key = "contact_${contact.id}_$index"
+        override val contentType = "row"
+    }
+}
+
+private fun buildContactListItems(contacts: List<ChatContactDto>): List<ContactListItem> {
+    if (contacts.isEmpty()) return emptyList()
+    val result = ArrayList<ContactListItem>(contacts.size + 8)
+    result += ContactListItem.Summary(contacts.size)
+    var lastLetter: String? = null
+    contacts.forEachIndexed { index, contact ->
+        val letter = sectionLetter(contact.fullName.orEmpty())
+        if (letter != lastLetter) {
+            result += ContactListItem.Header(letter)
+            lastLetter = letter
+        }
+        result += ContactListItem.Row(contact, index)
+    }
+    return result
 }
 
 private fun sectionLetter(name: String): String {

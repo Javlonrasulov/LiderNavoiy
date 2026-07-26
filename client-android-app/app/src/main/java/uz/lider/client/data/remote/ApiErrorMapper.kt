@@ -12,6 +12,7 @@ object ApiErrorMapper {
     const val SERVER_ERROR = "server_error"
     const val UNAUTHORIZED = "unauthorized"
     const val SAVE_FAILED = "save_failed"
+    const val NO_AGENT = "cart_no_agent"
 
     fun toKey(e: Throwable): String = when (e) {
         is ClientOnlyException -> CLIENT_ONLY
@@ -49,6 +50,7 @@ object ApiErrorMapper {
 
     private fun mapServerMessage(msg: String): String = when {
         msg.contains("Invalid credentials", ignoreCase = true) -> INVALID_CREDENTIALS
+        msg.contains("no assigned agent", ignoreCase = true) -> NO_AGENT
         msg == "CLIENT_ONLY" -> CLIENT_ONLY
         else -> SAVE_FAILED
     }

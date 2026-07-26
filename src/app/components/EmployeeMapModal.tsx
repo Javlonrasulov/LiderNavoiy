@@ -13,6 +13,7 @@ export interface EmployeeMarker {
   lat: number;
   lng: number;
   orgId?: string;
+  distributorId?: string;
 }
 
 interface Props {

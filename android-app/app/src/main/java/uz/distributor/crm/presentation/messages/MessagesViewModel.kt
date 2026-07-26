@@ -71,16 +71,16 @@ class MessagesViewModel @Inject constructor(
     }
 
     fun selectTab(tab: MessagesListTab) {
-        _uiState.update { it.copy(selectedTab = tab) }
+        _uiState.update { it.copy(selectedTab = tab, error = null) }
         if (tab == MessagesListTab.CONTACTS) {
-            loadContacts()
+            loadContacts(force = true)
         }
     }
 
-    fun loadContacts() {
+    fun loadContacts(force: Boolean = false) {
         if (_uiState.value.contactsLoading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(contactsLoading = true) }
+            _uiState.update { it.copy(contactsLoading = true, error = null) }
             try {
                 val contacts = messageRepository.getContacts()
                 _uiState.update {

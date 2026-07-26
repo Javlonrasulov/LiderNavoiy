@@ -20,6 +20,7 @@ class DashboardRepository @Inject constructor(private val api: ApiService) {
                 totalSales = dto.totalSales,
                 clientProgressPercent = dto.clientProgressPercent,
                 visitProgressPercent = dto.visitProgressPercent,
+                pendingClientOrders = dto.pendingClientOrders,
             )
         } catch (_: Exception) {
             DashboardStats(

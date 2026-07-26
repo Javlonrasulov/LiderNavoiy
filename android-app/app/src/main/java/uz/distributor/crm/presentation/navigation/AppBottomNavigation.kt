@@ -1,11 +1,31 @@
 package uz.distributor.crm.presentation.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 
-val BottomNavHeight = 90.dp
+/** Pastki menyu kontenti balandligi (tizim tugmalari insetsiz). */
+val BottomNavBarInnerHeight = 90.dp
+
+/**
+ * Pastki menyu + telefon navigatsiya panelining umumiy balandligi.
+ * Kontent padding uchun shu qiymatdan foydalaning.
+ */
+@Composable
+fun bottomNavHeight(): Dp {
+    val systemNav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    return BottomNavBarInnerHeight + systemNav
+}
+
+/** Eski importlar — yangi kodda [bottomNavHeight] ishlating. */
+@Deprecated("Use bottomNavHeight()", ReplaceWith("bottomNavHeight()"))
+val BottomNavHeight = BottomNavBarInnerHeight
 
 private val bottomNavRoutes = setOf(
     "main",

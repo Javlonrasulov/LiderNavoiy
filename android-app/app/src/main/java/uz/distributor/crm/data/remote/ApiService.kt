@@ -71,6 +71,15 @@ interface ApiService {
     @GET("orders")
     suspend fun getOrders(): List<OrderDto>
 
+    @GET("orders/client")
+    suspend fun getClientOrders(@Query("status") status: String? = null): List<OrderDto>
+
+    @PATCH("orders/{id}/send-to-warehouse")
+    suspend fun sendOrderToWarehouse(@Path("id") id: String): OrderDto
+
+    @PATCH("orders/{id}/reject")
+    suspend fun rejectClientOrder(@Path("id") id: String): OrderDto
+
     @POST("orders")
     suspend fun createOrder(@Body body: CreateOrderRequest): Map<String, Any>
 

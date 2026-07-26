@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto } from './dto/order.dto';
-import { OrderStatus } from '../common/enums';
+import { OrderStatus, OrderSource } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationType } from '../notifications/notification.types';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
@@ -23,7 +24,12 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async create(distributorId: string, dto: CreateOrderDto, offline = false) {
+  async create(
+    distributorId: string,
+    dto: CreateOrderDto,
+    offline = false,
+    source: OrderSource = OrderSource.AGENT,
+  ) {
     const totalAmount = dto.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
     const order = this.repo.create({
       distributorId,
@@ -32,15 +38,37 @@ export class OrdersService {
       items: dto.items,
       totalAmount,
       status: OrderStatus.PENDING,
+      source,
       isOfflineCreated: offline,
       offlineId: dto.offlineId ?? null,
     });
     const saved = await this.repo.save(order);
 
-    // Push notification to admins
-    this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount).catch(() => {});
+    if (source === OrderSource.CLIENT) {
+      this.notifyAgentClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
+    } else {
+      this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount).catch(() => {});
+    }
 
     return saved;
+  }
+
+  private async notifyAgentClientOrder(
+    distributorId: string,
+    clientId: string,
+    totalAmount: number,
+    orderId: string,
+  ) {
+    const client = await this.clientRepo.findOne({ where: { id: clientId } });
+    const name = client?.name ?? 'Klient';
+    const amount = Math.round(totalAmount).toLocaleString('uz-UZ');
+    await this.notifications.sendToDistributor(
+      distributorId,
+      'Yangi klient buyurtmasi',
+      `${name}: ${amount} so'm`,
+      NotificationType.ORDER,
+      { orderId, type: 'client_order' },
+    );
   }
 
   private async notifyAdminsAsync(
@@ -65,7 +93,7 @@ export class OrdersService {
   async syncBatch(distributorId: string, orders: CreateOrderDto[]) {
     const saved = [];
     for (const o of orders) {
-      saved.push(await this.create(distributorId, o, true));
+      saved.push(await this.create(distributorId, o, true, OrderSource.AGENT));
     }
     return { synced: saved.length, orders: saved };
   }
@@ -76,6 +104,119 @@ export class OrdersService {
       order: { createdAt: 'DESC' },
       take: 100,
     });
+  }
+
+  async findClientOrdersForAgent(distributorId: string, status?: OrderStatus) {
+    const where: { distributorId: string; source: OrderSource; status?: OrderStatus } = {
+      distributorId,
+      source: OrderSource.CLIENT,
+    };
+    if (status) where.status = status;
+
+    const orders = await this.repo.find({
+      where,
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
+    if (orders.length === 0) return [];
+
+    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+    return orders.map((order) => {
+      const client = clientMap.get(order.clientId);
+      return {
+        id: order.id,
+        clientId: order.clientId,
+        distributorId: order.distributorId,
+        visitId: order.visitId,
+        status: order.status,
+        source: order.source,
+        totalAmount: Number(order.totalAmount),
+        items: order.items,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        clientName: client?.name ?? 'Klient',
+        clientCode: client?.code ?? '',
+        clientAddress: client?.address ?? null,
+      };
+    });
+  }
+
+  async countPendingClientOrders(distributorId: string) {
+    return this.repo.count({
+      where: {
+        distributorId,
+        source: OrderSource.CLIENT,
+        status: OrderStatus.PENDING,
+      },
+    });
+  }
+
+  /** Agent: klient buyurtmasini omborga (confirmed) yuboradi */
+  async sendToWarehouse(orderId: string, distributorId: string) {
+    const order = await this.repo.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.distributorId !== distributorId) {
+      throw new ForbiddenException('Not your order');
+    }
+    if (order.source !== OrderSource.CLIENT) {
+      throw new BadRequestException('Only client orders can be sent to warehouse this way');
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Order is not pending');
+    }
+    order.status = OrderStatus.CONFIRMED;
+    const saved = await this.repo.save(order);
+    this.notifyClientOrderStatus(
+      order.clientId,
+      'Buyurtma qabul qilindi',
+      'Agent buyurtmangizni qabul qildi',
+      order.id,
+    ).catch(() => {});
+    return saved;
+  }
+
+  /** Agent: klient buyurtmasini rad etadi (cancelled) */
+  async rejectClientOrder(orderId: string, distributorId: string) {
+    const order = await this.repo.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.distributorId !== distributorId) {
+      throw new ForbiddenException('Not your order');
+    }
+    if (order.source !== OrderSource.CLIENT) {
+      throw new BadRequestException('Only client orders can be rejected this way');
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Order is not pending');
+    }
+    order.status = OrderStatus.CANCELLED;
+    const saved = await this.repo.save(order);
+    this.notifyClientOrderStatus(
+      order.clientId,
+      'Buyurtma qaytarildi',
+      'Agent buyurtmangizni rad etdi',
+      order.id,
+    ).catch(() => {});
+    return saved;
+  }
+
+  private async notifyClientOrderStatus(
+    clientId: string,
+    title: string,
+    body: string,
+    orderId: string,
+  ) {
+    const user = await this.userRepo.findOne({ where: { clientId } });
+    if (!user) return;
+    await this.notifications.sendToUser(
+      user.id,
+      title,
+      body,
+      NotificationType.ORDER,
+      { orderId, type: 'order_status' },
+    );
   }
 
   async findForAdmin(companyId?: string, limit = 500) {
@@ -109,6 +250,7 @@ export class OrdersService {
           distributorId: order.distributorId,
           visitId: order.visitId,
           status: order.status,
+          source: order.source,
           totalAmount: Number(order.totalAmount),
           items: order.items,
           isOfflineCreated: order.isOfflineCreated,

@@ -6,11 +6,12 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-import { OrderStatus } from '../../common/enums';
+import { OrderStatus, OrderSource } from '../../common/enums';
 
 @Entity('orders')
 @Index(['distributorId', 'createdAt'])
 @Index(['clientId'])
+@Index(['distributorId', 'source', 'status'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -29,6 +30,10 @@ export class Order {
 
   @Column({ type: 'varchar', default: OrderStatus.PENDING })
   status: OrderStatus;
+
+  /** agent = vizit/savat; client = klient ilovasidan */
+  @Column({ type: 'varchar', default: OrderSource.AGENT })
+  source: OrderSource;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: number;

@@ -36,7 +36,7 @@ import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 import { AdminSystemUsersTab } from '../components/admin/tabs/AdminSystemUsersTab';
 import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
 import { useMessagesUnreadCount } from '../hooks/useMessagesUnread';
-import { api, type AdminDashboardData } from '../api/client';
+import { api, connectTracking, type AdminDashboardData } from '../api/client';
 import { clientIdHash } from '../utils/clientApi';
 import { hasPageAccess } from '../utils/pagePermissions';
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
@@ -64,6 +64,13 @@ export default function AdminPanel() {
   const messagesUnread = useMessagesUnreadCount(isLoggedIn && !!selectedCompany);
   const [clientsForBell, setClientsForBell] = useState<ClientRow[]>([]);
   const [dashData, setDashData] = useState<AdminDashboardData | null>(null);
+  const [liveLocations, setLiveLocations] = useState<Record<string, {
+    lat: number;
+    lng: number;
+    online: boolean;
+    lastSeen: string;
+    name?: string;
+  }>>({});
 
   const companyBtnRef = useRef<HTMLButtonElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -139,11 +146,78 @@ export default function AdminPanel() {
     }
     const ids = viewOrg === 'all' ? Array.from(selectedCompanyIds) : [viewOrg];
     let cancelled = false;
-    api.getAdminDashboard(ids)
-      .then(data => { if (!cancelled) setDashData(data); })
-      .catch(() => { if (!cancelled) setDashData(null); });
-    return () => { cancelled = true; };
+
+    const load = () => {
+      api.getAdminDashboard(ids)
+        .then(data => { if (!cancelled) setDashData(data); })
+        .catch(() => { if (!cancelled) setDashData(null); });
+    };
+
+    load();
+    // Agent GPS har 10 soniyada yangilanadi
+    const interval = window.setInterval(load, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isLoggedIn, selectedCompanyIds, viewOrg]);
+
+  // Jonli GPS WebSocket — agent ilovadan yuborgan joylashuv
+  useEffect(() => {
+    if (!isLoggedIn || !localStorage.getItem('api_access_token')) return;
+    let socket: { disconnect: () => void } | null = null;
+    let cancelled = false;
+
+    connectTracking({
+      onLocation: (data) => {
+        if (!data.distributorId || data.latitude == null || data.longitude == null) return;
+        setLiveLocations(prev => ({
+          ...prev,
+          [data.distributorId]: {
+            lat: data.latitude,
+            lng: data.longitude,
+            online: true,
+            lastSeen: 'hozir',
+          },
+        }));
+      },
+      onOnline: (d) => {
+        if (!d.distributorId) return;
+        setLiveLocations(prev => ({
+          ...prev,
+          [d.distributorId!]: {
+            ...(prev[d.distributorId!] ?? { lat: 0, lng: 0 }),
+            online: true,
+            lastSeen: 'hozir',
+            lat: prev[d.distributorId!]?.lat ?? 0,
+            lng: prev[d.distributorId!]?.lng ?? 0,
+          },
+        }));
+      },
+      onOffline: (d) => {
+        if (!d.distributorId) return;
+        setLiveLocations(prev => {
+          const cur = prev[d.distributorId!];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [d.distributorId!]: { ...cur, online: false, lastSeen: 'hozirgina' },
+          };
+        });
+      },
+    }).then(s => {
+      if (cancelled) {
+        s?.disconnect();
+        return;
+      }
+      socket = s;
+    });
+
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+    };
+  }, [isLoggedIn]);
 
   if (!isLoggedIn || !selectedCompany) return null;
 
@@ -231,19 +305,64 @@ export default function AdminPanel() {
   const aggSalesChartWeek = dashData?.salesChart?.week  ?? buildOrgChart('week',  activeIds);
   const aggSalesChartDay  = dashData?.salesChart?.day   ?? buildOrgChart('day',   activeIds);
 
-  const activeMapEmployees: EmployeeMarker[] = dashData
-    ? dashData.employeeLocations.map(e => ({
-        id: clientIdHash(e.distributorId),
-        name: e.name,
-        avatar: e.avatar,
-        role: e.role,
-        online: e.online,
-        lastSeen: e.lastSeen,
-        lat: e.lat,
-        lng: e.lng,
-        orgId: e.orgId,
-      }))
-    : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
+  const activeMapEmployees: EmployeeMarker[] = (() => {
+    const base: EmployeeMarker[] = dashData
+      ? dashData.employeeLocations.map(e => ({
+          id: clientIdHash(e.distributorId),
+          name: e.name,
+          avatar: e.avatar,
+          role: e.role,
+          online: e.online,
+          lastSeen: e.lastSeen,
+          lat: e.lat,
+          lng: e.lng,
+          orgId: e.orgId,
+          distributorId: e.distributorId,
+        }))
+      : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
+
+    const byDist = new Map(base.filter(e => e.distributorId).map(e => [e.distributorId!, e]));
+
+    for (const [distributorId, live] of Object.entries(liveLocations)) {
+      if (!Number.isFinite(live.lat) || !Number.isFinite(live.lng) || (live.lat === 0 && live.lng === 0)) {
+        const existing = byDist.get(distributorId);
+        if (existing) {
+          byDist.set(distributorId, { ...existing, online: live.online, lastSeen: live.lastSeen });
+        }
+        continue;
+      }
+      const existing = byDist.get(distributorId);
+      if (existing) {
+        byDist.set(distributorId, {
+          ...existing,
+          lat: live.lat,
+          lng: live.lng,
+          online: live.online,
+          lastSeen: live.lastSeen,
+        });
+      } else {
+        byDist.set(distributorId, {
+          id: clientIdHash(distributorId),
+          name: live.name ?? 'Agent',
+          avatar: (live.name ?? 'A').slice(0, 2).toUpperCase(),
+          role: 'agent',
+          online: live.online,
+          lastSeen: live.lastSeen,
+          lat: live.lat,
+          lng: live.lng,
+          distributorId,
+        });
+      }
+    }
+
+    // Live bo'lmagan base markerlar ham qolsin
+    const merged = [...byDist.values()];
+    for (const e of base) {
+      if (e.distributorId && byDist.has(e.distributorId)) continue;
+      if (!e.distributorId) merged.push(e);
+    }
+    return merged;
+  })();
 
   const mapCenterInfo = (() => {
     if (activeMapEmployees.length > 0) {

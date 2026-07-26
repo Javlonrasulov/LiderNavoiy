@@ -95,6 +95,29 @@ object AppStrings {
     fun clientsList(lang: AppLanguage) = tr(lang, "Klientlar ro'yxati", "Клиентлар рўйхати", "Список клиентов")
     fun visitCount(lang: AppLanguage) = tr(lang, "Tashriflar soni", "Ташрифлар сони", "Количество визитов")
     fun products(lang: AppLanguage) = tr(lang, "Mahsulotlar", "Маҳсулотлар", "Товары")
+    fun clientOrders(lang: AppLanguage) = tr(lang, "Klient buyurtmalari", "Клиент буюртмалари", "Заказы клиентов")
+    fun clientOrdersTitle(lang: AppLanguage) = clientOrders(lang)
+    fun noClientOrders(lang: AppLanguage) = tr(
+        lang,
+        "Yangi klient buyurtmasi yo'q",
+        "Янги клиент буюртмаси йўқ",
+        "Нет новых заказов клиентов",
+    )
+    fun sendToWarehouse(lang: AppLanguage) = tr(lang, "Skladga yuborish", "Складга юбориш", "На склад")
+    fun rejectOrder(lang: AppLanguage) = tr(lang, "Qaytarish", "Қайтариш", "Отклонить")
+    fun orderSentToWarehouse(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtma skladga yuborildi",
+        "Буюртма складга юборилди",
+        "Заказ отправлен на склад",
+    )
+    fun orderRejected(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtma qaytarildi",
+        "Буюртма қайтарилди",
+        "Заказ отклонён",
+    )
+    fun clientFallback(lang: AppLanguage) = tr(lang, "Klient", "Клиент", "Клиент")
     fun returns(lang: AppLanguage) = tr(lang, "Jami qayt.olish", "Жами қайт.олиш", "Общий возврат")
     fun cashPayments(lang: AppLanguage) = tr(lang, "To'lovlar - naqd", "Тўловлар - нақд", "Платежи - наличные")
     fun clickPayments(lang: AppLanguage) = tr(lang, "To'lovlar - klik", "Тўловлар - клик", "Платежи - клик")
@@ -208,7 +231,7 @@ object AppStrings {
     fun openNavigator(lang: AppLanguage) = tr(lang, "Navigator ochish", "Навигатор очиш", "Открыть навигатор")
     fun viewImage(lang: AppLanguage) = tr(lang, "Rasmi", "Расми", "Фото")
 
-    fun loginTitle(lang: AppLanguage) = "Lider Navoiy"
+    fun loginTitle(lang: AppLanguage) = "Lider Navoiy Agent"
     fun loginSubtitle(lang: AppLanguage) = tr(lang, "Agent kirish", "Агент кириш", "Вход агента")
     fun loginField(lang: AppLanguage) = "Login"
     fun password(lang: AppLanguage) = tr(lang, "Parol", "Парол", "Пароль")
@@ -227,6 +250,36 @@ object AppStrings {
         "Логин ва паролни киритинг",
         "Введите логин и пароль",
     )
+    fun errorGpsDisabled(lang: AppLanguage) = tr(
+        lang,
+        "GPS o'chirilgan. Ilovaga kirish uchun GPS ni yoqing",
+        "GPS ўчирилган. Иловага кириш учун GPS ни ёқинг",
+        "GPS выключен. Включите GPS для входа в приложение",
+    )
+    fun errorLocationPermissionRequired(lang: AppLanguage) = tr(
+        lang,
+        "Joylashuv ruxsatini bering — GPS kuzatuv majburiy",
+        "Жойлашув рухсатини беринг — GPS кузатув мажбурий",
+        "Разрешите доступ к геолокации — GPS обязателен",
+    )
+    fun enableGpsButton(lang: AppLanguage) = tr(
+        lang,
+        "GPS sozlamalarini ochish",
+        "GPS созламаларини очиш",
+        "Открыть настройки GPS",
+    )
+    fun locationRequiredTitle(lang: AppLanguage) = tr(
+        lang,
+        "GPS talab qilinadi",
+        "GPS талаб қилинади",
+        "Требуется GPS",
+    )
+    fun locationRequiredContinue(lang: AppLanguage) = tr(
+        lang,
+        "Tekshirish va davom etish",
+        "Текшириш ва давом этиш",
+        "Проверить и продолжить",
+    )
     fun errorProductsLoadFailed(lang: AppLanguage) = tr(
         lang,
         "Mahsulotlar yuklanmadi. Internet yoki serverni tekshiring",
@@ -243,6 +296,8 @@ object AppStrings {
     fun apiError(lang: AppLanguage, key: String): String = when (key) {
         "invalid_credentials" -> errorInvalidCredentials(lang)
         "credentials_required" -> errorCredentialsRequired(lang)
+        "gps_disabled" -> errorGpsDisabled(lang)
+        "location_permission_denied" -> errorLocationPermissionRequired(lang)
         "invalid_current_password" -> errorInvalidCurrentPassword(lang)
         "password_mismatch" -> errorPasswordMismatch(lang)
         "password_too_short" -> errorPasswordTooShort(lang)

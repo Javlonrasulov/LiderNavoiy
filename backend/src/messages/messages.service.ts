@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
@@ -73,7 +74,18 @@ export class MessagesService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notifications: NotificationsService,
+    private readonly config: ConfigService,
   ) {}
+
+  private publicFileUrl(path: string | null | undefined): string | null {
+    if (!path) return null;
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    const normalized = path.startsWith('/') ? path : `/${path}`;
+    const base = this.config.get<string>('PUBLIC_URL')?.replace(/\/$/, '');
+    // PUBLIC_URL yo'q bo'lsa relative qoldiramiz — client o'zi API host bilan yig'adi
+    if (!base) return normalized;
+    return `${base}${normalized}`;
+  }
 
   private pairIds(a: string, b: string): [string, string] {
     return a < b ? [a, b] : [b, a];
@@ -106,13 +118,14 @@ export class MessagesService {
   }
 
   async getContacts(userId: string, _companyId?: string): Promise<ChatUserDto[]> {
-    const users = await this.userRepo.find({
-      where: { isActive: true },
-      order: { fullName: 'ASC' },
-    });
-    return users
-      .filter((u) => u.id !== userId)
-      .map((u) => this.toUserDto(u));
+    // Barcha rollardagi faol foydalanuvchilar (admin, menejer, agent, klient)
+    const users = await this.userRepo
+      .createQueryBuilder('u')
+      .where('u.isActive = :active', { active: true })
+      .andWhere('u.id != :userId', { userId })
+      .orderBy('u.fullName', 'ASC')
+      .getMany();
+    return users.map((u) => this.toUserDto(u));
   }
 
   async findOrCreateConversation(userId: string, otherUserId: string): Promise<ConversationDto> {
@@ -201,12 +214,13 @@ export class MessagesService {
   ): Promise<MessageDto> {
     const conv = await this.assertParticipant(conversationId, senderId);
     const trimmed = (text ?? '').trim();
+    const hasAttachment = Boolean(attachment?.url && attachment?.messageType);
 
-    if (!trimmed && !attachment) {
+    if (!trimmed && !hasAttachment) {
       throw new BadRequestException('Message text or attachment is required');
     }
 
-    const messageType = attachment?.messageType ?? 'text';
+    const messageType = hasAttachment ? attachment!.messageType : 'text';
 
     const msg = await this.msgRepo.save(
       this.msgRepo.create({
@@ -214,10 +228,10 @@ export class MessagesService {
         senderId,
         text: trimmed,
         messageType,
-        fileUrl: attachment?.url ?? null,
-        fileName: attachment?.fileName ?? null,
-        fileMime: attachment?.mimeType ?? null,
-        fileSize: attachment?.fileSize ?? null,
+        fileUrl: hasAttachment ? attachment!.url : null,
+        fileName: hasAttachment ? attachment!.fileName : null,
+        fileMime: hasAttachment ? attachment!.mimeType : null,
+        fileSize: hasAttachment ? attachment!.fileSize : null,
         isRead: false,
       }),
     );
@@ -373,7 +387,7 @@ export class MessagesService {
       isRead: m.isRead,
       createdAt: m.createdAt.toISOString(),
       messageType: m.messageType ?? 'text',
-      fileUrl: m.fileUrl,
+      fileUrl: this.publicFileUrl(m.fileUrl),
       fileName: m.fileName,
       fileMime: m.fileMime,
       fileSize: m.fileSize,

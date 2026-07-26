@@ -35,6 +35,7 @@ data class DashboardStatsDto(
     val totalSales: Double,
     val clientProgressPercent: Float,
     val visitProgressPercent: Float,
+    val pendingClientOrders: Int = 0,
 )
 
 data class LocationPointDto(
@@ -171,6 +172,12 @@ data class OrderDto(
     val createdAt: String,
     @JsonAdapter(FlexibleDoubleAdapter::class) val totalAmount: Double = 0.0,
     val items: List<OrderItemDto> = emptyList(),
+    val status: String? = null,
+    val source: String? = null,
+    val clientName: String? = null,
+    val clientCode: String? = null,
+    val clientAddress: String? = null,
+    val updatedAt: String? = null,
 )
 
 data class CreateVisitRequest(

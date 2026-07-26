@@ -10,25 +10,29 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.data.repository.OrderRepository
+import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.domain.model.CartItem
 import javax.inject.Inject
 
 enum class PaymentType { CASH, CARD, TRANSFER, CREDIT }
 
 data class CartUiState(
-    val address: String = "Toshkent, Yunusobod, Amir Temur 108",
+    val address: String = "",
     val note: String = "",
     val paymentType: PaymentType = PaymentType.CASH,
     val checkingOut: Boolean = false,
     val checkoutSuccess: Boolean = false,
+    val errorKey: String? = null,
 )
 
 @HiltViewModel
 class CartViewModel @Inject constructor(
     private val cartRepository: CartRepository,
     private val orderRepository: OrderRepository,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
     val items: StateFlow<List<CartItem>> = cartRepository.items
@@ -37,22 +41,42 @@ class CartViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CartUiState())
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            val profile = profileRepository.getProfile()
+            val address = profile?.address?.takeIf { it.isNotBlank() }.orEmpty()
+            if (address.isNotEmpty()) {
+                _uiState.update { it.copy(address = address) }
+            }
+        }
+    }
+
     fun updateQty(productId: String, qty: Double) = cartRepository.updateQty(productId, qty)
     fun removeItem(productId: String) = cartRepository.removeItem(productId)
-    fun onAddressChange(value: String) = _uiState.update { it.copy(address = value) }
-    fun onNoteChange(value: String) = _uiState.update { it.copy(note = value) }
-    fun onPaymentTypeChange(type: PaymentType) = _uiState.update { it.copy(paymentType = type) }
+    fun onAddressChange(value: String) = _uiState.update { it.copy(address = value, errorKey = null) }
+    fun onNoteChange(value: String) = _uiState.update { it.copy(note = value, errorKey = null) }
+    fun onPaymentTypeChange(type: PaymentType) = _uiState.update { it.copy(paymentType = type, errorKey = null) }
+    fun clearError() = _uiState.update { it.copy(errorKey = null) }
 
     fun total(): Double = cartRepository.totalAmount()
 
     fun checkout(onSuccess: () -> Unit) {
+        if (_uiState.value.checkingOut) return
+        val cartItems = cartRepository.items.value
+        if (cartItems.isEmpty()) {
+            _uiState.update { it.copy(errorKey = "cart_empty") }
+            return
+        }
         viewModelScope.launch {
-            _uiState.update { it.copy(checkingOut = true) }
-            val result = orderRepository.createOrder(cartRepository.items.value)
-            _uiState.update { it.copy(checkingOut = false, checkoutSuccess = result.isSuccess) }
+            _uiState.update { it.copy(checkingOut = true, errorKey = null, checkoutSuccess = false) }
+            val result = orderRepository.createOrder(cartItems)
             if (result.isSuccess) {
                 cartRepository.clear()
+                _uiState.update { it.copy(checkingOut = false, checkoutSuccess = true) }
                 onSuccess()
+            } else {
+                val key = result.exceptionOrNull()?.message ?: ApiErrorMapper.SAVE_FAILED
+                _uiState.update { it.copy(checkingOut = false, checkoutSuccess = false, errorKey = key) }
             }
         }
     }

@@ -29,7 +29,7 @@ import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -66,7 +66,7 @@ fun OrderSummaryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageBg)
-            .padding(bottom = BottomNavHeight),
+            .padding(bottom = bottomNavHeight()),
     ) {
         OrderSalesHeader(
             isDark = isDark,

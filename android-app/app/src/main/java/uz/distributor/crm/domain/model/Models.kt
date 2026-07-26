@@ -26,6 +26,7 @@ data class DashboardStats(
     val totalSales: Double = 0.0,
     val clientProgressPercent: Float = 0f,
     val visitProgressPercent: Float = 0f,
+    val pendingClientOrders: Int = 0,
 )
 
 data class LocationPoint(

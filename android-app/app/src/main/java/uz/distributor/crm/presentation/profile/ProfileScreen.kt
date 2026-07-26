@@ -29,7 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.BottomNavHeight
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -140,7 +140,7 @@ fun ProfileScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 20.dp)
-                    .padding(bottom = BottomNavHeight),
+                    .padding(bottom = bottomNavHeight()),
             ) {
                 Text(
                     AppStrings.profileInfoSection(lang),

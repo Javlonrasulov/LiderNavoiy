@@ -76,7 +76,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!userId || !data?.conversationId) {
       return { error: 'Invalid message' };
     }
-    if (!data.text?.trim() && !data.attachment) {
+    if (!data.text?.trim() && !data.attachment?.url) {
       return { error: 'Invalid message' };
     }
 

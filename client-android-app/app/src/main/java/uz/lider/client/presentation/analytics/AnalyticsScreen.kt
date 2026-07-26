@@ -51,7 +51,7 @@ import uz.lider.client.presentation.components.localized
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
-import uz.lider.client.presentation.navigation.ClientBottomNavHeight
+import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
@@ -88,7 +88,7 @@ fun AnalyticsScreen(
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        bottom = ClientBottomNavHeight + 16.dp,
+                        bottom = clientBottomContentPadding(),
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {

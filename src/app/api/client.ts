@@ -837,19 +837,29 @@ export interface ChatConversation {
 }
 
 // ─── WebSocket tracking ───
-export function connectTracking(onLocation: (data: LocationPoint & { distributorId: string }) => void) {
+export type TrackingLocationEvent = LocationPoint & {
+  distributorId: string;
+  receivedAt?: string;
+};
+
+export async function connectTracking(handlers: {
+  onLocation: (data: TrackingLocationEvent) => void;
+  onOnline?: (data: { distributorId?: string; timestamp?: string }) => void;
+  onOffline?: (data: { distributorId?: string; timestamp?: string }) => void;
+}) {
   const token = getToken();
   if (!token) return null;
 
-  // Dynamic import to avoid bundling issues when socket.io not needed
-  import('socket.io-client').then(({ io }) => {
-    const socket = io(`${WS_BASE}/tracking`, { auth: { token } });
-    socket.on('location:live', onLocation);
-    socket.on('distributor:online', (d) => console.log('Online:', d));
-    socket.on('distributor:offline', (d) => console.log('Offline:', d));
-    return socket;
+  const { io } = await import('socket.io-client');
+  const socket = io(`${WS_BASE}/tracking`, {
+    auth: { token },
+    transports: ['websocket', 'polling'],
+    reconnection: true,
   });
-  return null;
+  socket.on('location:live', handlers.onLocation);
+  if (handlers.onOnline) socket.on('distributor:online', handlers.onOnline);
+  if (handlers.onOffline) socket.on('distributor:offline', handlers.onOffline);
+  return socket;
 }
 
 // ─── WebSocket messages ───
@@ -931,10 +941,24 @@ export async function compressChatImage(file: File): Promise<File> {
   });
 }
 
-export const UPLOADS_BASE = import.meta.env.VITE_UPLOADS_URL || WS_BASE;
+/** Chat / upload fayllari — API host bilan bir xil (mahsulot rasmlari kabi) */
+export function getUploadsBase(): string {
+  const explicit = import.meta.env.VITE_UPLOADS_URL as string | undefined;
+  if (explicit) return explicit.replace(/\/$/, '');
+  if (import.meta.env.VITE_WS_URL) {
+    return String(import.meta.env.VITE_WS_URL).replace(/\/$/, '');
+  }
+  // VITE_API_URL: https://host/api/v1 → https://host
+  return API_BASE.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '') || 'http://localhost:3000';
+}
+
+export const UPLOADS_BASE = getUploadsBase();
 
 export function resolveFileUrl(url: string | null | undefined): string {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `${UPLOADS_BASE}${url}`;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${UPLOADS_BASE}${path}`;
 }

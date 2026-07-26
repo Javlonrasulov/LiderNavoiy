@@ -16,6 +16,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import uz.distributor.crm.R
 import uz.distributor.crm.data.local.AgentLocationHolder
+import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.repository.LocationRepository
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.presentation.MainActivity
@@ -26,6 +27,7 @@ class LocationTrackingService : Service() {
 
     @Inject lateinit var locationRepository: LocationRepository
     @Inject lateinit var agentLocationHolder: AgentLocationHolder
+    @Inject lateinit var trackingSocket: TrackingSocketManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var fusedClient: FusedLocationProviderClient
@@ -71,6 +73,7 @@ class LocationTrackingService : Service() {
 
     private fun startTracking() {
         dismissStaleNotifications()
+        trackingSocket.connect()
 
         // Android FGS: avval qisqa foreground, keyin bildirishnomani olib tashlash (GPS davom etadi)
         val notification = buildNotification()

@@ -147,6 +147,21 @@ fun CartScreen(
                         item { NoteCard(state.note, viewModel::onNoteChange) }
                         item { PaymentCard(state.paymentType, viewModel::onPaymentTypeChange) }
                         item { SummaryCard(total) }
+                        state.errorKey?.let { errorKey ->
+                            item {
+                                Text(
+                                    localized(errorKey),
+                                    color = LiquidGlass.Rose,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .liquidGlassThemed()
+                                        .clickable { viewModel.clearError() }
+                                        .padding(14.dp),
+                                )
+                            }
+                        }
                     }
                     Box(
                         Modifier
