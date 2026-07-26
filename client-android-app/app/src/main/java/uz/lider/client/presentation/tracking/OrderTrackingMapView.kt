@@ -3,13 +3,21 @@ package uz.lider.client.presentation.tracking
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -18,7 +26,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import org.osmdroid.views.overlay.infowindow.InfoWindow
 import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
@@ -55,7 +62,6 @@ private fun applyCamera(map: MapView, points: List<GeoPoint>) {
                 abs(safePoints.maxOf { it.latitude } - safePoints.minOf { it.latitude }),
                 abs(safePoints.maxOf { it.longitude } - safePoints.minOf { it.longitude }),
             )
-            // Juda katta bounding box (okean) — Navoiyga tushamiz
             if (span > 1.5) {
                 controller.setCenter(NAVOIY)
                 controller.setZoom(NAVOIY_ZOOM)
@@ -82,12 +88,19 @@ private fun applyCamera(map: MapView, points: List<GeoPoint>) {
     }
 }
 
+private fun disableMarkerBubble(marker: Marker) {
+    runCatching { marker.setInfoWindow(null) }
+    runCatching { marker.infoWindow = null }
+}
+
 private fun updateFleetMap(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     interactive: Boolean,
     compactMarkers: Boolean,
+    selectedStoreOrderId: String?,
     onVehicleClick: (LiveMapVehicle) -> Unit,
+    onStoreClick: (StoreCallout) -> Unit,
 ) {
     map.setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
     map.setMultiTouchControls(interactive)
@@ -100,8 +113,7 @@ private fun updateFleetMap(
     val cameraPoints = ArrayList<GeoPoint>()
     val ctx = map.context
     val storeSizeDp = if (compactMarkers) 40 else 48
-    val truckSizeDp = if (compactMarkers) 32 else 40
-    val storeInfoWindow = GlassStoreInfoWindow(map)
+    val truckSizeDp = if (compactMarkers) 40 else 48
     val idleStoreIcon = createDeliveryPinDrawable(
         context = ctx,
         sizeDp = storeSizeDp,
@@ -114,9 +126,6 @@ private fun updateFleetMap(
         status = StoreMarkerStatus.SELECTED,
         primaryColor = 0xFF3B82F6.toInt(),
     )
-
-    // Close leftover bubbles from previous update
-    InfoWindow.closeAllInfoWindowsOn(map)
 
     vehicles.forEach { vehicle ->
         vehicle.orders.forEach { order ->
@@ -162,24 +171,18 @@ private fun updateFleetMap(
                 val storeLabel = order.storeName.trim().ifBlank {
                     order.tracking.deliveryAddress?.trim().orEmpty()
                 }.ifBlank { "Magazin" }
+                val callout = StoreCallout(name = storeLabel, orderId = order.orderId)
+                val isSelected = selectedStoreOrderId != null && selectedStoreOrderId == order.orderId
                 Marker(map).apply {
                     position = point
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    icon = idleStoreIcon
-                    title = storeLabel
-                    relatedObject = StoreCallout(name = storeLabel, orderId = order.orderId)
-                    infoWindow = storeInfoWindow
+                    icon = if (isSelected) selectedStoreIcon else idleStoreIcon
+                    relatedObject = callout
+                    disableMarkerBubble(this)
                     setOnMarkerClickListener { marker, mapView ->
-                        InfoWindow.closeAllInfoWindowsOn(mapView)
-                        // Reset other store icons
-                        mapView.overlays.filterIsInstance<Marker>().forEach { m ->
-                            if (m.relatedObject is StoreCallout) {
-                                m.icon = idleStoreIcon
-                            }
-                        }
-                        marker.icon = selectedStoreIcon
-                        marker.showInfoWindow()
-                        mapView.controller.animateTo(marker.position)
+                        val payload = marker.relatedObject as? StoreCallout ?: callout
+                        onStoreClick(payload)
+                        runCatching { mapView.controller.animateTo(marker.position) }
                         mapView.invalidate()
                         true
                     }
@@ -202,16 +205,11 @@ private fun updateFleetMap(
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 icon = truckIcon
                 relatedObject = vehicle
-                setInfoWindow(null)
+                disableMarkerBubble(this)
                 setOnMarkerClickListener { marker, mapView ->
-                    InfoWindow.closeAllInfoWindowsOn(mapView)
-                    mapView.overlays.filterIsInstance<Marker>().forEach { m ->
-                        if (m.relatedObject is StoreCallout) {
-                            m.icon = idleStoreIcon
-                        }
-                    }
                     val v = marker.relatedObject as? LiveMapVehicle
                     if (v != null) onVehicleClick(v)
+                    mapView.invalidate()
                     true
                 }
             }.also { overlays.add(it) }
@@ -242,6 +240,7 @@ fun OrderTrackingMapView(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapRef = remember { mutableStateOf<MapView?>(null) }
     val clickHandler = rememberUpdatedState(onVehicleClick)
+    var selectedStore by remember { mutableStateOf<StoreCallout?>(null) }
 
     DisposableEffect(lifecycle) {
         fun startMap() = mapRef.value?.onResume()
@@ -261,55 +260,73 @@ fun OrderTrackingMapView(
         }
     }
 
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            MapView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                setMultiTouchControls(interactive)
-                isTilesScaledToDpi = true
-                setHorizontalMapRepetitionEnabled(false)
-                setVerticalMapRepetitionEnabled(false)
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
-                minZoomLevel = 5.0
-                maxZoomLevel = 19.0
-                setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
-                controller.setZoom(NAVOIY_ZOOM)
-                controller.setCenter(NAVOIY)
-                mapRef.value = this
-                post {
-                    onResume()
-                    applyCamera(this, emptyList())
+    Box(modifier = modifier) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                MapView(ctx).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                    setMultiTouchControls(interactive)
+                    isTilesScaledToDpi = true
+                    setHorizontalMapRepetitionEnabled(false)
+                    setVerticalMapRepetitionEnabled(false)
+                    setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                    minZoomLevel = 5.0
+                    maxZoomLevel = 19.0
+                    setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
+                    controller.setZoom(NAVOIY_ZOOM)
+                    controller.setCenter(NAVOIY)
+                    mapRef.value = this
+                    post {
+                        onResume()
+                        applyCamera(this, emptyList())
+                    }
                 }
-            }
-        },
-        update = { map ->
-            if (map.layoutParams == null ||
-                map.layoutParams.width != ViewGroup.LayoutParams.MATCH_PARENT ||
-                map.layoutParams.height != ViewGroup.LayoutParams.MATCH_PARENT
-            ) {
-                map.layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+            },
+            update = { map ->
+                if (map.layoutParams == null ||
+                    map.layoutParams.width != ViewGroup.LayoutParams.MATCH_PARENT ||
+                    map.layoutParams.height != ViewGroup.LayoutParams.MATCH_PARENT
+                ) {
+                    map.layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                }
+                updateFleetMap(
+                    map = map,
+                    vehicles = vehicles,
+                    interactive = interactive,
+                    compactMarkers = compactMarkers,
+                    selectedStoreOrderId = selectedStore?.orderId,
+                    onVehicleClick = {
+                        selectedStore = null
+                        clickHandler.value(it)
+                    },
+                    onStoreClick = { selectedStore = it },
                 )
-            }
-            updateFleetMap(
-                map = map,
-                vehicles = vehicles,
-                interactive = interactive,
-                compactMarkers = compactMarkers,
-                onVehicleClick = { clickHandler.value(it) },
+            },
+            onRelease = { map ->
+                map.onPause()
+                map.onDetach()
+                mapRef.value = null
+            },
+        )
+
+        selectedStore?.let { callout ->
+            GlassStoreNameBubble(
+                name = callout.name,
+                onDismiss = { selectedStore = null },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
             )
-        },
-        onRelease = { map ->
-            map.onPause()
-            map.onDetach()
-            mapRef.value = null
-        },
-    )
+        }
+    }
 }
 
 /** Single-order convenience wrapper (tracking screen). */
