@@ -98,6 +98,7 @@ export class AppUserResponseDto {
   username: string;
   fullName: string;
   role: UserRole;
+  position?: string | null;
   isActive: boolean;
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;

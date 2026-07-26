@@ -69,7 +69,7 @@ export class UsersService {
       position: dto.position,
     });
 
-    return this.toDto(saved);
+    return this.toDto(await this.findAppUserOrFail(saved.id));
   }
 
   async update(id: string, dto: UpdateAppUserDto): Promise<AppUserResponseDto> {
@@ -95,7 +95,7 @@ export class UsersService {
       position: dto.position,
     });
 
-    return this.toDto(saved);
+    return this.toDto(await this.findAppUserOrFail(saved.id));
   }
 
   private async upsertDistributorProfile(
@@ -285,6 +285,15 @@ export class UsersService {
     }
   }
 
+  private async findAppUserOrFail(id: string): Promise<User> {
+    const user = await this.userRepo.findOne({
+      where: { id },
+      relations: ['distributorProfile'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
   private toDto(user: User, onlineIds: Set<string> = new Set()): AppUserResponseDto {
     const profile = user.distributorProfile;
     const distributorId = profile?.id;
@@ -304,6 +313,7 @@ export class UsersService {
       username: user.username,
       fullName: user.fullName,
       role: user.role,
+      position: profile?.position ?? null,
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,

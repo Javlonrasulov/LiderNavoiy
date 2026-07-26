@@ -39,6 +39,7 @@ export interface AppUserRecord {
   username: string;
   fullName: string;
   role: string;
+  position?: string | null;
   isActive: boolean;
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;

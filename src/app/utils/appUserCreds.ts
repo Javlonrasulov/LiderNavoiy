@@ -54,9 +54,50 @@ export interface AppUserListRow {
   isOnline?: boolean;
 }
 
-export function mapBackendRoleToDisplay(role: string): string {
-  if (role === 'manager') return 'Menedjer';
+export function isDeliveryHint(text?: string | null): boolean {
+  if (!text) return false;
+  const p = text.toLowerCase();
+  return (
+    p.includes('delivery') ||
+    p.includes('dostav') ||
+    p.includes('yetkaz') ||
+    p.includes('haydov') ||
+    p.includes('shofyor') ||
+    p.includes('водитель') ||
+    p.includes('достав') ||
+    p.includes('курьер')
+  );
+}
+
+export function isOfficeHint(text?: string | null): boolean {
+  if (!text) return false;
+  const p = text.toLowerCase();
+  return p.includes('office') || p.includes('ofis') || p.includes('офис');
+}
+
+/** Canonical display role stored in admin user rows (language-neutral Latin). */
+export function mapBackendRoleToDisplay(
+  role: string,
+  position?: string | null,
+  username?: string | null,
+): string {
+  if (role === 'manager') {
+    if (isOfficeHint(position)) return 'Ofis xodimi';
+    return 'Menedjer';
+  }
+  if (isDeliveryHint(position) || isDeliveryHint(username)) {
+    return 'Dostavkachi/Shofyor';
+  }
   return 'Savdo agenti';
+}
+
+export function mapAdminRoleToPosition(role: string): string {
+  if (role.includes('Dostav') || role.includes('Shofyor') || role.includes('Yetkaz')) {
+    return 'delivery';
+  }
+  if (role.includes('Ofis')) return 'office';
+  if (role.includes('Menedjer')) return 'manager';
+  return 'salesAgent';
 }
 
 export function formatLastActive(
@@ -94,7 +135,7 @@ export function appUserToRow(
     name: app.fullName,
     tg: '',
     lastAct: formatLastActive(app, t),
-    role: mapBackendRoleToDisplay(app.role),
+    role: mapBackendRoleToDisplay(app.role, app.position, app.username),
     status: app.isActive ? 'open' : 'closed',
     org: '',
     emp: app.fullName.length > 14 ? `${app.fullName.slice(0, 13)}...` : app.fullName,
@@ -173,8 +214,11 @@ export function appUserToSotrudnikRow(
   index: number,
   _t: Record<string, string>,
 ): SotrudnikRow {
-  const posKey = mapBackendRoleToPosKey(app.role);
-  const deptKey = posKey === 'salesAgent' ? 'sales' : 'office';
+  const posKey = mapBackendRoleToPosKey(app.role, app.position ?? distributor?.position, app.username);
+  const deptKey =
+    posKey === 'delivery' ? 'delivery' :
+    posKey === 'salesAgent' ? 'sales' :
+    'office';
 
   return {
     tabel: index,
@@ -197,9 +241,14 @@ export function mapPosKeyToBackend(posKey?: string): 'distributor' | 'manager' |
   return 'distributor';
 }
 
-export function mapBackendRoleToPosKey(role: string): string {
+export function mapBackendRoleToPosKey(
+  role: string,
+  position?: string | null,
+  username?: string | null,
+): string {
   if (role === 'manager') return 'manager';
   if (role === 'admin') return 'director';
+  if (isDeliveryHint(position) || isDeliveryHint(username)) return 'delivery';
   return 'salesAgent';
 }
 

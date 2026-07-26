@@ -9,6 +9,7 @@ import { api } from '../../../api/client';
 import {
   appUserToRow,
   mapAdminRoleToBackend,
+  mapAdminRoleToPosition,
   removeStoredAppPassword,
   storeAppPassword,
   translateApiError,
@@ -73,6 +74,7 @@ async function syncAppCredentials(
   const fullName = data.fio.trim() || data.xodim.trim();
   const isActive = data.status === userStatusOpenLabel(t);
   const role = mapAdminRoleToBackend(data.role);
+  const position = mapAdminRoleToPosition(data.role);
   const companyName = data.org.replace(/\.\.\.$/, '').trim() || undefined;
 
   if (!username) return existing?.backendUserId;
@@ -93,6 +95,7 @@ async function syncAppCredentials(
       role,
       companyName,
       isActive,
+      position,
     });
     storeAppPassword(username, password);
     return created.id;
@@ -104,6 +107,7 @@ async function syncAppCredentials(
     role,
     isActive,
     companyName,
+    position,
   };
   if (password) payload.password = password;
 
@@ -117,7 +121,7 @@ async function syncAppCredentials(
 
 function roleColor(role: string) {
   if (role.includes('Savdo'))                                  return { bg: 'rgba(99,102,241,0.13)',  text: '#818cf8' };
-  if (role.includes('Dostavka') || role.includes('Shofyor'))  return { bg: 'rgba(245,158,11,0.13)',  text: '#f59e0b' };
+  if (role.includes('Dostav') || role.includes('Shofyor') || role.includes('Yetkaz')) return { bg: 'rgba(245,158,11,0.13)',  text: '#f59e0b' };
   if (role.includes('Ofis'))                                   return { bg: 'rgba(59,130,246,0.13)',  text: '#60a5fa' };
   if (role.includes('Menedjer'))                               return { bg: 'rgba(168,85,247,0.13)',  text: '#c084fc' };
   return                                                              { bg: 'rgba(107,114,128,0.13)', text: '#9ca3af' };
