@@ -19,18 +19,38 @@ export class FirebaseAdminService implements OnModuleInit {
       return;
     }
 
-    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID');
-    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL');
+    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID')?.trim();
+    const clientEmail = this.config.get<string>('FIREBASE_CLIENT_EMAIL')?.trim();
     let privateKey = this.config.get<string>('FIREBASE_PRIVATE_KEY');
 
     if (!projectId || !clientEmail || !privateKey) {
       this.logger.warn(
-        'Firebase Admin SDK not configured. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY in .env',
+        `Firebase Admin SDK not configured. missing=` +
+          [
+            !projectId ? 'FIREBASE_PROJECT_ID' : null,
+            !clientEmail ? 'FIREBASE_CLIENT_EMAIL' : null,
+            !privateKey ? 'FIREBASE_PRIVATE_KEY' : null,
+          ]
+            .filter(Boolean)
+            .join(','),
       );
       return;
     }
 
-    privateKey = privateKey.replace(/\\n/g, '\n');
+    // Render / .env: qo‘shtirnoq, CRLF, literal \n ni tozalash
+    privateKey = privateKey
+      .trim()
+      .replace(/^"|"$/g, '')
+      .replace(/^'|'$/g, '')
+      .replace(/\\n/g, '\n')
+      .replace(/\r\n/g, '\n');
+
+    if (!privateKey.includes('BEGIN PRIVATE KEY')) {
+      this.logger.error(
+        'FIREBASE_PRIVATE_KEY invalid — PEM header topilmadi (BEGIN PRIVATE KEY)',
+      );
+      return;
+    }
 
     try {
       this.app = admin.initializeApp({
