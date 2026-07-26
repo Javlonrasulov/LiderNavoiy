@@ -151,13 +151,16 @@ export function backendStatusToTarozi(status: string): TaroziOrderStatus {
     case 'delivered':
     case 'on_way':
       return 'delivered';
-    case 'confirmed':
     case 'packing':
+      // Faqat tarozida «Yuborish» dan keyin — yuklashga tayyor
       return 'ready';
     case 'cancelled':
       return 'delivered'; // ko'rsatilmaydi (filterda)
+    case 'confirmed':
+    case 'pending':
+    case 'draft':
     default:
-      // pending / draft — «Qabul qilinganlar»
+      // confirmed = omborda, hali tarozida yig'ilmagan
       return 'pending';
   }
 }
@@ -231,4 +234,76 @@ export function sameCalendarDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear()
     && a.getMonth() === b.getMonth()
     && a.getDate() === b.getDate();
+}
+
+/** Tovar yuklash jadvali holati */
+export type OtgrUiStatus = 'process' | 'done' | 'cancelled';
+
+export interface OtgrApiRow {
+  id: string;
+  date: string;
+  num: number;
+  transport: string;
+  driver: string;
+  reys: number;
+  kolTT: number;
+  kol3k: number;
+  obrn: number;
+  neobr: number;
+  term: string;
+  otgr: number;
+  status: OtgrUiStatus;
+  summa: number;
+  ves: number;
+  exid: string;
+  direction: string;
+  timeOtgr: string;
+  author: string;
+  backendStatus: string;
+  deliveryDistributorId: string | null;
+  needsDriver: boolean;
+}
+
+/**
+ * packing = Tarozi «yuklashga tayyor» → Tovar yuklashda jarayonda
+ * on_way  = dostavchik biriktirilgan, mashinaga yuklangan
+ * delivered / cancelled — yakuniy
+ */
+export function backendOrderToOtgr(o: BackendOrder): OtgrApiRow | null {
+  if (o.status !== 'packing' && o.status !== 'on_way' && o.status !== 'delivered' && o.status !== 'cancelled') {
+    return null;
+  }
+  const orderDate = formatTashkentDate(o.createdAt);
+  const timeOtgr = o.status === 'packing'
+    ? '—'
+    : new Date(o.updatedAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' });
+  const status: OtgrUiStatus =
+    o.status === 'cancelled' ? 'cancelled'
+    : o.status === 'packing' ? 'process'
+    : 'done';
+  const itemCount = o.items?.length ?? 0;
+  return {
+    id: o.id,
+    date: orderDate,
+    num: orderNumFromId(o.id),
+    transport: o.deliveryName ? (o.companyName ?? '—') : '—',
+    driver: o.deliveryName ?? '—',
+    reys: 1,
+    kolTT: itemCount,
+    kol3k: itemCount,
+    obrn: o.status === 'packing' ? 0 : itemCount,
+    neobr: o.status === 'packing' ? itemCount : 0,
+    term: '0/0',
+    otgr: o.status === 'packing' ? 0 : 1,
+    status,
+    summa: Number(o.totalAmount) || 0,
+    ves: 0,
+    exid: o.client?.code ?? '—',
+    direction: o.client?.lineCode ?? '—',
+    timeOtgr,
+    author: o.agentName ?? '—',
+    backendStatus: o.status,
+    deliveryDistributorId: o.deliveryDistributorId ?? null,
+    needsDriver: o.status === 'packing' && !o.deliveryDistributorId,
+  };
 }

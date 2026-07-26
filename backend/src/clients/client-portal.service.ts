@@ -55,13 +55,61 @@ export class ClientPortalService {
     return {
       userId: distributor.user?.id ?? null,
       name,
+      // Delivery calls pass fallbackPosition='Dostavkachi' — prefer that over Agent role label
       position:
+        fallbackPosition?.trim() ||
         distributor.position?.trim() ||
-        this.roleToPosition(distributor.user?.role, fallbackPosition) ||
-        fallbackPosition ||
+        this.roleToPosition(distributor.user?.role) ||
         null,
       phone: distributor.phone?.trim() || null,
     };
+  }
+
+  /** Sales agent emas — alohida dostavkachi profilini qidiradi. */
+  private async findCompanyCourier(
+    companyId: string | null | undefined,
+    excludeDistributorId?: string | null,
+  ): Promise<DistributorProfile | null> {
+    const qb = this.distributorRepo
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.user', 'u')
+      .where('1=1');
+    if (companyId) {
+      qb.andWhere('d.companyId = :companyId', { companyId });
+    }
+    if (excludeDistributorId) {
+      qb.andWhere('d.id != :excludeId', { excludeId: excludeDistributorId });
+    }
+    qb.andWhere(
+      `(LOWER(COALESCE(d.position, '')) LIKE :p
+        OR LOWER(COALESCE(u.position, '')) LIKE :p
+        OR LOWER(COALESCE(u.username, '')) LIKE :p
+        OR LOWER(COALESCE(u.fullName, '')) LIKE :p)`,
+      { p: '%dostav%' },
+    );
+    qb.orderBy('d.updatedAt', 'DESC').take(1);
+    return (await qb.getOne()) ?? null;
+  }
+
+  private async resolveDeliveryDistributor(
+    order: { deliveryDistributorId: string | null },
+    client: Client,
+  ): Promise<DistributorProfile | null> {
+    const agentId = client.distributorId ?? null;
+    let deliveryId = order.deliveryDistributorId;
+
+    // Agentni dostavkachi qilib biriktirilgan bo‘lsa — kompaniya dostavkachisini olamiz
+    if (!deliveryId || (agentId && deliveryId === agentId)) {
+      const courier = await this.findCompanyCourier(client.companyId, agentId);
+      if (courier) deliveryId = courier.id;
+    }
+
+    if (!deliveryId) return null;
+
+    return this.distributorRepo.findOne({
+      where: { id: deliveryId },
+      relations: ['user'],
+    });
   }
 
   private async resolveClientDistributor(client: Client): Promise<DistributorProfile | null> {
@@ -103,7 +151,11 @@ export class ClientPortalService {
     const agent = this.contactFromDistributor(await this.resolveClientDistributor(client));
 
     const loadedOrder = await this.orderRepo.findOne({
-      where: { clientId: client.id, status: OrderStatus.CONFIRMED },
+      where: [
+        { clientId: client.id, status: OrderStatus.ON_WAY },
+        { clientId: client.id, status: OrderStatus.PACKING },
+        { clientId: client.id, status: OrderStatus.CONFIRMED },
+      ],
       order: { updatedAt: 'DESC' },
     });
 
@@ -113,11 +165,8 @@ export class ClientPortalService {
       position: string | null;
       phone: string | null;
     } | null = null;
-    if (loadedOrder?.deliveryDistributorId) {
-      const deliveryDistributor = await this.distributorRepo.findOne({
-        where: { id: loadedOrder.deliveryDistributorId },
-        relations: ['user'],
-      });
+    if (loadedOrder?.deliveryDistributorId || client.distributorId) {
+      const deliveryDistributor = await this.resolveDeliveryDistributor(loadedOrder ?? { deliveryDistributorId: null }, client);
       deliveryPerson = this.contactFromDistributor(deliveryDistributor, 'Dostavkachi');
     }
 
@@ -190,36 +239,50 @@ export class ClientPortalService {
         }
       | null = null;
 
-    if (order.deliveryDistributorId) {
-      const deliveryDistributor = await this.distributorRepo.findOne({
-        where: { id: order.deliveryDistributorId },
-        relations: ['user'],
-      });
+    if (order.deliveryDistributorId || client.distributorId) {
+      const deliveryDistributor = await this.resolveDeliveryDistributor(order, client);
       const contact = this.contactFromDistributor(deliveryDistributor, 'Dostavkachi');
-      if (contact) {
+      if (contact && deliveryDistributor) {
         let personLat: number | null = null;
         let personLng: number | null = null;
         let personLastAt: string | null = null;
 
-        try {
-          const live = await this.gpsService.getLastLocation(order.deliveryDistributorId);
-          personLat = live.latitude;
-          personLng = live.longitude;
-          personLastAt = live.recordedAt ?? null;
-        } catch {
-          if (
-            deliveryDistributor?.lastLatitude != null &&
-            deliveryDistributor?.lastLongitude != null
-          ) {
-            personLat = deliveryDistributor.lastLatitude;
-            personLng = deliveryDistributor.lastLongitude;
-            personLastAt = deliveryDistributor.lastLocationAt?.toISOString() ?? null;
+        // Avval buyurtmadagi biriktirilgan (jonli GPS) manbani tekshiramiz — ko‘pincha mashina shu
+        const gpsSourceIds = [
+          order.deliveryDistributorId,
+          deliveryDistributor.id,
+        ].filter((id, i, arr): id is string => !!id && arr.indexOf(id) === i);
+
+        for (const gpsId of gpsSourceIds) {
+          try {
+            const live = await this.gpsService.getLastLocation(gpsId);
+            personLat = live.latitude;
+            personLng = live.longitude;
+            personLastAt = live.recordedAt ?? null;
+            break;
+          } catch {
+            /* try next */
+          }
+        }
+
+        if (personLat == null || personLng == null) {
+          for (const gpsId of gpsSourceIds) {
+            const profile =
+              gpsId === deliveryDistributor.id
+                ? deliveryDistributor
+                : await this.distributorRepo.findOne({ where: { id: gpsId } });
+            if (profile?.lastLatitude != null && profile.lastLongitude != null) {
+              personLat = profile.lastLatitude;
+              personLng = profile.lastLongitude;
+              personLastAt = profile.lastLocationAt?.toISOString() ?? null;
+              break;
+            }
           }
         }
 
         deliveryPerson = {
           ...contact,
-          isOnline: deliveryDistributor?.isOnline ?? false,
+          isOnline: deliveryDistributor.isOnline ?? false,
           latitude: personLat,
           longitude: personLng,
           lastLocationAt: personLastAt,

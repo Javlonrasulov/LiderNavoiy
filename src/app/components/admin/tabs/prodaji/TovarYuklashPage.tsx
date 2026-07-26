@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Plus, Search, ChevronDown, ChevronUp,
   ChevronLeft, ChevronRight, Maximize2, Minimize2, X,
@@ -6,13 +6,25 @@ import {
 } from 'lucide-react';
 import { TovarYuklashCreateModal, ConfirmedOrder } from './TovarYuklashCreateModal';
 import { demo } from '../../../../data/demoLimit';
+import { api, type Distributor } from '../../../../api/client';
+import { backendOrderToOtgr, type OtgrApiRow } from '../../../../utils/orderApi';
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
+}
+
+function isDeliveryPerson(d: Distributor): boolean {
+  const p = (d.position ?? '').toLowerCase();
+  return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
+    || p.includes('dostav') || p.includes('haydov');
+}
 
 /* ─── Types ───────────────────────────────────────────────── */
 type OtgrStatus  = 'process' | 'done' | 'cancelled';
 type FilterTab   = 'all' | 'process' | 'done' | 'cancelled';
 
 interface OtgrRow {
-  id: number;
+  id: string | number;
   date: string;
   num: number;
   transport: string;
@@ -31,6 +43,8 @@ interface OtgrRow {
   direction: string;
   timeOtgr: string;
   author: string;
+  needsDriver?: boolean;
+  backendStatus?: string;
 }
 
 /* ─── Helpers ─────────────────────────────────────────────── */
@@ -105,20 +119,172 @@ const DATA: OtgrRow[] = demo([
 ]);
 
 /* ─── Props ──────────────────────────────────────────────── */
-interface Props { D: boolean; t: Record<string, string>; onCreateClick?: () => void; pendingOrders?: ConfirmedOrder[]; }
+interface Props {
+  D: boolean;
+  t: Record<string, string>;
+  onCreateClick?: () => void;
+  pendingOrders?: ConfirmedOrder[];
+  selectedCompanyIds?: Set<string>;
+}
 
 /* ═══════════════════════════════════════════════════════════
    COMPONENT
 ════════════════════════════════════════════════════════════ */
-export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Props) {
+export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], selectedCompanyIds }: Props) {
 
   /* ── UI state ── */
   const [tab,          setTab]          = useState<FilterTab>('all');
   const [search,       setSearch]       = useState('');
-  const [expanded,     setExpanded]     = useState<number | null>(null);
+  const [expanded,     setExpanded]     = useState<string | number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tooltip,      setTooltip]      = useState<{ text: string; x: number; y: number } | null>(null);
   const [createOpen,   setCreateOpen]   = useState(false);
+
+  /* ── API: packing / on_way buyurtmalar (Tarozi → Tovar yuklash) ── */
+  const [apiRows,      setApiRows]      = useState<OtgrRow[]>([]);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [loading,      setLoading]      = useState(false);
+  const [assignRow,    setAssignRow]    = useState<OtgrRow | null>(null);
+  const [drivers,      setDrivers]      = useState<Distributor[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError,  setAssignError]  = useState<string | null>(null);
+
+  const companyId = selectedCompanyIds?.size === 1
+    ? [...selectedCompanyIds][0]
+    : undefined;
+
+  const refreshOrders = useCallback(async () => {
+    if (!hasApiToken()) {
+      setBackendReady(false);
+      // Mock: Tarozi sessionStorage dan
+      try {
+        const raw = sessionStorage.getItem('lider:ready-load-orders');
+        const list = raw ? JSON.parse(raw) as Array<{
+          id: string; client?: string; code?: string; agentName?: string;
+          amount?: number; itemCount?: number; createdAt?: string; status?: string;
+          driver?: string; deliveryDistributorId?: string;
+        }> : [];
+        setApiRows(list.map((o, i) => {
+          const d = o.createdAt ? new Date(o.createdAt) : new Date();
+          const date = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+          const isLoaded = o.status === 'on_way' || !!o.deliveryDistributorId;
+          return {
+            id: o.id,
+            date,
+            num: 99000 + i + 1,
+            transport: isLoaded ? '—' : '—',
+            driver: o.driver ?? '—',
+            reys: 1,
+            kolTT: o.itemCount ?? 0,
+            kol3k: o.itemCount ?? 0,
+            obrn: isLoaded ? (o.itemCount ?? 0) : 0,
+            neobr: isLoaded ? 0 : (o.itemCount ?? 0),
+            term: '0/0',
+            otgr: isLoaded ? 1 : 0,
+            status: (isLoaded ? 'done' : 'process') as OtgrStatus,
+            summa: o.amount ?? 0,
+            ves: 0,
+            exid: o.code ?? '—',
+            direction: '—',
+            timeOtgr: isLoaded ? date : '—',
+            author: o.agentName ?? '—',
+            needsDriver: !isLoaded,
+            backendStatus: o.status ?? 'packing',
+          };
+        }));
+      } catch {
+        setApiRows([]);
+      }
+      return;
+    }
+    setLoading(true);
+    try {
+      const raw = await api.getOrders(companyId);
+      const mapped = raw
+        .map(backendOrderToOtgr)
+        .filter((r): r is OtgrApiRow => r !== null)
+        .map((r): OtgrRow => ({ ...r }));
+      setApiRows(mapped);
+      setBackendReady(true);
+    } catch {
+      setApiRows([]);
+      setBackendReady(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => { refreshOrders(); }, [refreshOrders]);
+
+  useEffect(() => {
+    const handler = () => { refreshOrders(); };
+    window.addEventListener('lider:order-ready-load', handler);
+    window.addEventListener('lider:order-created', handler);
+    return () => {
+      window.removeEventListener('lider:order-ready-load', handler);
+      window.removeEventListener('lider:order-created', handler);
+    };
+  }, [refreshOrders]);
+
+  const openAssign = async (row: OtgrRow) => {
+    if (!row.needsDriver) return;
+    setAssignRow(row);
+    setSelectedDriverId('');
+    setAssignError(null);
+    if (!hasApiToken()) {
+      // Demo dostavchiklar
+      setDrivers([
+        { id: 'mock-1', userId: '', companyId: null, companyName: null, lineCode: '01', phone: null, position: 'delivery', status: 'active', lastLatitude: null, lastLongitude: null, lastLocationAt: null, isOnline: true, user: { fullName: 'Sadullayev Shuxrat', username: 'sadullaev' } },
+        { id: 'mock-2', userId: '', companyId: null, companyName: null, lineCode: '02', phone: null, position: 'delivery', status: 'active', lastLatitude: null, lastLongitude: null, lastLocationAt: null, isOnline: true, user: { fullName: 'Buronov Feruz', username: 'buronov' } },
+        { id: 'mock-3', userId: '', companyId: null, companyName: null, lineCode: '03', phone: null, position: 'delivery', status: 'active', lastLatitude: null, lastLongitude: null, lastLocationAt: null, isOnline: false, user: { fullName: 'Irgashev Azizxon', username: 'irgashev' } },
+        { id: 'mock-4', userId: '', companyId: null, companyName: null, lineCode: '05', phone: null, position: 'delivery', status: 'active', lastLatitude: null, lastLongitude: null, lastLocationAt: null, isOnline: true, user: { fullName: 'Nazarov Davlatbek', username: 'nazarov' } },
+      ]);
+      return;
+    }
+    try {
+      const list = await api.getDistributors(companyId);
+      const delivery = list.filter(isDeliveryPerson);
+      setDrivers(delivery.length > 0 ? delivery : list);
+    } catch {
+      setDrivers([]);
+      setAssignError(t.sysUserErrLoad ?? 'Yuklashda xatolik');
+    }
+  };
+
+  const confirmAssign = async () => {
+    if (!assignRow || !selectedDriverId) return;
+    const driver = drivers.find(d => d.id === selectedDriverId);
+    const driverName = driver?.user?.fullName ?? '—';
+    setAssignSaving(true);
+    setAssignError(null);
+    try {
+      if (backendReady && typeof assignRow.id === 'string') {
+        await api.updateOrder(assignRow.id, {
+          status: 'on_way',
+          deliveryDistributorId: selectedDriverId,
+        });
+      } else {
+        // Mock sessionStorage
+        try {
+          const raw = sessionStorage.getItem('lider:ready-load-orders');
+          const list = raw ? JSON.parse(raw) as Array<Record<string, unknown>> : [];
+          const next = list.map(o =>
+            o.id === assignRow.id
+              ? { ...o, status: 'on_way', deliveryDistributorId: selectedDriverId, driver: driverName }
+              : o,
+          );
+          sessionStorage.setItem('lider:ready-load-orders', JSON.stringify(next));
+        } catch { /* ignore */ }
+      }
+      setAssignRow(null);
+      await refreshOrders();
+    } catch (e) {
+      setAssignError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAssignSaving(false);
+    }
+  };
 
   /* ── Calendar ── */
   const [calOpen,   setCalOpen]   = useState(false);
@@ -198,7 +364,8 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
 
   /* ── Rows ── */
   const rows = useMemo(() => {
-    let d = DATA;
+    // API yoki Tarozi mock → asosiy manba; bo'sh bo'lsa demo jadval
+    let d: OtgrRow[] = apiRows.length > 0 || backendReady ? apiRows : DATA;
     if (tab !== 'all') d = d.filter(r => r.status === tab);
     if (dateStart) {
       d = d.filter(r => {
@@ -214,11 +381,13 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
         r.driver.toLowerCase().includes(q)    ||
         r.transport.toLowerCase().includes(q) ||
         String(r.num).includes(q)             ||
-        r.direction.toLowerCase().includes(q)
+        r.direction.toLowerCase().includes(q) ||
+        r.author.toLowerCase().includes(q)    ||
+        r.exid.toLowerCase().includes(q)
       );
     }
     return d;
-  }, [tab, search, dateStart, dateEnd]);
+  }, [tab, search, dateStart, dateEnd, apiRows, backendReady]);
 
   /* ── Pending rows (from modal ✓) ── */
   const pendingRows = useMemo<OtgrRow[]>(() =>
@@ -393,16 +562,19 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
       </button>
 
       {/* Action icon buttons */}
-      {[
-        { icon: <RefreshCw size={13} strokeWidth={2} />, title:'Yangilash', color:'#10b981' },
-      ].map((btn, i) => (
-        <button key={i} title={btn.title} style={{
+      <button
+        title="Yangilash"
+        onClick={() => refreshOrders()}
+        disabled={loading}
+        style={{
           width:30, height:30, borderRadius:7, border:`1px solid ${brd}`,
-          background: D ? '#2a2a2e' : '#f3f4f6', color:btn.color,
-          cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-          flexShrink:0,
-        }}>{btn.icon}</button>
-      ))}
+          background: D ? '#2a2a2e' : '#f3f4f6', color:'#10b981',
+          cursor: loading ? 'wait' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+          flexShrink:0, opacity: loading ? 0.5 : 1,
+        }}
+      >
+        <RefreshCw size={13} strokeWidth={2} className={loading ? 'animate-spin' : undefined} />
+      </button>
 
       {/* Dropdown-style filter pills */}
       {[
@@ -535,15 +707,21 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
         </thead>
         <tbody>
           {[...pendingRows, ...rows].map(row => {
-            const isPending = row.id < 0;
+            const isPending = typeof row.id === 'number' && row.id < 0;
             return (
             <tr key={row.id}
+              onClick={() => { if (row.needsDriver) openAssign(row); }}
               style={{
                 borderBottom:`1px solid ${brd}`, transition:'background 0.1s',
-                background: isPending ? 'rgba(239,68,68,0.07)' : 'transparent',
+                background: isPending ? 'rgba(239,68,68,0.07)'
+                  : row.needsDriver ? (D ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)')
+                  : 'transparent',
+                cursor: row.needsDriver ? 'pointer' : 'default',
               }}
               onMouseEnter={e => (e.currentTarget.style.background = isPending ? 'rgba(239,68,68,0.13)' : rowH)}
-              onMouseLeave={e => (e.currentTarget.style.background = isPending ? 'rgba(239,68,68,0.07)' : 'transparent')}
+              onMouseLeave={e => (e.currentTarget.style.background = isPending ? 'rgba(239,68,68,0.07)'
+                : row.needsDriver ? (D ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)')
+                : 'transparent')}
             >
               {COLS.map(c => (
                 <td key={c.key} style={{
@@ -557,7 +735,16 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
                   maxWidth: c.w,
                 }}>
                   {c.key === 'status'
-                    ? statusBadge(row.status)
+                    ? (
+                      <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                        {statusBadge(row.status)}
+                        {row.needsDriver && (
+                          <span style={{
+                            fontSize:10, color:'#6366f1', fontWeight:600, whiteSpace:'nowrap',
+                          }}>{t.modalDostavchik ?? 'Dostavchik'}…</span>
+                        )}
+                      </span>
+                    )
                     : (() => {
                         const val = cellVal(row, c.key);
                         return (
@@ -601,12 +788,14 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
     >
       {[...pendingRows, ...rows].map(row => {
         const open = expanded === row.id;
-        const isPending = row.id < 0;
+        const isPending = typeof row.id === 'number' && row.id < 0;
         return (
           <div key={row.id} style={{
             background: isPending ? 'rgba(239,68,68,0.07)' : card,
             borderRadius:12,
-            border: isPending ? '1px solid rgba(239,68,68,0.35)' : `1px solid ${brd}`,
+            border: isPending ? '1px solid rgba(239,68,68,0.35)'
+              : row.needsDriver ? '1px solid rgba(99,102,241,0.45)'
+              : `1px solid ${brd}`,
             overflow:'hidden',
           }}>
             <button
@@ -662,6 +851,17 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
                     <span style={{ fontSize:11, color:txt, textAlign:'right' }}>{item.val}</span>
                   </div>
                 ))}
+                {row.needsDriver && (
+                  <button
+                    onClick={() => openAssign(row)}
+                    style={{
+                      marginTop:6, padding:'8px 12px', borderRadius:8, border:'none',
+                      background:'#6366f1', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer',
+                    }}
+                  >
+                    {t.modalDostavchik ?? 'Dostavchik'} tanlash
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -683,9 +883,14 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
       display:'flex', alignItems:'center', justifyContent:'space-between',
       padding:'14px 16px 10px', background:bg, flexShrink:0,
     }}>
-      <h2 style={{ margin:0, fontSize:18, fontWeight:700, color:txt }}>
-        {t.tovarYuklashTitle ?? 'Tovar yuklash'}
-      </h2>
+      <div>
+        <h2 style={{ margin:0, fontSize:18, fontWeight:700, color:txt }}>
+          {t.tovarYuklashTitle ?? 'Tovar yuklash'}
+        </h2>
+        <p style={{ margin:'2px 0 0', fontSize:12, color:muted, fontWeight:500 }}>
+          ({t.tovarYuklashForma ?? 'Forma zayavki'})
+        </p>
+      </div>
       <button style={{
         display:'flex', alignItems:'center', gap:5, padding:'6px 14px', borderRadius:8,
         border:`1px solid ${brd}`, background: D ? '#1c1c1e' : '#fff',
@@ -753,6 +958,102 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
       {/* ── CREATE MODAL ── */}
       {createOpen && (
         <TovarYuklashCreateModal D={D} t={t} onClose={() => setCreateOpen(false)} />
+      )}
+
+      {/* ── DOSTAVCHIK TANLASH ── */}
+      {assignRow && (
+        <div
+          style={{
+            position:'fixed', inset:0, zIndex:10000,
+            background:'rgba(0,0,0,0.45)', backdropFilter:'blur(3px)',
+            display:'flex', alignItems:'center', justifyContent:'center', padding:16,
+          }}
+          onClick={() => !assignSaving && setAssignRow(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width:'100%', maxWidth:420, borderRadius:14,
+              background: card, border:`1px solid ${brd}`,
+              boxShadow: D ? '0 16px 48px rgba(0,0,0,0.55)' : '0 16px 48px rgba(0,0,0,0.18)',
+              padding:20,
+            }}
+          >
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:txt }}>
+                  {t.modalDostavchik ?? 'Dostavchik'} tanlash
+                </div>
+                <div style={{ fontSize:12, color:muted, marginTop:2 }}>
+                  #{assignRow.num} · {assignRow.exid}
+                </div>
+              </div>
+              <button
+                onClick={() => !assignSaving && setAssignRow(null)}
+                style={{
+                  width:28, height:28, borderRadius:7, border:`1px solid ${brd}`,
+                  background:'transparent', color:muted, cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div style={{
+              maxHeight:280, overflowY:'auto', display:'flex', flexDirection:'column', gap:6,
+              marginBottom:14,
+            }}>
+              {drivers.length === 0 ? (
+                <div style={{ padding:24, textAlign:'center', color:muted, fontSize:13 }}>
+                  {assignError ?? '— Dostavchik topilmadi —'}
+                </div>
+              ) : drivers.map(d => {
+                const name = d.user?.fullName ?? d.user?.username ?? d.id;
+                const active = selectedDriverId === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => setSelectedDriverId(d.id)}
+                    style={{
+                      display:'flex', alignItems:'center', gap:10,
+                      padding:'10px 12px', borderRadius:10, textAlign:'left', cursor:'pointer',
+                      border: active ? '1.5px solid #6366f1' : `1px solid ${brd}`,
+                      background: active ? (D ? 'rgba(99,102,241,0.15)' : '#eef2ff') : (D ? '#161618' : '#f9fafb'),
+                      color: txt, fontSize:13,
+                    }}
+                  >
+                    <Truck size={15} color={active ? '#6366f1' : muted} />
+                    <span style={{ flex:1, fontWeight: active ? 600 : 500 }}>{name}</span>
+                    {d.lineCode && (
+                      <span style={{ fontSize:11, color:muted }}>{d.lineCode}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {assignError && drivers.length > 0 && (
+              <div style={{ fontSize:12, color:'#ef4444', marginBottom:10 }}>{assignError}</div>
+            )}
+
+            <button
+              onClick={confirmAssign}
+              disabled={!selectedDriverId || assignSaving}
+              style={{
+                width:'100%', padding:'11px 14px', borderRadius:10, border:'none',
+                background: selectedDriverId && !assignSaving ? '#6366f1' : (D ? '#2a2a2e' : '#e5e7eb'),
+                color: selectedDriverId && !assignSaving ? '#fff' : muted,
+                fontSize:13, fontWeight:600,
+                cursor: selectedDriverId && !assignSaving ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {assignSaving
+                ? '...'
+                : (t.otgrOtgr ? `${t.otgrOtgr} / Yuklash` : 'Mashinaga yuklash')}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── FULLSCREEN ── */}

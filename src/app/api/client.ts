@@ -165,6 +165,7 @@ export interface BackendOrder {
   id: string;
   clientId: string;
   distributorId: string;
+  deliveryDistributorId?: string | null;
   visitId?: string | null;
   status: string;
   source?: string;
@@ -183,6 +184,7 @@ export interface BackendOrder {
     category: string | null;
   } | null;
   agentName?: string | null;
+  deliveryName?: string | null;
   companyName?: string | null;
 }
 
@@ -751,6 +753,13 @@ export const api = {
   // ─── Orders (agent APK → admin Sotuvlar) ───
   getOrders: (companyId?: string) =>
     request<BackendOrder[]>(`/orders${companyId ? `?companyId=${companyId}` : ''}`),
+
+  /** Admin: buyurtma statusini yangilash (Tarozi → yuklashga tayyor va hokazo) */
+  updateOrder: (id: string, body: { status?: string; deliveryDistributorId?: string | null }) =>
+    request<BackendOrder>(`/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   // ─── Health ───
   health: () => request<{ status: string }>('/health'),

@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,6 +73,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -133,7 +137,7 @@ fun DashboardScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showLiveMapFullscreen by remember { mutableStateOf(false) }
     val filtered = state.filtered
-    val live = state.liveDelivery
+    val live = state.liveFleet
     val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -181,9 +185,13 @@ fun DashboardScreen(
 
     if (showLiveMapFullscreen && live != null) {
         DashboardLiveMapFullscreen(
-            live = live,
-            title = t("dash_live_delivery"),
+            fleet = live,
+            title = if (live.orderCount > 1) t("dash_live_orders") else t("dash_live_delivery"),
             onDismiss = { showLiveMapFullscreen = false },
+            onOpenTracking = { orderId ->
+                showLiveMapFullscreen = false
+                onNavigate(ClientRoutes.orderTracking(orderId))
+            },
         )
     }
 
@@ -281,17 +289,25 @@ fun DashboardScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            live?.let { delivery ->
+                            live?.let { fleet ->
                                 Spacer(Modifier.height(16.dp))
                                 LiveDeliveryMapCard(
-                                    live = delivery,
+                                    fleet = fleet,
                                     isDark = isDark,
-                                    title = t("dash_live_delivery"),
+                                    title = if (fleet.orderCount > 1) {
+                                        t("dash_live_orders")
+                                    } else {
+                                        t("dash_live_delivery")
+                                    },
                                     watchLabel = t("dash_live_watch"),
-                                    distanceLabel = "${t("track_distance")}: ${delivery.distanceLabel}",
+                                    distanceLabel = if (fleet.orderCount > 1) {
+                                        "${fleet.orderCount} ${t("dash_live_orders_unit")} · ${t("track_distance")}: ${fleet.distanceLabel}"
+                                    } else {
+                                        "${t("track_distance")}: ${fleet.distanceLabel}"
+                                    },
                                     onOpenFullscreen = { showLiveMapFullscreen = true },
-                                    onOpenTracking = {
-                                        onNavigate(ClientRoutes.orderTracking(delivery.orderId))
+                                    onOpenTracking = { orderId ->
+                                        onNavigate(ClientRoutes.orderTracking(orderId))
                                     },
                                 )
                             }
@@ -807,17 +823,16 @@ private fun promoDesc(lang: AppLanguage, index: Int) = when (index) {
 
 @Composable
 private fun LiveDeliveryMapCard(
-    live: LiveDeliveryUi,
+    fleet: LiveFleetUi,
     isDark: Boolean,
     title: String,
     watchLabel: String,
     distanceLabel: String,
     onOpenFullscreen: () -> Unit,
-    onOpenTracking: () -> Unit,
+    onOpenTracking: (String) -> Unit,
 ) {
-    val tracking = live.tracking
-    val person = tracking.deliveryPerson
     val shape = RoundedCornerShape(LiquidGlass.RadiusCard)
+    var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
 
     Column(
         Modifier
@@ -883,41 +898,30 @@ private fun LiveDeliveryMapCard(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(
-                    onClick = onOpenFullscreen,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .liquidGlassThemed(radius = 12.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Fullscreen,
-                        contentDescription = watchLabel,
-                        tint = LiquidGlass.Indigo,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
+            IconButton(
+                onClick = onOpenFullscreen,
+                modifier = Modifier
+                    .size(36.dp)
+                    .liquidGlassThemed(radius = 12.dp),
+            ) {
+                Icon(
+                    Icons.Default.Fullscreen,
+                    contentDescription = watchLabel,
+                    tint = LiquidGlass.Indigo,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
 
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(168.dp)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() },
-                    onClick = onOpenTracking,
-                ),
+                .height(168.dp),
         ) {
             OrderTrackingMapView(
-                deliveryLat = tracking.deliveryLatitude,
-                deliveryLng = tracking.deliveryLongitude,
-                courierLat = person?.latitude,
-                courierLng = person?.longitude,
-                routePoints = live.routePoints,
-                isDark = false,
-                interactive = false,
+                vehicles = fleet.vehicles,
+                interactive = true,
+                onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
             Box(
@@ -926,7 +930,9 @@ private fun LiveDeliveryMapCard(
                     .padding(10.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(LiquidGlass.GradientPrimary)
-                    .clickable(onClick = onOpenTracking)
+                    .clickable {
+                        fleet.primaryOrderId?.let(onOpenTracking)
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Text(
@@ -938,17 +944,110 @@ private fun LiveDeliveryMapCard(
             }
         }
     }
+
+    selectedVehicle?.let { vehicle ->
+        VehicleOrdersPopup(
+            vehicle = vehicle,
+            onDismiss = { selectedVehicle = null },
+            onOpenOrder = { orderId ->
+                selectedVehicle = null
+                onOpenTracking(orderId)
+            },
+        )
+    }
+}
+
+@Composable
+private fun VehicleOrdersPopup(
+    vehicle: LiveMapVehicle,
+    onDismiss: () -> Unit,
+    onOpenOrder: (String) -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(LiquidTheme.bgMid)
+                .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+                .padding(16.dp),
+        ) {
+            Text(
+                vehicle.courierName,
+                color = LiquidTheme.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+            )
+            Text(
+                "Dostavkachi",
+                color = LiquidTheme.textMuted,
+                fontSize = 11.sp,
+            )
+            vehicle.courierPhone?.takeIf { it.isNotBlank() }?.let { phone ->
+                val context = LocalContext.current
+                Text(
+                    phone,
+                    color = LiquidGlass.Indigo,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .clickable {
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_DIAL,
+                                        android.net.Uri.parse("tel:$phone"),
+                                    ),
+                                )
+                            }
+                        },
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            vehicle.orders.forEach { order ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenOrder(order.orderId) }
+                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${formatMoney(order.amount)} so'm",
+                            color = LiquidTheme.text,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            order.distanceLabel,
+                            color = LiquidTheme.textMuted,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        null,
+                        tint = LiquidGlass.Indigo,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun DashboardLiveMapFullscreen(
-    live: LiveDeliveryUi,
+    fleet: LiveFleetUi,
     title: String,
     onDismiss: () -> Unit,
+    onOpenTracking: (String) -> Unit,
 ) {
-    val tracking = live.tracking
-    val person = tracking.deliveryPerson
     val overlayBg = Color(0xF00B1220)
+    var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -963,15 +1062,10 @@ private fun DashboardLiveMapFullscreen(
                 .fillMaxSize()
                 .background(Color(0xFFF5F7FC)),
         ) {
-            // Always light map tiles (even when app is dark)
             OrderTrackingMapView(
-                deliveryLat = tracking.deliveryLatitude,
-                deliveryLng = tracking.deliveryLongitude,
-                courierLat = person?.latitude,
-                courierLng = person?.longitude,
-                routePoints = live.routePoints,
-                isDark = false,
+                vehicles = fleet.vehicles,
                 interactive = true,
+                onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
             Row(
@@ -1015,19 +1109,36 @@ private fun DashboardLiveMapFullscreen(
                 }
             }
             Text(
-                live.distanceLabel,
+                fleet.distanceLabel,
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(
+                        bottom = WindowInsets.navigationBars
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                            .coerceAtLeast(48.dp) + 16.dp,
+                        start = 16.dp,
+                        end = 16.dp,
+                    )
                     .shadow(8.dp, RoundedCornerShape(14.dp))
                     .clip(RoundedCornerShape(14.dp))
                     .background(overlayBg)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
             )
         }
+    }
+
+    selectedVehicle?.let { vehicle ->
+        VehicleOrdersPopup(
+            vehicle = vehicle,
+            onDismiss = { selectedVehicle = null },
+            onOpenOrder = { orderId ->
+                selectedVehicle = null
+                onOpenTracking(orderId)
+            },
+        )
     }
 }

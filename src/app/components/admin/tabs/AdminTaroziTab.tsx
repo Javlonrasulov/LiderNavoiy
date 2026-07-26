@@ -32,27 +32,116 @@ function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
 }
 
+/** Compact select — tizim uslubidagi custom dropdown (native <select> o‘rniga) */
+function TaroziSelect({
+  value, options, onChange, D, disabled,
+}: {
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  D: boolean;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const fn = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(o => !o)}
+        className={`w-full flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border outline-none transition-colors text-left
+          ${disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+          ${open
+            ? D
+              ? 'bg-[#1c1c1e] border-indigo-500 text-gray-200'
+              : 'bg-white border-indigo-400 text-gray-800'
+            : D
+              ? 'bg-[#1c1c1e] border-gray-700 text-gray-200 hover:border-gray-600'
+              : 'bg-gray-50 border-gray-200 text-gray-800 hover:border-gray-300'
+          }`}
+      >
+        <span className="flex-1 min-w-0 truncate">{value}</span>
+        <ChevronDown
+          size={11}
+          className={`flex-shrink-0 transition-transform duration-150 ${D ? 'text-gray-500' : 'text-gray-400'} ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div
+          className={`absolute left-0 right-0 top-[calc(100%+4px)] z-50 overflow-hidden rounded-xl border shadow-lg
+            ${D ? 'bg-[#1c1c1e] border-indigo-500/60 shadow-black/50' : 'bg-white border-indigo-300 shadow-gray-200/80'}`}
+          style={{ animation: 'taroziDropIn .12s ease-out' }}
+        >
+          <div className="max-h-44 overflow-y-auto py-1">
+            {options.map(opt => {
+              const selected = opt === value;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { onChange(opt); setOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-xs transition-colors
+                    ${selected
+                      ? D
+                        ? 'bg-indigo-500/20 text-indigo-300 font-medium'
+                        : 'bg-indigo-50 text-indigo-600 font-medium'
+                      : D
+                        ? 'text-gray-300 hover:bg-white/5'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes taroziDropIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+    </div>
+  );
+}
+
 // ── Send Button — truck icon, active only when ALL rows have ves/dona filled ───
 function SendButton({
-  D, hasData, sendState, setSendState, setShowSendDone, t,
+  D, hasData, sendState, setSendState, setShowSendDone, t, onSend,
 }: {
   D: boolean; hasData: boolean;
   sendState: 'idle' | 'loading' | 'done';
   setSendState: (s: 'idle' | 'loading' | 'done') => void;
   setShowSendDone: (v: boolean) => void;
   t: Record<string, string>;
+  onSend: () => Promise<boolean>;
 }) {
   const isLoading = sendState === 'loading';
   const isDone    = sendState === 'done';
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!hasData || isLoading || isDone) return;
     setSendState('loading');
-    setTimeout(() => {
+    try {
+      const ok = await onSend();
+      if (!ok) {
+        setSendState('idle');
+        return;
+      }
       setSendState('done');
       setShowSendDone(true);
       setTimeout(() => setSendState('idle'), 2600);
-    }, 950);
+    } catch {
+      setSendState('idle');
+    }
   };
 
   // ── SVG colour tokens ────────────────────────────────────────────────────
@@ -329,6 +418,8 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   // ── API orders (agent APK) ────────────────────────────────────────────────
   const [apiOrders, setApiOrders] = useState<ListItem[]>([]);
   const [backendReady, setBackendReady] = useState(hasApiToken());
+  /** Mock rejimda Yuborishdan keyin status saqlash */
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, OrderStatus>>({});
   const companyId = selectedCompanyIds?.size === 1 ? [...selectedCompanyIds][0] : undefined;
 
   const refreshOrders = useCallback(async () => {
@@ -410,9 +501,9 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   const calendarRef = useRef<HTMLDivElement>(null);
 
   // ── Active filter: which orders to show ──────────────────────────────────
-  // 'all'        → ready + pending  (yashil + qora)
-  // 'accepted'   → pending only     (faqat qora)
-  // 'ready-load' → ready + delivered (yashil + ko'k)
+  // 'all'        → pending + ready + delivered
+  // 'accepted'   → pending only     (qabul qilingan, hali tarozida tayyorlanmagan)
+  // 'ready-load' → ready + delivered (yuklashga tayyor / yuklangan)
   type FilterKey = 'all' | 'accepted' | 'ready-load';
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
 
@@ -493,14 +584,16 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
       );
       return groupTaroziByAgent(dayOrders);
     }
-    return getMockAgentsForDate(currentDate);
-  }, [backendReady, apiOrders, currentDate]);
+    return getMockAgentsForDate(currentDate).map(a =>
+      statusOverrides[a.id] ? { ...a, status: statusOverrides[a.id] } : a,
+    );
+  }, [backendReady, apiOrders, currentDate, statusOverrides]);
 
   /** Hamma tabda ready (skladga yuborilgan) ham chiqsin */
   const filteredAgents = useMemo(() => {
     const statusAllowed: OrderStatus[] =
       activeFilter === 'all'        ? ['pending', 'ready', 'delivered'] :
-      activeFilter === 'accepted'   ? ['pending', 'ready'] :
+      activeFilter === 'accepted'   ? ['pending'] :
       /* ready-load */                ['ready', 'delivered'];
 
     return agentsForDate.filter(a =>
@@ -549,6 +642,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     setActivePane('right');
     setShowQoldiq(false);
     setQoldiqLoading(false);
+    setSendState('idle');
   };
 
   // ── Readonly: delivered agentlar o'zgartirib bo'lmaydi ───────────────────
@@ -556,6 +650,50 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     ? agentsForDate.find(a => a.id === selectedAgent)
     : undefined;
   const isReadonly = selectedItem?.status === 'delivered';
+
+  /** Yuborish: tarozida tayyor → status «yuklashga tayyor» (backend: packing) → Tovar yuklash */
+  const markOrderReady = useCallback(async (): Promise<boolean> => {
+    if (!selectedAgent || !selectedItem || selectedItem.group) return false;
+    if (selectedItem.status === 'delivered') return false;
+
+    if (backendReady) {
+      try {
+        await api.updateOrder(selectedAgent, { status: 'packing' });
+        setApiOrders(prev =>
+          prev.map(o => (o.id === selectedAgent ? { ...o, status: 'ready' as OrderStatus } : o)),
+        );
+      } catch (e) {
+        console.error('[Tarozi] packing update failed', e);
+        window.alert(e instanceof Error ? e.message : 'Status yangilanmadi (packing)');
+        return false;
+      }
+    } else {
+      setStatusOverrides(prev => ({ ...prev, [selectedAgent]: 'ready' }));
+      try {
+        const raw = sessionStorage.getItem('lider:ready-load-orders');
+        const list: Array<Record<string, unknown>> = raw ? JSON.parse(raw) : [];
+        const exists = list.some(x => x.id === selectedAgent);
+        if (!exists) {
+          list.unshift({
+            id: selectedAgent,
+            client: selectedItem.client,
+            code: selectedItem.code,
+            agentName: selectedItem.agentName,
+            amount: selectedItem.amount,
+            itemCount: selectedItem.items?.length ?? rows.length,
+            createdAt: new Date().toISOString(),
+            status: 'packing',
+          });
+          sessionStorage.setItem('lider:ready-load-orders', JSON.stringify(list.slice(0, 50)));
+        }
+      } catch { /* ignore */ }
+    }
+    window.dispatchEvent(new CustomEvent('lider:order-ready-load', {
+      detail: { orderId: selectedAgent },
+    }));
+    setActiveFilter('ready-load');
+    return true;
+  }, [selectedAgent, selectedItem, backendReady, rows.length]);
 
   const handleRefresh = () => {
     setQoldiqLoading(true);
@@ -972,13 +1110,13 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           ].map(f=>(
             <div key={f.label} className={`${f.w}`}>
               <p className={labelCls}>{f.label}</p>
-              <div className="relative">
-                <select value={f.val} onChange={e=>f.set(e.target.value)}
-                  className={`${inputCls} appearance-none pr-5`}>
-                  {f.opts.map(o=><option key={o}>{o}</option>)}
-                </select>
-                <ChevronDown size={10} className={`absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none ${sub}`}/>
-              </div>
+              <TaroziSelect
+                value={f.val}
+                options={f.opts}
+                onChange={f.set}
+                D={D}
+                disabled={isReadonly}
+              />
             </div>
           ))}
         </div>
@@ -1485,11 +1623,12 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
               {/* ── Yuborish button ── */}
               <SendButton
                 D={D}
-                hasData={rows.length > 0 && rows.every(r => r.ves > 0)}
+                hasData={rows.length > 0 && rows.every(r => r.ves > 0) && !isReadonly}
                 sendState={sendState}
                 setSendState={setSendState}
                 setShowSendDone={setShowSendDone}
                 t={t}
+                onSend={markOrderReady}
               />
               {/* ── Yangi Zakaz: Smartphone button — icon-only on mobile ── */}
               <button

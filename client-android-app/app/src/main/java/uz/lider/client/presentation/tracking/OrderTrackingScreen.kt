@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -89,7 +92,7 @@ fun OrderTrackingScreen(
 
     LaunchedEffect(orderId) { viewModel.load(orderId) }
 
-    if (showFullScreenMap) {
+    if (showFullScreenMap && state.showLiveMap) {
         FullScreenOrderTrackingMapDialog(
             deliveryLat = tracking?.deliveryLatitude,
             deliveryLng = tracking?.deliveryLongitude,
@@ -115,45 +118,69 @@ fun OrderTrackingScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Map with glass overlay controls
+                    // Xarita — faqat Yo'lda / Yetkazildi
                     item {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(280.dp)
-                                .clip(RoundedCornerShape(LiquidGlass.RadiusCard)),
-                        ) {
-                            OrderTrackingMapView(
-                                deliveryLat = tracking?.deliveryLatitude,
-                                deliveryLng = tracking?.deliveryLongitude,
-                                courierLat = deliveryPerson?.latitude,
-                                courierLng = deliveryPerson?.longitude,
-                                routePoints = state.routePoints,
-                                isDark = false,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                            IconButton(
-                                onClick = { showFullScreenMap = true },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(8.dp)
-                                    .size(40.dp)
-                                    .liquidGlassThemed(radius = 12.dp),
+                        if (state.showLiveMap) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(280.dp)
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard)),
                             ) {
-                                Icon(
-                                    Icons.Default.Fullscreen,
-                                    contentDescription = localized("track_map_fullscreen"),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
+                                OrderTrackingMapView(
+                                    deliveryLat = tracking?.deliveryLatitude,
+                                    deliveryLng = tracking?.deliveryLongitude,
+                                    courierLat = deliveryPerson?.latitude,
+                                    courierLng = deliveryPerson?.longitude,
+                                    routePoints = state.routePoints,
+                                    isDark = false,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                IconButton(
+                                    onClick = { showFullScreenMap = true },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(8.dp)
+                                        .size(40.dp)
+                                        .liquidGlassThemed(radius = 12.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Fullscreen,
+                                        contentDescription = localized("track_map_fullscreen"),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                TrackingMapInfoOverlay(
+                                    distance = state.distance,
+                                    modifier = Modifier.align(Alignment.BottomCenter),
                                 )
                             }
-                            TrackingMapInfoOverlay(
-                                distance = state.distance,
-                                modifier = Modifier.align(Alignment.BottomCenter),
-                            )
+                        } else {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    localized("track_map_locked_title"),
+                                    color = text,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    localized("track_map_locked_hint"),
+                                    color = textMuted,
+                                    fontSize = 12.sp,
+                                )
+                            }
                         }
                     }
 
+                    if (state.showLiveMap) {
                     deliveryPerson?.let { person ->
                         item {
                             val phone = person.phone?.takeIf { it.isNotBlank() }
@@ -240,6 +267,7 @@ fun OrderTrackingScreen(
                                 }
                             }
                         }
+                    }
                     }
 
                     // Delivery address glass card
@@ -609,7 +637,12 @@ private fun FullScreenOrderTrackingMapDialog(
                 distance = distance,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding(),
+                    .padding(
+                        bottom = WindowInsets.navigationBars
+                            .asPaddingValues()
+                            .calculateBottomPadding()
+                            .coerceAtLeast(48.dp) + 16.dp,
+                    ),
             )
         }
     }

@@ -26,6 +26,8 @@ data class OrderTrackingUiState(
     /** 1..5 progress; 0 when cancelled */
     val activeStep: Int = 1,
     val isCancelled: Boolean = false,
+    /** Xarita faqat yo'lda / yetkazilganda */
+    val showLiveMap: Boolean = false,
     val distance: String = "—",
     val etaLabel: String = "—",
     val routePoints: List<LatLngPoint> = emptyList(),
@@ -78,6 +80,7 @@ class OrderTrackingViewModel @Inject constructor(
         val status = OrderStatus.fromKey(tracking?.status ?: order?.status)
         val cancelled = status == OrderStatus.CANCELLED
         // pending = agent kutilyapti (1); confirmed = agent omborga yuborgan (2)
+        // packing = tarozida yig'ildi (3); on_way = dostavchikka yuklandi (4)
         val step = when (status) {
             OrderStatus.PENDING -> 1
             OrderStatus.CONFIRMED -> 2
@@ -86,21 +89,36 @@ class OrderTrackingViewModel @Inject constructor(
             OrderStatus.DELIVERED -> 5
             OrderStatus.CANCELLED -> 0
         }
-        val distance = tracking?.distanceKm?.let { formatDistance(it) } ?: "—"
-        val eta = tracking?.etaMinutes?.let { "$it min" } ?: "—"
+        val showLiveMap = status == OrderStatus.ON_WAY || status == OrderStatus.DELIVERED
+        val distance = if (showLiveMap) {
+            tracking?.distanceKm?.let { formatDistance(it) } ?: "—"
+        } else {
+            "—"
+        }
+        val eta = if (showLiveMap) {
+            tracking?.etaMinutes?.let { "$it min" } ?: "—"
+        } else {
+            "—"
+        }
         _uiState.update {
             it.copy(
                 order = order,
                 tracking = tracking,
                 activeStep = step,
                 isCancelled = cancelled,
+                showLiveMap = showLiveMap,
                 distance = distance,
                 etaLabel = eta,
+                routePoints = if (showLiveMap) it.routePoints else emptyList(),
             )
         }
     }
 
     private fun refreshRoadRoute(tracking: OrderTrackingDetails?) {
+        if (!_uiState.value.showLiveMap) {
+            _uiState.update { it.copy(routePoints = emptyList()) }
+            return
+        }
         val courierLat = tracking?.deliveryPerson?.latitude
         val courierLng = tracking?.deliveryPerson?.longitude
         val deliveryLat = tracking?.deliveryLatitude

@@ -137,6 +137,7 @@ export function AdminProdajiTab({ D, t, selectedCompanyIds }: AdminProdajiTabPro
             D={D}
             t={t}
             pendingOrders={pendingOrders}
+            selectedCompanyIds={selectedCompanyIds}
             onCreateClick={() => {
               setActive('tovarYuklash');
               setShowCreate(true);

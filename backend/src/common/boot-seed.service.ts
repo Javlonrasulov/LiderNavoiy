@@ -111,11 +111,50 @@ export class BootSeedService implements OnModuleInit {
           companyName: 'Boran Leaders+',
           lineCode: '01',
           phone: '+998901234567',
+          position: 'Agent',
           status: DistributorStatus.OFFLINE,
           isOnline: false,
         }),
       );
       this.logger.log('Boot seed: agent profil yaratildi');
+    }
+
+    const courierUser = await this.ensureUser({
+      username: 'dostavkachi',
+      passwordHash,
+      fullName: 'Demo Dostavkachi',
+      role: UserRole.DISTRIBUTOR,
+      position: 'Dostavkachi',
+      permissions: null,
+    });
+
+    let courierProfile = await this.profiles.findOne({ where: { userId: courierUser.id } });
+    if (!courierProfile) {
+      courierProfile = await this.profiles.save(
+        this.profiles.create({
+          userId: courierUser.id,
+          companyId: 'boran',
+          companyName: 'Boran Leaders+',
+          lineCode: '01',
+          phone: '+998907654321',
+          position: 'Dostavkachi',
+          status: DistributorStatus.ON_ROUTE,
+          isOnline: true,
+          lastLatitude: 40.1035,
+          lastLongitude: 65.3792,
+          lastLocationAt: new Date(),
+        }),
+      );
+      this.logger.log('Boot seed: dostavkachi profil yaratildi');
+    } else {
+      courierProfile.position = 'Dostavkachi';
+      courierProfile.phone = courierProfile.phone || '+998907654321';
+      if (courierProfile.lastLatitude == null) {
+        courierProfile.lastLatitude = 40.1035;
+        courierProfile.lastLongitude = 65.3792;
+        courierProfile.lastLocationAt = new Date();
+      }
+      await this.profiles.save(courierProfile);
     }
 
     let demoClient = await this.clients.findOne({ where: { code: '29072' } });
@@ -152,7 +191,7 @@ export class BootSeedService implements OnModuleInit {
       clientId: demoClient.id,
     });
 
-    this.logger.log('Boot seed: admin/agent/mijoz — parol 123456');
+    this.logger.log('Boot seed: admin/agent/dostavkachi/mijoz — parol 123456');
   }
 
   private async ensureUser(data: {
