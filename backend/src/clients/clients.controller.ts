@@ -73,6 +73,15 @@ export class ClientsController {
     return this.service.findLines(scopedCompany);
   }
 
+  @Get('app-username-available')
+  @ApiOperation({ summary: 'Check if client APK login is free' })
+  checkAppUsername(
+    @Query('username') username: string,
+    @Query('excludeClientId') excludeClientId?: string,
+  ) {
+    return this.credentialsService.checkUsername(username, excludeClientId);
+  }
+
   @Get(':id/app-credentials')
   @ApiOperation({ summary: 'Get client app login (admin/agent)' })
   getAppCredentials(@Request() req: { user: User }, @Param('id') id: string) {

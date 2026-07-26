@@ -24,13 +24,17 @@ function transliterateWord(word: string): string {
     .replace(/[^a-z0-9]+/g, '');
 }
 
-/** Mijoz nomining faqat birinchi so'zidan login (masalan: "GO ZAL TONG" → "go") */
+/** Mijoz login: birinchi so'z + kod (takrorlanmasligi uchun) */
 export function nameToLogin(name: string, codeFallback?: string): string {
   const firstWord = name.trim().split(/\s+/).find(Boolean) ?? '';
-  let login = transliterateWord(firstWord).slice(0, 32);
+  let login = transliterateWord(firstWord).slice(0, 20);
 
-  if (login.length < 3 && codeFallback) {
-    login = `${login}${codeFallback.replace(/\D/g, '')}`.slice(0, 32);
+  const codePart = (codeFallback || '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toLowerCase()
+    .slice(-6);
+  if (codePart) {
+    login = `${login}${codePart}`.slice(0, 32);
   }
   if (login.length < 3) {
     login = `mijoz${Date.now().toString(36).slice(-5)}`;

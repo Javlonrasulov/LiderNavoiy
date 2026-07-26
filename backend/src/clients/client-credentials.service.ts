@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -35,17 +36,63 @@ export class ClientCredentialsService {
     return client;
   }
 
-  private async resolveUniqueUsername(
+  /** Auto-suggest uchun: band bo'lsa dokon2, dokon3... */
+  async resolveUniqueUsername(
     preferred: string,
     excludeClientId?: string,
   ): Promise<string> {
     const base = preferred.trim().toLowerCase().slice(0, 32);
+    if (!base) throw new BadRequestException('Username required');
     for (let n = 0; n < 100; n++) {
       const candidate = n === 0 ? base : `${base}${n + 1}`.slice(0, 32);
       const clash = await this.userRepo.findOne({ where: { username: candidate } });
       if (!clash || clash.clientId === excludeClientId) return candidate;
     }
     return `${base}${Date.now().toString(36).slice(-4)}`.slice(0, 32);
+  }
+
+  /** Foydalanuvchi tanlagan login — band bo'lsa xato (auto-rename yo'q) */
+  async assertUsernameAvailable(username: string, excludeClientId?: string) {
+    const normalized = username.trim().toLowerCase();
+    if (normalized.length < 3) {
+      throw new BadRequestException('Login kamida 3 ta belgi bo‘lishi kerak');
+    }
+    const clash = await this.userRepo.findOne({
+      where: { username: normalized },
+      relations: ['client'],
+    });
+    if (clash && clash.clientId !== excludeClientId) {
+      const otherName = clash.client?.name ?? clash.fullName ?? clash.username;
+      throw new ConflictException(
+        `Bu login band — «${otherName}» mijozida allaqachon bor (${clash.username})`,
+      );
+    }
+    return { available: true as const, username: normalized };
+  }
+
+  async checkUsername(username: string, excludeClientId?: string) {
+    const normalized = username.trim().toLowerCase();
+    if (normalized.length < 3) {
+      return { available: false as const, username: normalized, reason: 'too_short' };
+    }
+    const clash = await this.userRepo.findOne({
+      where: { username: normalized },
+      relations: ['client'],
+    });
+    if (clash && clash.clientId !== excludeClientId) {
+      return {
+        available: false as const,
+        username: normalized,
+        reason: 'taken' as const,
+        takenBy: {
+          userId: clash.id,
+          clientId: clash.clientId,
+          clientName: clash.client?.name ?? clash.fullName,
+          clientCode: clash.client?.code ?? null,
+        },
+      };
+    }
+    return { available: true as const, username: normalized };
   }
 
   async getCredentials(clientId: string, user: User) {
@@ -84,11 +131,16 @@ export class ClientCredentialsService {
 
   async setCredentials(clientId: string, dto: SetClientCredentialsDto, user: User) {
     const client = await this.resolveClient(clientId, user);
+    const username = dto.username.trim().toLowerCase();
+    if (username.length < 3) {
+      throw new BadRequestException('Login kamida 3 ta belgi bo‘lishi kerak');
+    }
+    if (!dto.password || dto.password.length < 4) {
+      throw new BadRequestException('Parol kamida 4 ta belgi bo‘lishi kerak');
+    }
 
-    const username = await this.resolveUniqueUsername(
-      dto.username.trim().toLowerCase(),
-      clientId,
-    );
+    // Aniq tanlangan login — boshqa mijozda bo'lsa ogohlantirish
+    await this.assertUsernameAvailable(username, clientId);
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
@@ -102,7 +154,6 @@ export class ClientCredentialsService {
       account.passwordHash = passwordHash;
       account.isActive = true;
     } else {
-      if (!username) throw new BadRequestException('Username required');
       account = this.userRepo.create({
         username,
         passwordHash,
@@ -114,12 +165,22 @@ export class ClientCredentialsService {
       created = true;
     }
 
-    const saved = await this.userRepo.save(account);
-    return {
-      userId: saved.id,
-      username: saved.username,
-      clientId,
-      created,
-    };
+    try {
+      const saved = await this.userRepo.save(account);
+      return {
+        userId: saved.id,
+        username: saved.username,
+        clientId,
+        created,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('unique') || msg.includes('duplicate')) {
+        throw new ConflictException(
+          `Bu login band — boshqa mijozda allaqachon bor (${username})`,
+        );
+      }
+      throw err;
+    }
   }
 }

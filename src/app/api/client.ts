@@ -440,6 +440,22 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
     ),
 
+  checkClientAppUsername: (username: string, excludeClientId?: string) => {
+    const q = new URLSearchParams({ username: username.trim().toLowerCase() });
+    if (excludeClientId) q.set('excludeClientId', excludeClientId);
+    return request<{
+      available: boolean;
+      username: string;
+      reason?: string;
+      takenBy?: {
+        userId: string;
+        clientId: string | null;
+        clientName: string | null;
+        clientCode: string | null;
+      };
+    }>(`/clients/app-username-available?${q.toString()}`);
+  },
+
   // ─── Products ───
   getProducts: (category?: string) =>
     request<Array<{

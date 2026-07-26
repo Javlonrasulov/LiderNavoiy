@@ -69,6 +69,8 @@ const TRANS = {
     appPasswordRequired: "Parol kamida 6 ta belgi bo'lishi kerak",
     appCredentialsSaved: "APK login saqlandi",
     appCredentialsError: "APK login saqlab bo'lmadi",
+    appLoginTaken: "Bu login band — bunday mijoz allaqachon bor",
+    appLoginChecking: "Login tekshirilmoqda...",
     appNotSaved: "Saqlanmagan — «Saqlash va yopish» bosing",
     appSaved: "Saqlangan",
     appSaveLogin: "Login saqlash",
@@ -111,6 +113,8 @@ const TRANS = {
     appPasswordRequired: "Парол kamida 6 ta belgi bo'lishi kerak",
     appCredentialsSaved: "APK login saqlandi",
     appCredentialsError: "APK login saqlab bo'lmadi",
+    appLoginTaken: "Бу логин банд — бундай мижоз аллақачон бор",
+    appLoginChecking: "Логин текширилмоқда...",
     appNotSaved: "Сақланмаган — «Сақлаш ва ёпиш» босинг",
     appSaved: "Сақланган",
     appSaveLogin: "Логинни сақлаш",
@@ -153,6 +157,8 @@ const TRANS = {
     appPasswordRequired: "Пароль — минимум 6 символов",
     appCredentialsSaved: "APK логин сохранён",
     appCredentialsError: "Не удалось сохранить APK логин",
+    appLoginTaken: "Этот логин занят — такой клиент уже есть",
+    appLoginChecking: "Проверка логина...",
     appNotSaved: "Не сохранено — нажмите «Записать и закрыть»",
     appSaved: "Сохранено",
     appSaveLogin: "Сохранить логин",
@@ -492,14 +498,70 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const [appCredLoading, setAppCredLoading] = useState(false);
   const [appCredError, setAppCredError] = useState<string | null>(null);
   const [appLoginTouched, setAppLoginTouched] = useState(false);
+  const [appLoginTaken, setAppLoginTaken] = useState(false);
+  const [appLoginChecking, setAppLoginChecking] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const keepNameFocus = useRef(false);
+  const loginCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
 
   const agentNames = agents.map(a => a.name);
   const lineOptions = lines.length > 0 ? lines : ['01'];
   const priceZoneOptions = lineOptions;
+
+  const formatLoginTakenMessage = (takenBy?: {
+    clientName?: string | null;
+    clientCode?: string | null;
+  }) => {
+    if (takenBy?.clientName) {
+      const code = takenBy.clientCode ? ` (${takenBy.clientCode})` : '';
+      return `${t.appLoginTaken}: ${takenBy.clientName}${code}`;
+    }
+    return t.appLoginTaken;
+  };
+
+  const verifyAppLoginAvailable = async (login: string): Promise<boolean> => {
+    const normalized = login.trim().toLowerCase();
+    if (normalized.length < 3) {
+      setAppLoginTaken(false);
+      return true;
+    }
+    if (
+      hasAppLogin
+      && savedAppUsername
+      && normalized === savedAppUsername.toLowerCase()
+    ) {
+      setAppLoginTaken(false);
+      setAppCredError(null);
+      return true;
+    }
+    if (!localStorage.getItem('api_access_token')) return true;
+    setAppLoginChecking(true);
+    try {
+      const res = await api.checkClientAppUsername(normalized, client?.id);
+      if (!res.available) {
+        setAppLoginTaken(true);
+        setAppCredError(formatLoginTakenMessage(res.takenBy));
+        return false;
+      }
+      setAppLoginTaken(false);
+      setAppCredError(null);
+      return true;
+    } catch {
+      // Offline / API xatosi — saqlashda backend yana tekshiradi
+      return true;
+    } finally {
+      setAppLoginChecking(false);
+    }
+  };
+
+  const scheduleLoginCheck = (login: string) => {
+    if (loginCheckTimer.current) clearTimeout(loginCheckTimer.current);
+    loginCheckTimer.current = setTimeout(() => {
+      void verifyAppLoginAvailable(login);
+    }, 400);
+  };
 
   const resolveCredentialPayload = (force = false) => {
     const loginTrim = appLogin.trim().toLowerCase();
@@ -540,6 +602,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       setAppCredError(t.appPasswordRequired);
       return;
     }
+    const ok = await verifyAppLoginAvailable(loginTrim);
+    if (!ok) return;
     setAppCredError(null);
     try {
       await api.updateClient(clientId, {
@@ -548,7 +612,11 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       });
       markCredentialsSaved(loginTrim);
     } catch (e) {
-      setAppCredError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setAppCredError(msg.includes('409') || msg.toLowerCase().includes('band') || msg.toLowerCase().includes('занят')
+        ? msg.replace(/^HTTP \d+:\s*/i, '')
+        : msg);
+      setAppLoginTaken(true);
     }
   };
 
@@ -556,6 +624,14 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     if (!onSave) { onClose(); return; }
     setAppCredError(null);
     const { loginTrim, loginChanged, passwordForSave, shouldSave } = resolveCredentialPayload();
+
+    if (shouldSave) {
+      const ok = await verifyAppLoginAvailable(loginTrim);
+      if (!ok) {
+        setActiveTab('kirish');
+        return;
+      }
+    }
 
     const payload: Partial<ClientRow> & {
       id?: string;
@@ -594,7 +670,9 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setAppCredError(msg);
+      const clean = msg.replace(/^HTTP \d+:\s*/i, '');
+      setAppCredError(clean);
+      if (msg.includes('409') || /band|занят|taken/i.test(msg)) setAppLoginTaken(true);
       setActiveTab('kirish');
     }
   };
@@ -1109,14 +1187,34 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     <span style={{ minWidth: 72, fontSize: 12, color: lblClr }}>{t.appLogin}:</span>
                     <input
                       value={appLogin}
-                      onChange={e => { setAppLogin(e.target.value); setAppLoginTouched(true); setAppCredError(null); }}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setAppLogin(v);
+                        setAppLoginTouched(true);
+                        setAppLoginTaken(false);
+                        setAppCredError(null);
+                        scheduleLoginCheck(v);
+                      }}
+                      onBlur={() => { void verifyAppLoginAvailable(appLogin); }}
                       placeholder="sherinmarket"
-                      style={{ ...inpStyle({ flex: 1, minWidth: 140 }), fontFamily: 'monospace' }}
-                      onFocus={onFoc} onBlur={onBlr}
+                      style={{
+                        ...inpStyle({ flex: 1, minWidth: 140 }),
+                        fontFamily: 'monospace',
+                        borderColor: appLoginTaken ? '#ef4444' : undefined,
+                      }}
+                      onFocus={onFoc}
                     />
-                    {hasAppLogin && savedAppUsername && (
+                    {appLoginChecking && (
+                      <span style={{ fontSize: 10, color: lblClr }}>{t.appLoginChecking}</span>
+                    )}
+                    {hasAppLogin && savedAppUsername && !appLoginTaken && (
                       <span style={{ fontSize: 10, color: '#10b981', fontWeight: 600 }}>
                         ✓ {savedAppUsername}
+                      </span>
+                    )}
+                    {appLoginTaken && (
+                      <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 600 }}>
+                        ✕ {t.appLoginTaken}
                       </span>
                     )}
                   </div>
@@ -1157,9 +1255,12 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                     <button
                       type="button"
                       onClick={handleSaveAppCredentialsOnly}
+                      disabled={appLoginTaken || appLoginChecking}
                       style={{
                         marginTop: 4, padding: '9px 14px', borderRadius: 10, border: 'none',
-                        background: focClr, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        background: focClr, color: '#fff', fontSize: 12, fontWeight: 600,
+                        cursor: appLoginTaken || appLoginChecking ? 'not-allowed' : 'pointer',
+                        opacity: appLoginTaken || appLoginChecking ? 0.55 : 1,
                       }}
                     >
                       {t.appSaveLogin}
@@ -1350,9 +1451,17 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
         {/* ── BOTTOM ── */}
         <div style={{ flexShrink: 0, display: 'flex', gap: 8, padding: '10px 14px',
           borderTop: `1px solid ${divClr}`, background: topBg }}>
-          <button onClick={handleSave} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: 11, background: focClr, color: '#fff', border: 'none', borderRadius: 10,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          <button
+            onClick={handleSave}
+            disabled={appLoginTaken || appLoginChecking}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: 11, background: focClr, color: '#fff', border: 'none', borderRadius: 10,
+              fontSize: 13, fontWeight: 600,
+              cursor: appLoginTaken || appLoginChecking ? 'not-allowed' : 'pointer',
+              opacity: appLoginTaken || appLoginChecking ? 0.55 : 1,
+            }}
+          >
             <Save size={14} /> {t.saveClose}
           </button>
           <button onClick={onClose}
