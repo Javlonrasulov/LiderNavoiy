@@ -60,6 +60,11 @@ function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
   return 'agent';
 }
 
+/** GPS 15 daqiqadan yangi bo'lsa xaritada ko'rinsin */
+const LOCATION_VISIBLE_MAX_AGE_MS = 15 * 60_000;
+/** 5 daqiqadan yangi — online badge */
+const LOCATION_ONLINE_MAX_AGE_MS = 5 * 60_000;
+
 function formatLastSeen(date: Date | null | undefined): string {
   if (!date) return '—';
   const diffMs = Date.now() - date.getTime();
@@ -391,7 +396,8 @@ export class DashboardService {
       .andWhere('d.lastLongitude IS NOT NULL');
 
     if (companyIds?.length) {
-      locQb.andWhere('d.companyId IN (:...companyIds)', { companyIds });
+      // companyId bo'sh agentlar ham (UI da tashkilot tanlanmagan) ko'rinsin
+      locQb.andWhere('(d.companyId IN (:...companyIds) OR d.companyId IS NULL)', { companyIds });
     }
 
     const [profiles, onlineIds, liveMap] = await Promise.all([
@@ -410,7 +416,11 @@ export class DashboardService {
       });
       if (!missing?.user) continue;
       if (missing.user.role !== UserRole.DISTRIBUTOR || !missing.user.isActive) continue;
-      if (companyIds?.length && (!missing.companyId || !companyIds.includes(missing.companyId))) {
+      if (
+        companyIds?.length
+        && missing.companyId
+        && !companyIds.includes(missing.companyId)
+      ) {
         continue;
       }
       missing.lastLatitude = live.latitude;
@@ -420,6 +430,7 @@ export class DashboardService {
       profileById.set(id, missing);
     }
 
+    const now = Date.now();
     const employeeLocations = profiles.map(d => {
       const live = liveMap.get(d.id);
       const lat = live?.latitude ?? Number(d.lastLatitude);
@@ -427,18 +438,23 @@ export class DashboardService {
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
+      const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
       const inRedisOnline = onlineIds.has(d.id);
       const inRedisLive = liveMap.has(d.id);
-      // Faqat socket/Redis orqali jonli agentlar (DB dagi eski GPS hisobga olinmasin)
-      if (!inRedisOnline && !inRedisLive) return null;
+      const freshGps = ageMs <= LOCATION_ONLINE_MAX_AGE_MS;
+      const recentlySeen = ageMs <= LOCATION_VISIBLE_MAX_AGE_MS;
+      const online = inRedisOnline || inRedisLive || freshGps || (d.isOnline && recentlySeen);
+
+      // Redis ishlamasa ham DB dagi yangi GPS ko'rinsin
+      if (!online && !recentlySeen) return null;
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {
         distributorId: d.id,
         name,
         avatar: initials(name),
-        role: detectRole(d.position),
-        online: true,
+        role: detectRole(d.position ?? d.user?.position),
+        online,
         lastSeen: formatLastSeen(lastAt),
         lat,
         lng,

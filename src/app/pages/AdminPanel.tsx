@@ -317,7 +317,6 @@ export default function AdminPanel() {
   const aggSalesChartDay  = dashData?.salesChart?.day   ?? buildOrgChart('day',   activeIds);
 
   const activeMapEmployees: EmployeeMarker[] = (() => {
-    // API token bor — demo ORG_EMPLOYEES ishlatilmasin (soxta "2 xodim")
     const hasApi = !!localStorage.getItem('api_access_token');
     const base: EmployeeMarker[] = dashData
       ? dashData.employeeLocations.map(e => ({
@@ -347,39 +346,34 @@ export default function AdminPanel() {
         && !(live.lat === 0 && live.lng === 0)
         && Math.abs(live.lat) <= 90 && Math.abs(live.lng) <= 180;
 
-      if (!hasCoords) {
-        // Coords yo'q — yangi marker qo'shilmasin; mavjud bo'lsa faqat online yangilanadi
-        if (existing && live.online) {
-          byDist.set(distributorId, { ...existing, online: true, lastSeen: live.lastSeen });
-        } else if (existing && !live.online) {
-          byDist.delete(distributorId);
-        }
-        continue;
-      }
-
-      if (!live.online) {
-        // Offline bo'lsa xaritadan olib tashlash
-        byDist.delete(distributorId);
-        continue;
-      }
-
       if (existing) {
         byDist.set(distributorId, {
           ...existing,
+          ...(hasCoords ? { lat: live.lat, lng: live.lng } : {}),
+          online: live.online,
+          lastSeen: live.lastSeen || existing.lastSeen,
+        });
+        continue;
+      }
+
+      // Backendda hali yo'q, lekin WebSocket jonli GPS yuborgan — qo'shamiz
+      if (hasCoords && live.online) {
+        byDist.set(distributorId, {
+          id: clientIdHash(distributorId),
+          name: live.name || 'Agent',
+          avatar: (live.name || 'A').slice(0, 2).toUpperCase(),
+          role: 'agent',
+          online: true,
+          lastSeen: live.lastSeen || 'hozir',
           lat: live.lat,
           lng: live.lng,
-          online: true,
-          lastSeen: live.lastSeen,
+          distributorId,
         });
       }
-      // Nomisiz yangi ghost marker qo'shilmasin — faqat backend poll orqali
     }
 
-    // Faqat online + haqiqiy koordinatalar
     return [...byDist.values()].filter(e =>
-      e.online
-      && Number.isFinite(e.lat) && Number.isFinite(e.lng)
-      && !(e.lat === 0 && e.lng === 0),
+      Number.isFinite(e.lat) && Number.isFinite(e.lng) && !(e.lat === 0 && e.lng === 0),
     );
   })();
 

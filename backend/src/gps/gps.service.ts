@@ -8,7 +8,7 @@ import { LocationPointDto, BatchLocationDto, RouteHistoryQueryDto } from './dto/
 import { DistributorStatus } from '../common/enums';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 
-const LIVE_LOCATION_TTL = 120; // seconds
+const LIVE_LOCATION_TTL = 300; // 5 daqiqa
 
 @Injectable()
 export class GpsService {
@@ -179,11 +179,15 @@ export class GpsService {
       isOnline: true,
     });
 
-    await this.redis.setJson(`location:live:${distributorId}`, dto, LIVE_LOCATION_TTL);
-    // Socket online TTL bilan bir xil ushlab turish
-    await this.redis.setJson(`online:${distributorId}`, {
-      updatedAt: new Date().toISOString(),
-      source: 'gps',
-    }, LIVE_LOCATION_TTL);
+    const ttl = LIVE_LOCATION_TTL;
+    try {
+      await this.redis.setJson(`location:live:${distributorId}`, dto, ttl);
+      await this.redis.setJson(`online:${distributorId}`, {
+        updatedAt: new Date().toISOString(),
+        source: 'gps',
+      }, ttl);
+    } catch {
+      // Redis ishlamasa ham DB yangilangan — xarita DB dan o'qiydi
+    }
   }
 }
