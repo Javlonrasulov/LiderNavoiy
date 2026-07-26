@@ -86,5 +86,26 @@ class LocationViewModel @Inject constructor(
         viewModelScope.launch { appSettingsRepository.setLanguage(language) }
     }
 
-    fun filteredClients(): List<Client> = _uiState.value.clients
+    fun filteredClients(): List<Client> {
+        val state = _uiState.value
+        val dayKey = when (state.selectedDay) {
+            "today" -> {
+                val cal = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+                when (cal) {
+                    java.util.Calendar.SUNDAY -> "sunday"
+                    java.util.Calendar.MONDAY -> "monday"
+                    java.util.Calendar.TUESDAY -> "tuesday"
+                    java.util.Calendar.WEDNESDAY -> "wednesday"
+                    java.util.Calendar.THURSDAY -> "thursday"
+                    java.util.Calendar.FRIDAY -> "friday"
+                    else -> "saturday"
+                }
+            }
+            else -> state.selectedDay
+        }
+        val byDay = state.clients.filter { client ->
+            client.territory?.lowercase()?.trim() == dayKey
+        }
+        return byDay.ifEmpty { state.clients }
+    }
 }

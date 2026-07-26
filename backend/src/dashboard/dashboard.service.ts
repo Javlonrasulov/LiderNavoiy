@@ -6,7 +6,7 @@ import { Visit } from '../visits/entities/visit.entity';
 import { Order } from '../orders/entities/order.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus, OrderSource } from '../common/enums';
+import { OrderStatus, OrderSource, UserRole } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
 
 const DEFAULT_AGENT_MONTHLY_PLAN = 15_000_000;
@@ -67,6 +67,8 @@ function formatLastSeen(date: Date | null | undefined): string {
 
 /** Oxirgi GPS 5 daqiqadan yangi bo'lsa — online deb hisobla */
 const ONLINE_LOCATION_MAX_AGE_MS = 5 * 60_000;
+/** Xaritada: online yoki oxirgi 30 daqiqada GPS yuborgan agentlar */
+const LOCATION_VISIBLE_MAX_AGE_MS = 30 * 60_000;
 
 const WEEKDAY_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const MONTH_LABELS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
@@ -381,11 +383,14 @@ export class DashboardService {
 
     const locQb = this.profileRepo
       .createQueryBuilder('d')
-      .leftJoinAndSelect('d.user', 'u')
-      .where('(d.lastLatitude IS NOT NULL AND d.lastLongitude IS NOT NULL)');
+      .innerJoinAndSelect('d.user', 'u')
+      .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
+      .andWhere('u.isActive = true')
+      .andWhere('d.lastLatitude IS NOT NULL')
+      .andWhere('d.lastLongitude IS NOT NULL');
 
     if (companyIds?.length) {
-      locQb.andWhere('(d.companyId IN (:...companyIds) OR d.companyId IS NULL)', { companyIds });
+      locQb.andWhere('d.companyId IN (:...companyIds)', { companyIds });
     }
 
     const [profiles, onlineIds, liveMap] = await Promise.all([
@@ -394,7 +399,7 @@ export class DashboardService {
       this.getLiveLocationMap(),
     ]);
 
-    // Redis da jonli joylashuv bor, lekin DB da hali yo'q (yoki boshqa company) — qo'shib qo'yamiz
+    // Redis da jonli joylashuv bor, lekin DB da hali GPS yo'q — qo'shib qo'yamiz
     const profileById = new Map(profiles.map(p => [p.id, p]));
     for (const [id, live] of liveMap) {
       if (profileById.has(id)) continue;
@@ -402,11 +407,11 @@ export class DashboardService {
         where: { id },
         relations: ['user'],
       });
-      if (!missing) continue;
-      if (companyIds?.length && missing.companyId && !companyIds.includes(missing.companyId)) {
+      if (!missing?.user) continue;
+      if (missing.user.role !== UserRole.DISTRIBUTOR || !missing.user.isActive) continue;
+      if (companyIds?.length && (!missing.companyId || !companyIds.includes(missing.companyId))) {
         continue;
       }
-      // Redis dan lat/lng bilan to'ldiramiz
       missing.lastLatitude = live.latitude;
       missing.lastLongitude = live.longitude;
       if (live.recordedAt) missing.lastLocationAt = new Date(live.recordedAt);
@@ -414,6 +419,7 @@ export class DashboardService {
       profileById.set(id, missing);
     }
 
+    const now = Date.now();
     const employeeLocations = profiles.map(d => {
       const live = liveMap.get(d.id);
       const lat = live?.latitude ?? Number(d.lastLatitude);
@@ -421,8 +427,15 @@ export class DashboardService {
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
-      const freshGps = lastAt != null && (Date.now() - lastAt.getTime()) <= ONLINE_LOCATION_MAX_AGE_MS;
-      const online = onlineIds.has(d.id) || freshGps;
+      const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
+      const inRedisOnline = onlineIds.has(d.id);
+      const inRedisLive = liveMap.has(d.id);
+      const freshGps = ageMs <= ONLINE_LOCATION_MAX_AGE_MS;
+      const recentlySeen = ageMs <= LOCATION_VISIBLE_MAX_AGE_MS;
+      const online = inRedisOnline || freshGps || inRedisLive;
+      // Eski offline joylashuvlar (demo/eski agent) xaritada ko'rinmasin
+      if (!online && !recentlySeen && !inRedisLive) return null;
+
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {
         distributorId: d.id,
@@ -435,7 +448,9 @@ export class DashboardService {
         lng,
         orgId: d.companyId ?? '',
       };
-    }).filter(e => Number.isFinite(e.lat) && Number.isFinite(e.lng));
+    }).filter((e): e is NonNullable<typeof e> =>
+      e != null && Number.isFinite(e.lat) && Number.isFinite(e.lng),
+    );
 
     return {
       kpi: {

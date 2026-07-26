@@ -27,7 +27,6 @@ import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -181,7 +180,7 @@ fun ClientsScreen(
                     } else if (state.activeTab != ClientsListTab.SEARCH || state.searchQuery.length >= 2) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 4.dp, bottom = bottomNavHeight() + 4.dp),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 4.dp),
                         ) {
                             items(state.clients, key = { it.id }) { client ->
                                 ClientListRow(
@@ -211,9 +210,7 @@ fun ClientsScreen(
                 onClose = { viewModel.setActiveTab(ClientsListTab.SCHEDULE) },
                 lang = lang,
                 isDark = isDark,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = bottomNavHeight()),
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
     }

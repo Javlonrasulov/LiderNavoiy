@@ -86,7 +86,20 @@ class ClientsViewModel @Inject constructor(
         when (state.activeTab) {
             ClientsListTab.ROUTE_DROPS -> list = list.filter { it.latitude == null || it.longitude == null }
             ClientsListTab.SEARCH -> if (state.searchQuery.isBlank()) list = emptyList()
-            ClientsListTab.SCHEDULE -> Unit
+            ClientsListTab.SCHEDULE -> {
+                // selectedDay: 0=Yakshanba ... 6=Shanba (Calendar.DAY_OF_WEEK - 1)
+                val dayKey = when (state.selectedDay) {
+                    0 -> "sunday"
+                    1 -> "monday"
+                    2 -> "tuesday"
+                    3 -> "wednesday"
+                    4 -> "thursday"
+                    5 -> "friday"
+                    else -> "saturday"
+                }
+                val byDay = list.filter { it.territory?.lowercase()?.trim() == dayKey }
+                if (byDay.isNotEmpty()) list = byDay
+            }
         }
         _uiState.update { it.copy(clients = list) }
     }

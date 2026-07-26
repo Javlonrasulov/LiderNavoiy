@@ -3,6 +3,7 @@ package uz.distributor.crm.presentation.messages
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,7 +31,6 @@ import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavTab
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.components.SherinPageHeader
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
@@ -126,31 +126,35 @@ fun MessagesScreen(
                 lang = lang,
             )
 
-            when (state.selectedTab) {
-                MessagesListTab.CHATS -> ChatsTabContent(
-                    modifier = Modifier.weight(1f),
-                    isLoading = state.isLoading,
-                    filtered = filteredChats,
-                    error = state.error,
-                    myUserId = state.myUserId,
-                    isDark = isDark,
-                    lang = lang,
-                    apiHost = apiHost,
-                    onReload = { viewModel.load() },
-                    onOpenContacts = { viewModel.selectTab(MessagesListTab.CONTACTS) },
-                    onChatClick = onChatClick,
-                    previewLast = { previewLast(it, lang) },
-                )
-                MessagesListTab.CONTACTS -> ContactsTabContent(
-                    modifier = Modifier.weight(1f),
-                    isLoading = state.contactsLoading,
-                    listItems = contactListItems,
-                    error = state.error,
-                    isDark = isDark,
-                    lang = lang,
-                    onReload = { viewModel.loadContacts(force = true) },
-                    onContactClick = { viewModel.startConversation(it, onChatClick) },
-                )
+            // weight to‘g‘ridan-to‘g‘ri Column bolasida — aks holda list balandligi qisqarib
+            // pastida oq “blok” ko‘rinadi va nomlar uning orqasida qolib ketadi.
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (state.selectedTab) {
+                    MessagesListTab.CHATS -> ChatsTabContent(
+                        modifier = Modifier.fillMaxSize(),
+                        isLoading = state.isLoading,
+                        filtered = filteredChats,
+                        error = state.error,
+                        myUserId = state.myUserId,
+                        isDark = isDark,
+                        lang = lang,
+                        apiHost = apiHost,
+                        onReload = { viewModel.load() },
+                        onOpenContacts = { viewModel.selectTab(MessagesListTab.CONTACTS) },
+                        onChatClick = onChatClick,
+                        previewLast = { previewLast(it, lang) },
+                    )
+                    MessagesListTab.CONTACTS -> ContactsTabContent(
+                        modifier = Modifier.fillMaxSize(),
+                        isLoading = state.contactsLoading,
+                        listItems = contactListItems,
+                        error = state.error,
+                        isDark = isDark,
+                        lang = lang,
+                        onReload = { viewModel.loadContacts(force = true) },
+                        onContactClick = { viewModel.startConversation(it, onChatClick) },
+                    )
+                }
             }
         }
     }
@@ -454,7 +458,11 @@ private fun TelegramContactRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
             .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

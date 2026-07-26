@@ -306,6 +306,8 @@ export default function AdminPanel() {
   const aggSalesChartDay  = dashData?.salesChart?.day   ?? buildOrgChart('day',   activeIds);
 
   const activeMapEmployees: EmployeeMarker[] = (() => {
+    // API token bor — demo ORG_EMPLOYEES ishlatilmasin (soxta "2 xodim")
+    const hasApi = !!localStorage.getItem('api_access_token');
     const base: EmployeeMarker[] = dashData
       ? dashData.employeeLocations.map(e => ({
           id: clientIdHash(e.distributorId),
@@ -319,19 +321,27 @@ export default function AdminPanel() {
           orgId: e.orgId,
           distributorId: e.distributorId,
         }))
-      : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
+      : hasApi
+        ? []
+        : activeIds.flatMap(id => ORG_EMPLOYEES[id] || []);
 
-    const byDist = new Map(base.filter(e => e.distributorId).map(e => [e.distributorId!, e]));
+    const byDist = new Map<string, EmployeeMarker>();
+    for (const e of base) {
+      if (e.distributorId) byDist.set(e.distributorId, e);
+    }
 
     for (const [distributorId, live] of Object.entries(liveLocations)) {
-      if (!Number.isFinite(live.lat) || !Number.isFinite(live.lng) || (live.lat === 0 && live.lng === 0)) {
-        const existing = byDist.get(distributorId);
+      const existing = byDist.get(distributorId);
+      const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
+        && !(live.lat === 0 && live.lng === 0);
+
+      if (!hasCoords) {
         if (existing) {
           byDist.set(distributorId, { ...existing, online: live.online, lastSeen: live.lastSeen });
         }
         continue;
       }
-      const existing = byDist.get(distributorId);
+
       if (existing) {
         byDist.set(distributorId, {
           ...existing,
@@ -340,11 +350,12 @@ export default function AdminPanel() {
           online: live.online,
           lastSeen: live.lastSeen,
         });
-      } else {
+      } else if (live.name) {
+        // Nomisiz "Agent" ghost marker qo'shilmasin
         byDist.set(distributorId, {
           id: clientIdHash(distributorId),
-          name: live.name ?? 'Agent',
-          avatar: (live.name ?? 'A').slice(0, 2).toUpperCase(),
+          name: live.name,
+          avatar: live.name.slice(0, 2).toUpperCase(),
           role: 'agent',
           online: live.online,
           lastSeen: live.lastSeen,
@@ -355,13 +366,7 @@ export default function AdminPanel() {
       }
     }
 
-    // Live bo'lmagan base markerlar ham qolsin
-    const merged = [...byDist.values()];
-    for (const e of base) {
-      if (e.distributorId && byDist.has(e.distributorId)) continue;
-      if (!e.distributorId) merged.push(e);
-    }
-    return merged;
+    return [...byDist.values()];
   })();
 
   const mapCenterInfo = (() => {

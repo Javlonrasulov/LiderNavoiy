@@ -22,6 +22,28 @@ object MapTileSources {
     val defaultLayer: MapLayerId = MapLayerId.STANDARD
     val allLayers: List<MapLayerId> = MapLayerId.entries
 
+    /** Admin MapLayerSwitcher bilan bir xil — Navoiy preview tile (z=12, x=2793, y=1550) */
+    fun thumbUrl(layerId: MapLayerId): String = when (layerId) {
+        MapLayerId.STANDARD ->
+            "https://a.tile.openstreetmap.org/12/2793/1550.png"
+        MapLayerId.CYCLOSM ->
+            "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/12/2793/1550.png"
+        MapLayerId.CYCLEMAP ->
+            "https://a.tile.opencyclemap.org/cycle/12/2793/1550.png"
+        MapLayerId.TRANSPORT ->
+            "https://a.tiles.openrailwaymap.org/standard/12/2793/1550.png"
+        MapLayerId.TOPOGRAPHIC ->
+            "https://a.tile.opentopomap.org/12/2793/1550.png"
+        MapLayerId.HUMANITARIAN ->
+            "https://a.tile.openstreetmap.fr/hot/12/2793/1550.png"
+        MapLayerId.SHORTBREAD ->
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/12/2793/1550.png"
+        MapLayerId.MAPTILER ->
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager_nolabels/12/2793/1550.png"
+        MapLayerId.SATELLITE ->
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/12/1550/2793"
+    }
+
     fun source(layerId: MapLayerId, dark: Boolean = false): OnlineTileSourceBase = when (layerId) {
         MapLayerId.STANDARD -> if (dark) darkStandard() else TileSourceFactory.MAPNIK
         MapLayerId.CYCLOSM -> hosts(

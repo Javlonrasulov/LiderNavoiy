@@ -102,7 +102,11 @@ fun AppNavHost(
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            NavHost(navController = navController, startDestination = "splash") {
+            NavHost(
+                navController = navController,
+                startDestination = "splash",
+                modifier = Modifier.fillMaxSize(),
+            ) {
         composable("splash") {
             SplashRoute(
                 onLoggedIn = { navController.navigate("main") { popUpTo("splash") { inclusive = true } } },

@@ -17,10 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import uz.distributor.crm.map.MapLayerId
 import uz.distributor.crm.map.MapTileSources
 
@@ -36,6 +40,7 @@ fun MapLayerPicker(
     val ordered = remember(activeLayer) {
         listOf(activeLayer) + layers.filter { it != activeLayer }
     }
+    val context = LocalContext.current
 
     Box(modifier = modifier.padding(start = 12.dp, bottom = bottomPadding)) {
         if (expanded) {
@@ -71,13 +76,15 @@ fun MapLayerPicker(
                                     color = if (isActive) Color(0xFF4285F4) else Color.Black.copy(0.12f),
                                     shape = RoundedCornerShape(12.dp),
                                 ),
-                            contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                layer.label.take(2),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF6B7280),
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(MapTileSources.thumbUrl(layer))
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = layer.label,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                         Spacer(Modifier.height(4.dp))
@@ -104,8 +111,29 @@ fun MapLayerPicker(
                     .size(42.dp)
                     .border(2.dp, Color.Black.copy(0.15f), RoundedCornerShape(10.dp)),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Layers, contentDescription = "Xarita qatlamlari", tint = Color(0xFF374151))
+                Box {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(MapTileSources.thumbUrl(activeLayer))
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(0.25f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = "Xarita qatlamlari",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }
