@@ -125,6 +125,7 @@ export function AdminProdajiTab({ D, t, selectedCompanyIds }: AdminProdajiTabPro
             onClose={() => setShowCreate(false)}
             pageMode={true}
             onConfirm={handleConfirm}
+            selectedCompanyIds={selectedCompanyIds}
           />
         )}
 

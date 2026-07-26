@@ -1,4 +1,4 @@
-import { IsUUID, IsArray, ValidateNested, IsOptional, IsString, IsNumber, IsEnum } from 'class-validator';
+import { IsUUID, IsArray, ValidateNested, IsOptional, IsString, IsNumber, IsEnum, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OrderStatus } from '../../common/enums';
@@ -69,4 +69,11 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsUUID()
   deliveryDistributorId?: string | null;
+}
+
+export class SendToWarehouseDto {
+  @ApiPropertyOptional({ description: 'Shoshilinch (urgent) flag for warehouse / admin / tarozi' })
+  @IsOptional()
+  @IsBoolean()
+  isUrgent?: boolean;
 }

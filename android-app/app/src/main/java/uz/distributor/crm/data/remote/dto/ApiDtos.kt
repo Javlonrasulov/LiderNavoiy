@@ -23,6 +23,7 @@ data class UserDto(
     val role: String,
     val distributorId: String?,
     val companyName: String?,
+    val position: String? = null,
 )
 
 data class DashboardStatsDto(
@@ -164,6 +165,11 @@ data class VisitDto(
     val clientId: String,
     val visitedAt: String,
     @JsonAdapter(FlexibleDoubleAdapter::class) val orderTotal: Double = 0.0,
+    val clientName: String? = null,
+    val clientCode: String? = null,
+    val clientAddress: String? = null,
+    val fromClientOrder: Boolean = false,
+    val notes: String? = null,
 )
 
 data class OrderDto(
@@ -177,7 +183,14 @@ data class OrderDto(
     val clientName: String? = null,
     val clientCode: String? = null,
     val clientAddress: String? = null,
+    val clientPhone: String? = null,
+    val deliveryDistributorId: String? = null,
     val updatedAt: String? = null,
+    val isUrgent: Boolean = false,
+)
+
+data class SendToWarehouseRequest(
+    val isUrgent: Boolean = false,
 )
 
 data class CreateVisitRequest(

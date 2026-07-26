@@ -50,6 +50,10 @@ class RoadRouteService @Inject constructor() {
     ): RoadRoute? = withContext(Dispatchers.IO) {
         if (!isValid(fromLat, fromLng) || !isValid(toLat, toLng)) return@withContext null
 
+        val straightKm = haversineM(fromLat, fromLng, toLat, toLng) / 1000.0
+        // Emulator / noto‘g‘ri GPS — okean bo‘ylab marshrut so‘ramaslik
+        if (straightKm > 120.0) return@withContext null
+
         mutex.withLock {
             cached?.takeIf { it.matches(fromLat, fromLng, toLat, toLng) }?.route?.let { return@withContext it }
         }
@@ -101,7 +105,7 @@ class RoadRouteService @Inject constructor() {
             points = points,
             distanceKm = distanceM / 1000.0,
             durationMinutes = (durationS / 60.0).toInt().coerceAtLeast(1),
-        )
+        ).takeIf { it.distanceKm <= 120.0 }
     }
 
     private fun isValid(lat: Double, lng: Double): Boolean =

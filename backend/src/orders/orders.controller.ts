@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query } 
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto } from './dto/order.dto';
+import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto } from './dto/order.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole, OrderStatus } from '../common/enums';
@@ -38,6 +38,12 @@ export class OrdersController {
     );
   }
 
+  @Get('delivery')
+  @ApiOperation({ summary: 'List orders assigned to delivery person (Tovar yuklash)' })
+  findDeliveryOrders(@Request() req: { user: User }) {
+    return this.service.findForDelivery(req.user.distributorProfile!.id);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List orders (admin: all, agent: own)' })
   findAll(
@@ -58,8 +64,16 @@ export class OrdersController {
 
   @Patch(':id/send-to-warehouse')
   @ApiOperation({ summary: 'Agent confirms client order and sends to warehouse' })
-  sendToWarehouse(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.service.sendToWarehouse(id, req.user.distributorProfile!.id);
+  sendToWarehouse(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: SendToWarehouseDto,
+  ) {
+    return this.service.sendToWarehouse(
+      id,
+      req.user.distributorProfile!.id,
+      dto?.isUrgent === true,
+    );
   }
 
   @Patch(':id/reject')

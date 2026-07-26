@@ -19,6 +19,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import uz.lider.client.data.repository.LatLngPoint
+import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
 import uz.lider.client.map.MapLayerId
 import uz.lider.client.map.MapTileSources
@@ -31,33 +32,41 @@ private const val NAVOIY_ZOOM = 13.5
 private const val SINGLE_POINT_ZOOM = 15.0
 private const val ROUTE_COLOR = 0xFF2563EB.toInt()
 
-private fun isValidCoord(lat: Double?, lng: Double?): Boolean =
-    lat != null && lng != null && lat in -90.0..90.0 && lng in -180.0..180.0 &&
-        !(lat == 0.0 && lng == 0.0)
+private fun isValidCoord(lat: Double?, lng: Double?): Boolean = GeoCoords.isValid(lat, lng)
 
 private fun applyCamera(map: MapView, points: List<GeoPoint>) {
     val controller = map.controller
+    val safePoints = points.filter {
+        GeoCoords.isInServiceArea(it.latitude, it.longitude)
+    }.ifEmpty { points.filter { isValidCoord(it.latitude, it.longitude) } }
+
     when {
-        points.isEmpty() -> {
+        safePoints.isEmpty() -> {
             controller.setCenter(NAVOIY)
             controller.setZoom(NAVOIY_ZOOM)
         }
-        points.size == 1 -> {
-            controller.setCenter(points.first())
+        safePoints.size == 1 -> {
+            controller.setCenter(safePoints.first())
             controller.setZoom(SINGLE_POINT_ZOOM)
         }
         else -> {
+            val span = max(
+                abs(safePoints.maxOf { it.latitude } - safePoints.minOf { it.latitude }),
+                abs(safePoints.maxOf { it.longitude } - safePoints.minOf { it.longitude }),
+            )
+            // Juda katta bounding box (okean) — Navoiyga tushamiz
+            if (span > 1.5) {
+                controller.setCenter(NAVOIY)
+                controller.setZoom(NAVOIY_ZOOM)
+                return
+            }
             try {
-                val box = BoundingBox.fromGeoPoints(points)
+                val box = BoundingBox.fromGeoPoints(safePoints)
                 map.zoomToBoundingBox(box, false, 72)
             } catch (_: Exception) {
                 val mid = GeoPoint(
-                    points.map { it.latitude }.average(),
-                    points.map { it.longitude }.average(),
-                )
-                val span = max(
-                    abs(points.maxOf { it.latitude } - points.minOf { it.latitude }),
-                    abs(points.maxOf { it.longitude } - points.minOf { it.longitude }),
+                    safePoints.map { it.latitude }.average(),
+                    safePoints.map { it.longitude }.average(),
                 )
                 val zoom = when {
                     span < 0.01 -> 15.0
@@ -76,6 +85,7 @@ private fun updateFleetMap(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     interactive: Boolean,
+    compactMarkers: Boolean,
     onVehicleClick: (LiveMapVehicle) -> Unit,
 ) {
     map.setTileSource(MapTileSources.source(MapLayerId.STANDARD, dark = false))
@@ -88,23 +98,36 @@ private fun updateFleetMap(
 
     val cameraPoints = ArrayList<GeoPoint>()
     val ctx = map.context
-    val deliveryIcon = createDeliveryPinDrawable(ctx, 36)
+    val storeSizeDp = if (compactMarkers) 28 else 36
+    val truckSizeDp = if (compactMarkers) 32 else 40
+    val deliveryIcon = createDeliveryPinDrawable(ctx, storeSizeDp)
 
     vehicles.forEach { vehicle ->
         vehicle.orders.forEach { order ->
             val roadGeo = order.routePoints
                 .filter { isValidCoord(it.latitude, it.longitude) }
+                .filter { GeoCoords.isInServiceArea(it.latitude, it.longitude) }
                 .map { GeoPoint(it.latitude, it.longitude) }
             val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
                 GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
             } else {
                 null
             }
-            val courier = GeoPoint(vehicle.courierLat, vehicle.courierLng)
+            val courierOk = GeoCoords.isUsableCourier(
+                vehicle.courierLat,
+                vehicle.courierLng,
+                order.deliveryLat,
+                order.deliveryLng,
+            )
+            val courier = if (courierOk) {
+                GeoPoint(vehicle.courierLat, vehicle.courierLng)
+            } else {
+                null
+            }
 
             val linePoints = when {
                 roadGeo.size >= 2 -> roadGeo
-                delivery != null -> listOf(courier, delivery)
+                courier != null && delivery != null -> listOf(courier, delivery)
                 else -> emptyList()
             }
             if (linePoints.size >= 2) {
@@ -129,8 +152,15 @@ private fun updateFleetMap(
             }
         }
 
-        val truckIcon = createTruckMarkerDrawable(ctx, vehicle.orderCount, 56)
-        if (vehicle.id != "dest-only") {
+        val truckIcon = createTruckMarkerDrawable(ctx, vehicle.orderCount, truckSizeDp)
+        if (!vehicle.id.startsWith("dest-only") &&
+            GeoCoords.isUsableCourier(
+                vehicle.courierLat,
+                vehicle.courierLng,
+                vehicle.orders.firstOrNull()?.deliveryLat,
+                vehicle.orders.firstOrNull()?.deliveryLng,
+            )
+        ) {
             Marker(map).apply {
                 position = GeoPoint(vehicle.courierLat, vehicle.courierLng)
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
@@ -163,6 +193,7 @@ fun OrderTrackingMapView(
     vehicles: List<LiveMapVehicle>,
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
+    compactMarkers: Boolean = false,
     onVehicleClick: (LiveMapVehicle) -> Unit = {},
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -226,6 +257,7 @@ fun OrderTrackingMapView(
                 map = map,
                 vehicles = vehicles,
                 interactive = interactive,
+                compactMarkers = compactMarkers,
                 onVehicleClick = { clickHandler.value(it) },
             )
         },
@@ -269,7 +301,7 @@ fun OrderTrackingMapView(
             ),
         )
         when {
-            isValidCoord(courierLat, courierLng) -> listOf(
+            GeoCoords.isUsableCourier(courierLat, courierLng, deliveryLat, deliveryLng) -> listOf(
                 LiveMapVehicle(
                     id = "single",
                     courierLat = courierLat!!,

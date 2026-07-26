@@ -94,9 +94,31 @@ object AppStrings {
     fun more(lang: AppLanguage) = tr(lang, "Ko'proq", "Кўпроқ", "Ещё")
     fun clientsList(lang: AppLanguage) = tr(lang, "Klientlar ro'yxati", "Клиентлар рўйхати", "Список клиентов")
     fun visitCount(lang: AppLanguage) = tr(lang, "Tashriflar soni", "Ташрифлар сони", "Количество визитов")
+    fun visitsTitle(lang: AppLanguage) = visitCount(lang)
+    fun noVisits(lang: AppLanguage) = tr(
+        lang,
+        "Bugun tashrif yo'q",
+        "Бугун ташриф йўқ",
+        "Сегодня визитов нет",
+    )
+    fun visitFromClientOrder(lang: AppLanguage) = tr(
+        lang,
+        "Klient buyurtmasi",
+        "Клиент буюртмаси",
+        "Заказ клиента",
+    )
     fun products(lang: AppLanguage) = tr(lang, "Mahsulotlar", "Маҳсулотлар", "Товары")
     fun clientOrders(lang: AppLanguage) = tr(lang, "Klient buyurtmalari", "Клиент буюртмалари", "Заказы клиентов")
     fun clientOrdersTitle(lang: AppLanguage) = clientOrders(lang)
+    fun deliveryOrdersTitle(lang: AppLanguage) = tr(lang, "Dostavka", "Доставка", "Доставка")
+    fun noDeliveryOrders(lang: AppLanguage) = tr(
+        lang,
+        "Yuklangan buyurtma yo'q",
+        "Юкланган буюртма йўқ",
+        "Нет загруженных заказов",
+    )
+    fun deliveryStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
+    fun deliveryStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
     fun noClientOrders(lang: AppLanguage) = tr(
         lang,
         "Yangi klient buyurtmasi yo'q",
@@ -105,6 +127,10 @@ object AppStrings {
     )
     fun sendToWarehouse(lang: AppLanguage) = tr(lang, "Skladga yuborish", "Складга юбориш", "На склад")
     fun rejectOrder(lang: AppLanguage) = tr(lang, "Qaytarish", "Қайтариш", "Отклонить")
+    fun urgentOrder(lang: AppLanguage) = tr(lang, "Shoshilinch", "Шошилинч", "Срочно")
+    fun orderTimeToday(lang: AppLanguage) = tr(lang, "Bugun", "Бугун", "Сегодня")
+    fun orderTimeYesterday(lang: AppLanguage) = tr(lang, "Kecha", "Кеча", "Вчера")
+    fun orderPlacedAt(lang: AppLanguage) = tr(lang, "Buyurtma vaqti", "Буюртма вақти", "Время заказа")
     fun orderSentToWarehouse(lang: AppLanguage) = tr(
         lang,
         "Buyurtma skladga yuborildi",
@@ -291,6 +317,30 @@ object AppStrings {
         "Mahsulotlar topilmadi",
         "Маҳсулотлар топилмади",
         "Товары не найдены",
+    )
+    fun loadingData(lang: AppLanguage) = tr(
+        lang,
+        "Yuklanmoqda...",
+        "Юкланмоқда...",
+        "Загрузка...",
+    )
+    fun agentUnavailable(lang: AppLanguage) = tr(
+        lang,
+        "Agent ma'lumoti yo'q",
+        "Агент маълумоти йўқ",
+        "Нет данных агента",
+    )
+    fun dashboardLoadFailedTitle(lang: AppLanguage) = tr(
+        lang,
+        "Ma'lumotlar yuklanmadi",
+        "Маълумотлар юкланмади",
+        "Данные не загружены",
+    )
+    fun retryLoad(lang: AppLanguage) = tr(
+        lang,
+        "Qayta urinish",
+        "Қайта уриниш",
+        "Повторить",
     )
 
     fun apiError(lang: AppLanguage, key: String): String = when (key) {

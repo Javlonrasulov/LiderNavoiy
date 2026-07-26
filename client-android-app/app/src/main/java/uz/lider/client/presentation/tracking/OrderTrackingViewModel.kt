@@ -91,7 +91,10 @@ class OrderTrackingViewModel @Inject constructor(
         }
         val showLiveMap = status == OrderStatus.ON_WAY || status == OrderStatus.DELIVERED
         val distance = if (showLiveMap) {
-            tracking?.distanceKm?.let { formatDistance(it) } ?: "—"
+            tracking?.distanceKm
+                ?.takeIf { uz.lider.client.map.GeoCoords.isPlausibleRouteDistanceKm(it) }
+                ?.let { formatDistance(it) }
+                ?: "—"
         } else {
             "—"
         }
@@ -123,19 +126,24 @@ class OrderTrackingViewModel @Inject constructor(
         val courierLng = tracking?.deliveryPerson?.longitude
         val deliveryLat = tracking?.deliveryLatitude
         val deliveryLng = tracking?.deliveryLongitude
-        if (courierLat == null || courierLng == null || deliveryLat == null || deliveryLng == null) {
+        if (!uz.lider.client.map.GeoCoords.isUsableCourier(
+                courierLat, courierLng, deliveryLat, deliveryLng,
+            )
+        ) {
             _uiState.update { it.copy(routePoints = emptyList()) }
             return
         }
         routeJob?.cancel()
         routeJob = viewModelScope.launch {
             val route = roadRouteService.fetchDrivingRoute(
-                fromLat = courierLat,
-                fromLng = courierLng,
-                toLat = deliveryLat,
-                toLng = deliveryLng,
+                fromLat = courierLat!!,
+                fromLng = courierLng!!,
+                toLat = deliveryLat!!,
+                toLng = deliveryLng!!,
             )
-            if (route != null) {
+            if (route != null &&
+                uz.lider.client.map.GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)
+            ) {
                 _uiState.update {
                     it.copy(
                         routePoints = route.points,
@@ -143,6 +151,8 @@ class OrderTrackingViewModel @Inject constructor(
                         etaLabel = "${route.durationMinutes} min",
                     )
                 }
+            } else {
+                _uiState.update { it.copy(routePoints = emptyList()) }
             }
         }
     }

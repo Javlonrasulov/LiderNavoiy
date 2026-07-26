@@ -122,7 +122,7 @@ export class BootSeedService implements OnModuleInit {
     const courierUser = await this.ensureUser({
       username: 'dostavkachi',
       passwordHash,
-      fullName: 'Demo Dostavkachi',
+      fullName: 'Irgashev Azizxon Ilxomovich',
       role: UserRole.DISTRIBUTOR,
       position: 'Dostavkachi',
       permissions: null,
@@ -135,7 +135,7 @@ export class BootSeedService implements OnModuleInit {
           userId: courierUser.id,
           companyId: 'boran',
           companyName: 'Boran Leaders+',
-          lineCode: '01',
+          lineCode: 'D-01',
           phone: '+998907654321',
           position: 'Dostavkachi',
           status: DistributorStatus.ON_ROUTE,
@@ -145,16 +145,71 @@ export class BootSeedService implements OnModuleInit {
           lastLocationAt: new Date(),
         }),
       );
-      this.logger.log('Boot seed: dostavkachi profil yaratildi');
+      this.logger.log('Boot seed: dostavkachi #1 yaratildi');
     } else {
       courierProfile.position = 'Dostavkachi';
       courierProfile.phone = courierProfile.phone || '+998907654321';
-      if (courierProfile.lastLatitude == null) {
+      courierProfile.lineCode = courierProfile.lineCode || 'D-01';
+      // Emulator (AQSh) GPS saqlanib qolgan bo‘lsa — Navoiyga qaytaramiz
+      if (
+        courierProfile.lastLatitude == null ||
+        courierProfile.lastLongitude == null ||
+        !this.isUzCoord(courierProfile.lastLatitude, courierProfile.lastLongitude)
+      ) {
         courierProfile.lastLatitude = 40.1035;
         courierProfile.lastLongitude = 65.3792;
         courierProfile.lastLocationAt = new Date();
       }
       await this.profiles.save(courierProfile);
+      courierUser.fullName = 'Irgashev Azizxon Ilxomovich';
+      courierUser.position = 'Dostavkachi';
+      await this.users.save(courierUser);
+    }
+
+    const courierUser2 = await this.ensureUser({
+      username: 'dostavkachi2',
+      passwordHash,
+      fullName: 'Buronov Feruz Baxromovich',
+      role: UserRole.DISTRIBUTOR,
+      position: 'Dostavkachi',
+      permissions: null,
+    });
+
+    let courierProfile2 = await this.profiles.findOne({ where: { userId: courierUser2.id } });
+    if (!courierProfile2) {
+      courierProfile2 = await this.profiles.save(
+        this.profiles.create({
+          userId: courierUser2.id,
+          companyId: 'boran',
+          companyName: 'Boran Leaders+',
+          lineCode: 'D-02',
+          phone: '+998901112233',
+          position: 'Dostavkachi',
+          status: DistributorStatus.OFFLINE,
+          isOnline: false,
+          lastLatitude: 40.1150,
+          lastLongitude: 65.3700,
+          lastLocationAt: new Date(),
+        }),
+      );
+      this.logger.log('Boot seed: dostavkachi #2 yaratildi');
+    } else {
+      courierProfile2.position = 'Dostavkachi';
+      courierProfile2.phone = courierProfile2.phone || '+998901112233';
+      courierProfile2.lineCode = courierProfile2.lineCode || 'D-02';
+      if (
+        courierProfile2.lastLatitude == null ||
+        courierProfile2.lastLongitude == null ||
+        !this.isUzCoord(courierProfile2.lastLatitude, courierProfile2.lastLongitude)
+      ) {
+        courierProfile2.lastLatitude = 40.1150;
+        courierProfile2.lastLongitude = 65.3700;
+        courierProfile2.lastLocationAt = new Date();
+      }
+      await this.profiles.save(courierProfile2);
+      courierUser2.fullName = 'Buronov Feruz Baxromovich';
+      courierUser2.position = 'Dostavkachi';
+      await this.users.save(courierUser2);
     }
 
     let demoClient = await this.clients.findOne({ where: { code: '29072' } });
@@ -176,9 +231,22 @@ export class BootSeedService implements OnModuleInit {
         }),
       );
       this.logger.log('Boot seed: demo klient yaratildi');
-    } else if (!demoClient.distributorId) {
-      demoClient.distributorId = profile.id;
-      await this.clients.save(demoClient);
+    } else {
+      let dirty = false;
+      if (!demoClient.distributorId) {
+        demoClient.distributorId = profile.id;
+        dirty = true;
+      }
+      if (
+        demoClient.latitude == null ||
+        demoClient.longitude == null ||
+        !this.isUzCoord(demoClient.latitude, demoClient.longitude)
+      ) {
+        demoClient.latitude = 40.0921;
+        demoClient.longitude = 65.3612;
+        dirty = true;
+      }
+      if (dirty) await this.clients.save(demoClient);
     }
 
     await this.ensureUser({
@@ -191,7 +259,11 @@ export class BootSeedService implements OnModuleInit {
       clientId: demoClient.id,
     });
 
-    this.logger.log('Boot seed: admin/agent/dostavkachi/mijoz — parol 123456');
+    this.logger.log('Boot seed: admin/agent/dostavkachi/dostavkachi2/mijoz — parol 123456');
+  }
+
+  private isUzCoord(lat: number, lng: number): boolean {
+    return lat >= 37.0 && lat <= 45.8 && lng >= 55.0 && lng <= 73.5;
   }
 
   private async ensureUser(data: {

@@ -49,12 +49,12 @@ class ClientOrdersViewModel @Inject constructor(
         }
     }
 
-    fun sendToWarehouse(orderId: String) {
+    fun sendToWarehouse(orderId: String, isUrgent: Boolean = false) {
         if (_uiState.value.sendingId != null) return
         viewModelScope.launch {
             _uiState.update { it.copy(sendingId = orderId, error = null, successMessage = null) }
             try {
-                repository.sendToWarehouse(orderId)
+                repository.sendToWarehouse(orderId, isUrgent)
                 _uiState.update { state ->
                     state.copy(
                         sendingId = null,

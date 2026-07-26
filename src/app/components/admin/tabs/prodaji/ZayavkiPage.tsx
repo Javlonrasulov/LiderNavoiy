@@ -9,6 +9,7 @@ import type { ZayavkaInfo } from './ZayavkaDetailModal';
 import { demo } from '../../../../data/demoLimit';
 import { api } from '../../../../api/client';
 import { backendOrderToZayavka, type ZayavkaRow } from '../../../../utils/orderApi';
+import { UrgentDangerIcon } from '../../UrgentDangerIcon';
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -64,7 +65,7 @@ function fmtSum(n: number) {
 
 /* ─── Demo fallback (backend yo'q bo'lsa) ───────────────────── */
 const DEMO_DATA: Zayavka[] = demo([
-  { id:1,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18580, code:'28720', client:'GAYBIYEV MUXRIDDIN',          org:'OOO "BOLG\'ORI"', agent:'Эргашева Д.',  liniya:'13 - Эскиюрт', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:600508,  klass:'MM-1', otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true  },
+  { id:1,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18580, code:'28720', client:'GAYBIYEV MUXRIDDIN',          org:'OOO "BOLG\'ORI"', agent:'Эргашева Д.',  liniya:'13 - Эскиюрт', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:600508,  klass:'MM-1', otgr:'',      status:'pri', konsDate:'', note:'',          deleted:false, shipped:true,  processed:true, isUrgent:true  },
   { id:2,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18581, code:'28050', client:'XUMO GULI MCHJ',              org:'OOO "BOLG\'ORI"', agent:'Норова Н.',    liniya:'14 - Янгийўл', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'SM-',  otgr:'1 040', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
   { id:3,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18584, code:'28742', client:'7-OSHXONA',                   org:'OOO "BOLG\'ORI"', agent:'Назаров Ш.',   liniya:'27 - Хасан',   direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'OST',  otgr:'1 039', status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:true  },
   { id:4,  orderDate:'11.03.2026', shipDate:'11.03.2026', num:18585, code:'28014', client:'FARZONA SAVDO BARAKA 2019 OK',org:'OOO "BOLG\'ORI"', agent:'Назаров Ш.',   liniya:'14 - Янгийўл', direction:'SHERIN', fort:'D2', vs:'OnTra', source:'', amount:0,       klass:'OST',  otgr:'',      status:'otr', konsDate:'', note:'',          deleted:false, shipped:false, processed:false },
@@ -301,7 +302,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
         String(r.amount).includes(q)
       );
     }
-    return [...pendingRows, ...d];
+    return [...pendingRows, ...d].sort((a, b) => Number(!!b.isUrgent) - Number(!!a.isUrgent));
   }, [tab, search, dateStart, dateEnd, pendingRows, apiOrders, backendReady]);
 
   /* ── Desktop columns ── */
@@ -649,11 +650,18 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
               key={row.id}
               style={{
                 borderBottom:`1px solid ${brd}`, cursor:'pointer', transition:'background 0.1s',
-                background: row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : 'transparent',
+                background: row.isUrgent
+                  ? 'rgba(239,68,68,0.08)'
+                  : row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : 'transparent',
+                boxShadow: row.isUrgent ? 'inset 3px 0 0 #ef4444' : undefined,
               }}
               onClick={() => setDetailZayavka(toInfo(row))}
-              onMouseEnter={e => (e.currentTarget.style.background = row.status === 'cancelled' ? 'rgba(239,68,68,0.13)' : rowH)}
-              onMouseLeave={e => (e.currentTarget.style.background = row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : 'transparent')}
+              onMouseEnter={e => (e.currentTarget.style.background = row.isUrgent
+                ? 'rgba(239,68,68,0.14)'
+                : row.status === 'cancelled' ? 'rgba(239,68,68,0.13)' : rowH)}
+              onMouseLeave={e => (e.currentTarget.style.background = row.isUrgent
+                ? 'rgba(239,68,68,0.08)'
+                : row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : 'transparent')}
             >
               {COLS.map(c => (
                 <td key={c.key} style={{
@@ -668,13 +676,20 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                   textOverflow: c.key === 'status' ? 'clip' : 'ellipsis',
                 }}>
                   {c.key === 'status'
-                    ? statusBadge(row.status)
+                    ? (
+                      <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+                        {row.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
+                        {statusBadge(row.status)}
+                      </span>
+                    )
                     : c.key === 'client'
                       ? (
                         <span
                           style={{
-                            display: 'inline-block',
-                            borderBottom: `2px solid ${row.status === 'pri' ? '#3b82f6' : '#f97316'}`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            borderBottom: `2px solid ${row.isUrgent ? '#ef4444' : row.status === 'pri' ? '#3b82f6' : '#f97316'}`,
                             paddingBottom: 1,
                             maxWidth: 190,
                             overflow: 'hidden',
@@ -682,6 +697,8 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                             whiteSpace: 'nowrap',
                             verticalAlign: 'bottom',
                             cursor: 'default',
+                            color: row.isUrgent ? '#dc2626' : undefined,
+                            fontWeight: row.isUrgent ? 700 : undefined,
                           }}
                           onMouseEnter={e => {
                             const el = e.currentTarget;
@@ -692,9 +709,21 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                           }}
                           onMouseLeave={() => setTooltip(null)}
                         >
+                          {row.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
                           {row.client}
                         </span>
                       )
+                      : c.key === 'num'
+                        ? (
+                          <span style={{
+                            display:'inline-flex', alignItems:'center', gap:5,
+                            color: row.isUrgent ? '#dc2626' : muted,
+                            fontWeight: row.isUrgent ? 700 : undefined,
+                          }}>
+                            {row.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
+                            {cellVal(row, c.key)}
+                          </span>
+                        )
                       : (() => {
                           const val = cellVal(row, c.key);
                           return (
@@ -886,10 +915,15 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
             const open = expanded === row.id;
             return (
               <div key={row.id} style={{
-                background: row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : card,
+                background: row.isUrgent
+                  ? 'rgba(239,68,68,0.08)'
+                  : row.status === 'cancelled' ? 'rgba(239,68,68,0.07)' : card,
                 borderRadius:12,
-                border: row.status === 'cancelled' ? '1px solid rgba(239,68,68,0.35)' : `1px solid ${brd}`,
+                border: row.isUrgent
+                  ? '1px solid rgba(239,68,68,0.45)'
+                  : row.status === 'cancelled' ? '1px solid rgba(239,68,68,0.35)' : `1px solid ${brd}`,
                 overflow:'hidden',
+                boxShadow: row.isUrgent ? 'inset 3px 0 0 #ef4444' : undefined,
               }}>
                 <button
                   onClick={() => setExpanded(open ? null : row.id)}
@@ -898,14 +932,29 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:6 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{
-                        fontSize:13, color: txt, marginBottom:2,
+                        fontSize:13, color: row.isUrgent ? '#dc2626' : txt, marginBottom:2,
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                        borderBottom: `2px solid ${row.status === 'pri' ? '#3b82f6' : '#f97316'}`,
+                        borderBottom: `2px solid ${row.isUrgent ? '#ef4444' : row.status === 'pri' ? '#3b82f6' : '#f97316'}`,
                         paddingBottom: 3,
+                        fontWeight: row.isUrgent ? 700 : undefined,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
                       }}>
+                        {row.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
                         {row.client}
                       </div>
                       <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                        {row.isUrgent && (
+                          <span style={{
+                            display:'inline-flex', alignItems:'center', gap:4,
+                            fontSize:10, fontWeight:700, color:'#ef4444',
+                            background:'rgba(239,68,68,0.1)', borderRadius:999, padding:'2px 8px',
+                          }}>
+                            <UrgentDangerIcon title="Shoshilinch" size="sm" />
+                            Shoshilinch
+                          </span>
+                        )}
                         <span style={{ fontSize:11, color: muted }}>
                           #{typeof row.id === 'string' && row.id.includes('-')
                             ? row.id.replace(/-/g, '').slice(0, 8).toUpperCase()

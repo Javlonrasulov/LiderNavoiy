@@ -256,10 +256,12 @@ export class ClientPortalService {
         for (const gpsId of gpsSourceIds) {
           try {
             const live = await this.gpsService.getLastLocation(gpsId);
-            personLat = live.latitude;
-            personLng = live.longitude;
-            personLastAt = live.recordedAt ?? null;
-            break;
+            if (this.isUsableCourierCoord(live.latitude, live.longitude, deliveryLat, deliveryLng)) {
+              personLat = live.latitude;
+              personLng = live.longitude;
+              personLastAt = live.recordedAt ?? null;
+              break;
+            }
           } catch {
             /* try next */
           }
@@ -271,7 +273,16 @@ export class ClientPortalService {
               gpsId === deliveryDistributor.id
                 ? deliveryDistributor
                 : await this.distributorRepo.findOne({ where: { id: gpsId } });
-            if (profile?.lastLatitude != null && profile.lastLongitude != null) {
+            if (
+              profile?.lastLatitude != null &&
+              profile.lastLongitude != null &&
+              this.isUsableCourierCoord(
+                profile.lastLatitude,
+                profile.lastLongitude,
+                deliveryLat,
+                deliveryLng,
+              )
+            ) {
               personLat = profile.lastLatitude;
               personLng = profile.lastLongitude;
               personLastAt = profile.lastLocationAt?.toISOString() ?? null;
@@ -305,7 +316,18 @@ export class ClientPortalService {
         deliveryPerson.latitude,
         deliveryPerson.longitude,
       );
-      etaMinutes = Math.max(5, Math.round((distanceKm / 30) * 60));
+      // Emulator / noto‘g‘ri GPS bo‘lsa okean masofasini bermaslik
+      if (distanceKm > this.MAX_LIVE_DISTANCE_KM) {
+        distanceKm = null;
+        etaMinutes = null;
+        deliveryPerson = {
+          ...deliveryPerson,
+          latitude: null,
+          longitude: null,
+        };
+      } else {
+        etaMinutes = Math.max(5, Math.round((distanceKm / 30) * 60));
+      }
     }
 
     return {
@@ -319,6 +341,33 @@ export class ClientPortalService {
       etaMinutes,
       deliveryPerson,
     };
+  }
+
+  /** Local delivery — emulator AQSh GPS (~8000 km) ni rad etamiz. */
+  private readonly MAX_LIVE_DISTANCE_KM = 120;
+
+  private isInServiceArea(lat: number, lng: number): boolean {
+    // O‘zbekiston + biroz chegara
+    return lat >= 37.0 && lat <= 45.8 && lng >= 55.0 && lng <= 73.5;
+  }
+
+  private isUsableCourierCoord(
+    lat: number | null | undefined,
+    lng: number | null | undefined,
+    deliveryLat: number | null | undefined,
+    deliveryLng: number | null | undefined,
+  ): boolean {
+    if (lat == null || lng == null) return false;
+    if (lat === 0 && lng === 0) return false;
+    if (!this.isInServiceArea(lat, lng)) return false;
+    if (
+      deliveryLat != null &&
+      deliveryLng != null &&
+      this.isInServiceArea(deliveryLat, deliveryLng)
+    ) {
+      return this.haversineKm(lat, lng, deliveryLat, deliveryLng) <= this.MAX_LIVE_DISTANCE_KM;
+    }
+    return true;
   }
 
   private haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

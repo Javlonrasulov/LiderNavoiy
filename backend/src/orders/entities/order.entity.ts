@@ -44,6 +44,10 @@ export class Order {
   @Column({ default: false })
   isOfflineCreated: boolean;
 
+  /** Agent omborga yuborishda «Shoshilinch» deb belgilagan */
+  @Column({ default: false })
+  isUrgent: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   offlineId: string | null;
 

@@ -57,7 +57,6 @@ class DashboardViewModel @Inject constructor(
     )
 
     init {
-        loadDashboard()
         viewModelScope.launch {
             appSettingsRepository.language.collect { lang ->
                 _uiState.update { it.copy(formattedDate = formatToday(lang)) }
@@ -141,6 +140,10 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    fun reload() {
+        loadDashboard()
+    }
+
     private fun loadDashboard() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -172,13 +175,8 @@ class DashboardViewModel @Inject constructor(
                         isLoading = false,
                         user = user,
                         formattedDate = today,
-                        stats = DashboardStats(
-                            totalClients = 89,
-                            visitedClients = 1,
-                            pendingClients = 88,
-                            visitCount = 1,
-                            clientProgressPercent = 1.1f,
-                        ),
+                        stats = DashboardStats(),
+                        productCount = 0,
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
                         error = ApiErrorMapper.toKey(e),

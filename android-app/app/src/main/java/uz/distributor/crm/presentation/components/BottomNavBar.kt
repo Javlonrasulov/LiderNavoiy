@@ -50,7 +50,7 @@ enum class NavTab { HOME, DELIVERY, LOCATION, PLAN, MESSAGES }
 val NavTab.route: String
     get() = when (this) {
         NavTab.HOME -> "main"
-        NavTab.DELIVERY -> "clients"
+        NavTab.DELIVERY -> "delivery"
         NavTab.LOCATION -> "location"
         NavTab.PLAN -> "plan"
         NavTab.MESSAGES -> "messages"
@@ -62,17 +62,20 @@ fun BottomNavBar(
     onTabSelected: (NavTab) -> Unit,
     isDark: Boolean,
     modifier: Modifier = Modifier,
+    showDelivery: Boolean = false,
     unreadViewModel: NavUnreadViewModel = hiltViewModel(LocalContext.current as ComponentActivity),
 ) {
     val lang = LocalAppLanguage.current
     val messagesUnread by unreadViewModel.messagesUnread.collectAsState()
-    val tabs = listOf(
-        Triple(NavTab.HOME, Icons.Default.Home, AppStrings.navLabel(NavTab.HOME, lang)),
-        Triple(NavTab.DELIVERY, Icons.Default.LocalShipping, AppStrings.navLabel(NavTab.DELIVERY, lang)),
-        Triple(NavTab.LOCATION, Icons.Default.Map, AppStrings.navLabel(NavTab.LOCATION, lang)),
-        Triple(NavTab.PLAN, Icons.Default.BarChart, AppStrings.navLabel(NavTab.PLAN, lang)),
-        Triple(NavTab.MESSAGES, Icons.AutoMirrored.Filled.Message, AppStrings.navLabel(NavTab.MESSAGES, lang)),
-    )
+    val tabs = buildList {
+        add(Triple(NavTab.HOME, Icons.Default.Home, AppStrings.navLabel(NavTab.HOME, lang)))
+        if (showDelivery) {
+            add(Triple(NavTab.DELIVERY, Icons.Default.LocalShipping, AppStrings.navLabel(NavTab.DELIVERY, lang)))
+        }
+        add(Triple(NavTab.LOCATION, Icons.Default.Map, AppStrings.navLabel(NavTab.LOCATION, lang)))
+        add(Triple(NavTab.PLAN, Icons.Default.BarChart, AppStrings.navLabel(NavTab.PLAN, lang)))
+        add(Triple(NavTab.MESSAGES, Icons.AutoMirrored.Filled.Message, AppStrings.navLabel(NavTab.MESSAGES, lang)))
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),

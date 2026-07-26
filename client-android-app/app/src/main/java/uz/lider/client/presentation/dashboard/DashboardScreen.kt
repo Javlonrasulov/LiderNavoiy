@@ -921,6 +921,7 @@ private fun LiveDeliveryMapCard(
             OrderTrackingMapView(
                 vehicles = fleet.vehicles,
                 interactive = true,
+                compactMarkers = true,
                 onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )

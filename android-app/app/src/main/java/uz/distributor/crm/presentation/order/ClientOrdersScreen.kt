@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import java.text.DecimalFormat
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -118,7 +120,7 @@ fun ClientOrdersScreen(
                                 textMuted = textMuted,
                                 isDark = isDark,
                                 sending = state.sendingId == order.id,
-                                onSend = { viewModel.sendToWarehouse(order.id) },
+                                onSend = { urgent -> viewModel.sendToWarehouse(order.id, urgent) },
                                 onReject = { viewModel.rejectOrder(order.id) },
                                 lang = lang,
                             )
@@ -160,6 +162,7 @@ fun ClientOrdersScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ClientOrderCard(
     order: OrderDto,
@@ -169,10 +172,12 @@ private fun ClientOrderCard(
     textMuted: Color,
     isDark: Boolean,
     sending: Boolean,
-    onSend: () -> Unit,
+    onSend: (isUrgent: Boolean) -> Unit,
     onReject: () -> Unit,
     lang: uz.distributor.crm.localization.AppLanguage,
 ) {
+    var isUrgent by remember(order.id) { mutableStateOf(false) }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -200,11 +205,29 @@ private fun ClientOrderCard(
                         Text(it, fontSize = 12.sp, color = textMuted, maxLines = 2)
                     }
                 }
-                Text(
-                    formatOrderTime(order.createdAt),
-                    fontSize = 12.sp,
-                    color = textMuted,
-                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isDark) Color(0xFF242F3D) else Color(0xFFF3F4F6),
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = AppStrings.orderPlacedAt(lang),
+                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF4B5563),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            formatOrderTime(order.createdAt, lang),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF374151),
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -240,6 +263,50 @@ private fun ClientOrderCard(
                 fontSize = 15.sp,
                 color = textPrimary,
             )
+
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = if (isUrgent) {
+                    if (isDark) Color(0x33EF4444) else Color(0x14EF4444)
+                } else {
+                    if (isDark) Color(0xFF1E2A36) else Color(0xFFF9FAFB)
+                },
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isUrgent) Color(0x59EF4444) else {
+                        if (isDark) Color(0xFF242F3D) else Color(0xFFE5E7EB)
+                    },
+                ),
+                onClick = { if (!sending) isUrgent = !isUrgent },
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Checkbox(
+                        checked = isUrgent,
+                        onCheckedChange = { if (!sending) isUrgent = it },
+                        enabled = !sending,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFFEF4444),
+                            uncheckedColor = textMuted,
+                        ),
+                    )
+                    Text(
+                        AppStrings.urgentOrder(lang),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isUrgent) Color(0xFFEF4444) else textPrimary,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
             Spacer(Modifier.height(10.dp))
             Row(
                 Modifier.fillMaxWidth(),
@@ -256,10 +323,12 @@ private fun ClientOrderCard(
                     Text(AppStrings.rejectOrder(lang), fontSize = 13.sp)
                 }
                 Button(
-                    onClick = onSend,
+                    onClick = { onSend(isUrgent) },
                     enabled = !sending,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isUrgent) Color(0xFFEF4444) else Color(0xFF6366F1),
+                    ),
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                 ) {
@@ -278,12 +347,22 @@ private fun ClientOrderCard(
     }
 }
 
-private fun formatOrderTime(iso: String): String {
+private fun formatOrderTime(
+    iso: String,
+    lang: uz.distributor.crm.localization.AppLanguage,
+): String {
     return try {
+        val zone = ZoneId.systemDefault()
         val instant = Instant.parse(iso)
-        DateTimeFormatter.ofPattern("dd.MM HH:mm")
-            .withZone(ZoneId.systemDefault())
-            .format(instant)
+        val zoned = instant.atZone(zone)
+        val time = DateTimeFormatter.ofPattern("HH:mm").format(zoned)
+        val today = LocalDate.now(zone)
+        val orderDate = zoned.toLocalDate()
+        when {
+            orderDate == today -> "${AppStrings.orderTimeToday(lang)}, $time"
+            orderDate == today.minusDays(1) -> "${AppStrings.orderTimeYesterday(lang)}, $time"
+            else -> DateTimeFormatter.ofPattern("dd.MM, HH:mm").format(zoned)
+        }
     } catch (_: Exception) {
         iso.take(16)
     }

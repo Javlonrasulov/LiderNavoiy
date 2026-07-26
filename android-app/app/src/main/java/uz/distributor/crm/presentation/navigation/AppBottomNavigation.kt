@@ -30,6 +30,7 @@ val BottomNavHeight = BottomNavBarInnerHeight
 private val bottomNavRoutes = setOf(
     "main",
     "clients",
+    "delivery",
     "products",
     "location",
     "plan",
@@ -60,6 +61,7 @@ fun showsBottomNav(route: String?): Boolean {
 
 fun bottomNavSelectedTab(route: String?): NavTab? = when (route) {
     "main", "products", "profile" -> NavTab.HOME
+    "delivery" -> NavTab.DELIVERY
     "location" -> NavTab.LOCATION
     "plan" -> NavTab.PLAN
     "messages" -> NavTab.MESSAGES

@@ -25,6 +25,8 @@ import uz.lider.client.domain.model.ClientProfile
 import uz.lider.client.domain.model.DashboardData
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
+import uz.lider.client.map.GeoCoords
+import uz.lider.client.map.MapDefaults
 import javax.inject.Inject
 
 data class DashboardUiState(
@@ -212,26 +214,41 @@ class DashboardViewModel @Inject constructor(
 
                     val prev = prevByOrder[orderId]
                     var routePoints = prev?.routePoints.orEmpty()
-                    var distanceLabel = tracking.distanceKm?.let { formatDistance(it) }
-                        ?: prev?.distanceLabel
+                    val rawKm = tracking.distanceKm
+                    var distanceLabel = rawKm
+                        ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                        ?.let { formatDistance(it) }
                         ?: "—"
 
                     val courierLat = tracking.deliveryPerson?.latitude
                     val courierLng = tracking.deliveryPerson?.longitude
                     val deliveryLat = tracking.deliveryLatitude
+                        ?.takeIf { GeoCoords.isValid(it, tracking.deliveryLongitude) }
                     val deliveryLng = tracking.deliveryLongitude
-                    if (courierLat != null && courierLng != null &&
-                        deliveryLat != null && deliveryLng != null
-                    ) {
+                        ?.takeIf { GeoCoords.isValid(tracking.deliveryLatitude, it) }
+
+                    val gpsOk = GeoCoords.isUsableCourier(
+                        courierLat, courierLng, deliveryLat, deliveryLng,
+                    )
+                    if (!gpsOk) {
+                        routePoints = emptyList()
+                        distanceLabel = "—"
+                    } else if (deliveryLat != null && deliveryLng != null) {
                         val route = roadRouteService.fetchDrivingRoute(
-                            fromLat = courierLat,
-                            fromLng = courierLng,
+                            fromLat = courierLat!!,
+                            fromLng = courierLng!!,
                             toLat = deliveryLat,
                             toLng = deliveryLng,
                         )
-                        if (route != null) {
+                        if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                             routePoints = route.points
                             distanceLabel = formatDistance(route.distanceKm)
+                        } else {
+                            // Eski yomon marshrut (okean) ni saqlab qolmaslik
+                            routePoints = emptyList()
+                            if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
+                                distanceLabel = formatDistance(rawKm)
+                            }
                         }
                     }
 
@@ -260,18 +277,43 @@ class DashboardViewModel @Inject constructor(
             .mapNotNull { (key, group) ->
                 val withGps = group.firstOrNull {
                     val p = it.tracking.deliveryPerson
-                    p?.latitude != null && p.longitude != null &&
-                        !(p.latitude == 0.0 && p.longitude == 0.0)
-                } ?: return@mapNotNull null
-                val person = withGps.tracking.deliveryPerson!!
-                LiveMapVehicle(
-                    id = key,
-                    courierLat = person.latitude!!,
-                    courierLng = person.longitude!!,
-                    courierName = person.name.ifBlank { "—" },
-                    courierPhone = person.phone,
-                    orders = group,
-                )
+                    GeoCoords.isUsableCourier(
+                        p?.latitude,
+                        p?.longitude,
+                        it.deliveryLat,
+                        it.deliveryLng,
+                    )
+                }
+                if (withGps != null) {
+                    val person = withGps.tracking.deliveryPerson!!
+                    LiveMapVehicle(
+                        id = key,
+                        courierLat = person.latitude!!,
+                        courierLng = person.longitude!!,
+                        courierName = person.name.ifBlank { "—" },
+                        courierPhone = person.phone,
+                        orders = group,
+                    )
+                } else {
+                    // GPS yo‘q / emulator — faqat magazin (manzil) ni ko‘rsatamiz
+                    val dest = group.firstOrNull {
+                        GeoCoords.isValid(it.deliveryLat, it.deliveryLng) &&
+                            GeoCoords.isInServiceArea(it.deliveryLat!!, it.deliveryLng!!)
+                    } ?: group.firstOrNull {
+                        GeoCoords.isValid(it.deliveryLat, it.deliveryLng)
+                    }
+                    val lat = dest?.deliveryLat ?: MapDefaults.NAVOIY_LAT
+                    val lng = dest?.deliveryLng ?: MapDefaults.NAVOIY_LNG
+                    val person = group.firstOrNull()?.tracking?.deliveryPerson
+                    LiveMapVehicle(
+                        id = "dest-only:$key",
+                        courierLat = lat,
+                        courierLng = lng,
+                        courierName = person?.name?.ifBlank { "—" } ?: "—",
+                        courierPhone = person?.phone,
+                        orders = group.map { it.copy(routePoints = emptyList(), distanceLabel = "—") },
+                    )
+                }
             }
 
         _uiState.update {

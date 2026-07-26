@@ -48,7 +48,13 @@ function categoryColor(name: string, index: number): string {
 
 function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
   const p = (position ?? '').toLowerCase();
-  if (p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')) {
+  if (
+    p.includes('delivery') ||
+    p.includes('yetkaz') ||
+    p.includes('kuryer') ||
+    p.includes('dostav') ||
+    p.includes('haydov')
+  ) {
     return 'delivery';
   }
   return 'agent';

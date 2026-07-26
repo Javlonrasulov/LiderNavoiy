@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, CSSProperties, ReactNode } from 'react';
+import React, { useState, useRef, useEffect, useCallback, CSSProperties, ReactNode } from 'react';
 import {
   X, CheckCircle2, RefreshCw, Trash2, ChevronDown,
   Printer, Package,
@@ -6,6 +6,23 @@ import {
   Minimize2, Maximize2, Search, CalendarDays, Clock,
 } from 'lucide-react';
 import { demo } from '../../../../data/demoLimit';
+import { api, type Distributor } from '../../../../api/client';
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
+}
+
+function isDeliveryPerson(d: Distributor): boolean {
+  const p = (d.position ?? d.user?.fullName ?? '').toLowerCase();
+  const u = (d.user?.username ?? '').toLowerCase();
+  return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
+    || p.includes('dostav') || p.includes('haydov')
+    || u.includes('dostav');
+}
+
+function distributorName(d: Distributor): string {
+  return d.user?.fullName?.trim() || d.user?.username || d.id;
+}
 
 /* ─── Types ──────────────────────────────────────────────── */
 type ZayavkaStatus = 'otgr' | 'process' | 'done' | 'cancelled';
@@ -52,6 +69,7 @@ const HAYDOVCHI_LIST = demo([
   'Nazarov Davlatbek Jurayev', 'Pirnazorov Olimjon Xasanov',
   'Rustamov Shoxrux Mirzayev', 'Abduxakimov Diyorbek Tursunov',
 ]);
+/** Fallback faqat API yo'q bo'lganda — shofyor uchun */
 const AGENT_LIST = demo([
   'Toshniёzov Obidjon Bekpulatovich', 'Alisher Karimov Saidovich',
   'Bobur Toshmatov Xolmurodov', 'Jasur Yusupov Abdullayev',
@@ -373,6 +391,8 @@ export interface ConfirmedOrder {
   summa: number;
   ves: number;
   rowCount: number;
+  dostavchik?: string;
+  dostavchikId?: string | null;
 }
 
 interface Props {
@@ -381,9 +401,10 @@ interface Props {
   onClose: () => void;
   pageMode?: boolean;
   onConfirm?: (order: ConfirmedOrder) => void;
+  selectedCompanyIds?: Set<string>;
 }
 
-export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfirm }: Props) {
+export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfirm, selectedCompanyIds }: Props) {
   const [mode,        setMode]        = useState<ModalMode>('normal');
   const [activeTab,   setActiveTab]   = useState<ModalTab>('zayavki');
   const [expanded,    setExpanded]    = useState<number|null>(null);
@@ -399,10 +420,54 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
   const [transport,   setTransport]   = useState('');
   const [shofer,      setShofer]      = useState('');
   const [dostavchik,  setDostavchik]  = useState('');
+  const [dostavchikId, setDostavchikId] = useState<string | null>(null);
   const [agent,       setAgent]       = useState('');
   const [yuklashVaqti,setYuklashVaqti]= useState(()=>new Date());
   const [hdStart,     setHdStart]     = useState<Date|null>(()=>new Date());
   const [hdEnd,       setHdEnd]       = useState<Date|null>(null);
+
+  /* ── API: haqiqiy dostavchiklar ── */
+  const [dostavchikList, setDostavchikList] = useState<string[]>([]);
+  const [dostavchikMap,  setDostavchikMap]  = useState<Record<string, string>>({});
+  const [dostavLoading,  setDostavLoading]  = useState(false);
+
+  const companyId = selectedCompanyIds?.size === 1
+    ? [...selectedCompanyIds][0]
+    : undefined;
+
+  const loadDostavchiklar = useCallback(async () => {
+    if (!hasApiToken()) {
+      setDostavchikList([]);
+      setDostavchikMap({});
+      return;
+    }
+    setDostavLoading(true);
+    try {
+      const list = await api.getDistributors(companyId);
+      const delivery = list.filter(isDeliveryPerson);
+      const source = delivery.length > 0 ? delivery : list.filter(d =>
+        (d.position ?? '').toLowerCase().includes('dostav')
+        || (d.user?.username ?? '').toLowerCase().includes('dostav'),
+      );
+      const names: string[] = [];
+      const map: Record<string, string> = {};
+      for (const d of source) {
+        const name = distributorName(d);
+        if (!name || names.includes(name)) continue;
+        names.push(name);
+        map[name] = d.id;
+      }
+      setDostavchikList(names);
+      setDostavchikMap(map);
+    } catch {
+      setDostavchikList([]);
+      setDostavchikMap({});
+    } finally {
+      setDostavLoading(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => { loadDostavchiklar(); }, [loadDostavchiklar]);
 
   /* ── Confirm (✓ galochka) ── */
   const handleConfirm = () => {
@@ -419,6 +484,8 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
         summa: totalSumma,
         ves: totalVes,
         rowCount: displayRows.length,
+        dostavchik,
+        dostavchikId,
       });
     }
   };
@@ -433,6 +500,7 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
     setTransport('');
     setShofer('');
     setDostavchik('');
+    setDostavchikId(null);
     setAgent('');
     setYuklashVaqti(new Date());
     setHdStart(new Date());
@@ -797,28 +865,96 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
                 {t.logistics}
               </div>
               <div className="tycm-fr" style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                {[
-                  {label:t.otgrTransport??'Transport',    value:transport,  set:setTransport,  list:TRANSPORT_LIST},
-                  {label:t.modalShofer??'Shofyor',        value:shofer,     set:setShofer,     list:HAYDOVCHI_LIST},
-                  {label:t.modalDostavchik??'Dostavchik', value:dostavchik, set:setDostavchik, list:HAYDOVCHI_LIST},
-                ].map(({label,value,set,list})=>(
-                  <div key={label} style={{flex:1,minWidth:200,display:'flex',flexDirection:'column',gap:4}}>
-                    <label style={lblStyle}>{label}</label>
-                    <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                      <div style={{flex:1}}>
-                        <DropdownField label="" value={value} options={list}
-                          onSelect={set} {...dpProps} flex="1" minWidth={80}/>
-                      </div>
-                      <button onClick={()=>set('')} style={{
+                {/* Transport — hozircha lokal ro'yxat */}
+                <div style={{flex:1,minWidth:200,display:'flex',flexDirection:'column',gap:4}}>
+                  <label style={lblStyle}>{t.otgrTransport??'Transport'}</label>
+                  <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                    <div style={{flex:1}}>
+                      <DropdownField label="" value={transport} options={TRANSPORT_LIST}
+                        onSelect={setTransport} {...dpProps} flex="1" minWidth={80}/>
+                    </div>
+                    <button onClick={()=>setTransport('')} style={{
+                      width:28,height:30,borderRadius:7,
+                      border:'1px solid rgba(239,68,68,0.25)',
+                      background:'rgba(239,68,68,0.08)',
+                      color:'#ef4444',cursor:'pointer',flexShrink:0,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                    }}><X size={10}/></button>
+                  </div>
+                </div>
+
+                {/* Shofyor — lokal (transport haydovchisi) */}
+                <div style={{flex:1,minWidth:200,display:'flex',flexDirection:'column',gap:4}}>
+                  <label style={lblStyle}>{t.modalShofer??'Shofyor'}</label>
+                  <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                    <div style={{flex:1}}>
+                      <DropdownField label="" value={shofer} options={HAYDOVCHI_LIST}
+                        onSelect={setShofer} {...dpProps} flex="1" minWidth={80}/>
+                    </div>
+                    <button onClick={()=>setShofer('')} style={{
+                      width:28,height:30,borderRadius:7,
+                      border:'1px solid rgba(239,68,68,0.25)',
+                      background:'rgba(239,68,68,0.08)',
+                      color:'#ef4444',cursor:'pointer',flexShrink:0,
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                    }}><X size={10}/></button>
+                  </div>
+                </div>
+
+                {/* Dostavchik — API dan */}
+                <div style={{flex:1,minWidth:200,display:'flex',flexDirection:'column',gap:4}}>
+                  <label style={lblStyle}>
+                    {t.modalDostavchik??'Dostavchik'}
+                    {dostavLoading && (
+                      <span style={{marginLeft:6,fontWeight:500,color:muted,textTransform:'none',letterSpacing:0}}>
+                        …
+                      </span>
+                    )}
+                  </label>
+                  <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                    <div style={{flex:1}}>
+                      <DropdownField
+                        label=""
+                        value={dostavchik}
+                        options={dostavchikList}
+                        onSelect={(name) => {
+                          setDostavchik(name);
+                          setDostavchikId(dostavchikMap[name] ?? null);
+                        }}
+                        {...dpProps}
+                        searchPlaceholder={t.zSearch ?? 'Qidiruv...'}
+                        notFoundText={dostavLoading
+                          ? '…'
+                          : (hasApiToken()
+                            ? (t.modalDostavchikEmpty ?? 'Dostavchik topilmadi')
+                            : (t.modalDostavchikNoApi ?? 'API ulanmagan'))}
+                        flex="1"
+                        minWidth={80}
+                      />
+                    </div>
+                    <button
+                      onClick={() => { setDostavchik(''); setDostavchikId(null); }}
+                      style={{
                         width:28,height:30,borderRadius:7,
                         border:'1px solid rgba(239,68,68,0.25)',
                         background:'rgba(239,68,68,0.08)',
                         color:'#ef4444',cursor:'pointer',flexShrink:0,
                         display:'flex',alignItems:'center',justifyContent:'center',
-                      }}><X size={10}/></button>
-                    </div>
+                      }}
+                    ><X size={10}/></button>
+                    <button
+                      onClick={() => loadDostavchiklar()}
+                      title="Yangilash"
+                      style={{
+                        width:28,height:30,borderRadius:7,
+                        border:`1px solid ${brd}`,
+                        background: D ? '#161618' : '#f3f4f6',
+                        color:'#10b981',cursor:'pointer',flexShrink:0,
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                      }}
+                    ><RefreshCw size={11}/></button>
                   </div>
-                ))}
+                </div>
               </div>
             </div>
 

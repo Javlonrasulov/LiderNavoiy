@@ -9,6 +9,7 @@ import { NotificationType } from '../notifications/notification.types';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
+import { VisitsService } from '../visits/visits.service';
 
 @Injectable()
 export class OrdersService {
@@ -22,6 +23,7 @@ export class OrdersService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notifications: NotificationsService,
+    private readonly visitsService: VisitsService,
   ) {}
 
   async create(
@@ -106,6 +108,45 @@ export class OrdersService {
     });
   }
 
+  /** Dostavkachi: admin Tovar yuklash orqali biriktirilgan (on_way) buyurtmalar */
+  async findForDelivery(deliveryDistributorId: string) {
+    const orders = await this.repo.find({
+      where: {
+        deliveryDistributorId,
+        status: OrderStatus.ON_WAY,
+      },
+      order: { updatedAt: 'DESC' },
+      take: 100,
+    });
+    if (orders.length === 0) return [];
+
+    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+    return orders.map((order) => {
+      const client = clientMap.get(order.clientId);
+      return {
+        id: order.id,
+        clientId: order.clientId,
+        distributorId: order.distributorId,
+        deliveryDistributorId: order.deliveryDistributorId,
+        visitId: order.visitId,
+        status: order.status,
+        source: order.source,
+        totalAmount: Number(order.totalAmount),
+        items: order.items,
+        isUrgent: !!order.isUrgent,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        clientName: client?.name ?? 'Klient',
+        clientCode: client?.code ?? '',
+        clientAddress: client?.address ?? null,
+        clientPhone: client?.phone ?? null,
+      };
+    });
+  }
+
   async findClientOrdersForAgent(distributorId: string, status?: OrderStatus) {
     const where: { distributorId: string; source: OrderSource; status?: OrderStatus } = {
       distributorId,
@@ -135,6 +176,7 @@ export class OrdersService {
         source: order.source,
         totalAmount: Number(order.totalAmount),
         items: order.items,
+        isUrgent: !!order.isUrgent,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         clientName: client?.name ?? 'Klient',
@@ -154,8 +196,8 @@ export class OrdersService {
     });
   }
 
-  /** Agent: klient buyurtmasini omborga (confirmed) yuboradi */
-  async sendToWarehouse(orderId: string, distributorId: string) {
+  /** Agent: klient buyurtmasini omborga (confirmed) yuboradi — tashrif sifatida ham qayd etiladi */
+  async sendToWarehouse(orderId: string, distributorId: string, isUrgent = false) {
     const order = await this.repo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
     if (order.distributorId !== distributorId) {
@@ -167,7 +209,17 @@ export class OrdersService {
     if (order.status !== OrderStatus.PENDING) {
       throw new BadRequestException('Order is not pending');
     }
+
+    const visit = await this.visitsService.create(distributorId, {
+      clientId: order.clientId,
+      visitedAt: new Date().toISOString(),
+      orderTotal: Number(order.totalAmount),
+      notes: `client_order:${order.id}`,
+    });
+
     order.status = OrderStatus.CONFIRMED;
+    order.visitId = visit.id;
+    order.isUrgent = isUrgent;
     const saved = await this.repo.save(order);
     this.notifyClientOrderStatus(
       order.clientId,
@@ -264,6 +316,7 @@ export class OrdersService {
           totalAmount: Number(order.totalAmount),
           items: order.items,
           isOfflineCreated: order.isOfflineCreated,
+          isUrgent: !!order.isUrgent,
           offlineId: order.offlineId,
           createdAt: order.createdAt,
           updatedAt: order.updatedAt,

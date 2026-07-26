@@ -60,7 +60,10 @@ interface ApiService {
     suspend fun getProductCategories(): List<Map<String, String>>
 
     @GET("visits")
-    suspend fun getVisits(@Query("from") from: String? = null): List<VisitDto>
+    suspend fun getVisits(
+        @Query("from") from: String? = null,
+        @Query("to") to: String? = null,
+    ): List<VisitDto>
 
     @POST("visits")
     suspend fun createVisit(@Body body: CreateVisitRequest): Map<String, Any>
@@ -74,8 +77,14 @@ interface ApiService {
     @GET("orders/client")
     suspend fun getClientOrders(@Query("status") status: String? = null): List<OrderDto>
 
+    @GET("orders/delivery")
+    suspend fun getDeliveryOrders(): List<OrderDto>
+
     @PATCH("orders/{id}/send-to-warehouse")
-    suspend fun sendOrderToWarehouse(@Path("id") id: String): OrderDto
+    suspend fun sendOrderToWarehouse(
+        @Path("id") id: String,
+        @Body body: SendToWarehouseRequest,
+    ): OrderDto
 
     @PATCH("orders/{id}/reject")
     suspend fun rejectClientOrder(@Path("id") id: String): OrderDto

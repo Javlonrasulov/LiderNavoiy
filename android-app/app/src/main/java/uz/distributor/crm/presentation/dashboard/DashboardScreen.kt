@@ -26,10 +26,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
 import uz.distributor.crm.presentation.components.NavTab
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinDashboardHeader
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
@@ -45,6 +49,7 @@ fun DashboardScreen(
     onOrderSummaryClick: () -> Unit = {},
     onProductsClick: () -> Unit = {},
     onClientOrdersClick: () -> Unit = {},
+    onVisitsClick: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -53,6 +58,25 @@ fun DashboardScreen(
     val lang = LocalAppLanguage.current
     val isDark = darkMode
     var showLangMenu by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.reload()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val displayAgentName = when {
+        state.isLoading && state.user == null -> AppStrings.loadingData(lang)
+        !state.user?.fullName.isNullOrBlank() -> state.user!!.fullName
+        else -> AppStrings.agentUnavailable(lang)
+    }
+    val displayCompanyName = state.user?.companyName?.takeIf { it.isNotBlank() }
+        ?: AppStrings.loginTitle(lang)
 
     val cartValue = if (state.cartTotal > 0) {
         "${formatter.format(state.cartTotal.toLong())} (${state.cartItemsCount} ${AppStrings.items(lang)})"
@@ -70,9 +94,9 @@ fun DashboardScreen(
                 onClick = onClientOrdersClick,
             ),
         )
-        add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%"))
+        add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%", onClick = onVisitsClick))
         add(StatItem(AppStrings.totalSales(lang), cartValue, Icons.Default.ShoppingCart, Color(0xFF3B82F6), cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null, onClick = onOrderSummaryClick))
-        add(StatItem(AppStrings.products(lang), if (state.productCount > 0) "${state.productCount}" else "34", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))
+        add(StatItem(AppStrings.products(lang), "${state.productCount}", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))
         add(StatItem(AppStrings.returns(lang), "0", Icons.Default.Inventory2, Color(0xFFEF4444)))
         add(StatItem(AppStrings.cashPayments(lang), "0", Icons.Default.Payments, Color(0xFF10B981)))
         add(StatItem(AppStrings.clickPayments(lang), "0", Icons.Default.CreditCard, Color(0xFF6366F1)))
@@ -90,11 +114,11 @@ fun DashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 16.dp),
+                .padding(bottom = bottomNavHeight() + 16.dp),
         ) {
             SherinDashboardHeader(
-                companyName = state.user?.companyName ?: "OOO \"BORAN LEADERS\"",
-                agentName = state.user?.fullName ?: "Абдужакимов Диёрбек",
+                companyName = displayCompanyName,
+                agentName = displayAgentName,
                 isDark = isDark,
                 onProfileClick = onProfileClick,
                 onLanguageClick = { showLangMenu = true },
@@ -114,10 +138,11 @@ fun DashboardScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        state.user?.fullName ?: "Абдужакимов Диёрбек",
+                        displayAgentName,
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -168,6 +193,16 @@ fun DashboardScreen(
             }
 
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                state.error?.let { errorKey ->
+                    DashboardErrorCard(
+                        title = AppStrings.dashboardLoadFailedTitle(lang),
+                        message = AppStrings.apiError(lang, errorKey),
+                        retryLabel = AppStrings.retryLoad(lang),
+                        isDark = isDark,
+                        onRetry = viewModel::refresh,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 if (state.showRefreshResult && state.refreshUpdates.isNotEmpty()) {
                     RefreshResultCard(
                         updates = state.refreshUpdates,
@@ -277,6 +312,54 @@ private fun SherinRefreshAction(
         }
         Spacer(Modifier.height(8.dp))
         Text(label, color = Color.White.copy(0.9f), fontSize = 11.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun DashboardErrorCard(
+    title: String,
+    message: String,
+    retryLabel: String,
+    isDark: Boolean,
+    onRetry: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isDark) Color(0xFF7F1D1D).copy(0.45f) else Color(0xFFFEF2F2),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isDark) Color(0xFFEF4444).copy(0.35f) else Color(0xFFFECACA),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                    color = if (isDark) Color.White else Color(0xFF991B1B),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                message,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = if (isDark) Color(0xFFFECACA) else Color(0xFFB91C1C),
+            )
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onRetry) {
+                Text(retryLabel, color = SherinColors.Primary, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 

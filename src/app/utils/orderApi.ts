@@ -25,6 +25,7 @@ export interface ZayavkaRow {
   deleted: boolean;
   shipped: boolean;
   processed: boolean;
+  isUrgent?: boolean;
   items?: BackendOrderItem[];
 }
 
@@ -44,6 +45,7 @@ export interface TaroziListItem {
   items: BackendOrderItem[];
   amount: number;
   createdAt: string;
+  isUrgent?: boolean;
 }
 
 export interface TaroziProductRow {
@@ -141,6 +143,7 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
     deleted,
     shipped,
     processed,
+    isUrgent: !!o.isUrgent,
     items: o.items ?? [],
   };
 }
@@ -179,6 +182,7 @@ export function backendOrderToTaroziItem(o: BackendOrder): TaroziListItem {
     items: o.items ?? [],
     amount: Number(o.totalAmount) || 0,
     createdAt: o.createdAt,
+    isUrgent: !!o.isUrgent,
   };
 }
 
@@ -205,8 +209,10 @@ export function groupTaroziByAgent(items: TaroziListItem[]): TaroziListItem[] {
       items: [],
       amount: 0,
       createdAt: '',
+      isUrgent: false,
     });
-    out.push(...list);
+    // Shoshilinch buyurtmalar agent guruhida yuqorida
+    out.push(...[...list].sort((a, b) => Number(!!b.isUrgent) - Number(!!a.isUrgent)));
   }
   return out;
 }

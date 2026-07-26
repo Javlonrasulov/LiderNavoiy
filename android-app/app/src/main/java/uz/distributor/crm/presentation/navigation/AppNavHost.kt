@@ -34,6 +34,7 @@ import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
+import uz.distributor.crm.presentation.delivery.DeliveryOrdersScreen
 import uz.distributor.crm.presentation.location.LocationScreen
 import uz.distributor.crm.presentation.messages.ChatScreen
 import uz.distributor.crm.presentation.messages.IncomingMessageBannerOverlay
@@ -45,6 +46,7 @@ import uz.distributor.crm.presentation.products.ProductsScreen
 import uz.distributor.crm.presentation.profile.ProfileScreen
 import uz.distributor.crm.presentation.reconciliation.ReconciliationScreen
 import uz.distributor.crm.presentation.visit.VisitScreen
+import uz.distributor.crm.presentation.visit.VisitsListScreen
 import javax.inject.Inject
 
 @HiltViewModel
@@ -70,6 +72,7 @@ class AppNavigationViewModel @Inject constructor(
     authRepository: AuthRepository,
 ) : ViewModel() {
     val sessionExpired = authRepository.sessionExpired
+    val currentUser = authRepository.getUserFlow()
 }
 
 @Composable
@@ -82,11 +85,22 @@ fun AppNavHost(
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val showBottomNav = showsBottomNav(currentRoute)
     val selectedTab = bottomNavSelectedTab(currentRoute)
+    val currentUser by navViewModel.currentUser.collectAsState(initial = null)
+    val isDeliveryPerson = currentUser?.isDeliveryPerson() == true
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
             navController.navigate("login") {
                 popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
+    LaunchedEffect(currentRoute, isDeliveryPerson) {
+        if (currentRoute == "delivery" && !isDeliveryPerson) {
+            navController.navigate("main") {
+                popUpTo("main") { inclusive = true }
+                launchSingleTop = true
             }
         }
     }
@@ -141,10 +155,14 @@ fun AppNavHost(
                 onOrderSummaryClick = { navController.navigate("order/cart") },
                 onProductsClick = { navController.navigate("products") },
                 onClientOrdersClick = { navController.navigate("client_orders") },
+                onVisitsClick = { navController.navigate("visits") },
             )
         }
         composable("client_orders") {
             ClientOrdersScreen(onBack = { navController.popBackStack() })
+        }
+        composable("visits") {
+            VisitsListScreen(onBack = { navController.popBackStack() })
         }
         composable("add_client") {
             AddClientScreen(
@@ -164,6 +182,11 @@ fun AppNavHost(
                 onClientClick = { id -> navController.navigate("client/$id") },
                 onAddClientClick = { navController.navigate("add_client") },
             )
+        }
+        composable("delivery") {
+            if (isDeliveryPerson) {
+                DeliveryOrdersScreen()
+            }
         }
         composable(
             route = "client/{clientId}",
@@ -258,8 +281,12 @@ fun AppNavHost(
         if (showBottomNav) {
             BottomNavBar(
                 selected = selectedTab,
-                onTabSelected = { tab -> navController.navigateBottomTab(tab) },
+                onTabSelected = { tab ->
+                    if (tab == NavTab.DELIVERY && !isDeliveryPerson) return@BottomNavBar
+                    navController.navigateBottomTab(tab)
+                },
                 isDark = isDark,
+                showDelivery = isDeliveryPerson,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

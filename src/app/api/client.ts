@@ -172,6 +172,7 @@ export interface BackendOrder {
   totalAmount: number;
   items: BackendOrderItem[];
   isOfflineCreated: boolean;
+  isUrgent?: boolean;
   offlineId?: string | null;
   createdAt: string;
   updatedAt: string;

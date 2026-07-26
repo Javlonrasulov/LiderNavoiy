@@ -957,7 +957,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
 
       {/* ── CREATE MODAL ── */}
       {createOpen && (
-        <TovarYuklashCreateModal D={D} t={t} onClose={() => setCreateOpen(false)} />
+        <TovarYuklashCreateModal D={D} t={t} onClose={() => setCreateOpen(false)} selectedCompanyIds={selectedCompanyIds} />
       )}
 
       {/* ── DOSTAVCHIK TANLASH ── */}

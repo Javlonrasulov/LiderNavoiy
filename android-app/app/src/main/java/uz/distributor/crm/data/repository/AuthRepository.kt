@@ -58,14 +58,7 @@ class AuthRepository @Inject constructor(
             accessToken = response.accessToken,
             refreshToken = response.refreshToken,
             expiresIn = response.expiresIn,
-            user = AuthUser(
-                id = response.user.id,
-                username = response.user.username,
-                fullName = response.user.fullName,
-                role = response.user.role,
-                distributorId = response.user.distributorId,
-                companyName = response.user.companyName,
-            ),
+            user = response.user.toAuthUser(),
         )
         clientRepository.clearCache()
         saveTokens(tokens, password)
@@ -104,16 +97,7 @@ class AuthRepository @Inject constructor(
         val refresh = prefs[refreshTokenKey] ?: return false
         return try {
             val response = api.refresh(mapOf("refreshToken" to refresh))
-            val userJson = prefs[userKey]
-            val user = userJson?.let { gson.fromJson(it, AuthUser::class.java) }
-                ?: AuthUser(
-                    id = response.user.id,
-                    username = response.user.username,
-                    fullName = response.user.fullName,
-                    role = response.user.role,
-                    distributorId = response.user.distributorId,
-                    companyName = response.user.companyName,
-                )
+            val user = response.user.toAuthUser()
             saveTokens(
                 AuthTokens(
                     accessToken = response.accessToken,
@@ -164,3 +148,13 @@ class AuthRepository @Inject constructor(
         }
     }
 }
+
+private fun uz.distributor.crm.data.remote.dto.UserDto.toAuthUser() = AuthUser(
+    id = id,
+    username = username,
+    fullName = fullName,
+    role = role,
+    distributorId = distributorId,
+    companyName = companyName,
+    position = position,
+)

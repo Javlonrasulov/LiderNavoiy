@@ -7,7 +7,24 @@ data class AuthUser(
     val role: String,
     val distributorId: String?,
     val companyName: String?,
-)
+    val position: String? = null,
+) {
+    /** Agent va dostavkachi ikkalasi ham role=distributor; farq position orqali. */
+    fun isDeliveryPerson(): Boolean {
+        val p = (position ?: "").lowercase()
+        if (
+            p.contains("delivery") ||
+            p.contains("yetkaz") ||
+            p.contains("kuryer") ||
+            p.contains("dostav") ||
+            p.contains("haydov")
+        ) {
+            return true
+        }
+        val u = username.lowercase()
+        return u.contains("dostav") || u.contains("delivery") || u.contains("kuryer")
+    }
+}
 
 data class AuthTokens(
     val accessToken: String,

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { NumpadModal } from '../NumpadModal';
 import { NewOrderModal } from './NewOrderModal';
+import { UrgentDangerIcon } from '../UrgentDangerIcon';
 import { demo } from '../../../data/demoLimit';
 import { api } from '../../../api/client';
 import {
@@ -292,7 +293,7 @@ const MOCK_AGENTS: ListItem[] = demo([
   { id: '6',  name: '',              code: '28801', client: 'XUMO GULI MCHJ',            status:'delivered', group: false, agentName: 'Норова Нодира', orderNum: 10046, lineCode: '', items: [], amount: 0, createdAt: '' },
   { id: '7',  name: '',              code: '15018', client: 'ASLAN NAVOIY TONGI',        status:'delivered', group: false, agentName: 'Норова Нодира', orderNum: 10047, lineCode: '', items: [], amount: 0, createdAt: '' },
   { id: '8',  name: '',              code: '16011', client: 'МУРОДОВА НАВРУЗА',          status:'ready',     group: false, agentName: 'Норова Нодира', orderNum: 10048, lineCode: '', items: [], amount: 0, createdAt: '' },
-  { id: '9',  name: '',              code: '16024', client: 'ORZIYEV UMID YaTT',         status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10049, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '9',  name: '',              code: '16024', client: 'ORZIYEV UMID YaTT',         status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10049, lineCode: '', items: [], amount: 0, createdAt: '', isUrgent: true },
   { id: '10', name: '',              code: '28788', client: 'ZAHIDUN',                   status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10050, lineCode: '', items: [], amount: 0, createdAt: '' },
   { id: '11', name: '',              code: '16008', client: 'BEK SARDOR 2005 OK',        status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10051, lineCode: '', items: [], amount: 0, createdAt: '' },
   { id: '12', name: '',              code: '16009', client: 'FARXOD XURSHIDA OK',        status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10052, lineCode: '', items: [], amount: 0, createdAt: '' },
@@ -988,21 +989,28 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
               className={`w-full grid items-center text-left transition-colors border-b ${divider}
                 ${isActive
                   ? D?'bg-indigo-600/20 border-l-2 border-l-indigo-500':'bg-indigo-50 border-l-2 border-l-indigo-500'
-                  : D?'hover:bg-gray-800/60':'hover:bg-gray-50'}`}
+                  : a.isUrgent
+                    ? D?'bg-rose-500/10 border-l-2 border-l-rose-500 hover:bg-rose-500/15':'bg-rose-50 border-l-2 border-l-rose-500 hover:bg-rose-50/80'
+                    : D?'hover:bg-gray-800/60':'hover:bg-gray-50'}`}
               style={{gridTemplateColumns:'36px 52px 1fr'}}>
               {/* Status dot */}
               <div className={`flex items-center justify-center py-2 h-full border-r ${divider}`}>
-                {statusDot}
+                {a.isUrgent ? <UrgentDangerIcon title="Shoshilinch" size="sm" /> : statusDot}
               </div>
               {/* Kod */}
               <div className={`px-1.5 py-2 border-r ${divider}`}>
-                <span className={`text-[11px] font-mono font-semibold ${D?'text-gray-300':'text-gray-600'}`}>
+                <span className={`text-[11px] font-mono font-semibold ${
+                  a.isUrgent ? 'text-rose-500' : D?'text-gray-300':'text-gray-600'
+                }`}>
                   {a.code}
                 </span>
               </div>
               {/* Klient */}
-              <div className="px-1.5 py-2">
-                <span className={`text-[11px] truncate block leading-tight ${textCls}`}>
+              <div className="px-1.5 py-2 flex items-center gap-1 min-w-0">
+                {a.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
+                <span className={`text-[11px] truncate block leading-tight ${
+                  a.isUrgent ? (D ? 'text-rose-300' : 'text-rose-700') : textCls
+                }`}>
                   {a.client}
                 </span>
               </div>
