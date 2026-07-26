@@ -90,6 +90,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import uz.lider.client.data.remote.dto.ChatMessageDto
+import uz.lider.client.presentation.components.ClientBackButton
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.FullScreenImageViewer
 import uz.lider.client.presentation.components.localized
@@ -203,8 +204,8 @@ fun ChatScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = LiquidGlass.Indigo)
+                        Box(Modifier.padding(start = 12.dp)) {
+                            ClientBackButton(onBack = onBack)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(

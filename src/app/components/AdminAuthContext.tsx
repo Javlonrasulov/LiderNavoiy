@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { demo } from '../data/demoLimit';
 import { clearTokens } from '../api/client';
+import { registerAdminWebPush } from '../lib/firebaseMessaging';
 
 export interface Company {
   id: string;
@@ -119,6 +120,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem('admin_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  useEffect(() => {
+    if (isLoggedIn && localStorage.getItem('api_access_token')) {
+      void registerAdminWebPush();
+    }
+  }, [isLoggedIn]);
 
   const login = (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }): boolean => {
     if (userData) {

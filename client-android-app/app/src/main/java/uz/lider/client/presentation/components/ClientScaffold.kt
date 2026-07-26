@@ -1,28 +1,35 @@
 package uz.lider.client.presentation.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 
-// Frosted-glass TopAppBar color tokens
 private val topBarBorder = LiquidGlass.GlassDarkBorder
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,7 +46,6 @@ fun ClientTabScaffold(
         topBar = {
             TopAppBar(
                 modifier = Modifier.drawBehind {
-                    // Bottom border line for glass separator
                     drawLine(
                         color = topBarBorder,
                         start = Offset(0f, size.height),
@@ -67,13 +73,11 @@ fun ClientTabScaffold(
             )
         },
         bottomBar = {
-            // Reserve space so list content can scroll under the floating glass nav
             if (bottomPadding) Spacer(Modifier.height(ClientBottomNavHeight))
         },
     ) { padding -> content(padding) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientStackScaffold(
     title: String,
@@ -82,34 +86,41 @@ fun ClientStackScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
-        containerColor = LiquidTheme.bg,
+        containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
-                modifier = Modifier.drawBehind {
-                    drawLine(
-                        color = topBarBorder,
-                        start = Offset(0f, size.height),
-                        end = Offset(size.width, size.height),
-                        strokeWidth = 1f,
-                    )
-                },
-                title = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        drawLine(
+                            color = topBarBorder.copy(alpha = 0.35f),
+                            start = Offset(0f, size.height),
+                            end = Offset(size.width, size.height),
+                            strokeWidth = 1f,
+                        )
+                    }
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ClientBackButton(onBack = onBack)
                     Text(
                         title,
-                        fontWeight = FontWeight.Bold,
                         color = LiquidTheme.text,
-                        modifier = Modifier.padding(start = 8.dp),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                },
-                navigationIcon = { ClientBackButton(onBack = onBack) },
-                actions = { actions() },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    actionIconContentColor = LiquidTheme.textMuted,
-                    containerColor = LiquidTheme.bgMid.copy(alpha = 0.88f),
-                    titleContentColor = LiquidTheme.text,
-                    navigationIconContentColor = LiquidGlass.IndigoLight,
-                ),
-            )
+                    actions()
+                }
+            }
         },
     ) { padding -> content(padding) }
 }

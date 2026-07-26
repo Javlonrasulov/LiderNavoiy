@@ -71,6 +71,9 @@ data class ClientProfile(
     val fullName: String? = null,
     val phone: String? = null,
     val address: String? = null,
+    val territory: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val category: String? = null,
     val balance: Double,
     val totalPurchases: Double,
@@ -79,8 +82,23 @@ data class ClientProfile(
     val agentPosition: String? = null,
     val agentPhone: String? = null,
     val agentUserId: String? = null,
+    /** null = server hali bu maydonni yubormagan */
+    val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPerson? = null,
-)
+) {
+    /** Klient qo'shilganda saqlangan manzil — joriy GPS emas. */
+    fun registeredDeliveryAddress(): String {
+        val addr = address?.trim().orEmpty()
+        val terr = territory?.trim().orEmpty()
+        return when {
+            addr.isNotEmpty() && terr.isNotEmpty() &&
+                !addr.contains(terr, ignoreCase = true) -> "$addr, $terr"
+            addr.isNotEmpty() -> addr
+            terr.isNotEmpty() -> terr
+            else -> ""
+        }
+    }
+}
 
 data class DashboardData(
     val profile: ClientProfile,

@@ -747,11 +747,26 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  broadcastPush: (body: { title: string; body: string; companyId?: string; type?: string }) =>
-    request<{ sent: number; failed?: number; total?: number }>('/notifications/broadcast', {
+  registerFcmToken: (token: string) =>
+    request<{ ok?: boolean }>('/notifications/fcm-token', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ token }),
     }),
+
+  broadcastPush: (body: {
+    title: string;
+    body: string;
+    companyId?: string;
+    type?: string;
+    audience?: 'agents' | 'clients' | 'admins' | 'all';
+  }) =>
+    request<{ sent: number; failed?: number; total?: number; message?: string }>(
+      '/notifications/broadcast',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
 
   // ─── Messages (Chat) ───
   getContacts: (companyId?: string) =>

@@ -51,6 +51,8 @@ object ApiErrorMapper {
     private fun mapServerMessage(msg: String): String = when {
         msg.contains("Invalid credentials", ignoreCase = true) -> INVALID_CREDENTIALS
         msg.contains("no assigned agent", ignoreCase = true) -> NO_AGENT
+        msg.contains("No client linked", ignoreCase = true) -> SAVE_FAILED
+        msg.contains("not linked", ignoreCase = true) -> SAVE_FAILED
         msg == "CLIENT_ONLY" -> CLIENT_ONLY
         else -> SAVE_FAILED
     }

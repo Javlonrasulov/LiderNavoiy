@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.AuthRepository
+import uz.lider.client.data.repository.PushRepository
 import uz.lider.client.localization.AppLanguage
 import javax.inject.Inject
 
@@ -25,6 +26,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val appSettingsRepository: AppSettingsRepository,
+    private val pushRepository: PushRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
@@ -54,6 +56,7 @@ class LoginViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, errorKey = null) }
             try {
                 authRepository.login(username, password)
+                runCatching { pushRepository.registerCurrentToken() }
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
             } catch (e: Exception) {
                 _uiState.update {

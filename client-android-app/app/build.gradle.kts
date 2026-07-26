@@ -6,6 +6,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -16,8 +17,8 @@ android {
         applicationId = "uz.lider.client"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 7
+        versionName = "1.0.6"
 
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")
@@ -87,6 +88,12 @@ dependencies {
 
     // Xarita — agent APK va admin bilan bir xil OSM tile qatlamlari
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+
+    // Firebase Cloud Messaging (Push)
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

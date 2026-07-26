@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +29,9 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.theme.ClientColors
+import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LocalTextTone
+import uz.lider.client.presentation.theme.PremiumHeaderButton
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
@@ -188,17 +188,15 @@ fun orderStatusColor(status: String, palette: ClientPalette): Color = when (Orde
 
 @Composable
 fun ClientBackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    val palette = rememberClientPalette()
-    IconButton(
+    PremiumHeaderButton(
+        icon = Icons.AutoMirrored.Filled.ArrowBack,
         onClick = onBack,
-        modifier = modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(palette.primary.copy(alpha = 0.12f))
-            .border(1.dp, palette.primary.copy(alpha = 0.25f), RoundedCornerShape(16.dp)),
-    ) {
-        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = localized("com_back"), tint = palette.primary)
-    }
+        modifier = modifier,
+        tint = LiquidGlass.Indigo,
+        contentDescription = localized("com_back"),
+        size = 36.dp,
+        iconSize = 18.dp,
+    )
 }
 
 fun Modifier.clientCard(palette: ClientPalette): Modifier = this

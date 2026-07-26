@@ -44,16 +44,14 @@ class CartViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val profile = profileRepository.getProfile()
-            val address = profile?.address?.takeIf { it.isNotBlank() }.orEmpty()
-            if (address.isNotEmpty()) {
-                _uiState.update { it.copy(address = address) }
-            }
+            // Faqat klient qo'shilganda saqlangan manzil — joriy telefon GPS ishlatilmaydi.
+            val registered = profile?.registeredDeliveryAddress().orEmpty()
+            _uiState.update { it.copy(address = registered) }
         }
     }
 
     fun updateQty(productId: String, qty: Double) = cartRepository.updateQty(productId, qty)
     fun removeItem(productId: String) = cartRepository.removeItem(productId)
-    fun onAddressChange(value: String) = _uiState.update { it.copy(address = value, errorKey = null) }
     fun onNoteChange(value: String) = _uiState.update { it.copy(note = value, errorKey = null) }
     fun onPaymentTypeChange(type: PaymentType) = _uiState.update { it.copy(paymentType = type, errorKey = null) }
     fun clearError() = _uiState.update { it.copy(errorKey = null) }
@@ -69,6 +67,14 @@ class CartViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _uiState.update { it.copy(checkingOut = true, errorKey = null, checkoutSuccess = false) }
+            // Agent biriktirilmagan klient — server ham rad etadi; aniq xabar beramiz.
+            val profile = profileRepository.getProfile()
+            if (profile?.hasAssignedAgent == false) {
+                _uiState.update {
+                    it.copy(checkingOut = false, errorKey = ApiErrorMapper.NO_AGENT)
+                }
+                return@launch
+            }
             val result = orderRepository.createOrder(cartItems)
             if (result.isSuccess) {
                 cartRepository.clear()

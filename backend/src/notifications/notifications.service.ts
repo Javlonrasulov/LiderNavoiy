@@ -136,20 +136,41 @@ export class NotificationsService {
     return { results, total: results.length, sent: results.filter((r) => r.sent).length };
   }
 
-  /** Broadcast to all distributors (or by company) */
+  /** Broadcast to agents / clients / admins / all (with FCM tokens) */
   async broadcast(dto: BroadcastNotificationDto) {
-    const qb = this.userRepo
-      .createQueryBuilder('u')
-      .innerJoin(DistributorProfile, 'p', 'p.userId = u.id')
-      .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
-      .andWhere('u.fcmToken IS NOT NULL')
-      .andWhere('u.isActive = true');
+    const audience = dto.audience ?? 'agents';
+    let users: User[] = [];
 
-    if (dto.companyId) {
-      qb.andWhere('p.companyId = :companyId', { companyId: dto.companyId });
+    if (audience === 'agents') {
+      const qb = this.userRepo
+        .createQueryBuilder('u')
+        .innerJoin(DistributorProfile, 'p', 'p.userId = u.id')
+        .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
+        .andWhere('u.fcmToken IS NOT NULL')
+        .andWhere('u.isActive = true');
+      if (dto.companyId) {
+        qb.andWhere('p.companyId = :companyId', { companyId: dto.companyId });
+      }
+      users = await qb.getMany();
+    } else if (audience === 'clients') {
+      users = await this.userRepo.find({
+        where: { role: UserRole.CLIENT, isActive: true },
+      });
+      users = users.filter((u) => !!u.fcmToken);
+    } else if (audience === 'admins') {
+      users = await this.userRepo.find({
+        where: {
+          role: In([UserRole.ADMIN, UserRole.MANAGER]),
+          isActive: true,
+        },
+      });
+      users = users.filter((u) => !!u.fcmToken);
+    } else {
+      // all
+      users = await this.userRepo.find({ where: { isActive: true } });
+      users = users.filter((u) => !!u.fcmToken);
     }
 
-    const users = await qb.getMany();
     const tokens = users.map((u) => u.fcmToken!).filter(Boolean);
 
     if (tokens.length === 0) {
@@ -159,7 +180,6 @@ export class NotificationsService {
     const type = dto.type ?? NotificationType.GENERAL;
     const data = { ...dto.data, type };
 
-    // Save records for each user
     for (const user of users) {
       await this.saveRecord(user.id, dto.title, dto.body, type, data);
     }
@@ -244,6 +264,10 @@ export class NotificationsService {
             defaultVibrateTimings: true,
           },
         },
+        webpush: {
+          notification: { title, body },
+          fcmOptions: { link: '/' },
+        },
       });
 
       await this.notifRepo.update(recordId, { isSent: true, fcmMessageId: messageId });
@@ -290,6 +314,10 @@ export class NotificationsService {
         android: {
           priority: 'high',
           notification: { channelId: 'crm_push_channel' },
+        },
+        webpush: {
+          notification: { title, body },
+          fcmOptions: { link: '/' },
         },
       });
       sent += response.successCount;

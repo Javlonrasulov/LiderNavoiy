@@ -333,12 +333,22 @@ export default function AdminPanel() {
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
       const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
-        && !(live.lat === 0 && live.lng === 0);
+        && !(live.lat === 0 && live.lng === 0)
+        && Math.abs(live.lat) <= 90 && Math.abs(live.lng) <= 180;
 
       if (!hasCoords) {
-        if (existing) {
-          byDist.set(distributorId, { ...existing, online: live.online, lastSeen: live.lastSeen });
+        // Coords yo'q — yangi marker qo'shilmasin; mavjud bo'lsa faqat online yangilanadi
+        if (existing && live.online) {
+          byDist.set(distributorId, { ...existing, online: true, lastSeen: live.lastSeen });
+        } else if (existing && !live.online) {
+          byDist.delete(distributorId);
         }
+        continue;
+      }
+
+      if (!live.online) {
+        // Offline bo'lsa xaritadan olib tashlash
+        byDist.delete(distributorId);
         continue;
       }
 
@@ -347,26 +357,19 @@ export default function AdminPanel() {
           ...existing,
           lat: live.lat,
           lng: live.lng,
-          online: live.online,
+          online: true,
           lastSeen: live.lastSeen,
-        });
-      } else if (live.name) {
-        // Nomisiz "Agent" ghost marker qo'shilmasin
-        byDist.set(distributorId, {
-          id: clientIdHash(distributorId),
-          name: live.name,
-          avatar: live.name.slice(0, 2).toUpperCase(),
-          role: 'agent',
-          online: live.online,
-          lastSeen: live.lastSeen,
-          lat: live.lat,
-          lng: live.lng,
-          distributorId,
         });
       }
+      // Nomisiz yangi ghost marker qo'shilmasin — faqat backend poll orqali
     }
 
-    return [...byDist.values()];
+    // Faqat online + haqiqiy koordinatalar
+    return [...byDist.values()].filter(e =>
+      e.online
+      && Number.isFinite(e.lat) && Number.isFinite(e.lng)
+      && !(e.lat === 0 && e.lng === 0),
+    );
   })();
 
   const mapCenterInfo = (() => {

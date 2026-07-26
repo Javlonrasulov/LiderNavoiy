@@ -1,10 +1,21 @@
 import React, { useState } from 'react';
 import { Bell, Send, Radio } from 'lucide-react';
 import { api } from '../../../api/client';
+import { isAdminWebPushConfigured } from '../../../lib/firebaseMessaging';
+
+type Audience = 'agents' | 'clients' | 'admins' | 'all';
+
+const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
+  { value: 'agents', label: 'Agentlar (APK)' },
+  { value: 'clients', label: 'Mijozlar (APK)' },
+  { value: 'admins', label: 'Admin / menejer (brauzer)' },
+  { value: 'all', label: 'Hammaga' },
+];
 
 export function AdminPushTab() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [audience, setAudience] = useState<Audience>('agents');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -18,8 +29,16 @@ export function AdminPushTab() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.broadcastPush({ title: title.trim(), body: body.trim() });
-      setResult(`Yuborildi: ${res.sent ?? 0} ta qurilma`);
+      const res = await api.broadcastPush({
+        title: title.trim(),
+        body: body.trim(),
+        audience,
+      });
+      setResult(
+        res.message && !res.sent
+          ? res.message
+          : `Yuborildi: ${res.sent ?? 0} ta qurilma`,
+      );
       setTitle('');
       setBody('');
     } catch (e) {
@@ -38,12 +57,26 @@ export function AdminPushTab() {
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Push bildirishnomalar</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Barcha agentlarga FCM orqali xabar yuborish
+            Firebase FCM orqali agent, mijoz va adminlarga xabar
           </p>
         </div>
       </div>
 
       <div className="space-y-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Qabul qiluvchilar
+          </label>
+          <select
+            value={audience}
+            onChange={(e) => setAudience(e.target.value as Audience)}
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+          >
+            {AUDIENCE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Sarlavha
@@ -64,7 +97,7 @@ export function AdminPushTab() {
             value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={4}
-            placeholder="Agentlarga yuboriladigan xabar..."
+            placeholder="Yuboriladigan xabar..."
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
           />
         </div>
@@ -87,12 +120,14 @@ export function AdminPushTab() {
           ) : (
             <Send className="w-5 h-5" />
           )}
-          {loading ? 'Yuborilmoqda...' : 'Barcha agentlarga yuborish'}
+          {loading ? 'Yuborilmoqda...' : 'Yuborish'}
         </button>
       </div>
 
       <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-        Firebase FCM sozlangan bo&apos;lishi va agentlar ilovaga login qilgan bo&apos;lishi kerak.
+        Firebase sozlangan bo&apos;lishi kerak.
+        Admin brauzer push:{' '}
+        {isAdminWebPushConfigured() ? 'ulangan' : 'VITE_FIREBASE_* env kerak'}.
         Batafsil: <code className="text-indigo-500">FCM_SETUP.md</code>
       </p>
     </div>

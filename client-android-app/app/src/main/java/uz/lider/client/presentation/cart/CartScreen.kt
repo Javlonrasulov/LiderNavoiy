@@ -19,11 +19,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.RequestQuote
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -35,15 +39,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.domain.model.CartItem
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
+import uz.lider.client.presentation.components.GlassTopErrorBanner
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.cartBadgeCount
 import uz.lider.client.presentation.components.formatMoney
@@ -69,123 +77,121 @@ fun CartScreen(
 
     ClientStackScaffold(title = "${localized("cart_title")} ($itemCount)", onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
-            if (items.isEmpty()) {
-                Box(
-                    Modifier.fillMaxSize().padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                if (items.isEmpty()) {
+                    Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Box(
-                            Modifier
-                                .size(96.dp)
-                                .liquidGlassThemed(radius = LiquidGlass.RadiusCard),
-                            contentAlignment = Alignment.Center,
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            Icon(
-                                Icons.Default.ShoppingCart,
-                                contentDescription = null,
-                                tint = LiquidGlass.Indigo,
-                                modifier = Modifier.size(44.dp),
+                            Box(
+                                Modifier
+                                    .size(96.dp)
+                                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Default.ShoppingCart,
+                                    contentDescription = null,
+                                    tint = LiquidGlass.Indigo,
+                                    modifier = Modifier.size(44.dp),
+                                )
+                            }
+                            Text(
+                                localized("cart_empty"),
+                                color = LiquidTheme.text,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
                             )
-                        }
-                        Text(
-                            localized("cart_empty"),
-                            color = LiquidTheme.text,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                        )
-                        Text(
-                            localized("cart_go_catalog"),
-                            color = LiquidTheme.textMuted,
-                            fontSize = 13.sp,
-                        )
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                .background(LiquidGlass.GradientPrimary)
-                                .clickable(onClick = onBack)
-                                .padding(horizontal = 32.dp, vertical = 14.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
                             Text(
                                 localized("cart_go_catalog"),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
+                                color = LiquidTheme.textMuted,
+                                fontSize = 13.sp,
                             )
-                        }
-                    }
-                }
-            } else {
-                ClientPullToRefresh(
-                    onRefresh = { delay(400) },
-                    modifier = Modifier.padding(padding),
-                ) {
-                Column(Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(items, key = { it.id }) { item ->
-                            CartItemRow(
-                                item,
-                                onInc = {
-                                    val step = if (isDecimalUnit(item.unit)) 0.5 else 1.0
-                                    viewModel.updateQty(item.id, item.qty + step)
-                                },
-                                onDec = {
-                                    val step = if (isDecimalUnit(item.unit)) 0.5 else 1.0
-                                    viewModel.updateQty(item.id, (item.qty - step).coerceAtLeast(step))
-                                },
-                                onRemove = { viewModel.removeItem(item.id) },
-                            )
-                        }
-                        item { AddressCard(state.address, viewModel::onAddressChange) }
-                        item { NoteCard(state.note, viewModel::onNoteChange) }
-                        item { PaymentCard(state.paymentType, viewModel::onPaymentTypeChange) }
-                        item { SummaryCard(total) }
-                        state.errorKey?.let { errorKey ->
-                            item {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                    .background(LiquidGlass.GradientPrimary)
+                                    .clickable(onClick = onBack)
+                                    .padding(horizontal = 32.dp, vertical = 14.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 Text(
-                                    localized(errorKey),
-                                    color = LiquidGlass.Rose,
-                                    fontSize = 13.sp,
+                                    localized("cart_go_catalog"),
+                                    color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .liquidGlassThemed()
-                                        .clickable { viewModel.clearError() }
-                                        .padding(14.dp),
                                 )
                             }
                         }
                     }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                            .background(LiquidGlass.GradientPrimary)
-                            .clickable(enabled = !state.checkingOut) { viewModel.checkout(onCheckoutSuccess) }
-                            .padding(vertical = 16.dp),
-                        contentAlignment = Alignment.Center,
+                } else {
+                    ClientPullToRefresh(
+                        onRefresh = { delay(400) },
+                        modifier = Modifier.fillMaxSize(),
                     ) {
-                        if (state.checkingOut) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                        } else {
-                            Text(
-                                localized("cart_submit"),
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                            )
+                        Column(Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(items, key = { it.id }) { item ->
+                                    CartItemRow(
+                                        item,
+                                        onInc = {
+                                            val step = if (isDecimalUnit(item.unit)) 0.5 else 1.0
+                                            viewModel.updateQty(item.id, item.qty + step)
+                                        },
+                                        onDec = {
+                                            val step = if (isDecimalUnit(item.unit)) 0.5 else 1.0
+                                            viewModel.updateQty(item.id, (item.qty - step).coerceAtLeast(step))
+                                        },
+                                        onRemove = { viewModel.removeItem(item.id) },
+                                    )
+                                }
+                                item { AddressCard(state.address) }
+                                item { NoteCard(state.note, viewModel::onNoteChange) }
+                                item { PaymentCard(state.paymentType, viewModel::onPaymentTypeChange) }
+                                item { SummaryCard(total) }
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                    .background(LiquidGlass.GradientPrimary)
+                                    .clickable(enabled = !state.checkingOut) {
+                                        viewModel.checkout(onCheckoutSuccess)
+                                    }
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (state.checkingOut) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                } else {
+                                    Text(
+                                        localized("cart_submit"),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                }
+
+                GlassTopErrorBanner(
+                    message = state.errorKey?.let { localized(it) },
+                    onDismiss = viewModel::clearError,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
             }
         }
     }
@@ -260,7 +266,7 @@ private fun CartItemRow(item: CartItem, onInc: () -> Unit, onDec: () -> Unit, on
 }
 
 @Composable
-private fun AddressCard(address: String, onChange: (String) -> Unit) {
+private fun AddressCard(address: String) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -277,17 +283,12 @@ private fun AddressCard(address: String, onChange: (String) -> Unit) {
             )
         }
         Spacer(Modifier.height(8.dp))
-        BasicTextField(
-            value = address,
-            onValueChange = onChange,
-            modifier = Modifier.fillMaxWidth(),
-            textStyle = TextStyle(color = LiquidTheme.text, fontSize = 14.sp),
-            decorationBox = { inner ->
-                if (address.isEmpty()) {
-                    Text(localized("cart_delivery_addr"), color = LiquidTheme.textMuted, fontSize = 14.sp)
-                }
-                inner()
-            },
+        Text(
+            address.ifBlank { localized("cart_address_missing") },
+            color = if (address.isBlank()) LiquidTheme.textMuted else LiquidTheme.text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 20.sp,
         )
     }
 }
@@ -328,10 +329,10 @@ private fun NoteCard(note: String, onChange: (String) -> Unit) {
 @Composable
 private fun PaymentCard(selected: PaymentType, onSelect: (PaymentType) -> Unit) {
     val options = listOf(
-        PaymentType.CASH to localized("cart_cash"),
-        PaymentType.CARD to localized("cart_card"),
-        PaymentType.TRANSFER to localized("cart_transfer"),
-        PaymentType.CREDIT to localized("cart_credit"),
+        Triple(PaymentType.CASH, localized("cart_cash"), Icons.Default.Payments),
+        Triple(PaymentType.CARD, localized("cart_card"), Icons.Default.CreditCard),
+        Triple(PaymentType.TRANSFER, localized("cart_transfer"), Icons.Default.AccountBalance),
+        Triple(PaymentType.CREDIT, localized("cart_credit"), Icons.Default.RequestQuote),
     )
     Column(
         Modifier
@@ -343,36 +344,62 @@ private fun PaymentCard(selected: PaymentType, onSelect: (PaymentType) -> Unit) 
         Spacer(Modifier.height(10.dp))
         options.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (type, label) ->
-                    val isSelected = selected == type
-                    Box(
-                        modifier = if (isSelected) {
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                .background(LiquidGlass.GradientPrimary)
-                                .clickable { onSelect(type) }
-                                .padding(vertical = 11.dp)
-                        } else {
-                            Modifier
-                                .weight(1f)
-                                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
-                                .clickable { onSelect(type) }
-                                .padding(vertical = 11.dp)
-                        },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            label,
-                            color = if (isSelected) Color.White else LiquidTheme.textMuted,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
+                row.forEach { (type, label, icon) ->
+                    PaymentTypeChip(
+                        label = label,
+                        icon = icon,
+                        selected = selected == type,
+                        onClick = { onSelect(type) },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun PaymentTypeChip(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val contentColor = if (selected) Color.White else LiquidTheme.textMuted
+    Row(
+        modifier = if (selected) {
+            modifier
+                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                .background(LiquidGlass.GradientPrimary)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+        } else {
+            modifier
+                .liquidGlassThemed(radius = LiquidGlass.RadiusChip)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 12.dp)
+        },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.size(6.dp))
+        Text(
+            label,
+            color = contentColor,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

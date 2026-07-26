@@ -542,24 +542,25 @@ fun PremiumHeaderButton(
     modifier: Modifier = Modifier,
     tint: Color = LiquidGlass.TextDark,
     contentDescription: String? = null,
-    size: Dp = 40.dp,
+    size: Dp = 36.dp,
+    iconSize: Dp = 18.dp,
 ) {
     val isDark = LiquidTheme.isDark
     Box(
         modifier = modifier
             .size(size)
             .shadow(
-                elevation = 10.dp,
+                elevation = 8.dp,
                 shape = CircleShape,
                 clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.14f),
+                ambientColor = Color.Black.copy(alpha = 0.08f),
+                spotColor = Color.Black.copy(alpha = 0.12f),
             )
             .clip(CircleShape)
-            .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.48f))
+            .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.55f))
             .border(
                 1.dp,
-                if (isDark) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.65f),
+                if (isDark) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.70f),
                 CircleShape,
             )
             .clickable(
@@ -573,7 +574,7 @@ fun PremiumHeaderButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isDark) Color.White else tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }

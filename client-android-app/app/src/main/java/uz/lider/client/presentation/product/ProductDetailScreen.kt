@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -52,6 +53,7 @@ import uz.lider.client.presentation.components.shareText
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
@@ -80,7 +82,8 @@ fun ProductDetailScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
             )
         } else {
             val product = state.product!!
@@ -266,7 +269,8 @@ fun ProductDetailScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .fillMaxWidth()
-                    .padding(top = 16.dp, start = 8.dp, end = 8.dp),
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
             )
 
             if (state.showFullImage && image != null) {
@@ -356,55 +360,29 @@ private fun GlassHeaderRow(
     onShare: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val text = LiquidTheme.text
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = text,
-                modifier = Modifier.size(20.dp),
-            )
-        }
+        PremiumHeaderButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            onClick = onBack,
+            tint = LiquidGlass.Indigo,
+            contentDescription = localized("com_back"),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
-                    .clickable(onClick = onShare),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Share,
-                    contentDescription = localized("pd_share"),
-                    tint = text,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .liquidGlassThemed(radius = LiquidGlass.RadiusCard)
-                    .clickable(onClick = onToggleLike),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    null,
-                    tint = if (liked) LiquidGlass.Rose else text,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            PremiumHeaderButton(
+                icon = Icons.Default.Share,
+                onClick = onShare,
+                contentDescription = localized("pd_share"),
+            )
+            PremiumHeaderButton(
+                icon = if (liked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                onClick = onToggleLike,
+                tint = if (liked) LiquidGlass.Rose else LiquidGlass.TextDark,
+                contentDescription = null,
+            )
         }
     }
 }

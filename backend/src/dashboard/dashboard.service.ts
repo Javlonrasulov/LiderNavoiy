@@ -65,11 +65,6 @@ function formatLastSeen(date: Date | null | undefined): string {
   return date.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-/** Oxirgi GPS 5 daqiqadan yangi bo'lsa — online deb hisobla */
-const ONLINE_LOCATION_MAX_AGE_MS = 5 * 60_000;
-/** Xaritada: online yoki oxirgi 30 daqiqada GPS yuborgan agentlar */
-const LOCATION_VISIBLE_MAX_AGE_MS = 30 * 60_000;
-
 const WEEKDAY_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const MONTH_LABELS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
 
@@ -419,7 +414,6 @@ export class DashboardService {
       profileById.set(id, missing);
     }
 
-    const now = Date.now();
     const employeeLocations = profiles.map(d => {
       const live = liveMap.get(d.id);
       const lat = live?.latitude ?? Number(d.lastLatitude);
@@ -427,14 +421,10 @@ export class DashboardService {
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
-      const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
       const inRedisOnline = onlineIds.has(d.id);
       const inRedisLive = liveMap.has(d.id);
-      const freshGps = ageMs <= ONLINE_LOCATION_MAX_AGE_MS;
-      const recentlySeen = ageMs <= LOCATION_VISIBLE_MAX_AGE_MS;
-      const online = inRedisOnline || freshGps || inRedisLive;
-      // Eski offline joylashuvlar (demo/eski agent) xaritada ko'rinmasin
-      if (!online && !recentlySeen && !inRedisLive) return null;
+      // Faqat socket/Redis orqali jonli agentlar (DB dagi eski GPS hisobga olinmasin)
+      if (!inRedisOnline && !inRedisLive) return null;
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {
@@ -442,14 +432,16 @@ export class DashboardService {
         name,
         avatar: initials(name),
         role: detectRole(d.position),
-        online,
+        online: true,
         lastSeen: formatLastSeen(lastAt),
         lat,
         lng,
         orgId: d.companyId ?? '',
       };
     }).filter((e): e is NonNullable<typeof e> =>
-      e != null && Number.isFinite(e.lat) && Number.isFinite(e.lng),
+      e != null && Number.isFinite(e.lat) && Number.isFinite(e.lng)
+        && Math.abs(e.lat) <= 90 && Math.abs(e.lng) <= 180
+        && !(e.lat === 0 && e.lng === 0),
     );
 
     return {

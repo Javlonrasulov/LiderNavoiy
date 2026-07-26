@@ -69,6 +69,9 @@ class ProfileRepository @Inject constructor(
         fullName = fullName,
         phone = phone,
         address = address,
+        territory = territory,
+        latitude = latitude,
+        longitude = longitude,
         category = category,
         balance = balance,
         totalPurchases = totalPurchases,
@@ -77,6 +80,7 @@ class ProfileRepository @Inject constructor(
         agentPosition = agentPosition,
         agentPhone = agentPhone,
         agentUserId = agentUserId,
+        hasAssignedAgent = hasAssignedAgent,
         deliveryPerson = deliveryPerson?.toDomain(),
     )
 }

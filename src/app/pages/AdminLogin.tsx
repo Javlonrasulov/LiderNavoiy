@@ -4,6 +4,7 @@ import { Eye, EyeOff, Moon, Sun, Shield, AlertCircle, Loader, Globe, ChevronDown
 import { useTheme } from '../components/ThemeContext';
 import { useAdminAuth } from '../components/AdminAuthContext';
 import { api, setTokens, clearTokens } from '../api/client';
+import { registerAdminWebPush } from '../lib/firebaseMessaging';
 import { useLang, Lang } from '../components/LangContext';
 
 const LANGS: { id: Lang; label: string; flag: string }[] = [
@@ -106,6 +107,7 @@ export default function AdminLogin() {
         permissions: res.user.permissions ?? null,
       };
       login(username.trim(), password.trim(), userData);
+      void registerAdminWebPush();
       navigate('/admin/select');
     } catch (err) {
       clearTokens();

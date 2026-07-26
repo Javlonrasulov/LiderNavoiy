@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -50,6 +49,7 @@ import uz.lider.client.presentation.dashboard.DashboardDateRangeDialog
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
+import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 private val debtChart = listOf(4.2f, 3.8f, 5.1f, 2.9f, 3.2f, 2.5f)
@@ -91,21 +91,11 @@ fun DebtScreen(
         title = localized("debt_title"),
         onBack = onBack,
         actions = {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .liquidGlassThemed(radius = LiquidGlass.RadiusChip),
-                contentAlignment = Alignment.Center,
-            ) {
-                IconButton(onClick = { showDatePicker = true }, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.Outlined.CalendarMonth,
-                        contentDescription = localized("dash_select_dates"),
-                        tint = LiquidTheme.textMuted,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            PremiumHeaderButton(
+                icon = Icons.Outlined.CalendarMonth,
+                onClick = { showDatePicker = true },
+                contentDescription = localized("dash_select_dates"),
+            )
         },
     ) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {

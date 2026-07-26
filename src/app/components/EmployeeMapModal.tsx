@@ -159,7 +159,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
           <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${emp.lastSeen}</div>
         </div>`);
       marker.addTo(map);
-      markersRef.current.set(emp.id, marker);
+      markersRef.current.set(emp.distributorId || String(emp.id), marker);
 
       if (isHL) {
         setTimeout(() => marker.openPopup(), 150);

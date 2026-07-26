@@ -1,32 +1,54 @@
 # Push bildirishnomalar (FCM) — sozlash
 
-Push bildirishnomalar **majburiy** funksiya. Quyidagi qadamlarni bajaring.
+Push bildirishnomalar **Firebase Cloud Messaging** orqali:
+- Agent APK (`uz.distributor.crm`)
+- Mijoz APK (`uz.lider.client`)
+- Admin panel (brauzer web push)
 
 ## 1. Firebase loyiha yaratish
 
 1. [Firebase Console](https://console.firebase.google.com/) ga kiring
-2. **Add project** → loyiha nomi (masalan: `sherin-crm`)
+2. **Add project** → masalan `lider-navoiy`
 3. Google Analytics ixtiyoriy
 
-## 2. Android ilova qo'shish
+## 2. Android ilovalar
 
-1. Firebase loyihada **Add app** → **Android**
-2. Package name: `uz.distributor.crm` (build.gradle dagi `applicationId` bilan bir xil)
-3. **Register app**
-4. `google-services.json` faylini yuklab oling
-5. Faylni quyidagi joyga qo'ying:
+### Agent
+1. **Add app** → Android
+2. Package: `uz.distributor.crm`
+3. `google-services.json` → `android-app/app/google-services.json`
 
+### Mijoz
+1. **Add app** → Android (xuddi shu loyihaga)
+2. Package: `uz.lider.client`
+3. `google-services.json` → `client-android-app/app/google-services.json`
+
+> Har bir app uchun Firebase dan yuklab olingan haqiqiy fayl bilan placeholder ni almashtiring.
+
+## 3. Web (Admin panel)
+
+1. Firebase → **Add app** → Web
+2. Config qiymatlarini oling
+3. **Project Settings → Cloud Messaging → Web Push certificates** → **Generate key pair** (VAPID)
+
+Netlify / lokal `.env`:
+
+```env
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=lider-navoiy.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=lider-navoiy
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=1:...:web:...
+VITE_FIREBASE_VAPID_KEY=...
 ```
-android-app/app/google-services.json
-```
 
-> `google-services.json.example` namunasi bor — uni nusxalab, Firebase dan olingan haqiqiy fayl bilan almashtiring.
+Admin login qilganda brauzer bildirishnoma ruxsatini so‘raydi va FCM token serverga yuboriladi.
 
-## 3. Backend uchun Service Account
+## 4. Backend (Service Account)
 
-1. Firebase Console → **Project Settings** → **Service accounts**
-2. **Generate new private key** → JSON fayl yuklab olinadi
-3. `backend/.env` fayliga qo'shing:
+1. Firebase → **Project Settings** → **Service accounts**
+2. **Generate new private key**
+3. Backend `.env` yoki Render Environment:
 
 ```env
 FIREBASE_PROJECT_ID=your-project-id
@@ -34,47 +56,37 @@ FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project-id.iam.gserviceaccoun
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
-JSON fayldan:
-- `project_id` → `FIREBASE_PROJECT_ID`
-- `client_email` → `FIREBASE_CLIENT_EMAIL`
-- `private_key` → `FIREBASE_PRIVATE_KEY` (bitta qator, `\n` bilan)
+## 5. Ishlash tartibi
 
-## 4. Ishlash tartibi
+| Qadam | Kim | Nima |
+|-------|-----|------|
+| Login | Agent / Mijoz APK | FCM token → `POST /notifications/fcm-token` |
+| Login | Admin (brauzer) | Web push token → xuddi shu endpoint |
+| Broadcast | Admin → Push bo‘limi | Agentlar / mijozlar / adminlar / hammaga |
+| Tarix | Har bir user | `GET /notifications` |
 
-| Qadam | Kim | Nima bo'ladi |
-|-------|-----|--------------|
-| Login | Agent (Android) | FCM token serverga yuboriladi (`POST /notifications/fcm-token`) |
-| Yangi buyurtma | Agent | Admin/menejerlarga avtomatik push |
-| Broadcast | Admin panel | Barcha agentlarga push yuborish |
-| Tarix | Agent | `GET /notifications` — Xabarlar ekranida |
+## 6. API
 
-## 5. API endpointlar
-
-| Method | URL | Rol |
+| Method | URL | Kim |
 |--------|-----|-----|
-| POST | `/notifications/fcm-token` | Agent — token ro'yxatdan o'tkazish |
-| GET | `/notifications` | O'z bildirishnomalari |
-| GET | `/notifications/unread-count` | O'qilmaganlar soni |
-| POST | `/notifications/send` | Admin — bitta foydalanuvchiga |
-| POST | `/notifications/broadcast` | Admin — barcha agentlarga |
-
-## 6. Android ruxsatlar
-
-Android 13+ da ilova birinchi marta ochilganda **Bildirishnomalar** ruxsati so'raladi. Rad etilsa, push ko'rinmaydi — Sozlamalar orqali yoqish kerak.
+| POST | `/notifications/fcm-token` | Har qanday login qilgan user |
+| GET | `/notifications` | O‘z tarixi |
+| POST | `/notifications/broadcast` | Admin — `audience`: `agents` \| `clients` \| `admins` \| `all` |
+| POST | `/notifications/send` | Admin — bitta userga |
 
 ## 7. Tekshirish
 
-1. Backend ishga tushiring: `cd backend && npm run start:dev`
-2. Android ilovani qurib, telefonda oching
-3. `agent001` / `agent123` bilan kiring
-4. Admin paneldan **Push xabar** bo'limida test xabar yuboring
-5. Yoki agent buyurtma yaratganda admin telefonida/panelida bildirishnoma kelishi kerak
+1. Firebase kalitlarini qo‘ying (Android + backend + Netlify)
+2. Agent va mijoz APK ni qayta build qiling
+3. Login qiling, bildirishnoma ruxsatini bering
+4. Admin → **Push** → auditoriyani tanlab test yuboring
 
 ## Muammolar
 
 | Muammo | Yechim |
 |--------|--------|
-| Push kelmayapti | `google-services.json` to'g'ri joyda va package name mos kelishini tekshiring |
-| Backend `FIREBASE_NOT_CONFIGURED` | `.env` da 3 ta Firebase o'zgaruvchi to'ldirilganini tekshiring |
-| Token ro'yxatdan o'tmagan | Agent login qilganini va internet borligini tekshiring |
-| Emulator | FCM emulatorda ham ishlaydi, lekin Google Play Services bo'lishi kerak |
+| `FIREBASE_NOT_CONFIGURED` | Backend `FIREBASE_*` env to‘liq emas |
+| Push kelmayapti | `google-services.json` package name mosligi |
+| Admin brauzerda yo‘q | `VITE_FIREBASE_*` + VAPID + HTTPS (Netlify) |
+| Token yo‘q | Login + internet + notification permission |
+| Emulator | Google Play Services kerak |

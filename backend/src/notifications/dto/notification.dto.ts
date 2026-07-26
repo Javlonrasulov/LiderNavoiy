@@ -6,6 +6,7 @@ import {
   IsUUID,
   IsObject,
   IsArray,
+  IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { NotificationType } from '../notification.types';
@@ -70,10 +71,19 @@ export class BroadcastNotificationDto {
   @IsObject()
   data?: Record<string, string>;
 
-  @ApiPropertyOptional({ description: 'Filter by company id' })
+  @ApiPropertyOptional({ description: 'Filter by company id (agents only)' })
   @IsOptional()
   @IsString()
   companyId?: string;
+
+  /** agents | clients | admins | all — default: agents */
+  @ApiPropertyOptional({
+    description: 'Who receives the broadcast',
+    enum: ['agents', 'clients', 'admins', 'all'],
+  })
+  @IsOptional()
+  @IsIn(['agents', 'clients', 'admins', 'all'])
+  audience?: 'agents' | 'clients' | 'admins' | 'all';
 }
 
 export class SendToUsersDto {

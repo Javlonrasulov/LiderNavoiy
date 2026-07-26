@@ -1,24 +1,36 @@
 package uz.lider.client.data.remote.dto
 
-import com.google.gson.JsonDeserializationContext
-import com.google.gson.JsonDeserializer
-import com.google.gson.JsonElement
+import com.google.gson.TypeAdapter
 import com.google.gson.annotations.JsonAdapter
-import java.lang.reflect.Type
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
+import java.io.IOException
 
-class FlexibleDoubleAdapter : JsonDeserializer<Double> {
-    override fun deserialize(
-        json: JsonElement?,
-        type: Type?,
-        context: JsonDeserializationContext?,
-    ): Double {
-        if (json == null || json.isJsonNull) return 0.0
-        return when {
-            json.isJsonPrimitive && json.asJsonPrimitive.isString ->
-                json.asString.toDoubleOrNull() ?: 0.0
-            json.isJsonPrimitive && json.asJsonPrimitive.isNumber ->
-                json.asDouble
-            else -> 0.0
+/**
+ * Double uchun moslashuvchan adapter (string/number).
+ * Muhim: JsonSerializer/TypeAdapter.write bo'lmasa create-order so'rovi
+ * Gson orqali serialize bo'lmaydi (JsonIOException → save_failed).
+ */
+class FlexibleDoubleAdapter : TypeAdapter<Double>() {
+    @Throws(IOException::class)
+    override fun write(out: JsonWriter, value: Double?) {
+        if (value == null) out.nullValue() else out.value(value)
+    }
+
+    @Throws(IOException::class)
+    override fun read(reader: JsonReader): Double {
+        return when (reader.peek()) {
+            JsonToken.NULL -> {
+                reader.nextNull()
+                0.0
+            }
+            JsonToken.STRING -> reader.nextString().toDoubleOrNull() ?: 0.0
+            JsonToken.NUMBER -> reader.nextDouble()
+            else -> {
+                reader.skipValue()
+                0.0
+            }
         }
     }
 }
@@ -82,9 +94,9 @@ data class ClientOrderDto(
     val status: String,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val totalAmount: Double = 0.0,
-    val items: List<OrderItemDto>,
-    val createdAt: String,
-    val updatedAt: String,
+    val items: List<OrderItemDto> = emptyList(),
+    val createdAt: String = "",
+    val updatedAt: String = "",
 )
 
 data class DeliveryPersonTrackingDto(
@@ -134,6 +146,11 @@ data class ClientProfileDto(
     val fullName: String? = null,
     val phone: String? = null,
     val address: String? = null,
+    val territory: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val latitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val longitude: Double? = null,
     val category: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val balance: Double = 0.0,
@@ -144,6 +161,7 @@ data class ClientProfileDto(
     val agentPosition: String? = null,
     val agentPhone: String? = null,
     val agentUserId: String? = null,
+    val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPersonDto? = null,
 )
 

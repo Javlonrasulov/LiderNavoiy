@@ -83,4 +83,7 @@ interface ApiService {
         @Path("id") conversationId: String,
         @Body body: DeleteMessagesRequest,
     ): DeleteMessagesResponse
+
+    @POST("notifications/fcm-token")
+    suspend fun registerFcmToken(@Body body: Map<String, String>)
 }

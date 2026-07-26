@@ -28,7 +28,7 @@ export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
   @Post('fcm-token')
-  @ApiOperation({ summary: 'Register FCM device token (mobile app)' })
+  @ApiOperation({ summary: 'Register FCM device token (agent / client / admin web)' })
   registerToken(
     @Request() req: { user: User },
     @Body() dto: RegisterFcmTokenDto,
@@ -78,7 +78,7 @@ export class NotificationsController {
 
   @Post('broadcast')
   @UseGuards(AdminGuard)
-  @ApiOperation({ summary: 'Broadcast push to all agents (admin)' })
+  @ApiOperation({ summary: 'Broadcast push (agents / clients / admins / all)' })
   broadcast(@Body() dto: BroadcastNotificationDto) {
     return this.service.broadcast(dto);
   }
