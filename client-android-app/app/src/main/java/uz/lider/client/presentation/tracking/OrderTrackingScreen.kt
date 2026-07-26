@@ -99,6 +99,7 @@ fun OrderTrackingScreen(
             courierLat = deliveryPerson?.latitude,
             courierLng = deliveryPerson?.longitude,
             routePoints = state.routePoints,
+            storeName = tracking?.deliveryAddress.orEmpty(),
             distance = state.distance,
             isDark = isDark,
             onDismiss = { showFullScreenMap = false },
@@ -133,6 +134,7 @@ fun OrderTrackingScreen(
                                     courierLat = deliveryPerson?.latitude,
                                     courierLng = deliveryPerson?.longitude,
                                     routePoints = state.routePoints,
+                                    storeName = tracking?.deliveryAddress.orEmpty(),
                                     isDark = false,
                                     modifier = Modifier.fillMaxSize(),
                                 )
@@ -554,6 +556,7 @@ private fun FullScreenOrderTrackingMapDialog(
     courierLat: Double?,
     courierLng: Double?,
     routePoints: List<uz.lider.client.data.repository.LatLngPoint>,
+    storeName: String,
     distance: String,
     isDark: Boolean,
     onDismiss: () -> Unit,
@@ -579,6 +582,7 @@ private fun FullScreenOrderTrackingMapDialog(
                 courierLat = courierLat,
                 courierLng = courierLng,
                 routePoints = routePoints,
+                storeName = storeName,
                 isDark = false,
                 modifier = Modifier
                     .fillMaxSize()

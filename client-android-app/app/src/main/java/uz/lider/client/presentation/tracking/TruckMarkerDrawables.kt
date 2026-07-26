@@ -3,6 +3,7 @@ package uz.lider.client.presentation.tracking
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
@@ -13,6 +14,21 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 
 private const val BADGE_COLOR = 0xFFEF4444.toInt()
+
+/** Map pin status — matches web StoreMarkerStatus. */
+enum class StoreMarkerStatus {
+    ACTIVE,
+    APPROACHING,
+    CLOSED,
+    SELECTED,
+}
+
+fun StoreMarkerStatus.pinColor(): Int = when (this) {
+    StoreMarkerStatus.ACTIVE -> 0xFF22C55E.toInt()
+    StoreMarkerStatus.APPROACHING -> 0xFFEAB308.toInt()
+    StoreMarkerStatus.CLOSED -> 0xFFEF4444.toInt()
+    StoreMarkerStatus.SELECTED -> 0xFF3B82F6.toInt()
+}
 
 private fun Bitmap.asMarkerDrawable(context: Context): Drawable =
     BitmapDrawable(context.resources, this).apply {
@@ -78,32 +94,147 @@ fun createTruckMarkerDrawable(context: Context, orderCount: Int, sizeDp: Int = 3
 }
 
 /**
- * Admin uslubiga mos do‘kon (🏪): qizil tom, sariq vitrina.
+ * Premium glass disc marker (Uber / Apple Maps) — NOT a Google pin.
+ * Layer 1: round glass · Layer 2: 2px stroke store · Layer 3: soft 10dp droplet.
  */
-fun createDeliveryPinDrawable(context: Context, sizeDp: Int = 32): Drawable {
+fun createDeliveryPinDrawable(
+    context: Context,
+    sizeDp: Int = 48,
+    status: StoreMarkerStatus = StoreMarkerStatus.APPROACHING,
+    primaryColor: Int = 0xFF3B82F6.toInt(),
+    dark: Boolean = false,
+): Drawable {
     val d = context.resources.displayMetrics.density
-    val w = (sizeDp * d).toInt().coerceIn(36, 88)
-    val h = (w * 0.92f).toInt()
-    val outH = h + (5 * d).toInt()
-    val bmp = Bitmap.createBitmap(w, outH, Bitmap.Config.ARGB_8888)
+    val selected = status == StoreMarkerStatus.SELECTED
+    val scale = if (selected) 1.08f else 1f
+    val disc = (sizeDp * d * scale).toInt().coerceIn(44, 120)
+    val pointer = (10f * d * scale).toInt().coerceAtLeast(8)
+    val pad = (6f * d).toInt()
+    val outW = disc + pad * 2
+    val outH = disc + pointer + pad
+    val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
 
+    val cx = outW / 2f
+    val cy = pad + disc / 2f
+    val r = disc / 2f
+
+    // Soft ground / selected glow
+    if (selected) {
+        canvas.drawCircle(
+            cx, cy,
+            r * 0.92f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = RadialGradient(
+                    cx, cy, r * 1.15f,
+                    intArrayOf(
+                        (primaryColor and 0x00FFFFFF) or 0x59000000,
+                        0x00000000,
+                    ),
+                    floatArrayOf(0.35f, 1f),
+                    Shader.TileMode.CLAMP,
+                )
+            },
+        )
+    }
     canvas.drawOval(
-        RectF(w * 0.18f, outH * 0.84f, w * 0.82f, outH * 0.98f),
+        RectF(cx - r * 0.55f, outH - pad * 0.35f - 4f * d, cx + r * 0.55f, outH.toFloat()),
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = RadialGradient(
-                w * 0.5f, outH * 0.93f, w * 0.30f,
-                intArrayOf(0x38000000, 0x00000000),
+                cx, outH - pad * 0.2f, r * 0.55f,
+                intArrayOf(0x2E000000, 0x00000000),
                 floatArrayOf(0.2f, 1f),
                 Shader.TileMode.CLAMP,
             )
         },
     )
 
-    canvas.save()
-    canvas.translate(0f, (outH - h - 2 * d).coerceAtLeast(0f))
-    drawAdminStore(canvas, w.toFloat(), h.toFloat(), d)
-    canvas.restore()
+    // Disc soft shadow (no BlurMaskFilter — hardware canvas safe)
+    canvas.drawCircle(
+        cx, cy + 3f * d,
+        r * 0.92f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                cx, cy + 3f * d, r,
+                intArrayOf(0x33000000, 0x00000000),
+                floatArrayOf(0.55f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        },
+    )
+
+    // Layer 1 — glass / solid disc
+    val discPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        when {
+            selected -> shader = LinearGradient(
+                cx - r, cy - r, cx + r, cy + r,
+                primaryColor,
+                0xFF6366F1.toInt(),
+                Shader.TileMode.CLAMP,
+            )
+            dark -> color = 0xFF1E293B.toInt()
+            else -> color = 0xEFFFFFFF.toInt()
+        }
+    }
+    canvas.drawCircle(cx, cy, r, discPaint)
+    canvas.drawCircle(
+        cx, cy, r,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f * d
+            color = 0x66FFFFFF
+        },
+    )
+
+    // Layer 2 — stroke store (55% of disc)
+    val iconColor = if (selected || dark) 0xFFFFFFFF.toInt() else primaryColor
+    val iconSize = disc * 0.55f
+    drawStrokeStoreIcon(
+        canvas = canvas,
+        cx = cx,
+        cy = cy,
+        size = iconSize,
+        dens = d,
+        color = iconColor,
+    )
+
+    // Online status badge (top-right 8dp)
+    val badgeR = 4f * d
+    val online = when (status) {
+        StoreMarkerStatus.ACTIVE -> 0xFF22C55E.toInt()
+        StoreMarkerStatus.APPROACHING -> 0xFFEAB308.toInt()
+        StoreMarkerStatus.CLOSED -> 0xFFEF4444.toInt()
+        StoreMarkerStatus.SELECTED -> 0xFF22C55E.toInt()
+    }
+    val bx = cx + r * 0.62f
+    val by = cy - r * 0.62f
+    canvas.drawCircle(bx, by, badgeR + 1.6f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+    })
+    canvas.drawCircle(bx, by, badgeR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = online })
+
+    // Layer 3 — soft 10dp droplet (not Google pin)
+    val dropTop = cy + r - 1.5f * d
+    val dropBottom = dropTop + pointer
+    val drop = Path().apply {
+        moveTo(cx - 6f * d, dropTop)
+        lineTo(cx + 6f * d, dropTop)
+        quadTo(cx + 2.2f * d, dropTop + pointer * 0.55f, cx, dropBottom)
+        quadTo(cx - 2.2f * d, dropTop + pointer * 0.55f, cx - 6f * d, dropTop)
+        close()
+    }
+    canvas.drawPath(
+        drop,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = when {
+                selected -> primaryColor
+                dark -> 0xFF1E293B.toInt()
+                else -> 0xFFFFFFFF.toInt()
+            }
+            alpha = if (selected) 242 else 235
+        },
+    )
 
     return bmp.asMarkerDrawable(context)
 }
@@ -119,42 +250,35 @@ private fun drawAdminTruck(canvas: Canvas, w: Float, h: Float, dens: Float) {
     val rim = 0xFFE2E8F0.toInt()
     val bumper = 0xFF64748B.toInt()
 
-    // Cargo box
     canvas.drawRoundRect(
         RectF(w * 0.06f, h * 0.18f, w * 0.58f, h * 0.68f),
         3f * dens, 3f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cargo },
     )
-    // Cargo side stripe / panel
     canvas.drawRect(
         w * 0.10f, h * 0.28f, w * 0.54f, h * 0.38f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cargoDark },
     )
-    // Cab
     canvas.drawRoundRect(
         RectF(w * 0.54f, h * 0.30f, w * 0.92f, h * 0.68f),
         4f * dens, 4f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cab },
     )
-    // Cab roof
     canvas.drawRoundRect(
         RectF(w * 0.58f, h * 0.18f, w * 0.88f, h * 0.36f),
         3.5f * dens, 3.5f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cabDark },
     )
-    // Windshield
     canvas.drawRoundRect(
         RectF(w * 0.62f, h * 0.24f, w * 0.84f, h * 0.42f),
         2.5f * dens, 2.5f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = glass },
     )
-    // Bumper / grill
     canvas.drawRoundRect(
         RectF(w * 0.88f, h * 0.48f, w * 0.96f, h * 0.62f),
         1.5f * dens, 1.5f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bumper },
     )
-    // Headlight
     canvas.drawCircle(
         w * 0.90f, h * 0.52f, 2.2f * dens,
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFEF08A.toInt() },
@@ -169,87 +293,73 @@ private fun drawAdminTruck(canvas: Canvas, w: Float, h: Float, dens: Float) {
     wheel(w * 0.74f, h * 0.72f, h * 0.14f)
 }
 
-/** Flat storefront — red awning + cream building (admin 🏪 uslubi). */
-private fun drawAdminStore(canvas: Canvas, w: Float, h: Float, dens: Float) {
-    val wall = 0xFFFEF3C7.toInt()
-    val wallEdge = 0xFFFDE68A.toInt()
-    val roof = 0xFFEF4444.toInt()
-    val roofDark = 0xFFDC2626.toInt()
-    val awning = 0xFFF97316.toInt()
-    val awningAlt = 0xFFFEE2E2.toInt()
-    val glass = 0xFF93C5FD.toInt()
-    val door = 0xFF92400E.toInt()
-    val sign = 0xFF1E293B.toInt()
-
-    // Building body
-    canvas.drawRoundRect(
-        RectF(w * 0.14f, h * 0.34f, w * 0.86f, h * 0.86f),
-        3f * dens, 3f * dens,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = wall },
-    )
-    canvas.drawRect(
-        w * 0.14f, h * 0.34f, w * 0.20f, h * 0.86f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = wallEdge },
-    )
-
-    // Pitched roof
-    canvas.drawPath(
-        Path().apply {
-            moveTo(w * 0.08f, h * 0.38f)
-            lineTo(w * 0.50f, h * 0.10f)
-            lineTo(w * 0.92f, h * 0.38f)
-            close()
-        },
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = roof },
-    )
-    canvas.drawPath(
-        Path().apply {
-            moveTo(w * 0.50f, h * 0.10f)
-            lineTo(w * 0.92f, h * 0.38f)
-            lineTo(w * 0.86f, h * 0.38f)
-            lineTo(w * 0.50f, h * 0.16f)
-            close()
-        },
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = roofDark },
-    )
-
-    // Awning stripes
-    val aTop = h * 0.38f
-    val aBot = h * 0.50f
-    val stripe = w * 0.12f
-    var i = 0
-    var x = w * 0.14f
-    while (x < w * 0.86f - 1f) {
-        canvas.drawRect(
-            x, aTop, (x + stripe).coerceAtMost(w * 0.86f), aBot,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (i % 2 == 0) awning else awningAlt
-            },
-        )
-        x += stripe
-        i++
+/** SF Symbols–style stroke storefront — never filled clipart. */
+private fun drawStrokeStoreIcon(
+    canvas: Canvas,
+    cx: Float,
+    cy: Float,
+    size: Float,
+    dens: Float,
+    color: Int,
+) {
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        style = Paint.Style.STROKE
+        strokeWidth = (size * 0.085f).coerceAtLeast(1.8f * dens)
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
+    val left = cx - size * 0.5f
+    val top = cy - size * 0.5f
+    val s = size
 
-    // Sign board
+    // Awning line + roof
+    canvas.drawLine(left + s * 0.12f, top + s * 0.38f, left + s * 0.88f, top + s * 0.38f, stroke)
+    val roof = Path().apply {
+        moveTo(left + s * 0.16f, top + s * 0.38f)
+        lineTo(left + s * 0.28f, top + s * 0.18f)
+        lineTo(left + s * 0.72f, top + s * 0.18f)
+        lineTo(left + s * 0.84f, top + s * 0.38f)
+    }
+    canvas.drawPath(roof, stroke)
+
+    // Body
+    val body = Path().apply {
+        moveTo(left + s * 0.20f, top + s * 0.38f)
+        lineTo(left + s * 0.20f, top + s * 0.82f)
+        quadTo(left + s * 0.20f, top + s * 0.88f, left + s * 0.26f, top + s * 0.88f)
+        lineTo(left + s * 0.74f, top + s * 0.88f)
+        quadTo(left + s * 0.80f, top + s * 0.88f, left + s * 0.80f, top + s * 0.82f)
+        lineTo(left + s * 0.80f, top + s * 0.38f)
+    }
+    canvas.drawPath(body, stroke)
+
+    // Vitrine
     canvas.drawRoundRect(
-        RectF(w * 0.28f, h * 0.42f, w * 0.72f, h * 0.52f),
-        2f * dens, 2f * dens,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = sign },
+        RectF(left + s * 0.28f, top + s * 0.46f, left + s * 0.48f, top + s * 0.66f),
+        s * 0.04f, s * 0.04f, stroke,
     )
 
-    // Window + door
-    canvas.drawRoundRect(
-        RectF(w * 0.22f, h * 0.56f, w * 0.48f, h * 0.78f),
-        2f * dens, 2f * dens,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = glass },
-    )
-    canvas.drawRoundRect(
-        RectF(w * 0.54f, h * 0.56f, w * 0.74f, h * 0.84f),
-        2f * dens, 2f * dens,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = door },
-    )
-    canvas.drawCircle(
-        w * 0.70f, h * 0.70f, 1.4f * dens,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFDE68A.toInt() },
+    // Door
+    val door = Path().apply {
+        moveTo(left + s * 0.56f, top + s * 0.88f)
+        lineTo(left + s * 0.56f, top + s * 0.52f)
+        quadTo(left + s * 0.56f, top + s * 0.48f, left + s * 0.60f, top + s * 0.48f)
+        lineTo(left + s * 0.70f, top + s * 0.48f)
+        quadTo(left + s * 0.74f, top + s * 0.48f, left + s * 0.74f, top + s * 0.52f)
+        lineTo(left + s * 0.74f, top + s * 0.88f)
+    }
+    canvas.drawPath(door, stroke)
+
+    // Handle
+    canvas.drawPoint(
+        left + s * 0.68f,
+        top + s * 0.66f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            style = Paint.Style.STROKE
+            strokeWidth = (size * 0.10f).coerceAtLeast(2.2f * dens)
+            strokeCap = Paint.Cap.ROUND
+        },
     )
 }

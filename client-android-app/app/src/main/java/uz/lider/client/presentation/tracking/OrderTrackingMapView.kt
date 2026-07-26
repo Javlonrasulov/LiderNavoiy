@@ -18,6 +18,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.infowindow.InfoWindow
 import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
@@ -88,7 +89,7 @@ private fun updateFleetMap(
     compactMarkers: Boolean,
     onVehicleClick: (LiveMapVehicle) -> Unit,
 ) {
-    map.setTileSource(MapTileSources.source(MapLayerId.STANDARD, dark = false))
+    map.setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
     map.setMultiTouchControls(interactive)
     map.isClickable = interactive
     map.isFocusable = interactive
@@ -98,9 +99,24 @@ private fun updateFleetMap(
 
     val cameraPoints = ArrayList<GeoPoint>()
     val ctx = map.context
-    val storeSizeDp = if (compactMarkers) 28 else 36
+    val storeSizeDp = if (compactMarkers) 40 else 48
     val truckSizeDp = if (compactMarkers) 32 else 40
-    val deliveryIcon = createDeliveryPinDrawable(ctx, storeSizeDp)
+    val storeInfoWindow = GlassStoreInfoWindow(map)
+    val idleStoreIcon = createDeliveryPinDrawable(
+        context = ctx,
+        sizeDp = storeSizeDp,
+        status = StoreMarkerStatus.APPROACHING,
+        primaryColor = 0xFF3B82F6.toInt(),
+    )
+    val selectedStoreIcon = createDeliveryPinDrawable(
+        context = ctx,
+        sizeDp = storeSizeDp,
+        status = StoreMarkerStatus.SELECTED,
+        primaryColor = 0xFF3B82F6.toInt(),
+    )
+
+    // Close leftover bubbles from previous update
+    InfoWindow.closeAllInfoWindowsOn(map)
 
     vehicles.forEach { vehicle ->
         vehicle.orders.forEach { order ->
@@ -143,10 +159,30 @@ private fun updateFleetMap(
             }
 
             delivery?.let { point ->
+                val storeLabel = order.storeName.trim().ifBlank {
+                    order.tracking.deliveryAddress?.trim().orEmpty()
+                }.ifBlank { "Magazin" }
                 Marker(map).apply {
                     position = point
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    icon = deliveryIcon
+                    icon = idleStoreIcon
+                    title = storeLabel
+                    relatedObject = StoreCallout(name = storeLabel, orderId = order.orderId)
+                    infoWindow = storeInfoWindow
+                    setOnMarkerClickListener { marker, mapView ->
+                        InfoWindow.closeAllInfoWindowsOn(mapView)
+                        // Reset other store icons
+                        mapView.overlays.filterIsInstance<Marker>().forEach { m ->
+                            if (m.relatedObject is StoreCallout) {
+                                m.icon = idleStoreIcon
+                            }
+                        }
+                        marker.icon = selectedStoreIcon
+                        marker.showInfoWindow()
+                        mapView.controller.animateTo(marker.position)
+                        mapView.invalidate()
+                        true
+                    }
                 }.also { overlays.add(it) }
                 cameraPoints.add(point)
             }
@@ -166,7 +202,14 @@ private fun updateFleetMap(
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                 icon = truckIcon
                 relatedObject = vehicle
-                setOnMarkerClickListener { marker, _ ->
+                setInfoWindow(null)
+                setOnMarkerClickListener { marker, mapView ->
+                    InfoWindow.closeAllInfoWindowsOn(mapView)
+                    mapView.overlays.filterIsInstance<Marker>().forEach { m ->
+                        if (m.relatedObject is StoreCallout) {
+                            m.icon = idleStoreIcon
+                        }
+                    }
                     val v = marker.relatedObject as? LiveMapVehicle
                     if (v != null) onVehicleClick(v)
                     true
@@ -233,7 +276,7 @@ fun OrderTrackingMapView(
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 minZoomLevel = 5.0
                 maxZoomLevel = 19.0
-                setTileSource(MapTileSources.source(MapLayerId.STANDARD, dark = false))
+                setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
                 controller.setZoom(NAVOIY_ZOOM)
                 controller.setCenter(NAVOIY)
                 mapRef.value = this
@@ -280,8 +323,10 @@ fun OrderTrackingMapView(
     modifier: Modifier = Modifier,
     routePoints: List<LatLngPoint> = emptyList(),
     interactive: Boolean = true,
+    storeName: String = "",
 ) {
-    val vehicles = remember(deliveryLat, deliveryLng, courierLat, courierLng, routePoints) {
+    val vehicles = remember(deliveryLat, deliveryLng, courierLat, courierLng, routePoints, storeName) {
+        val label = storeName.trim().ifBlank { "Magazin" }
         val order = uz.lider.client.presentation.dashboard.LiveMapOrder(
             orderId = "single",
             amount = 0.0,
@@ -289,11 +334,12 @@ fun OrderTrackingMapView(
             routePoints = routePoints,
             deliveryLat = deliveryLat,
             deliveryLng = deliveryLng,
+            storeName = label,
             tracking = uz.lider.client.domain.model.OrderTrackingDetails(
                 orderId = "single",
                 status = "on_way",
                 totalAmount = 0.0,
-                deliveryAddress = null,
+                deliveryAddress = label,
                 deliveryLatitude = deliveryLat,
                 deliveryLongitude = deliveryLng,
                 distanceKm = null,

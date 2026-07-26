@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
+import { StoreIcon } from '../../icons';
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
@@ -832,7 +833,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               <div className={`flex items-center justify-between px-4 py-3 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${D ? 'bg-sky-900/60' : 'bg-sky-100'}`}>
-                    <MapPin size={15} className={D ? 'text-sky-400' : 'text-sky-600'} />
+                    <StoreIcon size={16} color="currentColor" className={D ? 'text-sky-400' : 'text-sky-600'} animated={false} />
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-sm truncate">{activeClient.name}</p>

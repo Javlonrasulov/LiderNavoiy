@@ -12,6 +12,8 @@ data class LiveMapOrder(
     val routePoints: List<LatLngPoint> = emptyList(),
     val deliveryLat: Double?,
     val deliveryLng: Double?,
+    /** Client / magazine name for map callout. */
+    val storeName: String = "",
     val tracking: OrderTrackingDetails,
 )
 

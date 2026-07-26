@@ -17,8 +17,8 @@ android {
         applicationId = "uz.distributor.crm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")

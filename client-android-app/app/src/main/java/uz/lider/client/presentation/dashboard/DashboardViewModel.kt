@@ -252,6 +252,11 @@ class DashboardViewModel @Inject constructor(
                         }
                     }
 
+                    val storeName = _uiState.value.clientName.trim()
+                        .takeIf { it.isNotEmpty() && it != "—" }
+                        ?: tracking.deliveryAddress?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: "Magazin"
+
                     LiveMapOrder(
                         orderId = orderId,
                         amount = tracking.totalAmount,
@@ -259,6 +264,7 @@ class DashboardViewModel @Inject constructor(
                         routePoints = routePoints,
                         deliveryLat = deliveryLat,
                         deliveryLng = deliveryLng,
+                        storeName = storeName,
                         tracking = tracking,
                     )
                 }
