@@ -141,10 +141,10 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
                     : zayavka.status === 'cancelled' ? '#ef4444'
                     : '#f97316';
   const statusLabel = zayavka.status === 'pri'
-    ? (t.zPri ?? 'Принят')
+    ? (t.zPri ?? 'Qabul qilingan')
     : zayavka.status === 'cancelled'
     ? (t.zBekor ?? 'Bekor')
-    : (t.zOtr ?? 'Отгружен');
+    : (t.zOtr ?? 'Yuklangan');
 
   /* ── info fields (right panel) ── */
   const INFO = [

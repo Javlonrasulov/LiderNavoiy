@@ -2,6 +2,12 @@ package uz.lider.client.presentation.tracking
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,29 +44,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.formatMoney
-import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.localized
-import uz.lider.client.presentation.theme.LiquidBackground
+import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
-import uz.lider.client.presentation.theme.glowEffect
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 private val stepKeys = listOf("track_step1", "track_step2", "track_step3", "track_step4", "track_step5")
@@ -98,7 +103,7 @@ fun OrderTrackingScreen(
     }
 
     ClientStackScaffold(title = localized("track_title"), onBack = onBack) { padding ->
-        LiquidBackground(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding)) {
             if (state.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = LiquidGlass.Indigo)
@@ -270,7 +275,49 @@ fun OrderTrackingScreen(
                         }
                     }
 
-                    // Timeline steps — glass cards, active step = gradient glow
+                    if (state.isCancelled) {
+                        item {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                                    .background(LiquidGlass.Rose.copy(alpha = if (isDark) 0.18f else 0.12f))
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(LiquidGlass.Rose.copy(alpha = 0.25f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = null,
+                                        tint = LiquidGlass.Rose,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        localized("ord_status_cancelled"),
+                                        color = LiquidGlass.Rose,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                    )
+                                    Text(
+                                        localized("track_cancelled_hint"),
+                                        color = textMuted,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Timeline steps — active check pulses
                     item {
                         Column(
                             Modifier
@@ -280,51 +327,29 @@ fun OrderTrackingScreen(
                         ) {
                             stepKeys.forEachIndexed { index, key ->
                                 val stepNum = index + 1
-                                val done = stepNum <= state.activeStep
-                                val active = stepNum == state.activeStep
+                                val done = !state.isCancelled && stepNum < state.activeStep
+                                val active = !state.isCancelled && stepNum == state.activeStep
+                                val cancelledHere = state.isCancelled && stepNum == 1
 
                                 Row(verticalAlignment = Alignment.Top) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Box(
-                                            Modifier
-                                                .size(32.dp)
-                                                .then(
-                                                    when {
-                                                        active -> Modifier
-                                                            .glowEffect(LiquidGlass.Indigo, 60f)
-                                                            .clip(CircleShape)
-                                                            .background(LiquidGlass.GradientPrimary)
-                                                        done -> Modifier
-                                                            .clip(CircleShape)
-                                                            .background(LiquidGlass.Indigo.copy(alpha = 0.70f))
-                                                        else -> Modifier
-                                                            .liquidGlassThemed(radius = 50.dp)
-                                                    }
-                                                ),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            if (done) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(15.dp),
-                                                )
-                                            } else {
-                                                Text(
-                                                    "$stepNum",
-                                                    color = textMuted,
-                                                    fontSize = 12.sp,
-                                                )
-                                            }
-                                        }
+                                        TimelineStepDot(
+                                            stepNum = stepNum,
+                                            done = done,
+                                            active = active,
+                                            cancelled = cancelledHere,
+                                            textMuted = textMuted,
+                                        )
                                         if (index < stepKeys.lastIndex) {
                                             Box(
                                                 Modifier
                                                     .size(width = 2.dp, height = 32.dp)
                                                     .background(
-                                                        if (done) LiquidGlass.Indigo.copy(alpha = 0.55f)
-                                                        else Color.White.copy(alpha = 0.15f)
+                                                        when {
+                                                            cancelledHere -> LiquidGlass.Rose.copy(alpha = 0.45f)
+                                                            done || active -> LiquidGlass.Indigo.copy(alpha = 0.55f)
+                                                            else -> Color.White.copy(alpha = 0.15f)
+                                                        },
                                                     ),
                                             )
                                         }
@@ -333,11 +358,21 @@ fun OrderTrackingScreen(
                                     Column(Modifier.padding(bottom = 16.dp)) {
                                         Text(
                                             localized(key),
-                                            color = if (active) LiquidGlass.Cyan else text,
-                                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                            color = when {
+                                                cancelledHere -> LiquidGlass.Rose
+                                                active -> LiquidGlass.Cyan
+                                                else -> text
+                                            },
+                                            fontWeight = if (active || cancelledHere) FontWeight.Bold else FontWeight.Normal,
                                         )
-                                        if (active) {
-                                            Text(
+                                        when {
+                                            cancelledHere -> Text(
+                                                localized("ord_status_cancelled"),
+                                                color = LiquidGlass.Rose,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                            )
+                                            active -> Text(
                                                 localized("track_active"),
                                                 color = LiquidGlass.Violet,
                                                 fontSize = 11.sp,
@@ -349,6 +384,106 @@ fun OrderTrackingScreen(
                         }
                     }
                 }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineStepDot(
+    stepNum: Int,
+    done: Boolean,
+    active: Boolean,
+    cancelled: Boolean,
+    textMuted: Color,
+) {
+    val infinite = rememberInfiniteTransition(label = "track-step")
+    val pulseAlpha by infinite.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse-alpha",
+    )
+    val pulseScale by infinite.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse-scale",
+    )
+
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(40.dp)) {
+        if (active) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                        alpha = pulseAlpha * 0.55f
+                    }
+                    .clip(CircleShape)
+                    .background(LiquidGlass.Indigo.copy(alpha = 0.35f)),
+            )
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .graphicsLayer {
+                        scaleX = 0.96f + (pulseScale - 1f) * 0.4f
+                        scaleY = 0.96f + (pulseScale - 1f) * 0.4f
+                    }
+                    .clip(CircleShape)
+                    .background(LiquidGlass.GradientPrimary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.75f + pulseAlpha * 0.25f),
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+        } else {
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .then(
+                        when {
+                            cancelled -> Modifier
+                                .clip(CircleShape)
+                                .background(LiquidGlass.Rose.copy(alpha = 0.85f))
+                            done -> Modifier
+                                .clip(CircleShape)
+                                .background(LiquidGlass.Indigo.copy(alpha = 0.70f))
+                            else -> Modifier.liquidGlassThemed(radius = 50.dp)
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    cancelled -> Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    done -> Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    else -> Text(
+                        "$stepNum",
+                        color = textMuted,
+                        fontSize = 12.sp,
+                    )
                 }
             }
         }

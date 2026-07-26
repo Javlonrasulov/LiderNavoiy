@@ -15,6 +15,7 @@ import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.data.repository.OrderRepository
 import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.ClientOrder
+import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
 import javax.inject.Inject
 
@@ -22,7 +23,9 @@ data class OrderTrackingUiState(
     val loading: Boolean = true,
     val order: ClientOrder? = null,
     val tracking: OrderTrackingDetails? = null,
-    val activeStep: Int = 3,
+    /** 1..5 progress; 0 when cancelled */
+    val activeStep: Int = 1,
+    val isCancelled: Boolean = false,
     val distance: String = "—",
     val etaLabel: String = "—",
     val routePoints: List<LatLngPoint> = emptyList(),
@@ -72,13 +75,16 @@ class OrderTrackingViewModel @Inject constructor(
     }
 
     private fun applyTracking(order: ClientOrder?, tracking: OrderTrackingDetails?) {
-        val status = tracking?.status ?: order?.status
-        val step = when (status?.lowercase()) {
-            "delivered" -> 5
-            "on_way", "onway" -> 4
-            "packing" -> 3
-            "confirmed", "pending", "warehouse" -> 2
-            else -> 3
+        val status = OrderStatus.fromKey(tracking?.status ?: order?.status)
+        val cancelled = status == OrderStatus.CANCELLED
+        // pending = agent kutilyapti (1); confirmed = agent omborga yuborgan (2)
+        val step = when (status) {
+            OrderStatus.PENDING -> 1
+            OrderStatus.CONFIRMED -> 2
+            OrderStatus.PACKING -> 3
+            OrderStatus.ON_WAY -> 4
+            OrderStatus.DELIVERED -> 5
+            OrderStatus.CANCELLED -> 0
         }
         val distance = tracking?.distanceKm?.let { formatDistance(it) } ?: "—"
         val eta = tracking?.etaMinutes?.let { "$it min" } ?: "—"
@@ -87,6 +93,7 @@ class OrderTrackingViewModel @Inject constructor(
                 order = order,
                 tracking = tracking,
                 activeStep = step,
+                isCancelled = cancelled,
                 distance = distance,
                 etaLabel = eta,
             )

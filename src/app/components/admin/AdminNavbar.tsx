@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
 import { useCompanies } from '../CompaniesContext';
+import { companyShowsTarozi, useAdminAuth } from '../AdminAuthContext';
 import { ClientRequestBell } from './ClientRequestBell';
 
 interface AdminNavbarProps {
@@ -49,6 +50,7 @@ export function AdminNavbar({
   existingClients = [],
 }: AdminNavbarProps) {
   const { companies } = useCompanies();
+  const { selectedCompany: authCompany } = useAdminAuth();
   const currentLang = ADMIN_LANGS.find(l => l.id === adminLang)!;
   const [showModuleBar, setShowModuleBar] = useState(false);
 
@@ -60,10 +62,22 @@ export function AdminNavbar({
     return { id: base.id as Tab, label, Icon: base.icon, sub };
   });
 
-  // Module bar da faqat dashboard va tarozi ko'rinadi
-  // Qolganlar (products, clients, liniya, xodimlar, reports, zatrati, postavchik)
-  // faqat sidebar orqali ochiladi
-  const MODULE_BAR_IDS = new Set<string>(['dashboard', 'tarozi', 'prodaji', 'ombor']);
+  // kg / kg+dona → Tarozi; faqat dona → tayyorlanmagan buyurtmalar
+  const selectedOrgs = companies.filter(c => selectedCompanyIds.has(c.id));
+  const showTarozi = selectedOrgs.length > 0
+    ? selectedOrgs.some(c => companyShowsTarozi(c.productType))
+    : companyShowsTarozi(
+        authCompany?.productType
+        ?? companies.find(c => c.id === selectedCompany.id)?.productType
+        ?? 'kg_dona',
+      );
+
+  const MODULE_BAR_IDS = new Set<string>([
+    'dashboard',
+    showTarozi ? 'tarozi' : 'unpreparedOrders',
+    'prodaji',
+    'ombor',
+  ]);
   const moduleBarItems = flatNavWithIcons.filter(item => MODULE_BAR_IDS.has(item.id));
 
   return (

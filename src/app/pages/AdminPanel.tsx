@@ -6,7 +6,7 @@ import {
 import { EmployeeMapModal } from '../components/EmployeeMapModal';
 import { useTheme } from '../components/ThemeContext';
 import { useNavigate } from 'react-router';
-import { useAdminAuth } from '../components/AdminAuthContext';
+import { useAdminAuth, companyShowsTarozi } from '../components/AdminAuthContext';
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
 
@@ -31,6 +31,7 @@ import { AdminLiniyaTab } from '../components/admin/tabs/AdminLiniyaTab';
 import { AdminXodimlarTab } from '../components/admin/tabs/AdminXodimlarTab';
 import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
 import { AdminTaroziTab } from '../components/admin/tabs/AdminTaroziTab';
+import { AdminUnpreparedOrdersTab } from '../components/admin/tabs/AdminUnpreparedOrdersTab';
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
 import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 import { AdminSystemUsersTab } from '../components/admin/tabs/AdminSystemUsersTab';
@@ -126,6 +127,16 @@ export default function AdminPanel() {
       if (first) setTab(first.id as Tab);
     }
   }, [tab, userRole, userPerms]);
+
+  // dona → unpreparedOrders; kg / kg+dona → tarozi
+  useEffect(() => {
+    const selectedOrgs = companies.filter(c => selectedCompanyIds.has(c.id));
+    const showTarozi = selectedOrgs.length > 0
+      ? selectedOrgs.some(c => companyShowsTarozi(c.productType))
+      : companyShowsTarozi(selectedCompany?.productType);
+    if (tab === 'tarozi' && !showTarozi) setTab('unpreparedOrders');
+    if (tab === 'unpreparedOrders' && showTarozi) setTab('tarozi');
+  }, [companies, selectedCompanyIds, selectedCompany?.productType, tab]);
 
   useEffect(() => {
     if (!isLoggedIn) { navigate('/admin/login'); return; }
@@ -636,7 +647,11 @@ export default function AdminPanel() {
           )}
 
           {tab === 'tarozi' && (
-            <AdminTaroziTab D={D} card={card} divider={divider} sub={sub} t={t} />
+            <AdminTaroziTab D={D} card={card} divider={divider} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
+          )}
+
+          {tab === 'unpreparedOrders' && (
+            <AdminUnpreparedOrdersTab D={D} card={card} sub={sub} t={t} />
           )}
 
           {tab === 'prodaji' && (

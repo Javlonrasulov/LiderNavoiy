@@ -68,6 +68,7 @@ export interface BackendCompany {
   icon: string | null;
   color: string | null;
   description: string | null;
+  productType?: 'kg_dona' | 'dona' | 'kg' | null;
   agents: number;
   clients: number;
 }
@@ -166,6 +167,7 @@ export interface BackendOrder {
   distributorId: string;
   visitId?: string | null;
   status: string;
+  source?: string;
   totalAmount: number;
   items: BackendOrderItem[];
   isOfflineCreated: boolean;
@@ -261,6 +263,35 @@ export const api = {
   getTashkentTime: () => request<TashkentTimeInfo>('/health/time'),
 
   getCompanies: () => request<BackendCompany[]>('/companies'),
+
+  createCompany: (body: {
+    name: string;
+    shortName?: string;
+    icon?: string;
+    color?: string;
+    description?: string;
+    productType?: 'kg_dona' | 'dona' | 'kg';
+  }) =>
+    request<BackendCompany>('/companies', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateCompany: (
+    id: string,
+    body: {
+      name?: string;
+      shortName?: string;
+      icon?: string;
+      color?: string;
+      description?: string;
+      productType?: 'kg_dona' | 'dona' | 'kg';
+    },
+  ) =>
+    request<BackendCompany>(`/companies/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   // ─── App users (APK login) ───
   listAppUsers: () => request<AppUserRecord[]>('/users/app'),

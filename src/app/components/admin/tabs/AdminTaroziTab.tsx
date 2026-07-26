@@ -10,10 +10,26 @@ import {
 import { NumpadModal } from '../NumpadModal';
 import { NewOrderModal } from './NewOrderModal';
 import { demo } from '../../../data/demoLimit';
+import { api } from '../../../api/client';
+import {
+  backendOrderToTaroziItem,
+  groupTaroziByAgent,
+  orderCreatedLocalDate,
+  orderItemsToTaroziProducts,
+  sameCalendarDay,
+  type TaroziListItem,
+  type TaroziOrderStatus,
+  type TaroziProductRow,
+} from '../../../utils/orderApi';
 
 interface Props {
   D: boolean; card: string; divider: string; sub: string;
   t: Record<string, string>;
+  selectedCompanyIds?: Set<string>;
+}
+
+function hasApiToken(): boolean {
+  return !!localStorage.getItem('api_access_token');
 }
 
 // ── Send Button — truck icon, active only when ALL rows have ves/dona filled ───
@@ -169,32 +185,34 @@ function SendButton({
 }
 
 // ── Status types ──────────────────────────────────────────────────────────────
-// pending   = qora   — agent buyurtma berdi, tayyorlanmagan
-// ready     = ko'k   — tayyorlangan, yuklashga tayyor (lekin klientga yetkazilmagan)
+// pending   = qora   — agent buyurtma berdi (Qabul qilingan)
+// ready     = ko'k   — tayyorlangan, yuklashga tayyor
 // delivered = yashil — klientga yuborilgan / yetkazilgan
 
-type OrderStatus = 'pending' | 'ready' | 'delivered';
+type OrderStatus = TaroziOrderStatus;
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-const AGENTS: { id:number; name:string; code:string; client:string; status:OrderStatus; group:boolean }[] = demo([
-  { id: 1,  name: 'Норова Нодира', code: '',      client: '22 / 28',                  status:'pending',   group: true  },
-  { id: 2,  name: '',              code: '15028', client: 'NAVOI MALINA MARKET',       status:'ready',     group: false },
-  { id: 3,  name: '',              code: '16004', client: 'NAVOIY OYBEK ZIYO MC.',     status:'ready',     group: false },
-  { id: 4,  name: '',              code: '15048', client: 'AMIRXON UMIDIMIZ OK',       status:'delivered', group: false },
-  { id: 5,  name: '',              code: '15012', client: 'FARMON OK-19 (NAVOIY...)',  status:'ready',     group: false },
-  { id: 6,  name: '',              code: '28801', client: 'XUMO GULI MCHJ',            status:'delivered', group: false },
-  { id: 7,  name: '',              code: '15018', client: 'ASLAN NAVOIY TONGI',        status:'delivered', group: false },
-  { id: 8,  name: '',              code: '16011', client: 'МУРОДОВА НАВРУЗА',          status:'ready',     group: false },
-  { id: 9,  name: '',              code: '16024', client: 'ORZIYEV UMID YaTT',         status:'pending',   group: false },
-  { id: 10, name: '',              code: '28788', client: 'ZAHIDUN',                   status:'pending',   group: false },
-  { id: 11, name: '',              code: '16008', client: 'BEK SARDOR 2005 OK',        status:'pending',   group: false },
-  { id: 12, name: '',              code: '16009', client: 'FARXOD XURSHIDA OK',        status:'pending',   group: false },
-  { id: 13, name: '',              code: '16011', client: 'МУРОДОВА НАВРУЗА 2',        status:'pending',   group: false },
-  { id: 14, name: '',              code: '15040', client: 'RASULOVA FERUZA AZI...',    status:'pending',   group: false },
-  { id: 15, name: '',              code: '16013', client: 'NURILLAYEV ABDULLA X..',    status:'pending',   group: false },
-  { id: 16, name: '',              code: '16029', client: 'BAHONOV BAHRIDDIN F...',    status:'pending',   group: false },
-  { id: 17, name: '',              code: '28784', client: 'Raxmonova Umida Odil gizi', status:'pending',   group: false },
-  { id: 18, name: '',              code: '28670', client: 'SUXROB GOLD XK',            status:'pending',   group: false },
+type ListItem = TaroziListItem;
+
+// ── Mock data (backend yo'q bo'lsa) ───────────────────────────────────────────
+const MOCK_AGENTS: ListItem[] = demo([
+  { id: '1',  name: 'Норова Нодира', code: '',      client: '22 / 28',                  status:'pending',   group: true,  agentName: 'Норова Нодира', orderNum: 0, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '2',  name: '',              code: '15028', client: 'NAVOI MALINA MARKET',       status:'ready',     group: false, agentName: 'Норова Нодира', orderNum: 10042, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '3',  name: '',              code: '16004', client: 'NAVOIY OYBEK ZIYO MC.',     status:'ready',     group: false, agentName: 'Норова Нодира', orderNum: 10043, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '4',  name: '',              code: '15048', client: 'AMIRXON UMIDIMIZ OK',       status:'delivered', group: false, agentName: 'Норова Нодира', orderNum: 10044, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '5',  name: '',              code: '15012', client: 'FARMON OK-19 (NAVOIY...)',  status:'ready',     group: false, agentName: 'Норова Нодира', orderNum: 10045, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '6',  name: '',              code: '28801', client: 'XUMO GULI MCHJ',            status:'delivered', group: false, agentName: 'Норова Нодира', orderNum: 10046, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '7',  name: '',              code: '15018', client: 'ASLAN NAVOIY TONGI',        status:'delivered', group: false, agentName: 'Норова Нодира', orderNum: 10047, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '8',  name: '',              code: '16011', client: 'МУРОДОВА НАВРУЗА',          status:'ready',     group: false, agentName: 'Норова Нодира', orderNum: 10048, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '9',  name: '',              code: '16024', client: 'ORZIYEV UMID YaTT',         status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10049, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '10', name: '',              code: '28788', client: 'ZAHIDUN',                   status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10050, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '11', name: '',              code: '16008', client: 'BEK SARDOR 2005 OK',        status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10051, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '12', name: '',              code: '16009', client: 'FARXOD XURSHIDA OK',        status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10052, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '13', name: '',              code: '16011', client: 'МУРОДОВА НАВРУЗА 2',        status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10053, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '14', name: '',              code: '15040', client: 'RASULOVA FERUZA AZI...',    status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10054, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '15', name: '',              code: '16013', client: 'NURILLAYEV ABDULLA X..',    status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10055, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '16', name: '',              code: '16029', client: 'BAHONOV BAHRIDDIN F...',    status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10056, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '17', name: '',              code: '28784', client: 'Raxmonova Umida Odil gizi', status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10057, lineCode: '', items: [], amount: 0, createdAt: '' },
+  { id: '18', name: '',              code: '28670', client: 'SUXROB GOLD XK',            status:'pending',   group: false, agentName: 'Норова Нодира', orderNum: 10058, lineCode: '', items: [], amount: 0, createdAt: '' },
 ]);
 
 const PRODUCTS = demo([
@@ -224,15 +242,15 @@ const TYPES  = ['Odd', 'Maxsus', 'Eksport'];
 const fmt = (n: number) => n.toLocaleString('uz-UZ');
 
 // ── Per-agent products (deterministic mock) ───────────────────────────────────
-const getProductsForAgent = (agentId: number, isPast = false) => {
-  const seed = agentId % 4;
+const getProductsForAgent = (agentId: string, isPast = false): TaroziProductRow[] => {
+  const numId = parseInt(agentId, 10) || 1;
+  const seed = numId % 4;
   return PRODUCTS
     .filter((_, i) => (i + seed) % 6 !== 0)
     .map((p, i) => {
-      const zakaz = Math.max(1, ((agentId * 3 + p.id * 7) % 11) + 1);
-      // O'tgan kunlar uchun deterministic ves va summa
+      const zakaz = Math.max(1, ((numId * 3 + p.id * 7) % 11) + 1);
       const ves = isPast
-        ? parseFloat((zakaz * (0.5 + ((agentId * 7 + p.id * 13 + i * 3) % 100) / 100)).toFixed(3))
+        ? parseFloat((zakaz * (0.5 + ((numId * 7 + p.id * 13 + i * 3) % 100) / 100)).toFixed(3))
         : 0;
       return {
         ...p,
@@ -245,19 +263,19 @@ const getProductsForAgent = (agentId: number, isPast = false) => {
 };
 
 // ── Agents visible for a given date (deterministic mock) ─────────────────────
-const getAgentsForDate = (date: Date) => {
+const getMockAgentsForDate = (date: Date): ListItem[] => {
   const day   = date.getDate();
   const month = date.getMonth();
   const seed  = (day * 3 + month * 7) % 5;
 
-  // O'tgan kunlarda hammasi 'delivered' (yashil)
   const d = new Date(date); d.setHours(0,0,0,0);
   const t = new Date(_today);
   const isPast = d < t;
 
-  return AGENTS.filter(a => {
+  return MOCK_AGENTS.filter(a => {
     if (a.group) return true;
-    return ((a.id + seed) % 4) !== 0;
+    const numId = parseInt(a.id, 10) || 0;
+    return ((numId + seed) % 4) !== 0;
   }).map(a => isPast ? { ...a, status: 'delivered' as OrderStatus } : a);
 };
 
@@ -265,33 +283,33 @@ const getAgentsForDate = (date: Date) => {
 const _today = new Date();
 _today.setHours(0, 0, 0, 0);
 
-const getDaysWithOrders = (year: number, month: number): Set<number> => {
+const getMockDaysWithOrders = (year: number, month: number): Set<number> => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const result = new Set<number>();
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(year, month, d);
     date.setHours(0, 0, 0, 0);
-    if (date > _today) break;                                        // kelasi kunlar — nuqta yo'q
-    if (getAgentsForDate(date).filter(a => !a.group).length > 0)
+    if (date > _today) break;
+    if (getMockAgentsForDate(date).filter(a => !a.group).length > 0)
       result.add(d);
   }
   return result;
 };
 
-export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
+export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }: Props) {
   const today = new Date();
   const fmtDate = (d: Date) =>
     `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(2)}`;
 
   const [currentDate, setCurrentDate] = useState(today);
-  const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [zayvka, setZayvka]   = useState('');
   const [clientName, setClientName] = useState('');
   const [liniya, setLiniya]   = useState(LINES[0]);
   const [naprav, setNaprav]   = useState(DIRS[0]);
   const [tip, setTip]         = useState(TYPES[0]);
   const [search, setSearch]   = useState('');
-  const [rows, setRows]       = useState<typeof PRODUCTS>([]);
+  const [rows, setRows]       = useState<TaroziProductRow[]>([]);
   const [note, setNote]       = useState('');
   const [activePane, setActivePane] = useState<'left'|'right'>('left');
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -307,6 +325,39 @@ export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
 
   // ── New Order Modal ───────────────────────────────────────────────────────
   const [showNewOrder, setShowNewOrder] = useState(false);
+
+  // ── API orders (agent APK) ────────────────────────────────────────────────
+  const [apiOrders, setApiOrders] = useState<ListItem[]>([]);
+  const [backendReady, setBackendReady] = useState(hasApiToken());
+  const companyId = selectedCompanyIds?.size === 1 ? [...selectedCompanyIds][0] : undefined;
+
+  const refreshOrders = useCallback(async () => {
+    if (!hasApiToken()) {
+      setApiOrders([]);
+      setBackendReady(false);
+      return;
+    }
+    try {
+      const raw = await api.getOrders(companyId);
+      setApiOrders(
+        raw
+          .filter(o => o.status !== 'cancelled')
+          .map(backendOrderToTaroziItem),
+      );
+      setBackendReady(true);
+    } catch {
+      setApiOrders([]);
+      setBackendReady(false);
+    }
+  }, [companyId]);
+
+  useEffect(() => { refreshOrders(); }, [refreshOrders]);
+
+  useEffect(() => {
+    const handler = () => { refreshOrders(); };
+    window.addEventListener('lider:order-created', handler);
+    return () => window.removeEventListener('lider:order-created', handler);
+  }, [refreshOrders]);
 
   // ── Mobile panel detection (<500px) ──────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 500);
@@ -435,20 +486,30 @@ export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
   const toggleExpand = (id: number) =>
     setExpandedRows(prev => { const s=new Set(prev); s.has(id)?s.delete(id):s.add(id); return s; });
 
+  const agentsForDate = useMemo((): ListItem[] => {
+    if (backendReady) {
+      const dayOrders = apiOrders.filter(o =>
+        sameCalendarDay(orderCreatedLocalDate(o.createdAt), currentDate),
+      );
+      return groupTaroziByAgent(dayOrders);
+    }
+    return getMockAgentsForDate(currentDate);
+  }, [backendReady, apiOrders, currentDate]);
+
   const filteredAgents = useMemo(() => {
-    const dateAgents = getAgentsForDate(currentDate);
     const statusAllowed: OrderStatus[] =
       activeFilter === 'all'        ? ['delivered', 'pending'] :
       activeFilter === 'accepted'   ? ['pending']              :
       /* ready-load */                ['ready', 'delivered'];
 
-    return dateAgents.filter(a =>
+    return agentsForDate.filter(a =>
       (a.group || statusAllowed.includes(a.status)) &&
-      (!search || a.client.toLowerCase().includes(search.toLowerCase()) || a.code.includes(search))
+      (!search || a.client.toLowerCase().includes(search.toLowerCase()) || a.code.includes(search)
+        || a.agentName.toLowerCase().includes(search.toLowerCase()))
     );
-  }, [search, activeFilter, currentDate]);
+  }, [search, activeFilter, agentsForDate]);
 
-  // ── Footer counts ─���──────────────────────────────────────────────────────
+  // ── Footer counts ─────────────────────────────────────────────────────────
   const nonGroup = filteredAgents.filter(a => !a.group);
   const cntReady     = nonGroup.filter(a => a.status === 'ready').length;
   const cntPending   = nonGroup.filter(a => a.status === 'pending').length;
@@ -468,23 +529,30 @@ export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
   const btnBase  = `flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all`;
   const btnGhost = `${btnBase} ${D ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`;
 
-  const selectClient = (a: typeof AGENTS[0]) => {
+  const selectClient = (a: ListItem) => {
     if (a.group) return;
     setSelectedAgent(a.id);
     setClientName(a.client);
-    setZayvka(String(10040 + a.id));
-    setRows(getProductsForAgent(a.id, a.status === 'delivered'));
+    setZayvka(String(a.orderNum || a.id));
+    if (a.lineCode) setLiniya(a.lineCode);
+    if (backendReady && a.items.length > 0) {
+      setRows(orderItemsToTaroziProducts(a.items));
+    } else {
+      setRows(getProductsForAgent(a.id, a.status === 'delivered'));
+    }
     setNote('');
     setExpandedRows(new Set());
     setSelectedRow(null);
     setActivePane('right');
-    setShowQoldiq(false);    // ← ostatok yashiriladi
-    setQoldiqLoading(false); // ← loading ham reset
+    setShowQoldiq(false);
+    setQoldiqLoading(false);
   };
 
   // ── Readonly: delivered agentlar o'zgartirib bo'lmaydi ───────────────────
-  const isReadonly = selectedAgent !== null &&
-    getAgentsForDate(currentDate).find(a => a.id === selectedAgent)?.status === 'delivered';
+  const selectedItem = selectedAgent !== null
+    ? agentsForDate.find(a => a.id === selectedAgent)
+    : undefined;
+  const isReadonly = selectedItem?.status === 'delivered';
 
   const handleRefresh = () => {
     setQoldiqLoading(true);
@@ -530,7 +598,19 @@ export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
     while (cells.length % 7 !== 0) cells.push(null);
 
-    const orderDays = getDaysWithOrders(calYear, calMon);
+    const orderDays = (() => {
+      if (backendReady) {
+        const result = new Set<number>();
+        for (const o of apiOrders) {
+          const d = orderCreatedLocalDate(o.createdAt);
+          if (d.getFullYear() === calYear && d.getMonth() === calMon) {
+            result.add(d.getDate());
+          }
+        }
+        return result;
+      }
+      return getMockDaysWithOrders(calYear, calMon);
+    })();
 
     const isCalSelected = (d: number) =>
       currentDate.getDate() === d && currentDate.getMonth() === calMon && currentDate.getFullYear() === calYear;
@@ -1389,7 +1469,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t }: Props) {
               </span>
             )}
             {selectedAgent !== null &&
-              AGENTS.find(a => a.id === selectedAgent)?.status === 'ready' && !isMobile && (
+              selectedItem?.status === 'ready' && !isMobile && (
               <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold flex-shrink-0
                 ${D
                   ? 'bg-sky-900/40 text-sky-400 border border-sky-700/40'

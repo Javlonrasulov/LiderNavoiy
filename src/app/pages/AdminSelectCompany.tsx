@@ -5,14 +5,21 @@ import {
   Check, ArrowRight, Plus, Pencil, X, Upload, Smile, Image as ImageIcon,
 } from 'lucide-react';
 import { useTheme } from '../components/ThemeContext';
-import { useAdminAuth, type Company } from '../components/AdminAuthContext';
+import { useAdminAuth, type Company, type ProductType } from '../components/AdminAuthContext';
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang, Lang } from '../components/LangContext';
+import { api } from '../api/client';
 
 /* ─── Types ─────────────────────────────────────────────── */
 interface LocalCompany extends Company {
   imageUrl?: string;
 }
+
+const PRODUCT_TYPE_OPTIONS: { id: ProductType; labelKey: 'productTypeKgDona' | 'productTypeDona' | 'productTypeKg' }[] = [
+  { id: 'kg_dona', labelKey: 'productTypeKgDona' },
+  { id: 'dona', labelKey: 'productTypeDona' },
+  { id: 'kg', labelKey: 'productTypeKg' },
+];
 
 /* ─── Lang ───────────────────────────────────────────────── */
 const LANGS: { id: Lang; label: string; flag: string }[] = [
@@ -30,6 +37,13 @@ const T: Record<Lang, Record<string, string>> = {
     name: 'Nomi', desc: 'Izoh', save: 'Saqlash', cancel: 'Bekor qilish',
     iconTab: 'Icon', imageTab: 'Rasm', uploadImg: 'Rasm yuklash', namePlaceholder: "Organizatsiya nomi",
     descPlaceholder: 'Qisqa izoh...', chooseColor: 'Rang',
+    productType: 'Mahsulot turi',
+    productTypeKgDona: 'kg + dona',
+    productTypeDona: 'dona',
+    productTypeKg: 'kg',
+    productTypeHintKg: 'Tarozi moduli ochiq',
+    productTypeHintDona: 'Tayyorlanmagan buyurtmalar moduli ochiq',
+    saveError: 'Saqlashda xatolik',
   },
   cy: {
     title: 'Организацияни танланг', subtitle: 'Қуйидаги организациялардан бирини танлаб, уланинг',
@@ -39,6 +53,13 @@ const T: Record<Lang, Record<string, string>> = {
     name: 'Номи', desc: 'Изоҳ', save: 'Сақлаш', cancel: 'Бекор қилиш',
     iconTab: 'Иконка', imageTab: 'Расм', uploadImg: 'Расм юклаш', namePlaceholder: 'Организация номи',
     descPlaceholder: 'Қисқа изоҳ...', chooseColor: 'Ранг',
+    productType: 'Маҳсулот тури',
+    productTypeKgDona: 'kg + dona',
+    productTypeDona: 'dona',
+    productTypeKg: 'kg',
+    productTypeHintKg: 'Тарози модули очиқ',
+    productTypeHintDona: 'Тайёрланмаган буюртмалар модули очиқ',
+    saveError: 'Сақлашда хатолик',
   },
   ru: {
     title: 'Выберите организацию', subtitle: 'Выберите одну из организаций ниже и подключитесь',
@@ -48,6 +69,13 @@ const T: Record<Lang, Record<string, string>> = {
     name: 'Название', desc: 'Описание', save: 'Сохранить', cancel: 'Отмена',
     iconTab: 'Иконка', imageTab: 'Фото', uploadImg: 'Загрузить фото', namePlaceholder: 'Название организации',
     descPlaceholder: 'Краткое описание...', chooseColor: 'Цвет',
+    productType: 'Тип продукции',
+    productTypeKgDona: 'kg + dona',
+    productTypeDona: 'dona',
+    productTypeKg: 'kg',
+    productTypeHintKg: 'Модуль Весы включён',
+    productTypeHintDona: 'Модуль Неподготовленные заказы включён',
+    saveError: 'Ошибка сохранения',
   },
 };
 
@@ -89,6 +117,7 @@ const YEARS = [2026, 2025, 2024, 2023];
 const blankForm = () => ({
   name: '', description: '', icon: '🏢',
   color: 'from-indigo-500 to-blue-600', imageUrl: '',
+  productType: 'kg_dona' as ProductType,
 });
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -121,6 +150,8 @@ export default function AdminSelectCompany() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(blankForm());
   const [iconTab, setIconTab] = useState<'icon' | 'image'>('icon');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const t = T[lang];
@@ -133,6 +164,7 @@ export default function AdminSelectCompany() {
     setForm(blankForm());
     setIconTab('icon');
     setEditingId(null);
+    setSaveError(null);
     setModalMode('add');
   };
 
@@ -142,37 +174,89 @@ export default function AdminSelectCompany() {
       name: company.name, description: company.description,
       icon: company.icon, color: company.color,
       imageUrl: company.imageUrl ?? '',
+      productType: company.productType ?? 'kg_dona',
     });
     setIconTab(company.imageUrl ? 'image' : 'icon');
     setEditingId(company.id);
+    setSaveError(null);
     setModalMode('edit');
   };
 
-  const closeModal = () => { setModalMode(null); setEditingId(null); };
+  const closeModal = () => { setModalMode(null); setEditingId(null); setSaveError(null); };
 
-  const handleSave = () => {
-    if (!form.name.trim()) return;
-    if (modalMode === 'add') {
-      const newCo: LocalCompany = {
-        id: `org_${Date.now()}`,
-        name: form.name.trim(),
-        shortName: form.name.trim().split(' ')[0],
-        description: form.description.trim(),
-        icon: form.icon,
-        color: form.color,
-        imageUrl: form.imageUrl || undefined,
-        agents: 0, clients: 0,
-      };
-      setCompanies(prev => [...prev, newCo]);
-    } else if (modalMode === 'edit' && editingId) {
-      setCompanies(prev => prev.map(c =>
-        c.id === editingId
-          ? { ...c, name: form.name.trim(), description: form.description.trim(),
-              icon: form.icon, color: form.color, imageUrl: form.imageUrl || undefined }
-          : c
-      ));
+  const handleSave = async () => {
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    const payload = {
+      name: form.name.trim(),
+      shortName: form.name.trim().split(' ')[0],
+      description: form.description.trim(),
+      icon: form.icon,
+      color: form.color,
+      productType: form.productType,
+    };
+    const hasToken = !!localStorage.getItem('api_access_token');
+    try {
+      if (modalMode === 'add') {
+        if (hasToken) {
+          await api.createCompany(payload);
+          await refreshCompanies();
+        } else {
+          const newCo: LocalCompany = {
+            id: `org_${Date.now()}`,
+            ...payload,
+            imageUrl: form.imageUrl || undefined,
+            agents: 0, clients: 0,
+          };
+          setCompanies(prev => [...prev, newCo]);
+        }
+      } else if (modalMode === 'edit' && editingId) {
+        if (hasToken) {
+          try {
+            await api.updateCompany(editingId, payload);
+            await refreshCompanies();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : '';
+            if (!/404|not found/i.test(msg)) throw e;
+            setCompanies(prev => prev.map(c =>
+              c.id === editingId
+                ? {
+                    ...c,
+                    name: payload.name,
+                    shortName: payload.shortName,
+                    description: payload.description,
+                    icon: payload.icon,
+                    color: payload.color,
+                    productType: payload.productType,
+                    imageUrl: form.imageUrl || undefined,
+                  }
+                : c
+            ));
+          }
+        } else {
+          setCompanies(prev => prev.map(c =>
+            c.id === editingId
+              ? {
+                  ...c,
+                  name: payload.name,
+                  shortName: payload.shortName,
+                  description: payload.description,
+                  icon: payload.icon,
+                  color: payload.color,
+                  productType: payload.productType,
+                  imageUrl: form.imageUrl || undefined,
+                }
+              : c
+          ));
+        }
+      }
+      closeModal();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t.saveError);
+    } finally {
+      setSaving(false);
     }
-    closeModal();
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -426,6 +510,33 @@ export default function AdminSelectCompany() {
                   className={`w-full px-4 py-3 rounded-2xl border text-sm outline-none transition-colors ${inputCls}`} />
               </div>
 
+              {/* Product type */}
+              <div>
+                <label className={`text-xs font-semibold mb-1.5 block ${D ? 'text-gray-400' : 'text-gray-500'}`}>{t.productType}</label>
+                <div className={`flex rounded-2xl p-1 gap-1 ${D ? 'bg-white/6' : 'bg-gray-100'}`}>
+                  {PRODUCT_TYPE_OPTIONS.map(opt => {
+                    const active = form.productType === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, productType: opt.id }))}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                          active
+                            ? D ? 'bg-indigo-600 text-white shadow' : 'bg-indigo-600 text-white shadow'
+                            : D ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'
+                        }`}
+                      >
+                        {t[opt.labelKey]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className={`text-[11px] mt-2 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
+                  {form.productType === 'dona' ? t.productTypeHintDona : t.productTypeHintKg}
+                </p>
+              </div>
+
               {/* Icon / Image tabs */}
               <div>
                 <div className={`flex rounded-2xl p-1 gap-1 mb-3 ${D ? 'bg-white/6' : 'bg-gray-100'}`}>
@@ -493,19 +604,24 @@ export default function AdminSelectCompany() {
             </div>
 
             {/* Modal footer */}
-            <div className={`flex gap-3 px-6 py-4 border-t ${D ? 'border-white/8' : 'border-gray-100'}`}>
-              <button onClick={closeModal}
-                className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-colors ${D ? 'bg-white/8 hover:bg-white/14 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
-                {t.cancel}
-              </button>
-              <button onClick={handleSave} disabled={!form.name.trim()}
-                className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-all ${
-                  form.name.trim()
-                    ? D ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
-                    : D ? 'bg-white/6 text-gray-600 cursor-not-allowed' : 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                }`}>
-                {t.save}
-              </button>
+            <div className={`px-6 py-4 border-t space-y-3 ${D ? 'border-white/8' : 'border-gray-100'}`}>
+              {saveError && (
+                <p className="text-xs text-red-500 text-center">{saveError}</p>
+              )}
+              <div className="flex gap-3">
+                <button onClick={closeModal}
+                  className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-colors ${D ? 'bg-white/8 hover:bg-white/14 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}>
+                  {t.cancel}
+                </button>
+                <button onClick={() => void handleSave()} disabled={!form.name.trim() || saving}
+                  className={`flex-1 py-3 rounded-2xl text-sm font-semibold transition-all ${
+                    form.name.trim() && !saving
+                      ? D ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md'
+                      : D ? 'bg-white/6 text-gray-600 cursor-not-allowed' : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                  }`}>
+                  {t.save}
+                </button>
+              </div>
             </div>
           </div>
         </div>

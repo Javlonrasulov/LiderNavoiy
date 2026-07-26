@@ -26,6 +26,10 @@ export class Company {
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 
+  /** kg_dona | dona | kg — dona → no Tarozi, show unprepared orders */
+  @Column({ type: 'varchar', length: 16, default: 'kg_dona' })
+  productType: string;
+
   @Column({ default: true })
   isActive: boolean;
 

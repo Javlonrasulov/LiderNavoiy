@@ -31,6 +31,17 @@ function sameDay(a: Date, b: Date) {
          a.getMonth()    === b.getMonth()    &&
          a.getDate()     === b.getDate();
 }
+/** Bugungi sana (Toshkent) — soat/daqqa hisobsiz */
+function tashkentToday(): Date {
+  const ymd = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function isAfterToday(d: Date, today = tashkentToday()) {
+  return d.getFullYear() > today.getFullYear()
+    || (d.getFullYear() === today.getFullYear() && d.getMonth() > today.getMonth())
+    || (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() > today.getDate());
+}
 function fmtShort(d: Date) {
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 }
@@ -142,7 +153,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
 
   /* ── Calendar state ── */
   const [calOpen,   setCalOpen]   = useState(false);
-  const [calMonth,  setCalMonth]  = useState(() => new Date(2026, 2, 1)); // Март 2026
+  const [calMonth,  setCalMonth]  = useState(() => tashkentToday());
   const [dateStart, setDateStart] = useState<Date | null>(null);
   const [dateEnd,   setDateEnd]   = useState<Date | null>(null);
   const [hovDate,   setHovDate]   = useState<Date | null>(null);
@@ -197,6 +208,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   const clearDates = () => { setDateStart(null); setDateEnd(null); setCalOpen(false); };
 
   const handleDayClick = (d: Date) => {
+    if (isAfterToday(d)) return;
     if (!dateStart || (dateStart && dateEnd)) {
       setDateStart(d); setDateEnd(null);
     } else {
@@ -305,7 +317,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
     { key: 'amount',    label: t.zAmount    ?? 'Сумма',        w: 120, right: true },
     { key: 'klass',     label: t.zClass     ?? 'Класс',        w: 60  },
     { key: 'otgr',      label: t.zShipCol   ?? 'Отгр.',        w: 55  },
-    { key: 'status',    label: t.zStatus    ?? 'Стат.',        w: 120 },
+    { key: 'status',    label: t.zStatus    ?? 'Стат.',        w: 130 },
     { key: 'konsDate',  label: t.zConsDate  ?? 'Конс.дата',    w: 90  },
     { key: 'note',      label: t.zNote      ?? 'Примеч.',      w: 100 },
   ];
@@ -313,11 +325,16 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   /* ── Status badge ── */
   const statusBadge = (s: Status) => {
     const bg    = s === 'pri' ? '#3b82f6' : s === 'cancelled' ? '#ef4444' : '#f97316';
-    const label = s === 'pri' ? (t.zPri ?? 'При.') : s === 'cancelled' ? (t.zBekor ?? 'Bekor') : (t.zOtr ?? 'Отгр.');
+    const label = s === 'pri'
+      ? (t.zPri ?? 'Qabul qilingan')
+      : s === 'cancelled'
+        ? (t.zBekor ?? 'Bekor')
+        : (t.zOtr ?? 'Yuklangan');
     return (
       <span style={{
         display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11,
         background: bg, color: '#fff', fontWeight: 600, letterSpacing: 0.2,
+        whiteSpace: 'nowrap',
       }}>
         {label}
       </span>
@@ -355,10 +372,27 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
           <span style={{ fontSize: 13, color: txt, fontWeight: 600 }}>
             {MONTH_NAMES[calMonth.getMonth()]} {calMonth.getFullYear()}
           </span>
-          <button
-            onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1, 1))}
-            style={{ background:'none', border:'none', color: txt, cursor:'pointer', padding:'3px 8px', borderRadius: 6, fontSize: 18, lineHeight:1 }}
-          >›</button>
+          {(() => {
+            const today = tashkentToday();
+            const canNext = calMonth.getFullYear() < today.getFullYear()
+              || (calMonth.getFullYear() === today.getFullYear() && calMonth.getMonth() < today.getMonth());
+            return (
+              <button
+                disabled={!canNext}
+                onClick={() => {
+                  if (!canNext) return;
+                  setCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1, 1));
+                }}
+                style={{
+                  background:'none', border:'none',
+                  color: canNext ? txt : muted,
+                  cursor: canNext ? 'pointer' : 'default',
+                  padding:'3px 8px', borderRadius: 6, fontSize: 18, lineHeight:1,
+                  opacity: canNext ? 1 : 0.35,
+                }}
+              >›</button>
+            );
+          })()}
         </div>
 
         {/* ── Day-of-week labels ── */}
@@ -373,36 +407,44 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
           {buildGrid(calMonth).map((day, idx) => {
             if (!day) return <div key={`e-${idx}`} />;
 
-            const isStart = !!(dateStart && sameDay(day, dateStart));
-            const isEnd   = !!(dateEnd   && sameDay(day, dateEnd));
-            const todayD  = new Date();
-            const isToday = sameDay(day, todayD);
+            const todayD   = tashkentToday();
+            const disabled = isAfterToday(day, todayD);
+            const isStart  = !!(dateStart && sameDay(day, dateStart));
+            const isEnd    = !!(dateEnd   && sameDay(day, dateEnd));
+            const isToday  = sameDay(day, todayD);
 
-            /* hover-preview end */
-            const effEnd = dateEnd ?? (dateStart && hovDate && hovDate > dateStart ? hovDate : null);
+            /* hover-preview end — kelajak kunlar hisobga olinmaydi */
+            const hovOk  = hovDate && !isAfterToday(hovDate, todayD) ? hovDate : null;
+            const effEnd = dateEnd ?? (dateStart && hovOk && hovOk > dateStart ? hovOk : null);
             const inRng  = !!(dateStart && effEnd && day > dateStart && day < effEnd);
 
             const isSel  = isStart || isEnd;
             const cellBg =
-              isSel   ? '#6366f1'
+              disabled ? 'transparent'
+              : isSel   ? '#6366f1'
               : inRng ? (D ? '#3730a3' : '#e0e7ff')
-              : !!(hovDate && sameDay(day, hovDate)) ? (D ? '#2a2a2e' : '#f3f4f6')
+              : !!(hovOk && sameDay(day, hovOk)) ? (D ? '#2a2a2e' : '#f3f4f6')
               : 'transparent';
 
             return (
               <button
                 key={`d-${idx}`}
+                disabled={disabled}
                 onClick={() => handleDayClick(day)}
-                onMouseEnter={() => setHovDate(day)}
+                onMouseEnter={() => { if (!disabled) setHovDate(day); }}
                 onMouseLeave={() => setHovDate(null)}
                 style={{
                   background: cellBg,
                   border: isToday && !isSel ? `1px solid #6366f1` : '1px solid transparent',
                   borderRadius: 6,
-                  color: isSel ? '#fff' : (D ? '#f2f2f7' : '#111827'),
-                  cursor: 'pointer', fontSize: 12,
+                  color: disabled
+                    ? (D ? '#3f3f46' : '#d1d5db')
+                    : isSel ? '#fff' : (D ? '#f2f2f7' : '#111827'),
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
                   padding: '5px 2px', textAlign: 'center',
                   transition: 'background 0.1s',
+                  opacity: disabled ? 0.45 : 1,
                 }}
               >
                 {day.getDate()}
@@ -414,7 +456,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
         {/* ── Footer ── */}
         <div style={{ marginTop: 12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <button
-            onClick={() => setCalMonth(new Date())}
+            onClick={() => setCalMonth(tashkentToday())}
             style={{ background:'none', border:'none', color: muted, cursor:'pointer', fontSize: 11 }}
           >
             {calTodayLabel}

@@ -44,6 +44,16 @@ function sameDay(a: Date, b: Date) {
          a.getMonth()    === b.getMonth()    &&
          a.getDate()     === b.getDate();
 }
+function tashkentToday(): Date {
+  const ymd = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function isAfterToday(d: Date, today = tashkentToday()) {
+  return d.getFullYear() > today.getFullYear()
+    || (d.getFullYear() === today.getFullYear() && d.getMonth() > today.getMonth())
+    || (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() > today.getDate());
+}
 function fmtShort(d: Date) {
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 }
@@ -112,7 +122,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
 
   /* ── Calendar ── */
   const [calOpen,   setCalOpen]   = useState(false);
-  const [calMonth,  setCalMonth]  = useState(() => new Date(2026, 2, 1));
+  const [calMonth,  setCalMonth]  = useState(() => tashkentToday());
   const [dateStart, setDateStart] = useState<Date | null>(null);
   const [dateEnd,   setDateEnd]   = useState<Date | null>(null);
   const [hovDate,   setHovDate]   = useState<Date | null>(null);
@@ -148,6 +158,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
   /* ── Calendar ── */
   const clearDates = () => { setDateStart(null); setDateEnd(null); setCalOpen(false); };
   const handleDayClick = (d: Date) => {
+    if (isAfterToday(d)) return;
     if (!dateStart || (dateStart && dateEnd)) { setDateStart(d); setDateEnd(null); }
     else {
       if (sameDay(d, dateStart)) setDateStart(null);
@@ -282,8 +293,27 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
           <span style={{ fontSize:13, color:txt, fontWeight:600 }}>
             {MONTH_NAMES[calMonth.getMonth()]} {calMonth.getFullYear()}
           </span>
-          <button onClick={() => setCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1, 1))}
-            style={{ background:'none', border:'none', color:txt, cursor:'pointer', padding:'3px 8px', borderRadius:6, fontSize:18, lineHeight:1 }}>›</button>
+          {(() => {
+            const today = tashkentToday();
+            const canNext = calMonth.getFullYear() < today.getFullYear()
+              || (calMonth.getFullYear() === today.getFullYear() && calMonth.getMonth() < today.getMonth());
+            return (
+              <button
+                disabled={!canNext}
+                onClick={() => {
+                  if (!canNext) return;
+                  setCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1, 1));
+                }}
+                style={{
+                  background:'none', border:'none',
+                  color: canNext ? txt : muted,
+                  cursor: canNext ? 'pointer' : 'default',
+                  padding:'3px 8px', borderRadius:6, fontSize:18, lineHeight:1,
+                  opacity: canNext ? 1 : 0.35,
+                }}
+              >›</button>
+            );
+          })()}
         </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:4 }}>
           {DAY_NAMES.map(dn => (
@@ -293,32 +323,41 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [] }: Pr
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
           {buildGrid(calMonth).map((day, idx) => {
             if (!day) return <div key={`e-${idx}`} />;
-            const isStart = !!(dateStart && sameDay(day, dateStart));
-            const isEnd   = !!(dateEnd   && sameDay(day, dateEnd));
-            const todayD  = new Date();
-            const isToday = sameDay(day, todayD);
-            const effEnd  = dateEnd ?? (dateStart && hovDate && hovDate > dateStart ? hovDate : null);
-            const inRng   = !!(dateStart && effEnd && day > dateStart && day < effEnd);
-            const isSel   = isStart || isEnd;
-            const cellBg  = isSel ? '#6366f1' : inRng ? (D ? '#3730a3' : '#e0e7ff')
-              : !!(hovDate && sameDay(day, hovDate)) ? (D ? '#2a2a2e' : '#f3f4f6') : 'transparent';
+            const todayD   = tashkentToday();
+            const disabled = isAfterToday(day, todayD);
+            const isStart  = !!(dateStart && sameDay(day, dateStart));
+            const isEnd    = !!(dateEnd   && sameDay(day, dateEnd));
+            const isToday  = sameDay(day, todayD);
+            const hovOk    = hovDate && !isAfterToday(hovDate, todayD) ? hovDate : null;
+            const effEnd   = dateEnd ?? (dateStart && hovOk && hovOk > dateStart ? hovOk : null);
+            const inRng    = !!(dateStart && effEnd && day > dateStart && day < effEnd);
+            const isSel    = isStart || isEnd;
+            const cellBg   = disabled ? 'transparent'
+              : isSel ? '#6366f1' : inRng ? (D ? '#3730a3' : '#e0e7ff')
+              : !!(hovOk && sameDay(day, hovOk)) ? (D ? '#2a2a2e' : '#f3f4f6') : 'transparent';
             return (
               <button key={`d-${idx}`}
+                disabled={disabled}
                 onClick={() => handleDayClick(day)}
-                onMouseEnter={() => setHovDate(day)}
+                onMouseEnter={() => { if (!disabled) setHovDate(day); }}
                 onMouseLeave={() => setHovDate(null)}
                 style={{
                   background: cellBg,
                   border: isToday && !isSel ? '1px solid #6366f1' : '1px solid transparent',
-                  borderRadius:6, color: isSel ? '#fff' : (D ? '#f2f2f7' : '#111827'),
-                  cursor:'pointer', fontSize:12, padding:'5px 2px', textAlign:'center', transition:'background 0.1s',
+                  borderRadius:6,
+                  color: disabled
+                    ? (D ? '#3f3f46' : '#d1d5db')
+                    : isSel ? '#fff' : (D ? '#f2f2f7' : '#111827'),
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  fontSize:12, padding:'5px 2px', textAlign:'center', transition:'background 0.1s',
+                  opacity: disabled ? 0.45 : 1,
                 }}
               >{day.getDate()}</button>
             );
           })}
         </div>
         <div style={{ marginTop:12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <button onClick={() => setCalMonth(new Date())}
+          <button onClick={() => setCalMonth(tashkentToday())}
             style={{ background:'none', border:'none', color:muted, cursor:'pointer', fontSize:11 }}>
             {t.zCalToday ?? 'Bugun'}
           </button>

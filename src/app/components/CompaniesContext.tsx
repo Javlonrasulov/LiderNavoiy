@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, type BackendCompany } from '../api/client';
-import { COMPANIES, type Company } from './AdminAuthContext';
+import { COMPANIES, type Company, type ProductType } from './AdminAuthContext';
 
 function mapCompany(row: BackendCompany): Company {
   return {
@@ -18,6 +18,7 @@ function mapCompany(row: BackendCompany): Company {
     description: row.description ?? '',
     agents: row.agents,
     clients: row.clients,
+    productType: (row.productType as ProductType) || 'kg_dona',
   };
 }
 

@@ -4,11 +4,11 @@ import { demo, demoRec, demoRecKeys } from './demoLimit';
 
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
 import type React from 'react';
-import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, MessageSquare, UserCog } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, MessageSquare, UserCog, ClipboardCheck } from 'lucide-react';
 import GarageIcon from '../components/GarageIcon';
 
 // ─── TYPES ───
-export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'prodaji' | 'ombor' | 'messages' | 'systemUsers';
+export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'unpreparedOrders' | 'prodaji' | 'ombor' | 'messages' | 'systemUsers';
 
 export type NavChild = { id: Tab; key: string; icon: React.ComponentType<any> };
 export type NavEntry =
@@ -109,6 +109,7 @@ export const NAV_ITEMS_BASE: NavEntry[] = [
   { id: 'messages'  as Tab, key: 'navMessages',  icon: MessageSquare },
   { id: 'systemUsers' as Tab, key: 'navSystemUsers', icon: UserCog },
   { id: 'tarozi'     as Tab, key: 'navTarozi',     icon: Scale, subKey: 'navTaroziSub', hideInSidebar: true },
+  { id: 'unpreparedOrders' as Tab, key: 'navUnpreparedOrders', icon: ClipboardCheck, hideInSidebar: true },
   { id: 'prodaji'    as Tab, key: 'navProdaji',    icon: ClipboardList, hideInSidebar: true },
   { id: 'ombor'      as Tab, key: 'navOmbor',      icon: GarageIcon, hideInSidebar: true },
 ];
@@ -170,6 +171,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permPostavchik: 'Yetkazib beruvchilar',
     permMessages: 'Xabarlar',
     permTarozi: 'Tarozi',
+    permUnpreparedOrders: 'Tayyorlanmagan buyurtmalar',
     permProdaji: 'Prodaji',
     permOmbor: 'Ombor',
     permSystemUsers: 'Tizim foydalanuvchilari',
@@ -202,6 +204,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     msgSendError: 'Yuborish xatoligi',
     msgError: 'Xatolik',
     navTarozi: 'Tarozi', navTaroziSub: '(sklad)',
+    navUnpreparedOrders: 'Tayyorlanmagan buyurtmalar',
     navProdaji: 'Sotuvlar',
     navOmbor: 'Ombor',
     omborTabProducts: 'Mahsulotlar', omborTabReturns: 'Qaytarilgan',
@@ -747,6 +750,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permPostavchik: 'Таъминотчилар',
     permMessages: 'Хабарлар',
     permTarozi: 'Тарози',
+    permUnpreparedOrders: 'Тайёрланмаган буюртмалар',
     permProdaji: 'Сотувлар',
     permOmbor: 'Омбор',
     permSystemUsers: 'Тизим фойдаланувчилар',
@@ -779,6 +783,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     msgSendError: 'Юborish xatoligi',
     msgError: 'Xatolik',
     navTarozi: 'Тарози', navTaroziSub: '(склад)',
+    navUnpreparedOrders: 'Тайёрланмаган буюртмалар',
     navProdaji: 'Сотувлар',
     navOmbor: 'Омбор',
     omborTabProducts: 'Маҳсулотлар', omborTabReturns: 'Қайтарилган',
@@ -1326,6 +1331,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permPostavchik: 'Поставщики',
     permMessages: 'Сообщения',
     permTarozi: 'Весы',
+    permUnpreparedOrders: 'Неподготовленные заказы',
     permProdaji: 'Продажи',
     permOmbor: 'Склад',
     permSystemUsers: 'Системные пользователи',
@@ -1358,6 +1364,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     msgSendError: 'Ошибка отправки',
     msgError: 'Ошибка',
     navTarozi: 'Весы', navTaroziSub: '(склад)',
+    navUnpreparedOrders: 'Неподготовленные заказы',
     navProdaji: 'Продажи',
     navOmbor: 'Склад',
     omborTabProducts: 'Товары', omborTabReturns: 'Возвраты',

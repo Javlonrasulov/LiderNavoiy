@@ -3,6 +3,8 @@ import { demo } from '../data/demoLimit';
 import { clearTokens } from '../api/client';
 import { registerAdminWebPush } from '../lib/firebaseMessaging';
 
+export type ProductType = 'kg_dona' | 'dona' | 'kg';
+
 export interface Company {
   id: string;
   name: string;
@@ -12,6 +14,12 @@ export interface Company {
   description: string;
   agents: number;
   clients: number;
+  /** kg_dona / kg → Tarozi; dona → tayyorlanmagan buyurtmalar */
+  productType: ProductType;
+}
+
+export function companyShowsTarozi(productType?: ProductType | string | null): boolean {
+  return productType !== 'dona';
 }
 
 const ALL_COMPANIES: Company[] = [
@@ -24,6 +32,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Savdo va distribyutsiya',
     agents: 0,
     clients: 0,
+    productType: 'kg_dona',
   },
   {
     id: 'zarafshon',
@@ -34,6 +43,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Oziq-ovqat mahsulotlari',
     agents: 0,
     clients: 0,
+    productType: 'kg_dona',
   },
   {
     id: 'mipter',
@@ -44,6 +54,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Savdo kompaniyasi',
     agents: 3,
     clients: 87,
+    productType: 'kg_dona',
   },
   {
     id: 'navruz',
@@ -54,6 +65,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Ulgurji savdo',
     agents: 6,
     clients: 195,
+    productType: 'kg_dona',
   },
   {
     id: 'sarbon',
@@ -64,6 +76,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Distribyutsiya markazi',
     agents: 4,
     clients: 103,
+    productType: 'kg_dona',
   },
   {
     id: 'atlas',
@@ -74,6 +87,7 @@ const ALL_COMPANIES: Company[] = [
     description: 'Import va savdo',
     agents: 3,
     clients: 76,
+    productType: 'kg_dona',
   },
 ];
 
@@ -104,11 +118,21 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('admin_logged_in');
       localStorage.removeItem('admin_user');
       localStorage.removeItem('admin_company');
+      localStorage.removeItem('admin_company_data');
       return false;
     }
     return logged;
   });
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(() => {
+    const savedJson = localStorage.getItem('admin_company_data');
+    if (savedJson) {
+      try {
+        const parsed = JSON.parse(savedJson) as Company;
+        if (parsed?.id) {
+          return { ...parsed, productType: parsed.productType ?? 'kg_dona' };
+        }
+      } catch { /* ignore */ }
+    }
     const saved = localStorage.getItem('admin_company');
     if (saved) {
       const found = COMPANIES.find(c => c.id === saved);
@@ -157,16 +181,23 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('admin_logged_in');
     localStorage.removeItem('admin_user');
     localStorage.removeItem('admin_company');
+    localStorage.removeItem('admin_company_data');
   };
 
   const selectCompany = (company: Company) => {
-    setSelectedCompany(company);
-    localStorage.setItem('admin_company', company.id);
+    const withType: Company = {
+      ...company,
+      productType: company.productType ?? 'kg_dona',
+    };
+    setSelectedCompany(withType);
+    localStorage.setItem('admin_company', withType.id);
+    localStorage.setItem('admin_company_data', JSON.stringify(withType));
   };
 
   const clearCompany = () => {
     setSelectedCompany(null);
     localStorage.removeItem('admin_company');
+    localStorage.removeItem('admin_company_data');
   };
 
   return (

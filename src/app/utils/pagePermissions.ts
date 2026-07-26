@@ -10,6 +10,7 @@ export const PAGE_PERMISSIONS = [
   { id: 'postavchik', labelKey: 'permPostavchik', fallback: 'Yetkazib beruvchilar' },
   { id: 'messages',   labelKey: 'permMessages',   fallback: 'Xabarlar' },
   { id: 'tarozi',     labelKey: 'permTarozi',     fallback: 'Tarozi' },
+  { id: 'unpreparedOrders', labelKey: 'permUnpreparedOrders', fallback: 'Tayyorlanmagan buyurtmalar' },
   { id: 'prodaji',    labelKey: 'permProdaji',    fallback: 'Prodaji' },
   { id: 'ombor',      labelKey: 'permOmbor',      fallback: 'Ombor' },
   { id: 'systemUsers', labelKey: 'permSystemUsers', fallback: 'Tizim foydalanuvchilari' },
@@ -55,7 +56,10 @@ export function hasPageAccess(
 ): boolean {
   if (role === 'admin') return true;
   if (!permissions || permissions.length === 0) return false;
-  return permissions.includes(tabId);
+  if (permissions.includes(tabId)) return true;
+  // dona org: unprepared orders replaces tarozi — same permission gate
+  if (tabId === 'unpreparedOrders' && permissions.includes('tarozi')) return true;
+  return false;
 }
 
 export function permissionLabels(
