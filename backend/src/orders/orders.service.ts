@@ -244,6 +244,7 @@ export class OrdersService {
       .map((order) => {
         const client = clientMap.get(order.clientId);
         const profile = profileMap.get(order.distributorId);
+        const agentCompanyId = profile?.companyId ?? null;
         return {
           id: order.id,
           clientId: order.clientId,
@@ -269,9 +270,19 @@ export class OrdersService {
             : null,
           agentName: profile?.user?.fullName ?? null,
           companyName: profile?.companyName ?? null,
+          agentCompanyId,
         };
       })
-      .filter((o) => !companyId || o.client?.companyId === companyId);
+      .filter((o) => {
+        if (!companyId) return true;
+        const clientCo = o.client?.companyId ?? null;
+        const agentCo = o.agentCompanyId ?? null;
+        // Mijoz yoki agent kompaniyasi mos kelsa — ko'rsat
+        if (clientCo === companyId || agentCo === companyId) return true;
+        // Kompaniya belgilanmagan buyurtmalar ham yo'qolmasin
+        if (!clientCo && !agentCo) return true;
+        return false;
+      });
   }
 
   findOne(id: string) {

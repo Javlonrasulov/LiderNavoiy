@@ -496,16 +496,19 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     return getMockAgentsForDate(currentDate);
   }, [backendReady, apiOrders, currentDate]);
 
+  /** Hamma tabda ready (skladga yuborilgan) ham chiqsin */
   const filteredAgents = useMemo(() => {
     const statusAllowed: OrderStatus[] =
-      activeFilter === 'all'        ? ['delivered', 'pending'] :
-      activeFilter === 'accepted'   ? ['pending']              :
+      activeFilter === 'all'        ? ['pending', 'ready', 'delivered'] :
+      activeFilter === 'accepted'   ? ['pending', 'ready'] :
       /* ready-load */                ['ready', 'delivered'];
 
     return agentsForDate.filter(a =>
       (a.group || statusAllowed.includes(a.status)) &&
       (!search || a.client.toLowerCase().includes(search.toLowerCase()) || a.code.includes(search)
-        || a.agentName.toLowerCase().includes(search.toLowerCase()))
+        || a.agentName.toLowerCase().includes(search.toLowerCase())
+        || String(a.orderNum).includes(search)
+        || a.id.toLowerCase().includes(search.toLowerCase()))
     );
   }, [search, activeFilter, agentsForDate]);
 

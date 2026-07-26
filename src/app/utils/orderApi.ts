@@ -76,8 +76,10 @@ export function orderNumFromId(id: string): number {
 }
 
 /**
- * Agent yuborgan yangi buyurtma → Sotuvlarda «Qabul qilingan» (pri).
- * pending / draft = qabul qilingan
+ * Holat → Sotuvlar badge:
+ * - pending/confirmed/packing = Qabul qilingan (omborga kelgan / tayyorlanayotgan)
+ * - on_way/delivered = Yuklangan
+ * - cancelled = Bekor
  */
 function mapStatus(status: string): {
   ui: ZayavkaStatus;
@@ -89,15 +91,13 @@ function mapStatus(status: string): {
     case 'delivered':
     case 'on_way':
       return { ui: 'otr', deleted: false, shipped: true, processed: true };
-    case 'confirmed':
-    case 'packing':
-      return { ui: 'otr', deleted: false, shipped: false, processed: true };
     case 'cancelled':
       return { ui: 'cancelled', deleted: true, shipped: false, processed: false };
+    case 'confirmed':
+    case 'packing':
     case 'pending':
     case 'draft':
     default:
-      // Agent APK buyurtmasi — doim «Qabul qilingan»
       return { ui: 'pri', deleted: false, shipped: false, processed: false };
   }
 }
@@ -114,12 +114,16 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
     : o.source === 'agent' || !o.source ? 'APK'
     : o.source;
 
+  // № — UUID boshidagi 8 belgi (mijoz APKdagi #24E5CFDA kabi)
+  const shortId = o.id.replace(/-/g, '').slice(0, 8).toUpperCase();
+  const num = parseInt(shortId.slice(0, 8), 16) % 90000 + 10000;
+
   return {
     id: o.id,
     orderDate,
     shipDate,
-    num: orderNumFromId(o.id),
-    code: o.client?.code ?? '—',
+    num,
+    code: o.client?.code ?? shortId,
     client: o.client?.name ?? '—',
     org: o.companyName ?? '—',
     agent: o.agentName ?? '—',
@@ -133,7 +137,7 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
     otgr: '—',
     status: ui,
     konsDate: '—',
-    note: o.isOfflineCreated ? 'Offline' : '',
+    note: o.isOfflineCreated ? 'Offline' : (shortId !== o.client?.code ? `#${shortId}` : ''),
     deleted,
     shipped,
     processed,

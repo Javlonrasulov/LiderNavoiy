@@ -294,7 +294,11 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
         r.client.toLowerCase().includes(q) ||
         r.agent.toLowerCase().includes(q)  ||
         String(r.num).includes(q)          ||
-        String(r.code).includes(q)
+        String(r.code).toLowerCase().includes(q) ||
+        String(r.note).toLowerCase().includes(q) ||
+        String(r.source).toLowerCase().includes(q) ||
+        String(r.id).toLowerCase().includes(q) ||
+        String(r.amount).includes(q)
       );
     }
     return [...pendingRows, ...d];
@@ -304,7 +308,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   const COLS = [
     { key: 'orderDate', label: t.zOrderDate ?? 'Дата заказа',  w: 100 },
     { key: 'shipDate',  label: t.zShipDate  ?? 'Дата отгр.',   w: 90  },
-    { key: 'num',       label: t.zNum       ?? '№',            w: 66  },
+    { key: 'num',       label: t.zNum       ?? '№',            w: 88  },
     { key: 'code',      label: t.zCode      ?? 'Код',          w: 60  },
     { key: 'client',    label: t.zClient    ?? 'Контрагент',   w: 200 },
     { key: 'org',       label: t.zOrg       ?? 'Организация',  w: 100 },
@@ -342,8 +346,11 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   };
 
   const cellVal = (row: Zayavka, key: string) => {
-    const v = (row as Record<string, unknown>)[key];
     if (key === 'amount') return fmtSum(row.amount);
+    if (key === 'num' && typeof row.id === 'string' && row.id.includes('-')) {
+      return row.id.replace(/-/g, '').slice(0, 8).toUpperCase();
+    }
+    const v = (row as Record<string, unknown>)[key];
     return v ? String(v) : '—';
   };
 
@@ -899,7 +906,11 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                         {row.client}
                       </div>
                       <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-                        <span style={{ fontSize:11, color: muted }}>#{row.num}</span>
+                        <span style={{ fontSize:11, color: muted }}>
+                          #{typeof row.id === 'string' && row.id.includes('-')
+                            ? row.id.replace(/-/g, '').slice(0, 8).toUpperCase()
+                            : row.num}
+                        </span>
                         <span style={{ fontSize:11, color: muted }}>{row.orderDate}</span>
                         <span style={{ fontSize:11, color: muted }}>{row.agent}</span>
                       </div>
