@@ -103,4 +103,13 @@ export class AppUserResponseDto {
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;
+  lastDeviceBrand?: string | null;
+  lastDeviceModel?: string | null;
+  lastDeviceOs?: string | null;
+  devices?: Array<{
+    brand: string | null;
+    model: string | null;
+    os: string | null;
+    lastLoginAt: string;
+  }>;
 }

@@ -2,6 +2,7 @@ package uz.distributor.crm.data.repository
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import uz.distributor.crm.data.remote.ApiErrorMapper
@@ -21,7 +22,9 @@ import uz.distributor.crm.data.local.UserIdHolder
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.remote.MessagesSocketManager
+import uz.distributor.crm.data.remote.dto.LoginDeviceDto
 import uz.distributor.crm.data.remote.dto.LoginRequest
+import uz.distributor.crm.data.remote.dto.RefreshTokenRequest
 import uz.distributor.crm.domain.model.AuthTokens
 import uz.distributor.crm.domain.model.AuthUser
 import uz.distributor.crm.service.LocationTrackingService
@@ -52,8 +55,15 @@ class AuthRepository @Inject constructor(
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { it[accessTokenKey] != null }
 
+    private fun currentDevice(): LoginDeviceDto = LoginDeviceDto(
+        id = "${Build.MANUFACTURER}-${Build.MODEL}-${Build.ID}".take(160),
+        brand = Build.MANUFACTURER?.replaceFirstChar { it.uppercase() },
+        model = Build.MODEL,
+        os = "Android ${Build.VERSION.RELEASE}",
+    )
+
     suspend fun login(username: String, password: String): AuthTokens {
-        val response = api.login(LoginRequest(username, password))
+        val response = api.login(LoginRequest(username, password, currentDevice()))
         val tokens = AuthTokens(
             accessToken = response.accessToken,
             refreshToken = response.refreshToken,
@@ -96,7 +106,7 @@ class AuthRepository @Inject constructor(
         val prefs = context.dataStore.data.first()
         val refresh = prefs[refreshTokenKey] ?: return false
         return try {
-            val response = api.refresh(mapOf("refreshToken" to refresh))
+            val response = api.refresh(RefreshTokenRequest(refresh, currentDevice()))
             val user = response.user.toAuthUser()
             saveTokens(
                 AuthTokens(

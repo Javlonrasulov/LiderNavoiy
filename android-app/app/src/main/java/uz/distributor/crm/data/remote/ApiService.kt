@@ -10,7 +10,7 @@ interface ApiService {
     suspend fun login(@Body body: LoginRequest): AuthResponseDto
 
     @POST("auth/refresh")
-    suspend fun refresh(@Body body: Map<String, String>): AuthResponseDto
+    suspend fun refresh(@Body body: RefreshTokenRequest): AuthResponseDto
 
     @POST("auth/change-password")
     suspend fun changePassword(@Body body: ChangePasswordRequest)

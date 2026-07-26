@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, CSSProperties, ReactNode } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, CSSProperties, ReactNode } from 'react';
 import {
   X, CheckCircle2, RefreshCw, Trash2, ChevronDown,
   Printer, Package,
@@ -7,13 +7,15 @@ import {
 } from 'lucide-react';
 import { demo } from '../../../../data/demoLimit';
 import { api, type Distributor } from '../../../../api/client';
+import { useCompanies } from '../../../CompaniesContext';
+import { useAdminAuth } from '../../../AdminAuthContext';
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
 }
 
 function isDeliveryPerson(d: Distributor): boolean {
-  const p = (d.position ?? d.user?.fullName ?? '').toLowerCase();
+  const p = (d.position ?? '').toLowerCase();
   const u = (d.user?.username ?? '').toLowerCase();
   return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
     || p.includes('dostav') || p.includes('haydov')
@@ -55,9 +57,6 @@ const ZAYAVKI: ZayavkaRow[] = demo([
   { id:15, num:19323, date:'14.03.2026 11:15', direction:'SHERIN', tip:'D2', kodTT:'23082', kontragent:'RAHMATULLAYEV...',         km:605, agent:'Toshniёzov...',  status:'process', marsh:'23-Эн.',   summa:616_240,    dolg:1_200_870,   poluch:0, ves:12, timeObr:'',      note:'' },
 ]);
 
-const SKLAD_LIST     = demo(['Sklad SHERIN', 'Sklad MARKAZ', 'Sklad SHIMOL', 'Sklad JANUB', 'Sklad ZARAFSHON']);
-const TASHKILOT_LIST = demo(['OOO "BORAN LEADERS"', 'OOO "SHERIN TRADE"', 'OOO "NAVOIY SAVDO"', 'OOO "PILLER DIST"']);
-const MUALLIF_LIST   = demo(['Zaripov Begzod', 'Ismatullayev Hamza', 'Xoliqov Sardor', 'Nazarov Dilshod', 'Mirzayev Alisher']);
 const TRANSPORT_LIST = demo([
   'DAMAS (VAN) 01 561 VMA', 'DAMAS (VAN) 85 932 HNA', 'DAMAS (LABO) 01 555 XNA',
   'JAG 01 912 BNA', 'DAMAS (VAN) 60 R 123 ZA', 'DAMAS (VAN) 01 797 LC',
@@ -69,12 +68,7 @@ const HAYDOVCHI_LIST = demo([
   'Nazarov Davlatbek Jurayev', 'Pirnazorov Olimjon Xasanov',
   'Rustamov Shoxrux Mirzayev', 'Abduxakimov Diyorbek Tursunov',
 ]);
-/** Fallback faqat API yo'q bo'lganda — shofyor uchun */
-const AGENT_LIST = demo([
-  'Toshniёzov Obidjon Bekpulatovich', 'Alisher Karimov Saidovich',
-  'Bobur Toshmatov Xolmurodov', 'Jasur Yusupov Abdullayev',
-  'Sherzod Nazarov Mirzayev', 'Ulugbek Holmatov Ibragimov',
-]);
+/** Fallback faqat API yo'q bo'lganda — shofyor / transport uchun */
 
 /* ─── Utils ──────────────────────────────────────────────── */
 function pad2(n:number){ return String(n).padStart(2,'0'); }
@@ -405,18 +399,30 @@ interface Props {
 }
 
 export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfirm, selectedCompanyIds }: Props) {
+  const { companies } = useCompanies();
+  const { adminUser, selectedCompany } = useAdminAuth();
+
   const [mode,        setMode]        = useState<ModalMode>('normal');
   const [activeTab,   setActiveTab]   = useState<ModalTab>('zayavki');
   const [expanded,    setExpanded]    = useState<number|null>(null);
   const [isFullscreen,setIsFullscreen]= useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  const activeCompanies = useMemo(() => {
+    if (selectedCompanyIds && selectedCompanyIds.size > 0) {
+      return companies.filter(c => selectedCompanyIds.has(c.id));
+    }
+    return selectedCompany ? companies.filter(c => c.id === selectedCompany.id) : companies.slice(0, 1);
+  }, [companies, selectedCompanyIds, selectedCompany]);
+
+  const primaryCompany = activeCompanies[0] ?? selectedCompany ?? null;
+
   /* ── Form state ── */
   const [samovivoz,   setSamovivoz]   = useState(false);
   const [reysHolati,  setReysHolati]  = useState('process');
-  const [sklad,       setSklad]       = useState('Sklad SHERIN');
-  const [tashkilot,   setTashkilot]   = useState('OOO "BORAN LEADERS"');
-  const [muallif,     setMuallif]     = useState('Zaripov Begzod');
+  const [sklad,       setSklad]       = useState('');
+  const [tashkilot,   setTashkilot]   = useState('');
+  const [muallif,     setMuallif]     = useState('');
   const [transport,   setTransport]   = useState('');
   const [shofer,      setShofer]      = useState('');
   const [dostavchik,  setDostavchik]  = useState('');
@@ -426,48 +432,99 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
   const [hdStart,     setHdStart]     = useState<Date|null>(()=>new Date());
   const [hdEnd,       setHdEnd]       = useState<Date|null>(null);
 
-  /* ── API: haqiqiy dostavchiklar ── */
+  /* ── API lists ── */
   const [dostavchikList, setDostavchikList] = useState<string[]>([]);
   const [dostavchikMap,  setDostavchikMap]  = useState<Record<string, string>>({});
   const [dostavLoading,  setDostavLoading]  = useState(false);
+  const [agentList,      setAgentList]      = useState<string[]>([]);
+  const [agentLoading,   setAgentLoading]   = useState(false);
+  const [muallifList,    setMuallifList]    = useState<string[]>([]);
 
   const companyId = selectedCompanyIds?.size === 1
     ? [...selectedCompanyIds][0]
-    : undefined;
+    : primaryCompany?.id;
 
-  const loadDostavchiklar = useCallback(async () => {
+  const skladOptions = useMemo(() => {
+    const names = activeCompanies
+      .map(c => c.warehouseName?.trim())
+      .filter((n): n is string => !!n);
+    return [...new Set(names)];
+  }, [activeCompanies]);
+
+  // Tashkilot — organizatsiyadan, o'zgarmas
+  useEffect(() => {
+    if (primaryCompany?.name) setTashkilot(primaryCompany.name);
+  }, [primaryCompany?.id, primaryCompany?.name]);
+
+  // Sklad — ombor sahifasidagi nom
+  useEffect(() => {
+    if (skladOptions.length === 1) setSklad(skladOptions[0]);
+    else if (skladOptions.length === 0) setSklad('');
+    else if (sklad && !skladOptions.includes(sklad)) setSklad(skladOptions[0]);
+  }, [skladOptions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadStaff = useCallback(async () => {
     if (!hasApiToken()) {
       setDostavchikList([]);
       setDostavchikMap({});
+      setAgentList([]);
+      setMuallifList(adminUser?.name ? [adminUser.name] : []);
+      if (adminUser?.name) setMuallif(adminUser.name);
       return;
     }
+
     setDostavLoading(true);
+    setAgentLoading(true);
     try {
-      const list = await api.getDistributors(companyId);
-      const delivery = list.filter(isDeliveryPerson);
-      const source = delivery.length > 0 ? delivery : list.filter(d =>
-        (d.position ?? '').toLowerCase().includes('dostav')
-        || (d.user?.username ?? '').toLowerCase().includes('dostav'),
-      );
-      const names: string[] = [];
-      const map: Record<string, string> = {};
-      for (const d of source) {
+      const [distributors, systemUsers] = await Promise.all([
+        api.getDistributors(companyId),
+        api.listSystemUsers().catch(() => []),
+      ]);
+
+      const delivery = distributors.filter(isDeliveryPerson);
+      const agents = distributors.filter(d => !isDeliveryPerson(d) && d.user?.isActive !== false);
+
+      const dNames: string[] = [];
+      const dMap: Record<string, string> = {};
+      for (const d of delivery) {
         const name = distributorName(d);
-        if (!name || names.includes(name)) continue;
-        names.push(name);
-        map[name] = d.id;
+        if (!name || dNames.includes(name)) continue;
+        dNames.push(name);
+        dMap[name] = d.id;
       }
-      setDostavchikList(names);
-      setDostavchikMap(map);
+      setDostavchikList(dNames);
+      setDostavchikMap(dMap);
+
+      const aNames = [...new Set(agents.map(distributorName).filter(Boolean))];
+      setAgentList(aNames);
+
+      const authors = systemUsers
+        .filter(u => u.isActive)
+        .map(u => u.fullName?.trim() || u.username)
+        .filter(Boolean);
+      const uniqAuthors = [...new Set(authors)];
+      setMuallifList(uniqAuthors);
+
+      // Default muallif: joriy admin
+      setMuallif(prev => {
+        if (prev && uniqAuthors.includes(prev)) return prev;
+        if (adminUser?.name && uniqAuthors.includes(adminUser.name)) return adminUser.name;
+        return uniqAuthors[0] ?? adminUser?.name ?? '';
+      });
     } catch {
       setDostavchikList([]);
       setDostavchikMap({});
+      setAgentList([]);
+      setMuallifList(adminUser?.name ? [adminUser.name] : []);
     } finally {
       setDostavLoading(false);
+      setAgentLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, adminUser?.name]);
 
-  useEffect(() => { loadDostavchiklar(); }, [loadDostavchiklar]);
+  useEffect(() => { loadStaff(); }, [loadStaff]);
+
+  const loadDostavchiklar = loadStaff;
 
   /* ── Confirm (✓ galochka) ── */
   const handleConfirm = () => {
@@ -494,9 +551,11 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
   const handleReset = () => {
     setSamovivoz(false);
     setReysHolati('process');
-    setSklad('Sklad SHERIN');
-    setTashkilot('OOO "BORAN LEADERS"');
-    setMuallif('Zaripov Begzod');
+    setSklad(skladOptions[0] ?? '');
+    setTashkilot(primaryCompany?.name ?? '');
+    setMuallif(adminUser?.name && muallifList.includes(adminUser.name)
+      ? adminUser.name
+      : (muallifList[0] ?? adminUser?.name ?? ''));
     setTransport('');
     setShofer('');
     setDostavchik('');
@@ -837,10 +896,50 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
                     todayLabel={t.zCalToday??'Bugun'}
                   />
                 </div>
-                <DropdownField label={t.modalSklad??'Sklad'} value={sklad} options={SKLAD_LIST}
-                  onSelect={setSklad} {...dpProps} flex="1" minWidth={110}/>
-                <DropdownField label={t.modalOrg??'Tashkilot'} value={tashkilot} options={TASHKILOT_LIST}
-                  onSelect={setTashkilot} {...dpProps} flex="1.5" minWidth={140}/>
+                {skladOptions.length > 1 ? (
+                  <DropdownField
+                    label={t.modalSklad??'Sklad'}
+                    value={sklad}
+                    options={skladOptions}
+                    onSelect={setSklad}
+                    {...dpProps}
+                    flex="1"
+                    minWidth={110}
+                  />
+                ) : (
+                  fldWrap(
+                    t.modalSklad??'Sklad',
+                    <input
+                      readOnly
+                      value={sklad || (t.omborSkladEmpty ?? 'Ombor sahifasida kiriting')}
+                      className="tycm-inp"
+                      style={{
+                        ...inpStyle,
+                        width:'100%',
+                        color: sklad ? txt : muted,
+                        cursor: 'default',
+                      }}
+                    />,
+                    '1', 110,
+                  )
+                )}
+                {fldWrap(
+                  t.modalOrg??'Tashkilot',
+                  <input
+                    readOnly
+                    value={tashkilot || '—'}
+                    className="tycm-inp"
+                    title={t.modalOrgReadonly ?? 'Organizatsiyadan avtomatik'}
+                    style={{
+                      ...inpStyle,
+                      width:'100%',
+                      color: txt,
+                      cursor: 'default',
+                      opacity: 0.92,
+                    }}
+                  />,
+                  '1.5', 140,
+                )}
                 <DropdownField
                   label={t.modalStatusReys??'Reys holati'}
                   value={reysKeyToLabel(reysHolati)}
@@ -852,8 +951,16 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
                   <input defaultValue="1 070" className="tycm-inp" style={{...inpStyle,width:60}}/>,
                   '0 0 60px',60
                 )}
-                <DropdownField label={t.otgrAuthor??'Muallif'} value={muallif} options={MUALLIF_LIST}
-                  onSelect={setMuallif} {...dpProps} flex="1" minWidth={110}/>
+                <DropdownField
+                  label={t.otgrAuthor??'Muallif'}
+                  value={muallif}
+                  options={muallifList.length > 0 ? muallifList : (adminUser?.name ? [adminUser.name] : [])}
+                  onSelect={setMuallif}
+                  {...dpProps}
+                  notFoundText={t.modalMuallifEmpty ?? 'Tizim foydalanuvchilari yo\'q'}
+                  flex="1"
+                  minWidth={110}
+                />
               </div>
             </div>
 
@@ -998,13 +1105,28 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
                   <input defaultValue="" placeholder="Izoh..." className="tycm-inp" style={{...inpStyle}}/>,
                   '1',80
                 )}
-                <DropdownField label={t.zAgent??'Agent'} value={agent} options={AGENT_LIST}
-                  onSelect={setAgent} {...dpProps} flex="2" minWidth={160}/>
-                {fldWrap('UID',
-                  <input readOnly defaultValue="98232126-592b-4562-93ed-..." className="tycm-inp"
-                    style={{...inpStyle,color:muted,fontSize:10}}/>,
-                  '1',110
-                )}
+                <div style={{flex:'2 1 160px',minWidth:160,display:'flex',flexDirection:'column',gap:4}}>
+                  <label style={lblStyle}>
+                    {t.zAgent??'Agent'}
+                    {agentLoading && (
+                      <span style={{marginLeft:6,fontWeight:500,color:muted,textTransform:'none',letterSpacing:0}}>...</span>
+                    )}
+                  </label>
+                  <DropdownField
+                    label=""
+                    value={agent}
+                    options={agentList}
+                    onSelect={setAgent}
+                    {...dpProps}
+                    notFoundText={agentLoading
+                      ? '…'
+                      : (hasApiToken()
+                        ? (t.modalAgentEmpty ?? 'Agent topilmadi')
+                        : (t.modalDostavchikNoApi ?? 'API ulanmagan'))}
+                    flex="1"
+                    minWidth={80}
+                  />
+                </div>
               </div>
             </div>
 

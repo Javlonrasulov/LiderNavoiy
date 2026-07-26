@@ -1,5 +1,34 @@
-import { IsNotEmpty, IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+
+export class LoginDeviceDto {
+  @ApiPropertyOptional({ example: 'a1b2c3d4', description: 'Stable device id' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({ example: 'Samsung' })
+  @IsOptional()
+  @IsString()
+  brand?: string;
+
+  @ApiPropertyOptional({ example: 'SM-A546E' })
+  @IsOptional()
+  @IsString()
+  model?: string;
+
+  @ApiPropertyOptional({ example: 'Android 14' })
+  @IsOptional()
+  @IsString()
+  os?: string;
+}
 
 export class LoginDto {
   @ApiProperty({ example: 'agent001' })
@@ -11,6 +40,12 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiPropertyOptional({ type: LoginDeviceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LoginDeviceDto)
+  device?: LoginDeviceDto;
 }
 
 export class RefreshTokenDto {
@@ -18,6 +53,12 @@ export class RefreshTokenDto {
   @IsString()
   @IsNotEmpty()
   refreshToken: string;
+
+  @ApiPropertyOptional({ type: LoginDeviceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LoginDeviceDto)
+  device?: LoginDeviceDto;
 }
 
 export class ChangePasswordDto {

@@ -38,4 +38,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsIn(PRODUCT_TYPES)
   productType?: ProductType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  warehouseName?: string;
 }

@@ -41,6 +41,7 @@ function formToUserRow(
   t: Record<string, string>,
   id: number,
   backendUserId?: string,
+  prevDevice?: string,
 ): UserRow {
   const org = data.org.length > 14 ? `${data.org.slice(0, 13)}...` : data.org;
   const emp = data.xodim.length > 14 ? `${data.xodim.slice(0, 13)}...` : data.xodim;
@@ -61,6 +62,8 @@ function formToUserRow(
     acceptPay: data.appAcceptPay ?? data.perms.tolovQabul === 'Ruxsat',
     consig: data.appConsig ?? data.perms.konsignatsiya === 'Ruxsat',
     gps: true,
+    device: prevDevice || '',
+    devices: [],
   };
 }
 
@@ -201,6 +204,10 @@ function MobileUserCard({ u, D, isSelected, onSelect, t }: {
         {[
           { Icon: Building2, label: t.userOrg  || 'Tashkilot', val: u.org  },
           { Icon: MapPin,    label: t.userDirs  || "Bo'linma",  val: u.dirs },
+          { Icon: Navigation, label: t.userDevice || 'Telefon', val: u.devices.length
+            ? u.devices.map(d => `${d.label} (${d.lastLoginLabel})`).join(' · ')
+            : (u.device || '') },
+          { Icon: CreditCard, label: t.userLastAct || 'Oxirgi faol.', val: u.lastAct || '' },
         ].map(({ Icon, label, val }) => (
           <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, overflow: 'hidden' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -360,6 +367,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
       || u.onTrade.toLowerCase().includes(q)
       || u.code.includes(q)
       || u.role.toLowerCase().includes(q)
+      || (u.device || '').toLowerCase().includes(q)
       || u.dirs.toLowerCase().includes(q);
   });
 
@@ -373,6 +381,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
     { key: 'code',      label: t.userCode      || 'Kod',          w: 54  },
     { key: 'name',      label: t.userName      || 'Ism (FIO)',     w: 190 },
     { key: 'lastAct',   label: t.userLastAct   || 'Oxirgi faol.', w: 100 },
+    { key: 'device',    label: t.userDevice    || 'Telefon',      w: 220 },
     { key: 'role',      label: t.userRole      || 'Rol',          w: 150 },
     { key: 'status',    label: t.userStatus    || 'Status',       w: 80  },
     { key: 'org',       label: t.userOrg       || 'Tashkilot',    w: 140 },
@@ -663,6 +672,25 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
                         {u.lastAct || '—'}
                       </span>
                     </TD>
+                    <td style={{
+                      background: rowBg, padding: '6px 8px', fontSize: 12,
+                      borderBottom: `1px solid ${border}`,
+                      borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`,
+                      verticalAlign: 'top', transition: 'background 0.12s',
+                    }}>
+                      {u.devices.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {u.devices.map((d, di) => (
+                            <div key={`${d.label}-${d.lastLoginAt}-${di}`} style={{ lineHeight: 1.25 }}>
+                              <div style={{ color: '#0ea5e9', fontSize: 11, fontWeight: 600, whiteSpace: 'normal' }}>{d.label}</div>
+                              <div style={{ color: cellMuted, fontSize: 10 }}>{d.lastLoginLabel}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ color: cellMuted, fontSize: 11 }}>—</span>
+                      )}
+                    </td>
                     <td style={{
                       padding: '4px 8px', background: rowBg, borderBottom: `1px solid ${border}`,
                       borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`,

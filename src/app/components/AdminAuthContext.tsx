@@ -16,6 +16,8 @@ export interface Company {
   clients: number;
   /** kg_dona / kg → Tarozi; dona → tayyorlanmagan buyurtmalar */
   productType: ProductType;
+  /** Ombor sahifasida kiritiladigan sklad nomi */
+  warehouseName?: string | null;
 }
 
 export function companyShowsTarozi(productType?: ProductType | string | null): boolean {

@@ -37,6 +37,16 @@ export class BootSeedService implements OnModuleInit {
       }
     }
 
+    // companies.warehouseName (sklad nomi) — seed bo'lmasa ham
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE companies
+        ADD COLUMN IF NOT EXISTS "warehouseName" varchar NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`companies.warehouseName migrate: ${(err as Error).message}`);
+    }
+
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
     // Eski postgres enum -> varchar (on_way / packing uchun)

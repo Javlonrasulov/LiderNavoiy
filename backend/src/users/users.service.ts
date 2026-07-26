@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
+import { UserLoginDevice } from '../auth/entities/user-login-device.entity';
 import { AuthService } from '../auth/auth.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { In } from 'typeorm';
@@ -31,6 +32,8 @@ export class UsersService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
+    @InjectRepository(UserLoginDevice)
+    private readonly deviceRepo: Repository<UserLoginDevice>,
     private readonly authService: AuthService,
     private readonly redis: RedisService,
   ) {}
@@ -149,7 +152,19 @@ export class UsersService {
       order: { createdAt: 'DESC' },
     });
     const onlineIds = await this.getOnlineDistributorIds();
-    return users.map((u) => this.toDto(u, onlineIds));
+    const devices = users.length
+      ? await this.deviceRepo.find({
+          where: { userId: In(users.map((u) => u.id)) },
+          order: { lastLoginAt: 'DESC' },
+        })
+      : [];
+    const byUser = new Map<string, UserLoginDevice[]>();
+    for (const d of devices) {
+      const list = byUser.get(d.userId) ?? [];
+      list.push(d);
+      byUser.set(d.userId, list);
+    }
+    return users.map((u) => this.toDto(u, onlineIds, byUser.get(u.id) ?? []));
   }
 
   async findByUsername(username: string): Promise<AppUserResponseDto | null> {
@@ -294,7 +309,11 @@ export class UsersService {
     return user;
   }
 
-  private toDto(user: User, onlineIds: Set<string> = new Set()): AppUserResponseDto {
+  private toDto(
+    user: User,
+    onlineIds: Set<string> = new Set(),
+    devices: UserLoginDevice[] = [],
+  ): AppUserResponseDto {
     const profile = user.distributorProfile;
     const distributorId = profile?.id;
     const isOnline = !!(
@@ -308,6 +327,26 @@ export class UsersService {
       }
     }
 
+    let deviceRows = devices.map((d) => ({
+      brand: d.brand,
+      model: d.model,
+      os: d.os,
+      lastLoginAt: d.lastLoginAt.toISOString(),
+    }));
+
+    // Legacy single-device fields (before multi-device table)
+    if (
+      deviceRows.length === 0 &&
+      (user.lastDeviceBrand || user.lastDeviceModel || user.lastDeviceOs)
+    ) {
+      deviceRows = [{
+        brand: user.lastDeviceBrand,
+        model: user.lastDeviceModel,
+        os: user.lastDeviceOs,
+        lastLoginAt: (user.lastLoginAt ?? new Date()).toISOString(),
+      }];
+    }
+
     return {
       id: user.id,
       username: user.username,
@@ -318,6 +357,10 @@ export class UsersService {
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,
       isOnline,
+      lastDeviceBrand: user.lastDeviceBrand ?? null,
+      lastDeviceModel: user.lastDeviceModel ?? null,
+      lastDeviceOs: user.lastDeviceOs ?? null,
+      devices: deviceRows,
     };
   }
 }

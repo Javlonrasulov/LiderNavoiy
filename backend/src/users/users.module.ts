@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { User } from '../auth/entities/user.entity';
+import { UserLoginDevice } from '../auth/entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, DistributorProfile]),
+    TypeOrmModule.forFeature([User, UserLoginDevice, DistributorProfile]),
     AuthModule,
   ],
   controllers: [UsersController],

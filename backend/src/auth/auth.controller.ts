@@ -21,7 +21,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
   refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
-    return this.authService.refresh(dto.refreshToken);
+    return this.authService.refresh(dto.refreshToken, dto.device);
   }
 
   @Post('logout')

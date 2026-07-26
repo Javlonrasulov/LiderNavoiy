@@ -30,6 +30,10 @@ export class Company {
   @Column({ type: 'varchar', length: 16, default: 'kg_dona' })
   productType: string;
 
+  /** Ombor / sklad nomi — Tovar yuklash formasida ishlatiladi */
+  @Column({ type: 'varchar', nullable: true })
+  warehouseName: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 

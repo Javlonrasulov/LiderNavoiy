@@ -35,6 +35,12 @@ export function removeStoredAppPassword(username: string) {
 import type { AppUserRecord, Distributor } from '../api/client';
 import type { SotrudnikRow } from '../data/adminData';
 
+export interface AppUserDeviceRow {
+  label: string;
+  lastLoginAt: string;
+  lastLoginLabel: string;
+}
+
 export interface AppUserListRow {
   id: number;
   code: string;
@@ -52,6 +58,72 @@ export interface AppUserListRow {
   consig: boolean;
   gps: boolean;
   isOnline?: boolean;
+  device?: string;
+  devices: AppUserDeviceRow[];
+}
+
+function formatDeviceLabel(brand?: string | null, model?: string | null, os?: string | null): string {
+  const b = (brand || '').trim();
+  const m = (model || '').trim();
+  const o = (os || '').trim();
+
+  let phone = '';
+  if (b && m) {
+    phone = m.toLowerCase().startsWith(b.toLowerCase()) ? m : `${b} ${m}`;
+  } else {
+    phone = m || b;
+  }
+  if (phone && o) return `${phone} · ${o}`;
+  return phone || o || '';
+}
+
+export function formatRelativeTime(iso: string, t?: Record<string, string>): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(diffMs)) return '';
+  if (diffMs < 0) return t?.userLastActJustNow || 'Hozirgina';
+
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return t?.userLastActJustNow || 'Hozirgina';
+  if (mins < 60) return `${mins} ${t?.userLastActMinAgo || 'daqiqa oldin'}`;
+
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ${t?.userLastActHourAgo || 'soat oldin'}`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${t?.userLastActDayAgo || 'kun oldin'}`;
+
+  return new Date(iso).toLocaleString();
+}
+
+export function formatLastDevice(
+  app: Pick<AppUserRecord, 'lastDeviceBrand' | 'lastDeviceModel' | 'lastDeviceOs' | 'devices' | 'lastLoginAt'>,
+  t?: Record<string, string>,
+): { summary: string; devices: AppUserDeviceRow[] } {
+  const fromApi = (app.devices ?? [])
+    .map(d => ({
+      label: formatDeviceLabel(d.brand, d.model, d.os),
+      lastLoginAt: d.lastLoginAt,
+      lastLoginLabel: formatRelativeTime(d.lastLoginAt, t),
+    }))
+    .filter(d => d.label);
+
+  if (fromApi.length > 0) {
+    return {
+      summary: fromApi.map(d => `${d.label} (${d.lastLoginLabel})`).join(' · '),
+      devices: fromApi,
+    };
+  }
+
+  const legacy = formatDeviceLabel(app.lastDeviceBrand, app.lastDeviceModel, app.lastDeviceOs);
+  if (!legacy) return { summary: '', devices: [] };
+
+  const at = app.lastLoginAt || new Date().toISOString();
+  const row = {
+    label: legacy,
+    lastLoginAt: at,
+    lastLoginLabel: formatRelativeTime(at, t),
+  };
+  return { summary: `${row.label} (${row.lastLoginLabel})`, devices: [row] };
 }
 
 export function isDeliveryHint(text?: string | null): boolean {
@@ -129,6 +201,7 @@ export function appUserToRow(
   localId: number,
   t?: Record<string, string>,
 ): AppUserListRow {
+  const deviceInfo = formatLastDevice(app, t);
   return {
     id: localId,
     code: String(localId).padStart(4, '0'),
@@ -146,6 +219,8 @@ export function appUserToRow(
     consig: false,
     gps: true,
     isOnline: app.isOnline,
+    device: deviceInfo.summary,
+    devices: deviceInfo.devices,
   };
 }
 

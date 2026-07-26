@@ -2,7 +2,23 @@ package uz.distributor.crm.data.remote.dto
 
 import com.google.gson.annotations.JsonAdapter
 
-data class LoginRequest(val username: String, val password: String)
+data class LoginDeviceDto(
+    val id: String? = null,
+    val brand: String? = null,
+    val model: String? = null,
+    val os: String? = null,
+)
+
+data class LoginRequest(
+    val username: String,
+    val password: String,
+    val device: LoginDeviceDto? = null,
+)
+
+data class RefreshTokenRequest(
+    val refreshToken: String,
+    val device: LoginDeviceDto? = null,
+)
 
 data class ChangePasswordRequest(
     val currentPassword: String,

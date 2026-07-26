@@ -17,6 +17,7 @@ export interface CompanyListItem {
   color: string | null;
   description: string | null;
   productType: string;
+  warehouseName: string | null;
   agents: number;
   clients: number;
 }
@@ -92,6 +93,7 @@ export class CompaniesService implements OnModuleInit {
           color: company.color,
           description: company.description,
           productType: company.productType || 'kg_dona',
+          warehouseName: company.warehouseName ?? null,
           agents,
           clients,
         };
@@ -127,6 +129,7 @@ export class CompaniesService implements OnModuleInit {
       color: saved.color,
       description: saved.description,
       productType: saved.productType || 'kg_dona',
+      warehouseName: saved.warehouseName ?? null,
       agents: 0,
       clients: 0,
     };
@@ -142,6 +145,7 @@ export class CompaniesService implements OnModuleInit {
     if (dto.color !== undefined) company.color = dto.color;
     if (dto.description !== undefined) company.description = dto.description.trim() || null;
     if (dto.productType !== undefined) company.productType = dto.productType;
+    if (dto.warehouseName !== undefined) company.warehouseName = dto.warehouseName.trim() || null;
 
     await this.companyRepo.save(company);
     const found = (await this.findAll()).find((c) => c.id === id);

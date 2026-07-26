@@ -38,6 +38,18 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
+  /** Oxirgi kirgan telefon: Samsung, Xiaomi, ... */
+  @Column({ type: 'varchar', nullable: true })
+  lastDeviceBrand: string | null;
+
+  /** Oxirgi kirgan telefon modeli: Galaxy A54, Redmi Note 12, ... */
+  @Column({ type: 'varchar', nullable: true })
+  lastDeviceModel: string | null;
+
+  /** Android / iOS versiyasi */
+  @Column({ type: 'varchar', nullable: true })
+  lastDeviceOs: string | null;
+
   /** Admin panel lavozimi (Operator, Buxgalter, ...) */
   @Column({ type: 'varchar', nullable: true })
   position: string | null;

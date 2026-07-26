@@ -34,6 +34,13 @@ export interface SystemUserRecord {
   isProtected: boolean;
 }
 
+export interface AppUserDeviceRecord {
+  brand: string | null;
+  model: string | null;
+  os: string | null;
+  lastLoginAt: string;
+}
+
 export interface AppUserRecord {
   id: string;
   username: string;
@@ -44,6 +51,10 @@ export interface AppUserRecord {
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;
+  lastDeviceBrand?: string | null;
+  lastDeviceModel?: string | null;
+  lastDeviceOs?: string | null;
+  devices?: AppUserDeviceRecord[];
 }
 
 export interface Distributor {
@@ -70,6 +81,7 @@ export interface BackendCompany {
   color: string | null;
   description: string | null;
   productType?: 'kg_dona' | 'dona' | 'kg' | null;
+  warehouseName?: string | null;
   agents: number;
   clients: number;
 }
@@ -290,6 +302,7 @@ export const api = {
       color?: string;
       description?: string;
       productType?: 'kg_dona' | 'dona' | 'kg';
+      warehouseName?: string | null;
     },
   ) =>
     request<BackendCompany>(`/companies/${encodeURIComponent(id)}`, {

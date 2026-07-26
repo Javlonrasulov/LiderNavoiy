@@ -5,8 +5,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
+import { UserLoginDevice } from './entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
-import { ChangePasswordDto, LoginDto, AuthResponseDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 
 export interface JwtPayload {
@@ -24,6 +25,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(UserLoginDevice)
+    private readonly deviceRepo: Repository<UserLoginDevice>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
     private readonly jwtService: JwtService,
@@ -42,12 +45,14 @@ export class AuthService {
     }
 
     user.lastLoginAt = new Date();
+    this.applyDeviceInfo(user, dto.device);
     await this.userRepo.save(user);
+    await this.upsertLoginDevice(user.id, dto.device);
 
     return this.buildAuthResponse(user);
   }
 
-  async refresh(refreshToken: string): Promise<AuthResponseDto> {
+  async refresh(refreshToken: string, device?: LoginDeviceDto): Promise<AuthResponseDto> {
     try {
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
         secret: this.config.get('JWT_REFRESH_SECRET'),
@@ -58,7 +63,9 @@ export class AuthService {
       });
       if (!user) throw new UnauthorizedException();
       user.lastLoginAt = new Date();
+      this.applyDeviceInfo(user, device);
       await this.userRepo.save(user);
+      await this.upsertLoginDevice(user.id, device);
       return this.buildAuthResponse(user);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
@@ -83,6 +90,51 @@ export class AuthService {
     }
     user.passwordHash = await this.hashPassword(dto.newPassword);
     await this.userRepo.save(user);
+  }
+
+  private deviceKeyOf(device?: LoginDeviceDto): string | null {
+    if (!device) return null;
+    const id = device.id?.trim();
+    if (id) return id.slice(0, 160);
+    const brand = (device.brand || '').trim().toLowerCase();
+    const model = (device.model || '').trim().toLowerCase();
+    const os = (device.os || '').trim().toLowerCase();
+    const key = [brand, model, os].filter(Boolean).join('|');
+    return key ? key.slice(0, 160) : null;
+  }
+
+  private applyDeviceInfo(user: User, device?: LoginDeviceDto) {
+    if (!device) return;
+    const brand = device.brand?.trim();
+    const model = device.model?.trim();
+    const os = device.os?.trim();
+    if (brand) user.lastDeviceBrand = brand.slice(0, 80);
+    if (model) user.lastDeviceModel = model.slice(0, 120);
+    if (os) user.lastDeviceOs = os.slice(0, 60);
+  }
+
+  private async upsertLoginDevice(userId: string, device?: LoginDeviceDto) {
+    const deviceKey = this.deviceKeyOf(device);
+    if (!deviceKey || !device) return;
+
+    const now = new Date();
+    let row = await this.deviceRepo.findOne({ where: { userId, deviceKey } });
+    if (row) {
+      row.lastLoginAt = now;
+      if (device.brand?.trim()) row.brand = device.brand.trim().slice(0, 80);
+      if (device.model?.trim()) row.model = device.model.trim().slice(0, 120);
+      if (device.os?.trim()) row.os = device.os.trim().slice(0, 60);
+    } else {
+      row = this.deviceRepo.create({
+        userId,
+        deviceKey,
+        brand: device.brand?.trim()?.slice(0, 80) || null,
+        model: device.model?.trim()?.slice(0, 120) || null,
+        os: device.os?.trim()?.slice(0, 60) || null,
+        lastLoginAt: now,
+      });
+    }
+    await this.deviceRepo.save(row);
   }
 
   private async buildAuthResponse(user: User): Promise<AuthResponseDto> {
