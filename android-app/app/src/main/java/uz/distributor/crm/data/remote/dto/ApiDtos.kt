@@ -209,6 +209,10 @@ data class SendToWarehouseRequest(
     val isUrgent: Boolean = false,
 )
 
+data class UpdateOrderItemsRequest(
+    val items: List<OrderItemDto>,
+)
+
 data class CreateVisitRequest(
     val clientId: String,
     val visitedAt: String,

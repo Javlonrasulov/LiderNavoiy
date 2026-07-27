@@ -53,8 +53,12 @@ fun ClientsScreen(
     val tabInactiveBg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
 
     var showDayMenu by remember { mutableStateOf(false) }
-    val dayOptions = (0..6).map { it to AppStrings.dayName(it, lang) }
-    val selectedDayLabel = AppStrings.dayName(state.selectedDay, lang)
+    val dayOptions = (0..6).map { day ->
+        val count = state.dayClientCounts[day] ?: 0
+        day to "${AppStrings.dayName(day, lang)} ($count)"
+    }
+    val selectedDayCount = state.dayClientCounts[state.selectedDay] ?: 0
+    val selectedDayLabel = "${AppStrings.dayName(state.selectedDay, lang)} ($selectedDayCount)"
 
     Box(
         modifier = Modifier

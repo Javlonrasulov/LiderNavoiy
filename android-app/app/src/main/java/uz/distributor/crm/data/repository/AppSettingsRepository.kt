@@ -22,6 +22,7 @@ class AppSettingsRepository @Inject constructor(
     private val darkModeKey = booleanPreferencesKey("dark_mode")
     private val languageKey = stringPreferencesKey("language")
     private val activeClientIdKey = stringPreferencesKey("active_client_id")
+    private val editingClientOrderIdKey = stringPreferencesKey("editing_client_order_id")
 
     val darkMode: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[darkModeKey] ?: false
@@ -46,4 +47,14 @@ class AppSettingsRepository @Inject constructor(
 
     suspend fun getActiveClientId(): String? =
         context.settingsDataStore.data.first()[activeClientIdKey]
+
+    suspend fun setEditingClientOrderId(orderId: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (orderId.isNullOrBlank()) prefs.remove(editingClientOrderIdKey)
+            else prefs[editingClientOrderIdKey] = orderId
+        }
+    }
+
+    suspend fun getEditingClientOrderId(): String? =
+        context.settingsDataStore.data.first()[editingClientOrderIdKey]
 }

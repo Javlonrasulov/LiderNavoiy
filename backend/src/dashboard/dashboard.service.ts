@@ -453,6 +453,8 @@ export class DashboardService {
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
       if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
       if (lat === 0 && lng === 0) return null;
+      // Okean / Null Island / emulator — xaritaga chiqarmaslik
+      if (lat < 37.0 || lat > 45.8 || lng < 55.0 || lng > 73.5) return null;
 
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)

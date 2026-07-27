@@ -43,6 +43,7 @@ data class OrderUiState(
     val isLoadingSent: Boolean = false,
     val isSubmitting: Boolean = false,
     val submitted: Boolean = false,
+    val editingClientOrderId: String? = null,
     val error: String? = null,
 )
 
@@ -62,11 +63,13 @@ class OrderViewModel @Inject constructor(
         viewModelScope.launch {
             val resolvedId = clientId.ifBlank { appSettingsRepository.getActiveClientId().orEmpty() }
             val client = resolvedId.takeIf { it.isNotBlank() }?.let { clientRepository.getClient(it) }
+            val editingOrderId = appSettingsRepository.getEditingClientOrderId()
             _uiState.update {
                 it.copy(
                     clientId = resolvedId,
                     clientCode = client?.code.orEmpty(),
                     clientName = client?.name.orEmpty(),
+                    editingClientOrderId = editingOrderId,
                 )
             }
             reloadCart()
@@ -114,23 +117,37 @@ class OrderViewModel @Inject constructor(
     }
 
     fun submit(onSuccess: () -> Unit = {}) {
-        val clientId = _uiState.value.clientId
+        val state = _uiState.value
+        val clientId = state.clientId
         if (clientId.isBlank()) return
+        val editingOrderId = state.editingClientOrderId
         viewModelScope.launch {
             _uiState.update { it.copy(isSubmitting = true, error = null) }
-            val result = cartRepository.submitOrder(clientId)
+            val result = if (!editingOrderId.isNullOrBlank()) {
+                cartRepository.saveCartToClientOrder(editingOrderId)
+            } else {
+                cartRepository.submitOrder(clientId)
+            }
             result.fold(
                 onSuccess = {
-                    reloadCart()
-                    loadSentOrders()
+                    if (!editingOrderId.isNullOrBlank()) {
+                        appSettingsRepository.setEditingClientOrderId(null)
+                    }
                     _uiState.update {
                         it.copy(
+                            items = emptyList(),
+                            productBrands = emptyMap(),
+                            total = 0.0,
                             isSubmitting = false,
                             submitted = true,
-                            tab = OrderSummaryTab.SENT,
+                            editingClientOrderId = null,
+                            tab = if (editingOrderId.isNullOrBlank()) OrderSummaryTab.SENT else OrderSummaryTab.CURRENT,
                             clientExpanded = true,
                             expandedItems = emptySet(),
                         )
+                    }
+                    if (editingOrderId.isNullOrBlank()) {
+                        loadSentOrders()
                     }
                     onSuccess()
                 },
@@ -140,6 +157,24 @@ class OrderViewModel @Inject constructor(
                     }
                 },
             )
+        }
+    }
+
+    /** Tahrirlashdan chiqish (saqlamasdan) */
+    fun cancelEditIfNeeded() {
+        viewModelScope.launch {
+            if (!_uiState.value.editingClientOrderId.isNullOrBlank()) {
+                appSettingsRepository.setEditingClientOrderId(null)
+                cartRepository.clearCart()
+                _uiState.update {
+                    it.copy(
+                        editingClientOrderId = null,
+                        items = emptyList(),
+                        productBrands = emptyMap(),
+                        total = 0.0,
+                    )
+                }
+            }
         }
     }
 

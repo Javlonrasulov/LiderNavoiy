@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
@@ -18,6 +19,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
@@ -31,16 +36,33 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun ClientOrdersScreen(
     onBack: () -> Unit,
+    onEditOrder: (clientId: String) -> Unit = {},
     viewModel: ClientOrdersViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val state by viewModel.uiState.collectAsState()
+    val editNav by viewModel.editNav.collectAsState()
     val formatter = remember { DecimalFormat("#,###") }
     val bg = if (isDark) Color(0xFF0E1621) else Color(0xFFF3F4F6)
     val cardBg = if (isDark) Color(0xFF17212B) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.load()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(editNav) {
+        val nav = editNav ?: return@LaunchedEffect
+        onEditOrder(nav.first)
+        viewModel.consumeEditNav()
+    }
 
     LaunchedEffect(state.successMessage) {
         if (state.successMessage != null) {
@@ -119,9 +141,10 @@ fun ClientOrdersScreen(
                                 textPrimary = textPrimary,
                                 textMuted = textMuted,
                                 isDark = isDark,
-                                sending = state.sendingId == order.id,
+                                sending = state.sendingId == order.id || state.editingId == order.id,
                                 onSend = { urgent -> viewModel.sendToWarehouse(order.id, urgent) },
                                 onReject = { viewModel.rejectOrder(order.id) },
+                                onEdit = { viewModel.beginEdit(order.id) },
                                 lang = lang,
                             )
                         }
@@ -174,6 +197,7 @@ private fun ClientOrderCard(
     sending: Boolean,
     onSend: (isUrgent: Boolean) -> Unit,
     onReject: () -> Unit,
+    onEdit: () -> Unit,
     lang: uz.distributor.crm.localization.AppLanguage,
 ) {
     var isUrgent by remember(order.id) { mutableStateOf(false) }
@@ -308,6 +332,27 @@ private fun ClientOrderCard(
             }
 
             Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onEdit,
+                enabled = !sending,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = Color(0xFF6366F1),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    AppStrings.editClientOrder(lang),
+                    fontSize = 13.sp,
+                    color = Color(0xFF6366F1),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -3,6 +3,7 @@ import { Wifi, WifiOff, Maximize2 } from 'lucide-react';
 import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 import type { EmployeeMarker } from './EmployeeMapModal';
+import { isInServiceArea } from '../utils/gpsOnline';
 
 interface Props {
   employees: EmployeeMarker[];
@@ -15,6 +16,11 @@ interface Props {
 }
 
 const NAVOIY: [number, number] = [40.0843, 65.3791];
+
+function safeCenter(coord?: [number, number] | null): [number, number] {
+  if (coord && isInServiceArea(coord[0], coord[1])) return coord;
+  return NAVOIY;
+}
 
 function makeMarkerIcon(role: 'agent' | 'delivery', online: boolean) {
   const bg = role === 'agent'
@@ -54,21 +60,23 @@ export function InlineEmployeeMap({
   useEffect(() => {
     if (!divRef.current || mapRef.current) return;
 
-    const safeLat = isFinite(centerCoord[0]) ? centerCoord[0] : NAVOIY[0];
-    const safeLng = isFinite(centerCoord[1]) ? centerCoord[1] : NAVOIY[1];
+    const [safeLat, safeLng] = safeCenter(centerCoord);
 
     const map = L.map(divRef.current, {
       center: [safeLat, safeLng],
-      zoom: initialZoom,
+      zoom: initialZoom || 13,
       zoomControl: false,
       attributionControl: false,
       scrollWheelZoom: false,
       zoomAnimation: false,
+      maxBounds: [[36.5, 54.5], [46.2, 74.0]],
+      maxBoundsViscosity: 0.8,
     });
     switchTileLayer(map, tileRef, activeLayer, dark);
     mapRef.current = map;
 
     setTimeout(() => map.invalidateSize(true), 100);
+    setTimeout(() => map.invalidateSize(true), 400);
 
     return () => {
       map.remove();
@@ -86,15 +94,18 @@ export function InlineEmployeeMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (!isFinite(centerCoord[0]) || !isFinite(centerCoord[1])) return;
-    map.setView(centerCoord, initialZoom, { animate: false });
+    const center = safeCenter(centerCoord);
+    const zoom = initialZoom && initialZoom >= 5 && initialZoom <= 18 ? initialZoom : 13;
+    map.setView(center, zoom, { animate: false });
   }, [centerCoord[0], centerCoord[1], initialZoom]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const visible = employees.filter(e => !onlineOnly || e.online);
+    const visible = employees.filter(e =>
+      isInServiceArea(e.lat, e.lng) && (!onlineOnly || e.online),
+    );
     const nextIds = new Set(visible.map(e => e.distributorId || String(e.id)));
 
     markersRef.current.forEach((marker, key) => {
@@ -133,10 +144,23 @@ export function InlineEmployeeMap({
       marker.addTo(map);
       markersRef.current.set(key, marker);
     });
+
+    // Markerlar bo'lsa — ularni ko'rsatish (okeanga tushmaslik)
+    if (visible.length >= 1) {
+      try {
+        const group = L.featureGroup([...markersRef.current.values()]);
+        const bounds = group.getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds.pad(0.35), { animate: false, maxZoom: 14 });
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }, [employees, onlineOnly, t]);
 
-  const online = employees.filter(e => e.online).length;
-  const total  = employees.length;
+  const online = employees.filter(e => e.online && isInServiceArea(e.lat, e.lng)).length;
+  const total  = employees.filter(e => isInServiceArea(e.lat, e.lng)).length;
   const sub    = dark ? 'text-gray-400' : 'text-gray-500';
   const pillActive   = 'bg-indigo-600 text-white';
   const pillInactive = dark ? 'bg-gray-700 text-gray-300 hover:text-white' : 'bg-gray-100 text-gray-500 hover:text-gray-700';

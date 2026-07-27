@@ -182,7 +182,12 @@ fun AppNavHost(
             )
         }
         composable("client_orders") {
-            ClientOrdersScreen(onBack = { navController.popBackStack() })
+            ClientOrdersScreen(
+                onBack = { navController.popBackStack() },
+                onEditOrder = { clientId ->
+                    navController.navigate("order/$clientId")
+                },
+            )
         }
         composable("visits") {
             VisitsListScreen(onBack = { navController.popBackStack() })
@@ -260,7 +265,12 @@ fun AppNavHost(
             OrderSummaryScreen(
                 clientId = orderClientId,
                 onBack = { navController.popBackStack() },
-                onDone = { navController.navigate("main") { popUpTo("main") { inclusive = true } } },
+                onDone = {
+                    // Klient buyurtmasi tahriri saqlanganda — ro'yxatga qaytish
+                    if (!navController.popBackStack("client_orders", inclusive = false)) {
+                        navController.navigate("main") { popUpTo("main") { inclusive = true } }
+                    }
+                },
                 onEditClient = { id ->
                     navController.navigate("visit/${id.ifBlank { orderClientId }}")
                 },

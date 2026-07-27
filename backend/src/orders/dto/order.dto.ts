@@ -77,3 +77,11 @@ export class SendToWarehouseDto {
   @IsBoolean()
   isUrgent?: boolean;
 }
+
+export class UpdateOrderItemsDto {
+  @ApiProperty({ type: [OrderItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
+}

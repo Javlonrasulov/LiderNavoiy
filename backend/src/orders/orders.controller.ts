@@ -2,7 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query } 
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto } from './dto/order.dto';
+import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto, UpdateOrderItemsDto } from './dto/order.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole, OrderStatus } from '../common/enums';
@@ -74,6 +74,20 @@ export class OrdersController {
   @ApiOperation({ summary: 'Get order by ID' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
+  }
+
+  @Patch(':id/items')
+  @ApiOperation({ summary: 'Agent updates pending client order items (qty / add / remove)' })
+  updateClientOrderItems(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderItemsDto,
+  ) {
+    return this.service.updateClientOrderItems(
+      id,
+      req.user.distributorProfile!.id,
+      dto.items,
+    );
   }
 
   @Patch(':id/send-to-warehouse')

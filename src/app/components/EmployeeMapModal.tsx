@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { X, MapPin, Wifi, WifiOff, Maximize2, Minimize2, Search } from 'lucide-react';
 import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
+import { isInServiceArea } from '../utils/gpsOnline';
 
 export interface EmployeeMarker {
   id: number;
@@ -81,14 +82,20 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
   useEffect(() => {
     if (!open || !divRef.current || mapRef.current) return;
 
-    const safeLat = centerCoord && isFinite(centerCoord[0]) ? centerCoord[0] : NAVOIY[0];
-    const safeLng = centerCoord && isFinite(centerCoord[1]) ? centerCoord[1] : NAVOIY[1];
+    const safeLat = centerCoord && isInServiceArea(centerCoord[0], centerCoord[1])
+      ? centerCoord[0]
+      : NAVOIY[0];
+    const safeLng = centerCoord && isInServiceArea(centerCoord[0], centerCoord[1])
+      ? centerCoord[1]
+      : NAVOIY[1];
 
     const map = L.map(divRef.current, {
       center: [safeLat, safeLng],
       zoom: initialZoom || DEFAULT_ZOOM,
       zoomControl: false,
       attributionControl: false,
+      maxBounds: [[36.5, 54.5], [46.2, 74.0]],
+      maxBoundsViscosity: 0.8,
     });
     switchTileLayer(map, tileRef, activeLayer, dark);
     mapRef.current = map;
@@ -113,7 +120,10 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !open || !centerCoord) return;
-    if (!isFinite(centerCoord[0]) || !isFinite(centerCoord[1])) return;
+    if (!isInServiceArea(centerCoord[0], centerCoord[1])) {
+      map.flyTo(NAVOIY, initialZoom || DEFAULT_ZOOM, { duration: 0.9 });
+      return;
+    }
     setSearchQuery('');
     setHighlighted(null);
     map.flyTo(centerCoord, initialZoom || DEFAULT_ZOOM, { duration: 0.9 });
@@ -129,6 +139,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     if (!map || !open) return;
 
     const filtered = employees.filter(e => {
+      if (!isInServiceArea(e.lat, e.lng)) return false;
       if (filter !== 'all' && e.role !== filter) return false;
       if (onlineOnly && !e.online) return false;
       return true;

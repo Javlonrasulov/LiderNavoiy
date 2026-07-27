@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
-import { CreateOrderDto, UpdateOrderDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
 import { OrderStatus, OrderSource } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
@@ -10,6 +10,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
 import { VisitsService } from '../visits/visits.service';
+import { OrderItem } from './entities/order.entity';
 
 @Injectable()
 export class OrdersService {
@@ -194,6 +195,50 @@ export class OrdersService {
         status: OrderStatus.PENDING,
       },
     });
+  }
+
+  /** Agent: pending klient buyurtmasi mahsulotlarini o'zgartirish (miqdor / qo'shish / o'chirish) */
+  async updateClientOrderItems(
+    orderId: string,
+    distributorId: string,
+    items: OrderItemDto[],
+  ) {
+    const order = await this.repo.findOne({ where: { id: orderId } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.distributorId !== distributorId) {
+      throw new ForbiddenException('Not your order');
+    }
+    if (order.source !== OrderSource.CLIENT) {
+      throw new BadRequestException('Only client orders can be edited this way');
+    }
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException('Order is not pending');
+    }
+    if (!items?.length) {
+      throw new BadRequestException('Order must have at least one item');
+    }
+
+    const normalized: OrderItem[] = items.map((it) => ({
+      productId: it.productId,
+      productCode: it.productCode,
+      productName: it.productName,
+      quantity: Number(it.quantity),
+      price: Number(it.price),
+      unit: it.unit,
+    }));
+
+    for (const it of normalized) {
+      if (!it.productId || !(it.quantity > 0)) {
+        throw new BadRequestException('Invalid order item');
+      }
+    }
+
+    order.items = normalized;
+    order.totalAmount = normalized.reduce(
+      (sum, it) => sum + Number(it.price) * Number(it.quantity),
+      0,
+    );
+    return this.repo.save(order);
   }
 
   /** Agent: klient buyurtmasini omborga (confirmed) yuboradi — tashrif sifatida ham qayd etiladi */

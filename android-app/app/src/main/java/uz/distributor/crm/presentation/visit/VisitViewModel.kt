@@ -99,9 +99,30 @@ class VisitViewModel @Inject constructor(
     fun resolveProductImageUrl(path: String?): String = productRepository.resolveImageUrl(path)
 
     fun init(clientId: String) {
-        _uiState.update { it.copy(clientId = clientId) }
-        viewModelScope.launch { appSettingsRepository.setActiveClientId(clientId) }
-        load()
+        viewModelScope.launch {
+            val previousClient = appSettingsRepository.getActiveClientId()
+            // Savatcha bitta klientga tegishli — boshqa klientga o'tilganda tozalanadi
+            val switchedClient = previousClient != null &&
+                previousClient.isNotBlank() &&
+                previousClient != clientId
+            if (switchedClient) {
+                cartRepository.clearCart()
+            }
+            _uiState.update {
+                it.copy(
+                    clientId = clientId,
+                    cart = if (switchedClient) emptyList() else it.cart,
+                    cartTotal = if (switchedClient) 0.0 else it.cartTotal,
+                )
+            }
+            appSettingsRepository.setActiveClientId(clientId)
+            load()
+        }
+    }
+
+    /** Buyurtma yuborilgandan keyin yoki ekranga qaytganda savatchani DB dan yangilash */
+    fun reloadCart() {
+        viewModelScope.launch { refreshCart() }
     }
 
     fun openCategory(cat: String) {

@@ -206,6 +206,22 @@ export class GpsService {
   }
 
   private async updateLiveLocation(distributorId: string, dto: LocationPointDto) {
+    // Null Island / emulator / okean GPS ni DB ga yozmaslik
+    if (
+      !Number.isFinite(dto.latitude) ||
+      !Number.isFinite(dto.longitude) ||
+      (Math.abs(dto.latitude) < 0.05 && Math.abs(dto.longitude) < 0.05) ||
+      dto.latitude < 37.0 ||
+      dto.latitude > 45.8 ||
+      dto.longitude < 55.0 ||
+      dto.longitude > 73.5
+    ) {
+      this.logger.warn(
+        `Rejected out-of-area GPS for ${distributorId}: ${dto.latitude},${dto.longitude}`,
+      );
+      return;
+    }
+
     const recordedAt = dto.recordedAt ? new Date(dto.recordedAt) : new Date();
     await this.distributorRepo.update(distributorId, {
       lastLatitude: dto.latitude,

@@ -20,6 +20,8 @@ data class ClientsUiState(
     val error: String? = null,
     val selectedDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1,
     val activeTab: ClientsListTab = ClientsListTab.SCHEDULE,
+    /** 0=Yakshanba … 6=Shanba — kun bo‘yicha klientlar soni */
+    val dayClientCounts: Map<Int, Int> = emptyMap(),
 )
 
 @HiltViewModel
@@ -80,7 +82,11 @@ class ClientsViewModel @Inject constructor(
 
     private fun applyFilters(source: List<Client>) {
         val state = _uiState.value
-        if (state.searchQuery.length >= 2 && state.activeTab == ClientsListTab.SEARCH) return
+        val dayCounts = countClientsByDay(source)
+        if (state.searchQuery.length >= 2 && state.activeTab == ClientsListTab.SEARCH) {
+            _uiState.update { it.copy(dayClientCounts = dayCounts) }
+            return
+        }
 
         var list = source
         when (state.activeTab) {
@@ -88,19 +94,30 @@ class ClientsViewModel @Inject constructor(
             ClientsListTab.SEARCH -> if (state.searchQuery.isBlank()) list = emptyList()
             ClientsListTab.SCHEDULE -> {
                 // selectedDay: 0=Yakshanba ... 6=Shanba (Calendar.DAY_OF_WEEK - 1)
-                val dayKey = when (state.selectedDay) {
-                    0 -> "sunday"
-                    1 -> "monday"
-                    2 -> "tuesday"
-                    3 -> "wednesday"
-                    4 -> "thursday"
-                    5 -> "friday"
-                    else -> "saturday"
-                }
+                val dayKey = dayKeyFor(state.selectedDay)
                 val byDay = list.filter { it.territory?.lowercase()?.trim() == dayKey }
                 if (byDay.isNotEmpty()) list = byDay
             }
         }
-        _uiState.update { it.copy(clients = list) }
+        _uiState.update { it.copy(clients = list, dayClientCounts = dayCounts) }
+    }
+
+    private fun countClientsByDay(source: List<Client>): Map<Int, Int> {
+        val counts = mutableMapOf<Int, Int>()
+        for (day in 0..6) {
+            val key = dayKeyFor(day)
+            counts[day] = source.count { it.territory?.lowercase()?.trim() == key }
+        }
+        return counts
+    }
+
+    private fun dayKeyFor(day: Int): String = when (day) {
+        0 -> "sunday"
+        1 -> "monday"
+        2 -> "tuesday"
+        3 -> "wednesday"
+        4 -> "thursday"
+        5 -> "friday"
+        else -> "saturday"
     }
 }

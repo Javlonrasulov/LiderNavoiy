@@ -10,7 +10,7 @@ import { useAdminAuth, companyShowsTarozi } from '../components/AdminAuthContext
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
 
-import { isGpsLiveOnline } from '../utils/gpsOnline';
+import { isGpsLiveOnline, isInServiceArea } from '../utils/gpsOnline';
 import {
   AP, NAV_ITEMS_BASE, COMPANY_DATA, COMPANY_AGENTS,
   COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES,
@@ -70,8 +70,7 @@ function formatEmpLastSeen(iso?: string | null): string {
 function distributorToMarker(d: Distributor): EmployeeMarker | null {
   const lat = d.lastLatitude != null ? Number(d.lastLatitude) : NaN;
   const lng = d.lastLongitude != null ? Number(d.lastLongitude) : NaN;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat === 0 && lng === 0) return null;
+  if (!isInServiceArea(lat, lng)) return null;
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
   // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (180s)
   const fresh = isGpsLiveOnline(d.lastLocationAt);
@@ -396,6 +395,7 @@ export default function AdminPanel() {
     // 2) Dashboard employeeLocations — qo'shimcha / yangiroq
     if (dashData?.employeeLocations) {
       for (const e of dashData.employeeLocations) {
+        if (!isInServiceArea(e.lat, e.lng)) continue;
         byDist.set(e.distributorId, {
           id: clientIdHash(e.distributorId),
           name: e.name,
@@ -415,9 +415,7 @@ export default function AdminPanel() {
     const now = Date.now();
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
-      const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
-        && !(live.lat === 0 && live.lng === 0)
-        && Math.abs(live.lat) <= 90 && Math.abs(live.lng) <= 180;
+      const hasCoords = isInServiceArea(live.lat, live.lng);
       const liveOnline = live.online && (now - live.at) < 180_000;
 
       if (existing) {
@@ -445,25 +443,28 @@ export default function AdminPanel() {
       }
     }
 
-    return [...byDist.values()].filter(e =>
-      Number.isFinite(e.lat) && Number.isFinite(e.lng) && !(e.lat === 0 && e.lng === 0),
-    );
+    return [...byDist.values()].filter(e => isInServiceArea(e.lat, e.lng));
   })();
 
   const mapCenterInfo = (() => {
-    if (activeMapEmployees.length > 0) {
-      const lat = activeMapEmployees.reduce((s, e) => s + e.lat, 0) / activeMapEmployees.length;
-      const lng = activeMapEmployees.reduce((s, e) => s + e.lng, 0) / activeMapEmployees.length;
-      const org = !isAllView ? companies.find(c => c.id === viewOrg) : null;
-      return {
-        center: [lat, lng] as [number, number],
-        label: org ? org.shortName : `${activeMapEmployees.length} xodim`,
-        zoom: activeMapEmployees.length === 1 ? 14 : 12,
-      };
-    }
-    return !isAllView && ORG_CITIES[viewOrg]
-      ? ORG_CITIES[viewOrg]
-      : { center: UZ_CENTER as [number, number], label: "O'zbekiston", zoom: 6 };
+    const fallback =
+      (!isAllView && ORG_CITIES[viewOrg])
+        ? ORG_CITIES[viewOrg]
+        : { center: UZ_CENTER as [number, number], label: "O'zbekiston", zoom: 6 };
+
+    const inArea = activeMapEmployees.filter(e => isInServiceArea(e.lat, e.lng));
+    if (inArea.length === 0) return fallback;
+
+    const lat = inArea.reduce((s, e) => s + e.lat, 0) / inArea.length;
+    const lng = inArea.reduce((s, e) => s + e.lng, 0) / inArea.length;
+    if (!isInServiceArea(lat, lng)) return fallback;
+
+    const org = !isAllView ? companies.find(c => c.id === viewOrg) : null;
+    return {
+      center: [lat, lng] as [number, number],
+      label: org ? org.shortName : `${inArea.length} xodim`,
+      zoom: inArea.length === 1 ? 14 : 12,
+    };
   })();
 
   // Theme classes

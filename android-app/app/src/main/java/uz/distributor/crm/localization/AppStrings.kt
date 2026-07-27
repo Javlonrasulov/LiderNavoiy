@@ -131,6 +131,31 @@ object AppStrings {
     fun orderTimeToday(lang: AppLanguage) = tr(lang, "Bugun", "Бугун", "Сегодня")
     fun orderTimeYesterday(lang: AppLanguage) = tr(lang, "Kecha", "Кеча", "Вчера")
     fun orderPlacedAt(lang: AppLanguage) = tr(lang, "Buyurtma vaqti", "Буюртма вақти", "Время заказа")
+    fun editClientOrder(lang: AppLanguage) = tr(lang, "Tahrirlash", "Таҳрирлаш", "Изменить")
+    fun editClientOrderTitle(lang: AppLanguage) = tr(
+        lang,
+        "Klient buyurtmasini tahrirlash",
+        "Клиент буюртмасини таҳрирлаш",
+        "Редактирование заказа",
+    )
+    fun saveClientOrderEdits(lang: AppLanguage) = tr(
+        lang,
+        "O'zgarishlarni saqlash",
+        "Ўзгаришларни сақлаш",
+        "Сохранить изменения",
+    )
+    fun addProductsToClientOrder(lang: AppLanguage) = tr(
+        lang,
+        "Mahsulot qo'shish",
+        "Маҳсулот қўшиш",
+        "Добавить товар",
+    )
+    fun orderUpdated(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtma yangilandi",
+        "Буюртма янгиланди",
+        "Заказ обновлён",
+    )
     fun orderSentToWarehouse(lang: AppLanguage) = tr(
         lang,
         "Buyurtma skladga yuborildi",
@@ -159,7 +184,7 @@ object AppStrings {
     fun searchClientHint(lang: AppLanguage) = tr(
         lang,
         "Klient nomi yoki kodi...",
-        "Клиент номи ёки kodi...",
+        "Клиент номи ёки коди...",
         "Имя или код клиента...",
     )
 

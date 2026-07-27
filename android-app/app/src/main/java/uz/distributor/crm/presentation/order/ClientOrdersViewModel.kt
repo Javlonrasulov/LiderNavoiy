@@ -17,6 +17,7 @@ data class ClientOrdersUiState(
     val isLoading: Boolean = true,
     val orders: List<OrderDto> = emptyList(),
     val sendingId: String? = null,
+    val editingId: String? = null,
     val error: String? = null,
     val successMessage: String? = null,
 )
@@ -28,6 +29,10 @@ class ClientOrdersViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ClientOrdersUiState())
     val uiState: StateFlow<ClientOrdersUiState> = _uiState.asStateFlow()
+
+    /** Tahrirlashga o'tish: clientId + orderId */
+    private val _editNav = MutableStateFlow<Pair<String, String>?>(null)
+    val editNav: StateFlow<Pair<String, String>?> = _editNav.asStateFlow()
 
     init {
         load()
@@ -47,6 +52,27 @@ class ClientOrdersViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun beginEdit(orderId: String) {
+        val order = _uiState.value.orders.find { it.id == orderId } ?: return
+        if (_uiState.value.sendingId != null || _uiState.value.editingId != null) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(editingId = orderId, error = null) }
+            try {
+                repository.beginEdit(order)
+                _editNav.value = order.clientId to order.id
+                _uiState.update { it.copy(editingId = null) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(editingId = null, error = ApiErrorMapper.toKey(e))
+                }
+            }
+        }
+    }
+
+    fun consumeEditNav() {
+        _editNav.value = null
     }
 
     fun sendToWarehouse(orderId: String, isUrgent: Boolean = false) {

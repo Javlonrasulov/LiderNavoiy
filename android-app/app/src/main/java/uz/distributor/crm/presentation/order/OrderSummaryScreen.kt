@@ -55,6 +55,7 @@ fun OrderSummaryScreen(
     val stockFmt = remember { DecimalFormat("#,##0.##") }
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val isEditingClientOrder = !state.editingClientOrderId.isNullOrBlank()
 
     LaunchedEffect(clientId) { viewModel.init(clientId) }
 
@@ -72,8 +73,12 @@ fun OrderSummaryScreen(
             isDark = isDark,
             selectedTab = state.tab,
             lang = lang,
-            onBack = onBack,
+            onBack = {
+                viewModel.cancelEditIfNeeded()
+                onBack()
+            },
             onTabSelect = viewModel::selectTab,
+            hideSentTab = isEditingClientOrder,
         )
 
         when (state.tab) {
@@ -90,7 +95,21 @@ fun OrderSummaryScreen(
                 onUpdateQty = viewModel::updateQty,
                 onRemoveItem = viewModel::removeItem,
                 onEditClient = { onEditClient(state.clientId) },
-                onSubmit = { viewModel.submit() },
+                onSubmit = {
+                    viewModel.submit {
+                        if (isEditingClientOrder) onDone()
+                    }
+                },
+                submitLabel = if (isEditingClientOrder) {
+                    AppStrings.saveClientOrderEdits(lang)
+                } else {
+                    AppStrings.sendOrder(lang)
+                },
+                addProductsLabel = if (isEditingClientOrder) {
+                    AppStrings.addProductsToClientOrder(lang)
+                } else {
+                    null
+                },
             )
             OrderSummaryTab.SENT -> SentOrdersContent(
                 orders = state.sentOrders,
@@ -121,6 +140,7 @@ private fun OrderSalesHeader(
     lang: AppLanguage,
     onBack: () -> Unit,
     onTabSelect: (OrderSummaryTab) -> Unit,
+    hideSentTab: Boolean = false,
 ) {
     Box(
         modifier = Modifier
@@ -144,7 +164,7 @@ private fun OrderSalesHeader(
                     size = 40.dp,
                 )
                 Text(
-                    AppStrings.totalSales(lang),
+                    if (hideSentTab) AppStrings.editClientOrderTitle(lang) else AppStrings.totalSales(lang),
                     modifier = Modifier.weight(1f),
                     color = Color.White,
                     fontSize = 18.sp,
@@ -156,24 +176,28 @@ private fun OrderSalesHeader(
 
             Spacer(Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                OrderHeaderTab(
-                    label = AppStrings.currentOrder(lang),
-                    selected = selectedTab == OrderSummaryTab.CURRENT,
-                    onClick = { onTabSelect(OrderSummaryTab.CURRENT) },
-                )
-                OrderHeaderTab(
-                    label = AppStrings.sentOrders(lang),
-                    selected = selectedTab == OrderSummaryTab.SENT,
-                    onClick = { onTabSelect(OrderSummaryTab.SENT) },
-                )
+            if (!hideSentTab) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    OrderHeaderTab(
+                        label = AppStrings.currentOrder(lang),
+                        selected = selectedTab == OrderSummaryTab.CURRENT,
+                        onClick = { onTabSelect(OrderSummaryTab.CURRENT) },
+                    )
+                    OrderHeaderTab(
+                        label = AppStrings.sentOrders(lang),
+                        selected = selectedTab == OrderSummaryTab.SENT,
+                        onClick = { onTabSelect(OrderSummaryTab.SENT) },
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Spacer(Modifier.height(12.dp))
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
@@ -224,6 +248,8 @@ private fun CurrentOrderContent(
     onRemoveItem: (String) -> Unit,
     onEditClient: () -> Unit,
     onSubmit: () -> Unit,
+    submitLabel: String = AppStrings.sendOrder(lang),
+    addProductsLabel: String? = null,
 ) {
     if (state.items.isEmpty()) {
         Box(
@@ -256,6 +282,18 @@ private fun CurrentOrderContent(
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
+                    if (addProductsLabel != null) {
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = onEditClient,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(addProductsLabel)
+                        }
+                    }
                 }
             }
         }
@@ -316,12 +354,26 @@ private fun CurrentOrderContent(
                         lang = lang,
                         isDark = isDark,
                     )
+                    if (addProductsLabel != null) {
+                        OutlinedButton(
+                            onClick = onEditClient,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(addProductsLabel, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                     Button(
                         onClick = onSubmit,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
-                        enabled = !state.isSubmitting && state.clientId.isNotBlank(),
+                        enabled = !state.isSubmitting && state.clientId.isNotBlank() && state.items.isNotEmpty(),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                     ) {
@@ -333,13 +385,13 @@ private fun CurrentOrderContent(
                             )
                         } else {
                             Icon(
-                                Icons.AutoMirrored.Filled.Send,
+                                if (addProductsLabel != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp),
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                AppStrings.sendOrder(lang),
+                                submitLabel,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )

@@ -51,12 +51,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -84,8 +86,19 @@ fun VisitScreen(
     val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
     val cartBarBg = if (isDark) SherinColors.CardDark else Color.White
     val snackbarHostState = remember { SnackbarHostState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(clientId) { viewModel.init(clientId) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.reloadCart()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(state.detailCartJustSaved) {
         if (state.detailCartJustSaved) {
@@ -101,7 +114,8 @@ fun VisitScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().padding(bottom = bottomNavHeight())) {
+    // Pastki menyu AppNavHost Column ichida joy ajratadi — bu yerda qo'shimcha padding kerak emas.
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
         when (state.viewLevel) {
             VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
@@ -358,7 +372,7 @@ fun VisitScreen(
         hostState = snackbarHostState,
         modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(bottom = bottomNavHeight() + 8.dp),
+            .padding(bottom = 8.dp),
     )
 
     if (state.showCartSheet) {

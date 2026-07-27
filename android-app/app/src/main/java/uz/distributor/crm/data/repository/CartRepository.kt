@@ -12,6 +12,7 @@ import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.CreateOrderRequest
 import uz.distributor.crm.data.remote.dto.CreateVisitRequest
 import uz.distributor.crm.data.remote.dto.OrderItemDto
+import uz.distributor.crm.data.remote.dto.UpdateOrderItemsRequest
 import uz.distributor.crm.domain.model.CartItem
 import java.text.SimpleDateFormat
 import java.util.*
@@ -68,9 +69,47 @@ class CartRepository @Inject constructor(
 
     suspend fun clearCart() = db.cartDao().clear()
 
+    /** Klient buyurtmasini tahrirlash uchun savatchani seed qiladi */
+    suspend fun seedCartFromOrderItems(items: List<OrderItemDto>) {
+        db.cartDao().clear()
+        for (it in items) {
+            if (it.quantity <= 0) continue
+            db.cartDao().insert(
+                CartItemEntity(
+                    productId = it.productId,
+                    productCode = it.productCode,
+                    productName = it.productName,
+                    price = it.price,
+                    quantity = it.quantity,
+                    unit = it.unit,
+                    category = null,
+                ),
+            )
+        }
+    }
+
     suspend fun getTotal(): Double = db.cartDao().getAll().sumOf { it.price * it.quantity }
 
+    /** Pending klient buyurtmasini savatcha mazmuni bilan yangilaydi (yangi order yaratmaydi) */
+    suspend fun saveCartToClientOrder(orderId: String): Result<Unit> {
+        val items = db.cartDao().getAll()
+        if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
+        val orderItems = items.map {
+            OrderItemDto(it.productId, it.productCode, it.productName, it.quantity, it.price, it.unit)
+        }
+        return try {
+            api.updateClientOrderItems(orderId, UpdateOrderItemsRequest(orderItems))
+            db.cartDao().clear()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun submitOrder(clientId: String, visitId: String? = null): Result<Unit> {
+        if (clientId.isBlank()) {
+            return Result.failure(Exception("Klient tanlanmagan"))
+        }
         val items = db.cartDao().getAll()
         if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
 
@@ -82,11 +121,20 @@ class CartRepository @Inject constructor(
 
         return try {
             api.createOrder(CreateOrderRequest(clientId, visitId, orderItems))
-            api.createVisit(CreateVisitRequest(
-                clientId = clientId,
-                visitedAt = isoFormat.format(Date()),
-                orderTotal = total,
-            ))
+            try {
+                api.createVisit(CreateVisitRequest(
+                    clientId = clientId,
+                    visitedAt = isoFormat.format(Date()),
+                    orderTotal = total,
+                ))
+            } catch (_: Exception) {
+                // Buyurtma ketgan — vizit yozuvi keyin sync qilinadi
+                db.pendingVisitDao().insert(PendingVisitEntity(
+                    offlineId = offlineId, clientId = clientId,
+                    visitedAt = System.currentTimeMillis(), checkInLat = null, checkInLng = null,
+                    orderTotal = total,
+                ))
+            }
             db.cartDao().clear()
             Result.success(Unit)
         } catch (e: Exception) {

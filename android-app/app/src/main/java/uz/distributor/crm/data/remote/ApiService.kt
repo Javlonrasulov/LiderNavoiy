@@ -86,6 +86,12 @@ interface ApiService {
         @Body body: SendToWarehouseRequest,
     ): OrderDto
 
+    @PATCH("orders/{id}/items")
+    suspend fun updateClientOrderItems(
+        @Path("id") id: String,
+        @Body body: UpdateOrderItemsRequest,
+    ): OrderDto
+
     @PATCH("orders/{id}/reject")
     suspend fun rejectClientOrder(@Path("id") id: String): OrderDto
 
