@@ -15,6 +15,7 @@ import uz.distributor.crm.R
 import uz.distributor.crm.presentation.MainActivity
 
 const val EXTRA_OPEN_CONVERSATION_ID = "open_conversation_id"
+const val EXTRA_OPEN_SCREEN = "open_screen"
 
 object NotificationHelper {
     /** Eski kanal — umumiy push */
@@ -25,6 +26,9 @@ object NotificationHelper {
      */
     const val MESSAGES_CHANNEL_ID = "crm_chat_alert_v2"
     const val MESSAGES_CHANNEL_NAME = "Chat xabarlari"
+    /** Reja tayinlash — majburiy heads-up */
+    const val PLAN_CHANNEL_ID = "crm_plan_channel"
+    const val PLAN_CHANNEL_NAME = "Reja bildirishnomalari"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -64,6 +68,21 @@ object NotificationHelper {
             setShowBadge(true)
         }
         manager.createNotificationChannel(messagesChannel)
+
+        val planChannel = NotificationChannel(
+            PLAN_CHANNEL_ID,
+            PLAN_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Yangi reja tayinlanganda — ovoz va tepadan popup"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 250, 100, 250)
+            enableLights(true)
+            setSound(messageSound, audioAttrs)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
+        }
+        manager.createNotificationChannel(planChannel)
     }
 
     fun showMessageNotification(
@@ -89,10 +108,15 @@ object NotificationHelper {
         notificationId: Int,
         isMessage: Boolean = false,
         conversationId: String? = null,
+        openScreen: String? = null,
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             conversationId?.let { putExtra(EXTRA_OPEN_CONVERSATION_ID, it) }
+            openScreen?.let {
+                putExtra(EXTRA_OPEN_SCREEN, it)
+                putExtra("screen", it)
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -101,7 +125,12 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val channelId = if (isMessage) MESSAGES_CHANNEL_ID else CHANNEL_ID
+        val isPlan = openScreen == "plan" || openScreen == "reja"
+        val channelId = when {
+            isMessage -> MESSAGES_CHANNEL_ID
+            isPlan -> PLAN_CHANNEL_ID
+            else -> CHANNEL_ID
+        }
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(title)
@@ -111,13 +140,16 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .setOnlyAlertOnce(false)
 
-        if (isMessage) {
+        if (isMessage || isPlan) {
             builder
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setCategory(
+                    if (isMessage) NotificationCompat.CATEGORY_MESSAGE
+                    else NotificationCompat.CATEGORY_STATUS,
+                )
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setVibrate(longArrayOf(0, 280, 120, 280))
-                .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+                .setDefaults(NotificationCompat.DEFAULT_VIBRATE or NotificationCompat.DEFAULT_SOUND)
         } else {
             builder.setPriority(NotificationCompat.PRIORITY_DEFAULT)
         }

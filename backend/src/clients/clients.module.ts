@@ -9,6 +9,7 @@ import { ClientsUploadService } from './clients-upload.service';
 import { ClientReconciliationService } from './client-reconciliation.service';
 import { ClientCredentialsService } from './client-credentials.service';
 import { ClientPortalService } from './client-portal.service';
+import { ClientStatsService } from './client-stats.service';
 import { Client } from './entities/client.entity';
 import { ClientRequest } from './entities/client-request.entity';
 import { Order } from '../orders/entities/order.entity';
@@ -37,6 +38,7 @@ import { GpsModule } from '../gps/gps.module';
     ClientReconciliationService,
     ClientCredentialsService,
     ClientPortalService,
+    ClientStatsService,
   ],
   exports: [ClientsService, ClientRequestsService, ClientCredentialsService],
 })

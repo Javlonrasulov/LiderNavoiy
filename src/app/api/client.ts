@@ -170,6 +170,42 @@ export interface Client {
 
 export type BackendClient = Client;
 
+export interface ClientStatsProduct {
+  id: string;
+  name: string;
+  unit: string;
+  qty: number;
+  price: number;
+  total: number;
+  trend: number;
+  buyLevel: 'top' | 'avg' | 'none';
+}
+
+export interface ClientStatsCategory {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  totalSum: number;
+  totalKg: number;
+  avgPrice: number;
+  share: number;
+  trend: number;
+  weekly: { label: string; value: number }[];
+  products: ClientStatsProduct[];
+}
+
+export interface ClientStatsResponse {
+  clientId: string;
+  period: string;
+  from: string;
+  to: string;
+  totalSum: number;
+  totalKg: number;
+  monthlyTrend: { label: string; year: number; month: number; value: number }[];
+  categories: ClientStatsCategory[];
+}
+
 export interface BackendOrderItem {
   productId: string;
   productCode: string;
@@ -551,6 +587,18 @@ export const api = {
       | { hasCredentials: false; suggestedUsername: string }
       | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
     >(`/clients/${clientId}/app-credentials`),
+
+  getClientStats: (
+    clientId: string,
+    params?: { period?: 'hafta' | 'oy' | '6oy' | 'custom'; from?: string; to?: string },
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.period) q.set('period', params.period);
+    if (params?.from) q.set('from', params.from);
+    if (params?.to) q.set('to', params.to);
+    const qs = q.toString();
+    return request<ClientStatsResponse>(`/clients/${clientId}/stats${qs ? `?${qs}` : ''}`);
+  },
 
   setClientAppCredentials: (clientId: string, body: { username: string; password: string }) =>
     request<{ userId: string; username: string; clientId: string; created: boolean }>(

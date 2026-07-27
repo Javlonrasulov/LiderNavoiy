@@ -30,28 +30,38 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val title = message.notification?.title ?: message.data["title"] ?: getString(R.string.app_name)
-        val body = message.notification?.body ?: message.data["body"] ?: ""
-        if (body.isNotBlank()) {
-            val isMessage = message.data["type"] == "message"
-            val conversationId = message.data["conversationId"]
-            if (isMessage && !conversationId.isNullOrBlank()) {
-                NotificationHelper.showMessageNotification(
-                    context = this,
-                    conversationId = conversationId,
-                    senderName = title,
-                    preview = body,
-                )
-            } else {
-                NotificationHelper.showNotification(
-                    context = this,
-                    title = title,
-                    body = body,
-                    notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
-                    isMessage = isMessage,
-                )
-            }
+        val type = message.data["type"].orEmpty()
+        val title = message.notification?.title
+            ?: message.data["title"]
+            ?: getString(R.string.app_name)
+        val body = message.notification?.body
+            ?: message.data["body"]
+            ?: ""
+        // Reja push bo'sh body bo'lsa ham ko'rsatiladi
+        if (body.isBlank() && type != "plan") return
+
+        val isMessage = type == "message"
+        val conversationId = message.data["conversationId"]
+        if (isMessage && !conversationId.isNullOrBlank()) {
+            NotificationHelper.showMessageNotification(
+                context = this,
+                conversationId = conversationId,
+                senderName = title,
+                preview = body.ifBlank { "Yangi xabar" },
+            )
+            return
         }
+
+        val openScreen = message.data["screen"]
+            ?: if (type == "plan") "plan" else null
+        NotificationHelper.showNotification(
+            context = this,
+            title = title,
+            body = body.ifBlank { "Yangi reja tayinlandi" },
+            notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
+            isMessage = false,
+            openScreen = openScreen,
+        )
     }
 
     companion object {

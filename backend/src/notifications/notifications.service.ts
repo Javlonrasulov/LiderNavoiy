@@ -225,6 +225,65 @@ export class NotificationsService {
     return this.sendToUser(userId, title, body, type, data);
   }
 
+  /**
+   * Reja tayinlanganda agentga push — majburiy urinish (retry).
+   * Plan saqlangandan keyin chaqiriladi.
+   */
+  async notifyPlanAssigned(
+    distributorId: string,
+    title: string,
+    body: string,
+  ): Promise<SendResult> {
+    const data = {
+      type: NotificationType.PLAN,
+      screen: 'plan',
+      title,
+      body,
+    };
+
+    let last: SendResult = { sent: false, error: 'UNKNOWN' };
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        last = await this.sendToDistributor(
+          distributorId,
+          title,
+          body,
+          NotificationType.PLAN,
+          data,
+        );
+        if (last.sent) {
+          this.logger.log(`Plan push OK (attempt ${attempt}) → distributor ${distributorId}`);
+          return last;
+        }
+        this.logger.warn(
+          `Plan push failed attempt ${attempt}/3 → ${distributorId}: ${last.error}`,
+        );
+        // Token yo'q yoki Firebase sozlanmagan — qayta urinish foydasiz
+        if (last.error === 'NO_FCM_TOKEN' || last.error === 'FIREBASE_NOT_CONFIGURED') {
+          break;
+        }
+      } catch (err) {
+        last = {
+          sent: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+        this.logger.warn(
+          `Plan push exception attempt ${attempt}/3 → ${distributorId}: ${last.error}`,
+        );
+      }
+      if (attempt < 3) {
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
+    }
+    return last;
+  }
+
+  private channelFor(type: NotificationType): string {
+    if (type === NotificationType.MESSAGE) return 'crm_chat_alert_v2';
+    if (type === NotificationType.PLAN) return 'crm_plan_channel';
+    return 'crm_push_channel';
+  }
+
   private async deliverPush(
     token: string,
     title: string,
@@ -235,8 +294,10 @@ export class NotificationsService {
     userId: string,
   ): Promise<SendResult> {
     const messaging = this.firebase.getMessaging();
-    const payload = {
+    const payload: Record<string, string> = {
       type,
+      title,
+      body,
       ...data,
     };
 
@@ -247,8 +308,8 @@ export class NotificationsService {
     }
 
     try {
-      const channelId =
-        type === NotificationType.MESSAGE ? 'crm_messages_channel' : 'crm_push_channel';
+      const channelId = this.channelFor(type);
+      const isHigh = type === NotificationType.PLAN || type === NotificationType.MESSAGE;
       const messageId = await messaging.send({
         token,
         notification: { title, body },
@@ -259,14 +320,17 @@ export class NotificationsService {
           priority: 'high',
           notification: {
             channelId,
-            priority: 'high',
+            priority: isHigh ? 'max' : 'high',
             defaultSound: true,
             defaultVibrateTimings: true,
+            sound: 'default',
+            visibility: 'public',
           },
         },
         webpush: {
           notification: { title, body },
           fcmOptions: { link: '/' },
+          headers: { Urgency: 'high' },
         },
       });
 
@@ -278,7 +342,11 @@ export class NotificationsService {
       this.logger.error(`FCM send failed for ${userId}: ${error}`);
 
       // Invalid token — clear it
-      if (error.includes('registration-token-not-registered')) {
+      if (
+        error.includes('registration-token-not-registered')
+        || error.includes('invalid-registration-token')
+        || error.includes('Requested entity was not found')
+      ) {
         await this.userRepo.update(userId, { fcmToken: null });
       }
 

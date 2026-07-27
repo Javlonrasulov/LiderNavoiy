@@ -19,6 +19,7 @@ import { ClientsUploadService } from './clients-upload.service';
 import { ClientRequestsService } from './client-requests.service';
 import { ClientReconciliationService } from './client-reconciliation.service';
 import { ClientCredentialsService } from './client-credentials.service';
+import { ClientStatsService } from './client-stats.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 import { SetClientCredentialsDto } from './dto/client-credentials.dto';
@@ -37,6 +38,7 @@ export class ClientsController {
     private readonly requestsService: ClientRequestsService,
     private readonly reconciliationService: ClientReconciliationService,
     private readonly credentialsService: ClientCredentialsService,
+    private readonly statsService: ClientStatsService,
   ) {}
 
   private scopeDistributorId(user: User): string | undefined {
@@ -119,6 +121,24 @@ export class ClientsController {
       id,
       fromDate,
       toDate,
+      this.scopeDistributorId(req.user),
+    );
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Client purchase statistics for admin panel' })
+  getStats(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Query('period') period?: 'hafta' | 'oy' | '6oy' | 'custom',
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.statsService.getStats(
+      id,
+      period ?? 'oy',
+      from,
+      to,
       this.scopeDistributorId(req.user),
     );
   }

@@ -1,8 +1,8 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import React from 'react';
 import { Plus, X, Search, ChevronRight, ChevronLeft, Check, AlertCircle, Calendar, Edit3, ChevronDown, ChevronUp, ArrowLeft, BarChart2 } from 'lucide-react';
 import { type AgentRow, fmt } from '../../../data/adminData';
-import { api } from '../../../api/client';
+import { api, type Distributor } from '../../../api/client';
 import {
   type PlanCat,
   DEFAULT_PLAN_CATS,
@@ -10,6 +10,65 @@ import {
   emptyCatAmounts,
   sumCatAmounts,
 } from '../../../utils/planCategories';
+
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
+
+function stableAgentId(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return Math.abs(h) || 1;
+}
+
+function nameInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'AG';
+}
+
+function isDeliveryPosition(position?: string | null): boolean {
+  const p = (position ?? '').toLowerCase();
+  return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
+    || p.includes('dostav') || p.includes('haydov');
+}
+
+function distributorToAgentRow(d: Distributor): AgentRow {
+  const name = d.user?.fullName?.trim() || d.user?.username || 'Agent';
+  const active = d.user?.isActive !== false;
+  return {
+    id: stableAgentId(d.userId || d.id),
+    name,
+    avatar: nameInitials(name),
+    clients: 0,
+    visits: 0,
+    sales: 0,
+    payments: 0,
+    debt: 0,
+    plan: 0,
+    status: active ? 'active' : 'inactive',
+    orgId: d.companyId || '',
+    phone: d.phone?.trim() || '',
+    backendUserId: d.userId,
+    distributorId: d.id,
+  };
+}
+
+/** Toshkent vaqti bo'yicha joriy yil/oy (backend bilan bir xil). */
+function getTashkentYearMonth(): { year: number; month: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tashkent',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  return {
+    year: Number(parts.find(p => p.type === 'year')?.value),
+    month: Number(parts.find(p => p.type === 'month')?.value),
+  };
+}
+
+function addCalendarMonth(year: number, month: number, delta = 1): { year: number; month: number } {
+  const d = new Date(year, month - 1 + delta, 1);
+  return { year: d.getFullYear(), month: d.getMonth() + 1 };
+}
 
 type BackendPlanView = Awaited<ReturnType<typeof api.listAgentPlans>>[number];
 type AgentPlanDisplayData = {
@@ -253,7 +312,7 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
                     }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: txt, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{agent.name}</div>
-                      <div style={{ fontSize: 11, color: sub, marginTop: 1 }}>{agent.company || 'Agent'}</div>
+                      <div style={{ fontSize: 11, color: sub, marginTop: 1 }}>{agent.phone || 'Agent'}</div>
                     </div>
                     <ChevronRight size={15} color={sub} />
                   </button>
@@ -2265,7 +2324,7 @@ function AgentStatPage({
             <div style={{ fontSize: isMobile ? 13 : 15, fontWeight: 800, color: txt, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
               {agent.name}
             </div>
-            <div style={{ fontSize: 11, color: sub }}>{agent.company || 'Agent'}</div>
+            <div style={{ fontSize: 11, color: sub }}>{agent.phone || 'Agent'}</div>
           </div>
 
           {/* ViewMode switcher */}
@@ -2453,32 +2512,74 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   const [isMobile,   setIsMobile]   = useState(false);
   const [planCats,   setPlanCats]   = useState<PlanCat[]>(DEFAULT_PLAN_CATS);
   const [backendPlans, setBackendPlans] = useState<Map<string, StoredBackendPlan>>(new Map());
+  const [planAgents, setPlanAgents] = useState<AgentRow[]>([]);
+  const [agentsReady, setAgentsReady] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const companyIdParam = useMemo(
     () => (selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds).join(',') : undefined),
     [selectedCompanyIds],
   );
 
-  const reloadPlans = () => {
-    if (!localStorage.getItem('api_access_token')) return;
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const base = { companyId: companyIdParam };
-    Promise.all([
-      api.listAgentPlans({ ...base, year: now.getFullYear(), month: now.getMonth() + 1 }),
-      api.listAgentPlans({ ...base, year: next.getFullYear(), month: next.getMonth() + 1 }),
-    ])
-      .then(([current, nextMonth]) => setBackendPlans(mergePlanMaps(current, nextMonth)))
-      .catch(() => {});
-  };
+  const agents = agentsReady ? planAgents : activeAgents.filter(a => !!a.distributorId);
+
+  const reloadAgents = useCallback(async () => {
+    if (!hasApiToken()) {
+      setPlanAgents([]);
+      setAgentsReady(false);
+      return;
+    }
+    try {
+      const companyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
+      const distributors = await api.getDistributors(companyId);
+      const filtered = distributors.filter(d => {
+        if (!d.user) return false;
+        if (d.user.isActive === false) return false;
+        if (isDeliveryPosition(d.position)) return false;
+        if (selectedCompanyIds.size > 0 && d.companyId && !selectedCompanyIds.has(d.companyId)) return false;
+        return true;
+      });
+      setPlanAgents(filtered.map(distributorToAgentRow));
+      setAgentsReady(true);
+    } catch {
+      setPlanAgents([]);
+      setAgentsReady(false);
+    }
+  }, [selectedCompanyIds]);
+
+  const reloadPlans = useCallback(async () => {
+    if (!hasApiToken()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { year, month } = getTashkentYearMonth();
+      const next = addCalendarMonth(year, month, 1);
+      const base = { companyId: companyIdParam };
+      const [current, nextMonth] = await Promise.all([
+        api.listAgentPlans({ ...base, year, month }),
+        api.listAgentPlans({ ...base, year: next.year, month: next.month }),
+      ]);
+      setBackendPlans(mergePlanMaps(current, nextMonth));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : (t.planLoadError || 'Rejalarni yuklab bo‘lmadi'));
+    } finally {
+      setLoading(false);
+    }
+  }, [companyIdParam, t.planLoadError]);
 
   useEffect(() => {
     fetchPlanCategories().then(setPlanCats);
   }, []);
 
   useEffect(() => {
+    reloadAgents();
+  }, [reloadAgents]);
+
+  useEffect(() => {
     reloadPlans();
-  }, [companyIdParam]);
+  }, [reloadPlans]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 700);
@@ -2495,14 +2596,14 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   const infoB  = D ? '#161616' : '#f8fafc';
 
   const allData = useMemo(() =>
-    activeAgents.map((a) => {
+    agents.map((a) => {
       const bp = a.distributorId ? backendPlans.get(a.distributorId) : undefined;
       return {
         agent: a,
         data: bp ? planDataFromBackend(bp) : emptyPlanData(planCats),
       };
     }),
-    [activeAgents, planCats, backendPlans]
+    [agents, planCats, backendPlans]
   );
 
   const sorted = useMemo(() => {
@@ -2525,20 +2626,54 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   }
 
   async function handleSave(agent: AgentRow, entry: { total: number; cats: Record<string, number>; monthType: string }) {
-    if (!agent.distributorId) return;
-    const categoryNames = Object.fromEntries(planCats.map(c => [c.key, c.name]));
-    await api.upsertAgentPlan({
-      distributorId: agent.distributorId,
-      monthType: entry.monthType as 'current' | 'next',
-      total: entry.total,
-      categories: entry.cats,
-      categoryNames,
-    });
-    reloadPlans();
+    if (!agent.distributorId) {
+      setError(t.planNoDistributor || 'Agent profili topilmadi — qayta urinib ko‘ring');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const categoryNames = Object.fromEntries(planCats.map(c => [c.key, c.name]));
+      await api.upsertAgentPlan({
+        distributorId: agent.distributorId,
+        monthType: entry.monthType as 'current' | 'next',
+        total: entry.total,
+        categories: entry.cats,
+        categoryNames,
+      });
+      await reloadPlans();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : (t.planSaveError || 'Plan saqlanmadi'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%', minWidth: 0, overflowX: 'hidden' }}>
+
+      {error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12,
+          background: D ? '#3f1d1d' : '#fef2f2', border: `1px solid ${D ? '#7f1d1d' : '#fecaca'}`,
+          color: D ? '#fca5a5' : '#b91c1c', fontSize: 13, fontWeight: 600,
+        }}>
+          <AlertCircle size={16} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            onClick={() => { setError(null); reloadAgents(); reloadPlans(); }}
+            style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}
+          >
+            {t.retry || 'Qayta'}
+          </button>
+        </div>
+      )}
+
+      {(loading || saving) && (
+        <div style={{ fontSize: 12, color: sub, fontWeight: 600 }}>
+          {saving ? (t.planSaving || 'Plan saqlanmoqda...') : (t.planLoading || 'Yuklanmoqda...')}
+        </div>
+      )}
 
       {/* Top stats + button */}
       <div style={{
@@ -2562,17 +2697,19 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
         <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 8, alignItems: isMobile ? 'stretch' : 'flex-end' }}>
           <button
             onClick={() => setShowModal(true)}
+            disabled={saving || agents.length === 0}
             style={{
               flex: isMobile ? 1 : undefined,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '11px 20px', borderRadius: 14, border: 'none',
               background: '#6366f1', color: '#fff',
-              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              fontSize: 14, fontWeight: 700, cursor: saving || agents.length === 0 ? 'not-allowed' : 'pointer',
+              opacity: saving || agents.length === 0 ? 0.6 : 1,
               boxShadow: '0 4px 16px rgba(99,102,241,0.35)',
               transition: 'opacity 0.15s', whiteSpace: 'nowrap',
             }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            onMouseEnter={e => { if (!saving && agents.length > 0) e.currentTarget.style.opacity = '0.88'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = saving || agents.length === 0 ? '0.6' : '1'; }}
           >
             <Plus size={16}/>
             {t.planSetBtn || "Plan qo'yish"}
@@ -2762,7 +2899,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
       {/* Plan modal */}
       {showModal && (
         <PlanModal
-          agents={activeAgents}
+          agents={agents}
           planCats={planCats}
           dark={D}
           t={t}

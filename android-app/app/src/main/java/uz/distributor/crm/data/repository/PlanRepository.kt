@@ -8,8 +8,14 @@ import javax.inject.Singleton
 
 @Singleton
 class PlanRepository @Inject constructor(private val api: ApiService) {
-    suspend fun getMyPlan(): AgentPlanDto? = api.getMyPlan()
+    suspend fun getMyPlan(): AgentPlanDto? {
+        val response = api.getMyPlan()
+        if (!response.isSuccessful) return null
+        return response.body()
+    }
+
     suspend fun getTeamPlans(): List<AgentPlanDto> = api.getTeamPlans()
+
     suspend fun getSalesStats(from: String? = null, to: String? = null): AgentSalesStatsDto? =
         api.getPlanSalesStats(from, to)
 }

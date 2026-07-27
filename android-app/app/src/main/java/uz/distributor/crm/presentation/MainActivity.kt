@@ -21,6 +21,7 @@ import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.presentation.navigation.OpenChatHolder
 import uz.distributor.crm.push.EXTRA_OPEN_CONVERSATION_ID
+import uz.distributor.crm.push.EXTRA_OPEN_SCREEN
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.AppNavHost
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        captureOpenChatIntent(intent)
+        captureOpenIntent(intent)
         lifecycleScope.launch {
             if (authRepository.restoreSession()) {
                 messagesRealtime.start()
@@ -77,12 +78,21 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        captureOpenChatIntent(intent)
+        captureOpenIntent(intent)
     }
 
-    private fun captureOpenChatIntent(intent: android.content.Intent?) {
-        intent?.getStringExtra(EXTRA_OPEN_CONVERSATION_ID)?.let {
-            OpenChatHolder.pendingConversationId = it
+    private fun captureOpenIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        // Bizning PendingIntent + FCM system tray data extras
+        (intent.getStringExtra(EXTRA_OPEN_CONVERSATION_ID)
+            ?: intent.getStringExtra("conversationId"))?.let {
+            OpenChatHolder.requestOpenChat(it)
+        }
+        val screen = intent.getStringExtra(EXTRA_OPEN_SCREEN)
+            ?: intent.getStringExtra("screen")
+            ?: intent.extras?.getString("screen")
+        if (screen == "plan" || intent.getStringExtra("type") == "plan") {
+            OpenChatHolder.requestOpenPlan()
         }
     }
 

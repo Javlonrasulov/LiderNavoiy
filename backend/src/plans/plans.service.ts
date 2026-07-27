@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Not, Repository } from 'typeorm';
 import { AgentPlan, PlanCategoryAmount } from './entities/agent-plan.entity';
@@ -9,6 +9,7 @@ import { ProductCategory } from '../products/entities/product-category.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { OrderStatus } from '../common/enums';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   addCalendarMonth,
   getTashkentDateParts,
@@ -66,8 +67,9 @@ function toKey(name: string): string {
 }
 
 function monthRange(year: number, month: number) {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0, 23, 59, 59, 999);
+  const lastDay = new Date(year, month, 0).getDate();
+  const start = makeTashkentDate(year, month, 1, 0, 0, 0);
+  const end = makeTashkentDate(year, month, lastDay, 23, 59, 59);
   return { start, end };
 }
 
@@ -82,6 +84,8 @@ function resolveTargetMonth(dto: UpsertPlanDto): { year: number; month: number }
 
 @Injectable()
 export class PlansService {
+  private readonly logger = new Logger(PlansService.name);
+
   constructor(
     @InjectRepository(AgentPlan)
     private readonly planRepo: Repository<AgentPlan>,
@@ -93,6 +97,7 @@ export class PlansService {
     private readonly categoryMetaRepo: Repository<ProductCategory>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async upsert(dto: UpsertPlanDto, createdBy?: string): Promise<AgentPlan> {
@@ -106,6 +111,7 @@ export class PlansService {
       }));
 
     let row = await this.planRepo.findOne({ where: { distributorId: dto.distributorId, year, month } });
+    const isNew = !row;
     if (row) {
       row.totalAmount = dto.total;
       row.categories = categories;
@@ -120,7 +126,32 @@ export class PlansService {
         createdBy: createdBy ?? null,
       });
     }
-    return this.planRepo.save(row);
+    const saved = await this.planRepo.save(row);
+    await this.notifyAgentPlanAssigned(saved, isNew);
+    return saved;
+  }
+
+  private async notifyAgentPlanAssigned(plan: AgentPlan, isNew: boolean) {
+    const total = Number(plan.totalAmount).toLocaleString('uz-UZ');
+    const title = isNew ? 'Yangi reja tayinlandi' : 'Reja yangilandi';
+    const body = `${plan.year}-${String(plan.month).padStart(2, '0')} uchun reja: ${total} so'm`;
+
+    try {
+      const result = await this.notifications.notifyPlanAssigned(
+        plan.distributorId,
+        title,
+        body,
+      );
+      if (!result.sent) {
+        this.logger.error(
+          `Plan push NOT delivered to ${plan.distributorId}: ${result.error}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Plan notification failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   async listPlans(year?: number, month?: number, companyIds?: string[]): Promise<AgentPlanView[]> {

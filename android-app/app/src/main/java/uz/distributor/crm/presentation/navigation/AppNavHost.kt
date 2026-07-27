@@ -112,6 +112,25 @@ fun AppNavHost(
                 launchSingleTop = true
             }
         }
+        if (OpenChatHolder.pendingOpenPlan) {
+            OpenChatHolder.pendingOpenPlan = false
+            navController.navigate("plan") {
+                launchSingleTop = true
+            }
+        }
+        OpenChatHolder.deepLinks.collect { link ->
+            when {
+                link == "plan" -> {
+                    OpenChatHolder.pendingOpenPlan = false
+                    navController.navigate("plan") { launchSingleTop = true }
+                }
+                link.startsWith("chat:") -> {
+                    val id = link.removePrefix("chat:")
+                    OpenChatHolder.pendingConversationId = null
+                    navController.navigate("chat/$id") { launchSingleTop = true }
+                }
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {

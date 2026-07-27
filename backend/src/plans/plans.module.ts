@@ -7,6 +7,8 @@ import { Order } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { ProductCategory } from '../products/entities/product-category.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -16,6 +18,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
       ProductCategory,
       DistributorProfile,
     ]),
+    NotificationsModule,
   ],
   controllers: [PlansController],
   providers: [PlansService],

@@ -139,7 +139,7 @@ interface ApiService {
     suspend fun getMyPlan(
         @Query("year") year: Int? = null,
         @Query("month") month: Int? = null,
-    ): AgentPlanDto?
+    ): retrofit2.Response<AgentPlanDto>
 
     @GET("plans/team")
     suspend fun getTeamPlans(
