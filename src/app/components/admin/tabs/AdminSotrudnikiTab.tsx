@@ -4,7 +4,7 @@ import {
   AlertTriangle, Check, ChevronLeft, ChevronRight,
   GitBranch, Route, CalendarDays, ShoppingCart, XCircle,
   Clock, Navigation, ArrowRight, CheckCircle2, Circle,
-  LogIn, Flag, Hourglass, Map, Maximize2, Minimize2,
+  LogIn, Flag, Hourglass, Maximize2, Minimize2,
   PhoneCall, Wifi, WifiOff, BarChart3,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
