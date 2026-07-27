@@ -75,6 +75,8 @@ export class VisitsService {
         clientName: client?.name ?? 'Klient',
         clientCode: client?.code ?? '',
         clientAddress: client?.address ?? null,
+        clientLatitude: client?.latitude ?? null,
+        clientLongitude: client?.longitude ?? null,
         fromClientOrder: typeof visit.notes === 'string' && visit.notes.startsWith('client_order:'),
       };
     });

@@ -8,7 +8,6 @@ import {
   PhoneCall, Wifi, WifiOff, BarChart3,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
-import { demo } from '../../../data/demoLimit';
 import { COMPANIES } from '../../AdminAuthContext';
 import { TrackingMap } from '../TrackingMap';
 import { DayHistoryPanel } from '../DayHistoryPanel';
@@ -35,51 +34,6 @@ interface Props {
 
 const ROLES = ['Agent', 'Supervisor'];
 const CITIES_LIST = ['Navoiy', 'Toshkent', 'Samarqand', 'Buxoro', "Farg'ona", 'Karmana', 'Uchquduq'];
-const STREETS = [
-  "Yengilik ko'chasi", "Mustaqillik shoh ko'chasi", "Navoiy ko'chasi",
-  "Karmana ko'chasi", "Metallurglar ko'chasi", "Qo'shrabot ko'chasi",
-  "Sultonov ko'chasi", "Do'stlik ko'chasi", "Gulsanam ko'chasi",
-  "Farruxobod ko'chasi", "Xorazm ko'chasi", "Neftchilar ko'chasi",
-];
-
-const NAVOIY_DISTRICTS = [
-  'Janubiy', 'Shimoliy', 'Markaziy', "G'arbiy", 'Sharqiy',
-  '1-mavze', '2-mavze', '3-mavze', 'Karmana', 'Ravshan tumani',
-];
-
-// ── Real client/shop names ─────────────────────────────────────────────────
-const CLIENT_NAMES = demo([
-  'Ahmed Ota Markit', 'Gemur Ruslan', 'Muratov Jahongir',
-  'Issiqlik elekter stansiyasi', 'Armixon Grand Savdo', 'Asad Asil Beklarim',
-  'Gulsevar Baraka Nonlari', 'Timurbekd Shirina', 'Ahmudova Dildora',
-  'Okrabot.Best.Trade MNK', 'Ikronov Urozbek', 'Axtan bobo',
-  'XAZORO POYDEVORI', 'Akranov «Murodjon» RTT', 'PALMATOVA KUYIDUZ',
-  'ODILBEK ZIYOSI', 'IBODULLO', 'MOHINUR MALIKAM',
-  'LAZIZJON TURSUNOV', 'Gulsanam Ruslan', 'Baxtiyor Savdo Markazi',
-  'Navoiy Oziq-Ovqat', 'Hamza Do\'koni', 'Sarvar Supermarket',
-  'Dilnoza Nonvoyxona', 'Umarov Sherzod', 'Kenja Savdo',
-  'Abdullayev Jamshid', 'Zulfiya Bozor', 'Nodira Mahsulotlari',
-  'Ravshan Oziq-Ovqat', 'Komiljon TTM', 'Sultonov Farruх',
-  'Mirzo Grand Market', 'Alisher Do\'koni', 'Holmatov Behruz',
-  'Sabohat Nonvoyxona', 'Firdavs Supermarket', 'Toshmatov Jasur',
-  'Barno Mahsulotlari', 'Iqbol Savdo TTM', 'Qodirov Ulugbek',
-  'Nasiba Oziq-Ovqat', 'Saidakbar Market', 'Yuldoshev Nodir',
-  'Gulnora Savdo Nuqtasi', 'Muhammadali TTM', 'Bekzod Supermarket',
-  'Nilufar Bozori', 'Hayot Oziq-Ovqat', 'Otajonov Mansur',
-  'Kamola Market', 'Sanjar Do\'koni', 'Rustam Savdo Markazi',
-  'Xurshid Oziq-Ovqat', 'Mavluda Nonvoyxona', 'Davron TTM',
-  'Sherali Grand Savdo', 'Aziza Mahsulotlari', 'Muzaffar Market',
-]);
-
-const CITY_COORDS: Record<string, [number, number]> = {
-  'Navoiy':    [40.0843, 65.3791],
-  'Toshkent':  [41.2995, 69.2401],
-  'Samarqand': [39.6547, 66.9758],
-  'Buxoro':    [39.7747, 64.4286],
-  "Farg'ona":  [40.3834, 71.7833],
-  'Karmana':   [40.1434, 65.3664],
-  'Uchquduq':  [41.5567, 63.5503],
-};
 
 function hasApiToken(): boolean {
   return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
@@ -132,19 +86,24 @@ function distributorToMapEmployee(d: Distributor): EmployeeMarker | null {
   };
 }
 
-function toEmployee(a: AgentRow, i: number, fromBackend = false) {
-  const count = (a.id + i) % 3 === 0 ? 2 : 1;
+function toEmployee(a: AgentRow, i: number, fromBackend = false, dist?: Distributor) {
+  const count = fromBackend ? 0 : ((a.id + i) % 3 === 0 ? 2 : 1);
   const line1 = LINES[(a.id * 3 + i) % LINES.length];
   const line2 = LINES[(a.id * 7 + i + 5) % LINES.length];
-  const lines = count === 2 ? [line1, line2] : [line1];
+  const lines = fromBackend ? [] : (count === 2 ? [line1, line2] : [line1]);
   return {
     ...a,
     role: fromBackend ? 'Agent' : ROLES[i % ROLES.length],
     phone: a.phone?.trim() || '',
-    city: CITIES_LIST[i % CITIES_LIST.length],
-    hireDate: `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
+    city: fromBackend ? (dist?.companyName || '—') : CITIES_LIST[i % CITIES_LIST.length],
+    hireDate: fromBackend ? '' : `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     liniyaCount: count,
     lines,
+    isOnline: dist?.isOnline ?? false,
+    lastLocationAt: dist?.lastLocationAt ?? null,
+    lastLoginAt: dist?.user?.lastLoginAt ?? null,
+    lastLatitude: dist?.lastLatitude ?? null,
+    lastLongitude: dist?.lastLongitude ?? null,
   };
 }
 
@@ -184,98 +143,189 @@ interface DayTrack {
   points: TrackPoint[];
 }
 
-function generateDayTrack(empId: number, dateStr: string): DayTrack {
+function emptyDayTrack(dateStr: string): DayTrack {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const seed = ((empId * 7 + d * 3 + m * 13 + y) % 97) || 5;
-  const total = 14 + (seed % 8);
-  const visitedTotal   = Math.floor(total * (0.55 + (seed % 5) * 0.07));
-  const orderedCount   = Math.floor(visitedTotal * (0.45 + (seed % 6) * 0.08));
-  const visitedNoOrder = visitedTotal - orderedCount;
-  const missedPool     = total - visitedTotal;
-  const remoteOrderedCount = Math.max(1, Math.floor(missedPool * 0.28));
-  const missedCount    = missedPool - remoteOrderedCount;
-
-  // Login & timing
-  const loginHour = 7 + (seed % 2);
-  const loginMin  = 20 + (seed % 40);
-  const firstHour = loginHour + (loginMin + 25 + seed % 20 >= 60 ? 1 : 0);
-  const firstMin  = (loginMin + 25 + seed % 20) % 60;
-  const lastHour  = firstHour + Math.floor(visitedTotal * 0.45);
-  const lastMin   = (firstMin + seed * 3) % 60;
-  const onlineMin = (lastHour - loginHour) * 60 + (lastMin - loginMin);
-  const onlineH   = Math.floor(Math.abs(onlineMin) / 60);
-  const onlineM   = Math.abs(onlineMin) % 60;
-
-  const fmt2 = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`;
-  const loginTime      = fmt2(loginHour, loginMin);
-  const firstPointTime = fmt2(firstHour, firstMin);
-  const lastPointTime  = fmt2(Math.min(lastHour, 18), lastMin);
-  const onlineHours    = `${onlineH} soat ${onlineM} daq`;
-
-  const [baseLat, baseLng] = [40.0843, 65.3791];
-
-  const points: TrackPoint[] = Array.from({ length: total }, (_, i) => {
-    const isVisited      = i < visitedTotal;
-    const hasOrder       = isVisited && i < orderedCount;
-    const isRemoteOrder  = !isVisited && (i - visitedTotal) < remoteOrderedCount;
-    const hour = firstHour + Math.floor((i / Math.max(visitedTotal, 1)) * (lastHour - firstHour));
-    const min  = (firstMin + i * 17 + seed * 3) % 60;
-
-    const angle  = (seed * 0.2 + i * 0.42) % (2 * Math.PI);
-    const radius = 0.008 + (i / total) * 0.045;
-    const lat = baseLat + Math.sin(angle) * radius;
-    const lng = baseLng + Math.cos(angle) * radius;
-
-    const status: PointStatus = isVisited
-      ? (hasOrder ? 'ordered' : 'visited')
-      : (isRemoteOrder ? 'remote_ordered' : 'missed');
-
-    return {
-      idx: i + 1,
-      name: CLIENT_NAMES[(seed * 3 + i * 7 + empId) % CLIENT_NAMES.length],
-      address: `Navoiy, ${NAVOIY_DISTRICTS[(i + seed) % NAVOIY_DISTRICTS.length]}, ${STREETS[(i + seed * 2) % STREETS.length]}`,
-      lat, lng,
-      time:     (isVisited || isRemoteOrder) ? fmt2(hour, min) : null,
-      status,
-      duration: isVisited ? 5 + (i * seed) % 25 : null,
-    };
-  });
-
-  // Employee current/last location — near last visited point
-  const lastVisited = [...points].reverse().find(p => p.status === 'ordered' || p.status === 'visited');
-  const empLat = lastVisited ? lastVisited.lat + (seed % 10 - 5) * 0.0008 : baseLat;
-  const empLng = lastVisited ? lastVisited.lng + (seed % 10 - 5) * 0.0008 : baseLng;
-  const empOnline  = seed % 4 !== 0; // 75% online
-  const empLastSeen = empOnline ? 'Hozir online' : `${lastPointTime} da oxirgi marta online`;
-
   const months = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
-  const days   = ['Yak', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh'];
+  const days = ['Yak', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh'];
   const dt = new Date(y, m - 1, d);
-
   return {
     date: dateStr,
     label: `${days[dt.getDay()]}, ${d} ${months[m - 1]}`,
-    total,
-    visited: orderedCount,
+    total: 0,
+    visited: 0,
+    visitedNoOrder: 0,
+    remoteOrdered: 0,
+    missed: 0,
+    km: 0,
+    startCity: '—',
+    endCity: '—',
+    loginTime: '—',
+    firstPointTime: '—',
+    lastPointTime: '—',
+    onlineHours: '—',
+    empLat: 40.0843,
+    empLng: 65.3791,
+    empOnline: false,
+    empLastSeen: '—',
+    points: [],
+  };
+}
+
+function fmtClock(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function fmtDurationMinutes(mins: number): string {
+  if (!mins || mins <= 0) return '—';
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (h <= 0) return `${m} daq`;
+  return `${h} soat ${m} daq`;
+}
+
+function sameLocalDay(iso: string, dateStr: string): boolean {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}` === dateStr;
+}
+
+async function fetchDayTrack(opts: {
+  distributorId: string;
+  dateStr: string;
+  empOnline: boolean;
+  empLat?: number | null;
+  empLng?: number | null;
+  lastLocationAt?: string | null;
+  lastLoginAt?: string | null;
+}): Promise<DayTrack> {
+  const base = emptyDayTrack(opts.dateStr);
+  const [routeRes, visitsRes, clientsRes] = await Promise.allSettled([
+    api.getDailyRoute(opts.distributorId, opts.dateStr),
+    api.getVisitsForDistributor(opts.distributorId, opts.dateStr),
+    api.getClients(undefined, opts.distributorId),
+  ]);
+
+  const route = routeRes.status === 'fulfilled' ? routeRes.value : null;
+  const visits = visitsRes.status === 'fulfilled' ? visitsRes.value : [];
+  const clients = clientsRes.status === 'fulfilled' ? clientsRes.value : [];
+
+  const gpsPoints = route?.points ?? [];
+  const firstGps = gpsPoints[0];
+  const lastGps = gpsPoints[gpsPoints.length - 1];
+
+  const visitPoints: TrackPoint[] = visits
+    .slice()
+    .sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime())
+    .map((v, i) => {
+      const lat = v.checkInLatitude ?? v.clientLatitude ?? 0;
+      const lng = v.checkInLongitude ?? v.clientLongitude ?? 0;
+      const hasCoords = lat !== 0 && lng !== 0;
+      const remote = !!v.fromClientOrder || (!v.checkInLatitude && !v.checkInLongitude);
+      const hasOrder = Number(v.orderTotal) > 0;
+      let status: PointStatus = 'visited';
+      if (remote && hasOrder) status = 'remote_ordered';
+      else if (hasOrder) status = 'ordered';
+      else if (!remote) status = 'visited';
+      else status = 'visited';
+
+      return {
+        idx: i + 1,
+        name: v.clientName || 'Klient',
+        address: v.clientAddress || '—',
+        lat: hasCoords ? lat : (lastGps?.latitude ?? base.empLat),
+        lng: hasCoords ? lng : (lastGps?.longitude ?? base.empLng),
+        time: fmtClock(v.visitedAt),
+        status,
+        duration: null,
+      };
+    });
+
+  const visitedClientIds = new Set(visits.map(v => v.clientId));
+  const missedClients = clients.filter(c =>
+    c.isActive !== false &&
+    !visitedClientIds.has(c.id) &&
+    c.latitude != null &&
+    c.longitude != null,
+  );
+
+  const missedPoints: TrackPoint[] = missedClients.map((c, i) => ({
+    idx: visitPoints.length + i + 1,
+    name: c.name,
+    address: c.address || '—',
+    lat: c.latitude!,
+    lng: c.longitude!,
+    time: null,
+    status: 'missed' as PointStatus,
+    duration: null,
+  }));
+
+  const points = [...visitPoints, ...missedPoints].map((p, i) => ({ ...p, idx: i + 1 }));
+
+  const ordered = points.filter(p => p.status === 'ordered').length;
+  const visitedNoOrder = points.filter(p => p.status === 'visited').length;
+  const remoteOrdered = points.filter(p => p.status === 'remote_ordered').length;
+  const missed = points.filter(p => p.status === 'missed').length;
+
+  const loginAt = opts.lastLoginAt && sameLocalDay(opts.lastLoginAt, opts.dateStr)
+    ? opts.lastLoginAt
+    : null;
+
+  const empLat = opts.empLat ?? lastGps?.latitude ?? base.empLat;
+  const empLng = opts.empLng ?? lastGps?.longitude ?? base.empLng;
+  const empOnline = opts.empOnline;
+  const empLastSeen = empOnline
+    ? 'Hozir online'
+    : (opts.lastLocationAt ? new Date(opts.lastLocationAt).toLocaleString() : '—');
+
+  const durationMins = Number(route?.stats?.durationMinutes) || 0;
+  const km = Number(route?.stats?.totalDistanceKm) || 0;
+
+  return {
+    ...base,
+    total: points.length,
+    visited: ordered,
     visitedNoOrder,
-    remoteOrdered: remoteOrderedCount,
-    missed: missedCount,
-    km: 45 + (seed % 80),
-    startCity: 'Navoiy',
-    endCity: 'Navoiy',
-    loginTime, firstPointTime, lastPointTime, onlineHours,
-    empLat, empLng, empOnline, empLastSeen,
+    remoteOrdered,
+    missed,
+    km: Math.round(km * 10) / 10,
+    startCity: firstGps ? 'Marshrut' : '—',
+    endCity: lastGps ? 'Marshrut' : '—',
+    loginTime: fmtClock(loginAt),
+    firstPointTime: fmtClock(firstGps?.recordedAt ?? visits[0]?.visitedAt),
+    lastPointTime: fmtClock(lastGps?.recordedAt ?? visits[visits.length - 1]?.visitedAt),
+    onlineHours: fmtDurationMinutes(durationMins),
+    empLat,
+    empLng,
+    empOnline,
+    empLastSeen,
     points,
   };
 }
 
 function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
-const TODAY = '2026-03-08';
+function todayLocal(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+const TODAY = todayLocal();
 const PER_PAGE = 12;
 
 function tr(t: Record<string, string>, key: string, fallback: string): string {
@@ -304,6 +354,7 @@ function trackPointStatusLong(
 
 // ── Main component ─────────────────────────────────────────────────────────
 export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, selectedCompanyIds, showBalances, activeMapEmployees = [], mapCenterInfo, setShowEmpMap, activeWeekly = [] }: Props) {
+  const [backendDistributors, setBackendDistributors] = useState<Distributor[]>([]);
   const [backendAgents, setBackendAgents] = useState<AgentRow[]>([]);
   const [backendMapEmps, setBackendMapEmps] = useState<EmployeeMarker[]>([]);
   const [backendReady, setBackendReady] = useState(hasApiToken());
@@ -316,6 +367,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   const [showAdd, setShowAdd]     = useState(false);
   const [deleteEmp, setDeleteEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [trackingEmp, setTrackingEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
+  const [dayTrack, setDayTrack] = useState<DayTrack>(() => emptyDayTrack(TODAY));
+  const [loadingTrack, setLoadingTrack] = useState(false);
   const [saved, setSaved]         = useState(false);
   const [form, setForm]           = useState({ name: '', role: '', phone: UZ_PHONE_DEFAULT, city: '' });
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -340,6 +393,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
 
   const refreshAgents = useCallback(async () => {
     if (!hasApiToken()) {
+      setBackendDistributors([]);
       setBackendAgents([]);
       setBackendMapEmps([]);
       setBackendReady(false);
@@ -356,12 +410,14 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         if (selectedCompanyIds.size > 0 && d.companyId && !selectedCompanyIds.has(d.companyId)) return false;
         return true;
       });
+      setBackendDistributors(filtered);
       setBackendAgents(filtered.map(distributorToAgentRow));
       setBackendMapEmps(
         filtered.map(distributorToMapEmployee).filter((m): m is EmployeeMarker => m != null),
       );
       setBackendReady(true);
     } catch {
+      setBackendDistributors([]);
       setBackendAgents([]);
       setBackendMapEmps([]);
       setBackendReady(false);
@@ -384,7 +440,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
 
   useEffect(() => {
     if (backendReady) {
-      setLocalEmps(sourceAgents.map((a, i) => toEmployee(a, i, true)));
+      const byId = new Map(backendDistributors.map(d => [d.id, d]));
+      setLocalEmps(sourceAgents.map((a, i) => toEmployee(a, i, true, a.distributorId ? byId.get(a.distributorId) : undefined)));
       return;
     }
     setLocalEmps(prev => {
@@ -393,7 +450,29 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       const fromParent = activeAgents.map((a, i) => toEmployee(a, i));
       return [...fromParent, ...localOnly];
     });
-  }, [backendReady, sourceAgents, activeAgents]);
+  }, [backendReady, sourceAgents, activeAgents, backendDistributors]);
+
+  useEffect(() => {
+    if (!trackingEmp?.distributorId || !hasApiToken()) {
+      setDayTrack(emptyDayTrack(selectedDate));
+      return;
+    }
+    let cancelled = false;
+    setLoadingTrack(true);
+    fetchDayTrack({
+      distributorId: trackingEmp.distributorId,
+      dateStr: selectedDate,
+      empOnline: !!trackingEmp.isOnline,
+      empLat: trackingEmp.lastLatitude,
+      empLng: trackingEmp.lastLongitude,
+      lastLocationAt: trackingEmp.lastLocationAt,
+      lastLoginAt: trackingEmp.lastLoginAt,
+    })
+      .then(track => { if (!cancelled) setDayTrack(track); })
+      .catch(() => { if (!cancelled) setDayTrack(emptyDayTrack(selectedDate)); })
+      .finally(() => { if (!cancelled) setLoadingTrack(false); });
+    return () => { cancelled = true; };
+  }, [trackingEmp, selectedDate]);
 
   const filtered   = localEmps.filter(e => {
     const matchSearch =
@@ -543,23 +622,29 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
           </div>
         </div>
 
-        <DayHistoryPanel empId={historyEmp.id} empName={historyEmp.name} mode="agent" D={D} t={t} />
+        <DayHistoryPanel
+          empId={historyEmp.id}
+          empName={historyEmp.name}
+          distributorId={historyEmp.distributorId}
+          mode="agent"
+          D={D}
+          t={t}
+        />
       </div>
     );
   }
 
   // ── TRACKING VIEW ─────────────────────────────────────────────────────────
   if (trackingEmp) {
-    const dayTrack = generateDayTrack(trackingEmp.id, selectedDate);
     const filteredPoints = pointFilter
       ? dayTrack.points.filter(p => p.status === pointFilter)
       : dayTrack.points;
 
     const visitedCount = dayTrack.visited + dayTrack.visitedNoOrder;
-    const completionPct = Math.round((visitedCount / dayTrack.total) * 100);
+    const completionPct = dayTrack.total > 0 ? Math.round((visitedCount / dayTrack.total) * 100) : 0;
     const empLastSeenLabel = dayTrack.empOnline
       ? tr(t, 'trackOnlineNow', 'Hozir online')
-      : `${dayTrack.lastPointTime} ${tr(t, 'trackLastOnlineSuffix', 'da oxirgi marta online')}`;
+      : dayTrack.empLastSeen;
 
     return (
       <div style={{ padding: '0 0 40px' }}>
@@ -675,6 +760,12 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             {tr(t, 'trackToday', 'Bugun')}
           </button>
         </div>
+
+        {loadingTrack && (
+          <div style={{ marginBottom: 12, fontSize: 12, color: muted }}>
+            {t.loading || 'Yuklanmoqda...'}
+          </div>
+        )}
 
         {/* ── Summary stats (5 cards, no km) ── */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
@@ -998,7 +1089,14 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         </div>
 
         {/* ── Order History ── */}
-        <DayHistoryPanel empId={trackingEmp.id} empName={trackingEmp.name} mode="agent" D={D} t={t} />
+        <DayHistoryPanel
+          empId={trackingEmp.id}
+          empName={trackingEmp.name}
+          distributorId={trackingEmp.distributorId}
+          mode="agent"
+          D={D}
+          t={t}
+        />
 
       </div>
     );
@@ -1328,7 +1426,6 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       {/* Rows */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {paginated.map(emp => {
-          const todayTrack = generateDayTrack(emp.id, TODAY);
           if (isMobile) return (
             /* ── MOBILE CARD ── */
             <div key={emp.id} style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -1366,9 +1463,11 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               {/* Row 3: progress bar */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                 <div style={{ height: 4, borderRadius: 2, background: D ? '#333' : '#e5e7eb', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: green, borderRadius: 2, width: `${Math.round(((todayTrack.visited + todayTrack.visitedNoOrder) / todayTrack.total) * 100)}%` }} />
+                  <div style={{ height: '100%', background: emp.isOnline ? green : muted, borderRadius: 2, width: emp.isOnline ? '100%' : '8%' }} />
                 </div>
-                <div style={{ fontSize: 10, color: muted }}>{todayTrack.visited + todayTrack.visitedNoOrder}/{todayTrack.total} · {todayTrack.visited} zakaz · bugungi</div>
+                <div style={{ fontSize: 10, color: muted }}>
+                  {emp.isOnline ? tr(t, 'trackOnlineNow', 'Hozir online') : (emp.lastLocationAt ? new Date(emp.lastLocationAt).toLocaleString() : '—')}
+                </div>
               </div>
 
               {/* Row 4: action buttons — pastki qator, to'liq kenglik */}
@@ -1438,12 +1537,14 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 <MapPin size={11} color={muted} />
                 <span style={{ fontSize: 12, color: txt }}>{emp.city}</span>
               </div>
-              {/* Today progress */}
+              {/* Today / online */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '5px 0' }}>
                 <div style={{ height: 4, borderRadius: 2, background: D ? '#333' : '#e5e7eb', overflow: 'hidden', width: '100%' }}>
-                  <div style={{ height: '100%', background: green, borderRadius: 2, width: `${Math.round(((todayTrack.visited + todayTrack.visitedNoOrder) / todayTrack.total) * 100)}%` }} />
+                  <div style={{ height: '100%', background: emp.isOnline ? green : muted, borderRadius: 2, width: emp.isOnline ? '100%' : '8%' }} />
                 </div>
-                <div style={{ fontSize: 9, color: muted, whiteSpace: 'nowrap' }}>{todayTrack.visited + todayTrack.visitedNoOrder}/{todayTrack.total} · {todayTrack.visited} zakaz</div>
+                <div style={{ fontSize: 9, color: muted, whiteSpace: 'nowrap' }}>
+                  {emp.isOnline ? tr(t, 'trackOnlineNow', 'Hozir online') : '—'}
+                </div>
               </div>
               {/* Actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

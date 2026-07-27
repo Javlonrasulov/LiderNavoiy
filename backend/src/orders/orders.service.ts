@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto } from './dto/order.dto';
 import { OrderStatus, OrderSource } from '../common/enums';
@@ -271,11 +271,39 @@ export class OrdersService {
     );
   }
 
-  async findForAdmin(companyId?: string, limit = 500) {
-    const orders = await this.repo.find({
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+  async findForAdmin(
+    companyId?: string,
+    limit = 500,
+    opts?: {
+      distributorId?: string;
+      deliveryDistributorId?: string;
+      from?: Date;
+      to?: Date;
+    },
+  ) {
+    const qb: SelectQueryBuilder<Order> = this.repo
+      .createQueryBuilder('o')
+      .orderBy('o.createdAt', 'DESC')
+      .take(Math.min(Math.max(limit, 1), 2000));
+
+    if (opts?.distributorId) {
+      qb.andWhere('o.distributorId = :distributorId', {
+        distributorId: opts.distributorId,
+      });
+    }
+    if (opts?.deliveryDistributorId) {
+      qb.andWhere('o.deliveryDistributorId = :deliveryDistributorId', {
+        deliveryDistributorId: opts.deliveryDistributorId,
+      });
+    }
+    if (opts?.from && opts?.to) {
+      qb.andWhere(
+        '(o.createdAt BETWEEN :from AND :to OR o.updatedAt BETWEEN :from AND :to)',
+        { from: opts.from, to: opts.to },
+      );
+    }
+
+    const orders = await qb.getMany();
     if (orders.length === 0) return [];
 
     const clientIds = [...new Set(orders.map((o) => o.clientId))];
@@ -328,6 +356,10 @@ export class OrdersService {
                 lineCode: client.lineCode,
                 clientClass: client.clientClass,
                 category: client.category,
+                address: client.address,
+                phone: client.phone,
+                latitude: client.latitude,
+                longitude: client.longitude,
               }
             : null,
           agentName: profile?.user?.fullName ?? null,
@@ -340,9 +372,7 @@ export class OrdersService {
         if (!companyId) return true;
         const clientCo = o.client?.companyId ?? null;
         const agentCo = o.agentCompanyId ?? null;
-        // Mijoz yoki agent kompaniyasi mos kelsa — ko'rsat
         if (clientCo === companyId || agentCo === companyId) return true;
-        // Kompaniya belgilanmagan buyurtmalar ham yo'qolmasin
         if (!clientCo && !agentCo) return true;
         return false;
       });

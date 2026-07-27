@@ -70,7 +70,12 @@ export interface Distributor {
   lastLongitude: number | null;
   lastLocationAt: string | null;
   isOnline: boolean;
-  user?: { fullName: string; username: string; isActive?: boolean };
+  user?: {
+    fullName: string;
+    username: string;
+    isActive?: boolean;
+    lastLoginAt?: string | null;
+  };
 }
 
 export interface BackendCompany {
@@ -196,6 +201,10 @@ export interface BackendOrder {
     lineCode: string | null;
     clientClass: string | null;
     category: string | null;
+    address?: string | null;
+    phone?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
   } | null;
   agentName?: string | null;
   deliveryName?: string | null;
@@ -414,16 +423,72 @@ export const api = {
     ),
 
   getDailyRoute: (distributorId: string, date: string) =>
-    request<{ points: LocationPoint[]; stats: Record<string, number> }>(
-      `/routes/${distributorId}/daily?date=${date}`,
+    request<{
+      date: string;
+      distributorId: string;
+      pointCount: number;
+      stats: {
+        totalDistanceKm: number;
+        avgSpeed: number;
+        maxSpeed: number;
+        durationMinutes: number;
+      };
+      points: LocationPoint[];
+    }>(`/routes/${distributorId}/daily?date=${date}`),
+
+  getVisitsForDistributor: (distributorId: string, date: string) =>
+    request<Array<{
+      id: string;
+      distributorId: string;
+      clientId: string;
+      visitedAt: string;
+      checkInLatitude: number | null;
+      checkInLongitude: number | null;
+      orderTotal: number;
+      notes: string | null;
+      status: string;
+      clientName: string;
+      clientCode: string;
+      clientAddress: string | null;
+      clientLatitude: number | null;
+      clientLongitude: number | null;
+      fromClientOrder: boolean;
+    }>>(`/visits/admin?distributorId=${encodeURIComponent(distributorId)}&date=${encodeURIComponent(date)}`),
+
+  getVisitsForDistributorRange: (distributorId: string, from: string, to: string) =>
+    request<Array<{
+      id: string;
+      distributorId: string;
+      clientId: string;
+      visitedAt: string;
+      checkInLatitude: number | null;
+      checkInLongitude: number | null;
+      orderTotal: number;
+      notes: string | null;
+      status: string;
+      clientName: string;
+      clientCode: string;
+      clientAddress: string | null;
+      clientLatitude: number | null;
+      clientLongitude: number | null;
+      fromClientOrder: boolean;
+    }>>(
+      `/visits/admin?distributorId=${encodeURIComponent(distributorId)}` +
+        `&from=${encodeURIComponent(`${from}T00:00:00+05:00`)}` +
+        `&to=${encodeURIComponent(`${to}T23:59:59.999+05:00`)}`,
     ),
 
   getNearbyClients: (lat: number, lng: number, radius = 500) =>
     request<Client[]>(`/gps/nearby-clients?latitude=${lat}&longitude=${lng}&radiusMeters=${radius}`),
 
   // ─── Clients ───
-  getClients: (companyId?: string) =>
-    request<Client[]>(`/clients${companyId ? `?companyId=${companyId}` : ''}`),
+  getClients: (companyId?: string, distributorId?: string) => {
+    const q = new URLSearchParams();
+    if (companyId) q.set('companyId', companyId);
+    if (distributorId) q.set('distributorId', distributorId);
+    const qs = q.toString();
+    return request<Client[]>(`/clients${qs ? `?${qs}` : ''}`);
+  },
 
   getClient: (id: string) => request<Client>(`/clients/${id}`),
 
@@ -773,6 +838,26 @@ export const api = {
   // ─── Orders (agent APK → admin Sotuvlar) ───
   getOrders: (companyId?: string) =>
     request<BackendOrder[]>(`/orders${companyId ? `?companyId=${companyId}` : ''}`),
+
+  /** Admin tarix: agent yoki dostavka buyurtmalari (sana oralig‘i) */
+  getOrdersHistory: (opts: {
+    companyId?: string;
+    distributorId?: string;
+    deliveryDistributorId?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (opts.companyId) q.set('companyId', opts.companyId);
+    if (opts.distributorId) q.set('distributorId', opts.distributorId);
+    if (opts.deliveryDistributorId) q.set('deliveryDistributorId', opts.deliveryDistributorId);
+    if (opts.from) q.set('from', opts.from);
+    if (opts.to) q.set('to', opts.to);
+    if (opts.limit) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return request<BackendOrder[]>(`/orders${qs ? `?${qs}` : ''}`);
+  },
 
   /** Admin: buyurtma statusini yangilash (Tarozi → yuklashga tayyor va hokazo) */
   updateOrder: (id: string, body: { status?: string; deliveryDistributorId?: string | null }) =>

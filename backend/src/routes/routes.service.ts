@@ -11,8 +11,8 @@ export class RoutesService {
   ) {}
 
   async getDailyRoute(distributorId: string, date: string) {
-    const from = new Date(`${date}T00:00:00.000Z`);
-    const to = new Date(`${date}T23:59:59.999Z`);
+    const from = new Date(`${date}T00:00:00+05:00`);
+    const to = new Date(`${date}T23:59:59.999+05:00`);
 
     const points = await this.locationRepo.find({
       where: { distributorId, recordedAt: Between(from, to) },

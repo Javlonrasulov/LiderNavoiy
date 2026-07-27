@@ -49,11 +49,25 @@ export class OrdersController {
   findAll(
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
+    @Query('distributorId') distributorId?: string,
+    @Query('deliveryDistributorId') deliveryDistributorId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
   ) {
     if (req.user.role === UserRole.DISTRIBUTOR) {
       return this.service.findByDistributor(req.user.distributorProfile!.id);
     }
-    return this.service.findForAdmin(companyId);
+    const take = limit ? Number(limit) : 500;
+    const opts = {
+      distributorId: distributorId || undefined,
+      deliveryDistributorId: deliveryDistributorId || undefined,
+      from: from ? new Date(from.includes('T') ? from : `${from}T00:00:00+05:00`) : undefined,
+      to: to
+        ? new Date(to.includes('T') ? to : `${to}T23:59:59.999+05:00`)
+        : undefined,
+    };
+    return this.service.findForAdmin(companyId, Number.isFinite(take) ? take : 500, opts);
   }
 
   @Get(':id')

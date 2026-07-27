@@ -1,14 +1,15 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   CalendarDays, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   ShoppingCart, Check, Clock, MapPin, TrendingUp, X,
 } from 'lucide-react';
-import { ADMIN_PRODUCTS } from '../../data/adminProducts';
-import { demo } from '../../data/demoLimit';
+import { api, type BackendOrder } from '../../api/client';
 
 interface Props {
-  empId: number;
-  empName: string;
+  /** @deprecated numeric seed — use distributorId */
+  empId?: number;
+  empName?: string;
+  distributorId?: string;
   mode: 'delivery' | 'agent';
   D: boolean;
   t: Record<string, string>;
@@ -21,31 +22,6 @@ function tr(t: Record<string, string>, key: string, fallback: string): string {
 function splitTrList(t: Record<string, string>, key: string, fallback: string): string[] {
   return (t[key] || fallback).split(',').map(s => s.trim());
 }
-
-// ── Seeded RNG ────────────────────────────────────────────────────────────────
-function seededRand(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 16807 + 0) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
-
-const CLIENT_NAMES = demo([
-  'Ahmed Ota Markit', 'Gemur Ruslan', 'Muratov Jahongir',
-  'Armixon Grand Savdo', 'Asad Asil Beklarim', 'Gulsevar Baraka',
-  'Timurbek Shirina', 'Ahmadova Dildora', 'Ikronov Urozbek',
-  "Axtan bobo do'koni", 'Akranov Murodjon', 'ODILBEK ZIYOSI',
-  'IBODULLO savdosi', 'MOHINUR MALIKAM', 'LAZIZJON TURSUNOV',
-  'Gulsanam Ruslan', 'Baxtiyor Savdo', 'Navoiy Oziq-Ovqat',
-  "Hamza Do'koni", 'Sarvar Supermarket', 'Dilnoza Nonvoyxona',
-  'Umarov Sherzod', 'Kenja Savdo', 'Abdullayev Jamshid',
-  'Zulfiya Bozor', 'Nodira Mahsulotlari', 'Komiljon TTM',
-]);
-const DISTRICTS = [
-  'Janubiy', 'Shimoliy', 'Markaziy', "G'arbiy", 'Sharqiy',
-  '1-mavze', '2-mavze', '3-mavze', 'Karmana', 'Ravshan',
-];
 
 type OrderStatus = 'done' | 'pending';
 
@@ -62,41 +38,103 @@ interface ClientRecord {
   totalSum: number;
 }
 
-function generateDayData(empId: number, dateStr: string, mode: 'delivery' | 'agent'): Omit<ClientRecord, 'uid' | 'dateStr'>[] {
-  const seed = empId * 997 + dateStr.split('-').reduce((a, b) => a + Number(b), 0) * 31;
-  const rng = seededRand(seed);
-  const count = 6 + Math.floor(rng() * 8);
-  return Array.from({ length: count }, (_, i) => {
-    const rng2 = seededRand(seed + i * 79);
-    const r = rng2();
-    const status: OrderStatus = mode === 'delivery' ? (r < 0.68 ? 'done' : 'pending') : (r < 0.85 ? 'done' : 'pending');
-    const h = 8 + Math.floor(rng2() * 9);
-    const m = Math.floor(rng2() * 60);
-    const time = status === 'pending' ? null : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    const catalog = ADMIN_PRODUCTS;
-    const catalogLen = catalog.length;
-    const products: ProductLine[] = [];
-    if (catalogLen > 0) {
-      const prodCount = Math.min(2 + Math.floor(rng2() * 5), catalogLen);
-      const order = Array.from({ length: catalogLen }, (_, i) => i)
-        .sort(() => rng2() - 0.5);
-      for (let p = 0; p < prodCount; p++) {
-        const prod = catalog[order[p]];
-        const miqdor = 1 + Math.floor(rng2() * 20);
-        products.push({ no: p + 1, kod: prod.kod, nomi: prod.ismi, miqdor, narx: prod.rtl, summa: miqdor * prod.rtl });
-      }
-    }
-    return {
-      id: i,
-      name: CLIENT_NAMES[(seed + i * 7) % CLIENT_NAMES.length],
-      district: DISTRICTS[(seed + i * 3) % DISTRICTS.length],
-      time, status, products,
-      totalSum: products.reduce((s, p) => s + p.summa, 0),
-    };
-  });
+function formatNum(n: number) { return n.toLocaleString('ru-RU'); }
+
+function localIso(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatNum(n: number) { return n.toLocaleString('ru-RU'); }
+function isoFromDate(d: Date) {
+  return localIso(d);
+}
+
+function hasApiToken(): boolean {
+  return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
+}
+
+function fmtClock(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function dateStrFromIso(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return localIso();
+  return isoFromDate(d);
+}
+
+function agentOrderDone(status: string): boolean {
+  return status !== 'cancelled' && status !== 'draft';
+}
+
+function deliveryOrderDone(status: string): boolean {
+  return status === 'delivered';
+}
+
+function deliveryOrderRelevant(status: string): boolean {
+  return status === 'delivered' || status === 'on_way' || status === 'packing' || status === 'confirmed';
+}
+
+function orderProducts(order: BackendOrder): ProductLine[] {
+  return (order.items || []).map((it, i) => ({
+    no: i + 1,
+    kod: it.productCode || '—',
+    nomi: it.productName || 'Mahsulot',
+    miqdor: Number(it.quantity) || 0,
+    narx: Number(it.price) || 0,
+    summa: (Number(it.quantity) || 0) * (Number(it.price) || 0),
+  }));
+}
+
+function orderToRecord(
+  order: BackendOrder,
+  mode: 'delivery' | 'agent',
+  lo?: string,
+  hi?: string,
+): ClientRecord | null {
+  if (mode === 'delivery' && !deliveryOrderRelevant(order.status)) return null;
+  if (mode === 'agent' && order.status === 'cancelled') return null;
+
+  const done = mode === 'delivery'
+    ? deliveryOrderDone(order.status)
+    : agentOrderDone(order.status);
+
+  const created = dateStrFromIso(order.createdAt);
+  const updated = dateStrFromIso(order.updatedAt || order.createdAt);
+  let dateStr = mode === 'delivery' && done ? updated : created;
+  if (lo && hi) {
+    if (mode === 'delivery' && done && inDateWindow(updated, lo, hi)) dateStr = updated;
+    else if (inDateWindow(created, lo, hi)) dateStr = created;
+    else if (inDateWindow(updated, lo, hi)) dateStr = updated;
+  }
+
+  const stamp = dateStr === updated
+    ? (order.updatedAt || order.createdAt)
+    : (order.createdAt || order.updatedAt);
+
+  const products = orderProducts(order);
+  const totalSum = products.length > 0
+    ? products.reduce((s, p) => s + p.summa, 0)
+    : (Number(order.totalAmount) || 0);
+
+  return {
+    uid: order.id,
+    id: 0,
+    dateStr,
+    name: order.client?.name || order.deliveryName || 'Klient',
+    district: order.client?.address || order.client?.lineCode || '—',
+    time: done ? fmtClock(stamp) : null,
+    status: done ? 'done' : 'pending',
+    products,
+    totalSum,
+  };
+}
+
+function inDateWindow(dateStr: string, lo: string, hi: string): boolean {
+  return dateStr >= lo && dateStr <= hi;
+}
 
 // ── Calendar helpers ──────────────────────────────────────────────────────────
 function getDaysInMonth(year: number, month: number) { return new Date(year, month + 1, 0).getDate(); }
@@ -107,20 +145,13 @@ function getFirstWeekday(year: number, month: number) {
 function isoFromYMD(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
-function datesBetween(start: string, end: string): string[] {
-  const dates: string[] = [];
-  const cur = new Date(start + 'T00:00:00');
-  const endD = new Date(end + 'T00:00:00');
-  while (cur <= endD) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
-  return dates;
-}
 function fmtDateLabel(iso: string) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('uz-Latn', { day: '2-digit', month: 'short' });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export function DayHistoryPanel({ empId, mode, D, t }: Props) {
+export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
   const MONTH_NAMES = splitTrList(t, 'histMonths', 'Yanvar,Fevral,Mart,Aprel,May,Iyun,Iyul,Avgust,Sentabr,Oktabr,Noyabr,Dekabr');
   const WD_LABELS = splitTrList(t, 'histWeekdays', 'Du,Se,Ch,Pa,Ju,Sh,Ya');
   const currency = tr(t, 'histCurrency', "so'm");
@@ -130,20 +161,20 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
   const statusDone = mode === 'delivery' ? tr(t, 'histStatusDelivered', '✓ Yetkazildi') : tr(t, 'histStatusOrdered', '✓ Zakaz berildi');
   const statusPending = tr(t, 'histStatusPending', '⏳ Kutilmoqda');
   const pendingLabel = tr(t, 'histPending', 'Kutilmoqda');
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = localIso();
   const now = new Date();
 
-  // yesterday as default
-  const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const yesterday = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return localIso(d);
+  })();
 
-  // Unified selection: rangeStart always set, rangeEnd optional
   const [rangeStart, setRangeStart] = useState<string>(yesterday);
   const [rangeEnd, setRangeEnd]     = useState<string | null>(null);
-  // 'start' = next click sets a new start; 'end' = next click sets end
   const [pickStep, setPickStep]     = useState<'start' | 'end'>('start');
   const [hoverDate, setHoverDate]   = useState<string | null>(null);
 
-  // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
   const [isSmall, setIsSmall]   = useState(false);
   useEffect(() => {
@@ -156,40 +187,134 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Calendar month nav
   const [calYear, setCalYear]   = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
 
-  // Table
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [filter, setFilter]           = useState<'all' | 'done' | 'pending'>('all');
   const [calOpen, setCalOpen]         = useState(false);
 
-  // ── Data ────────────────────────────────────────────────────────────────────
-  const records = useMemo<ClientRecord[]>(() => {
-    if (rangeEnd && rangeEnd !== rangeStart) {
-      const lo = rangeStart < rangeEnd ? rangeStart : rangeEnd;
-      const hi = rangeStart < rangeEnd ? rangeEnd : rangeStart;
-      const dates = datesBetween(lo, hi);
-      let globalIdx = 0;
-      return dates.flatMap(d =>
-        generateDayData(empId, d, mode).map(r => ({
-          ...r, uid: `${d}-${globalIdx++}`, dateStr: d,
-        }))
-      );
+  const [records, setRecords] = useState<ClientRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasDataCache, setHasDataCache] = useState<Record<string, boolean>>({});
+
+  const lo = rangeEnd ? (rangeStart < rangeEnd ? rangeStart : rangeEnd) : rangeStart;
+  const hi = rangeEnd ? (rangeStart < rangeEnd ? rangeEnd : rangeStart) : rangeStart;
+
+  const loadRange = useCallback(async (from: string, to: string) => {
+    if (!distributorId || !hasApiToken()) {
+      setRecords([]);
+      return;
     }
-    // single day
-    return generateDayData(empId, rangeStart, mode).map((r, i) => ({
-      ...r, uid: `${rangeStart}-${i}`, dateStr: rangeStart,
-    }));
-  }, [empId, rangeStart, rangeEnd, mode]);
+    setLoading(true);
+    try {
+      const orders = await api.getOrdersHistory({
+        ...(mode === 'delivery'
+          ? { deliveryDistributorId: distributorId }
+          : { distributorId }),
+        from,
+        to,
+        limit: 1000,
+      });
+
+      let list: ClientRecord[] = orders
+        .map(o => orderToRecord(o, mode, from, to))
+        .filter((r): r is ClientRecord => !!r)
+        .filter(r => inDateWindow(r.dateStr, from, to));
+
+      // Agent: tashriflar (zakazsiz) ham ko‘rinsin
+      if (mode === 'agent') {
+        const visits = await api.getVisitsForDistributorRange(distributorId, from, to);
+        const orderVisitIds = new Set(
+          orders.map(o => o.visitId).filter((id): id is string => !!id),
+        );
+        const orderClientDays = new Set(
+          list.map(r => `${r.name}|${r.dateStr}`),
+        );
+        const visitRecords: ClientRecord[] = visits
+          .filter(v => !orderVisitIds.has(v.id))
+          .map(v => {
+            const dateStr = dateStrFromIso(v.visitedAt);
+            const name = v.clientName || 'Klient';
+            if (orderClientDays.has(`${name}|${dateStr}`)) return null;
+            const hasOrder = (Number(v.orderTotal) || 0) > 0;
+            return {
+              uid: `visit-${v.id}`,
+              id: 0,
+              dateStr,
+              name,
+              district: v.clientAddress || '—',
+              time: fmtClock(v.visitedAt),
+              status: hasOrder ? 'done' as const : 'pending' as const,
+              products: [],
+              totalSum: Number(v.orderTotal) || 0,
+            };
+          })
+          .filter((r): r is ClientRecord => !!r && inDateWindow(r.dateStr, from, to));
+        list = [...list, ...visitRecords];
+      }
+
+      list.sort((a, b) => {
+        if (a.dateStr !== b.dateStr) return b.dateStr.localeCompare(a.dateStr);
+        return (b.time || '').localeCompare(a.time || '');
+      });
+      setRecords(list);
+    } catch {
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [distributorId, mode]);
+
+  useEffect(() => {
+    loadRange(lo, hi);
+  }, [lo, hi, loadRange]);
+
+  // Calendar dots for visible month
+  useEffect(() => {
+    if (!distributorId || !hasApiToken()) {
+      setHasDataCache({});
+      return;
+    }
+    let cancelled = false;
+    const from = isoFromYMD(calYear, calMonth, 1);
+    const to = isoFromYMD(calYear, calMonth, getDaysInMonth(calYear, calMonth));
+    (async () => {
+      try {
+        const orders = await api.getOrdersHistory({
+          ...(mode === 'delivery'
+            ? { deliveryDistributorId: distributorId }
+            : { distributorId }),
+          from,
+          to,
+          limit: 1000,
+        });
+        const cache: Record<string, boolean> = {};
+        for (const o of orders) {
+          const rec = orderToRecord(o, mode, from, to);
+          if (rec && rec.status === 'done') cache[rec.dateStr] = true;
+        }
+        if (mode === 'agent') {
+          const visits = await api.getVisitsForDistributorRange(distributorId, from, to);
+          for (const v of visits) {
+            if ((Number(v.orderTotal) || 0) > 0) {
+              cache[dateStrFromIso(v.visitedAt)] = true;
+            }
+          }
+        }
+        if (!cancelled) setHasDataCache(cache);
+      } catch {
+        if (!cancelled) setHasDataCache({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [distributorId, mode, calYear, calMonth]);
 
   const filtered     = records.filter(r => filter === 'all' ? true : r.status === filter);
   const totalDone    = records.filter(r => r.status === 'done').length;
   const totalPending = records.filter(r => r.status === 'pending').length;
   const totalSum     = records.filter(r => r.status === 'done').reduce((s, r) => s + r.totalSum, 0);
 
-  // ── Colors ───────────────────────────────────────────────────────────────────
   const txt    = D ? '#f9fafb' : '#111827';
   const muted  = D ? '#6b7280' : '#9ca3af';
   const border = D ? 'rgba(255,255,255,0.07)' : '#e5e7eb';
@@ -198,25 +323,20 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
   const green  = '#10b981';
   const amber  = '#f59e0b';
 
-  // ── Calendar navigation ───────────────────────────────────────────────────
   const prevMonth = () => { if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); } else setCalMonth(m => m - 1); };
   const nextMonth = () => { if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); } else setCalMonth(m => m + 1); };
   const canGoNext = calYear < now.getFullYear() || (calYear === now.getFullYear() && calMonth < now.getMonth());
 
-  // ── Calendar click ───────────────────────────────────────────────────────
   const handleCalClick = (iso: string) => {
     if (iso > todayIso) return;
     if (pickStep === 'start') {
-      // First click: set new start, clear end, wait for second click
       setRangeStart(iso);
       setRangeEnd(null);
       setPickStep('end');
       setExpandedKey(null);
       setFilter('all');
     } else {
-      // Second click: set end (or swap), close calendar
       if (iso === rangeStart) {
-        // Same day tapped twice → single day, done
         setRangeEnd(null);
       } else {
         setRangeEnd(iso);
@@ -227,19 +347,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
     }
   };
 
-  // ── Has data indicator ────────────────────────────────────────────────────
-  const hasDataCache = useMemo(() => {
-    const cache: Record<string, boolean> = {};
-    const daysInMonth = getDaysInMonth(calYear, calMonth);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const iso = isoFromYMD(calYear, calMonth, d);
-      if (iso > todayIso) break;
-      cache[iso] = generateDayData(empId, iso, mode).some(r => r.status === 'done');
-    }
-    return cache;
-  }, [empId, calYear, calMonth, mode, todayIso]);
-
-  // ── Calendar cells ────────────────────────────────────────────────────────
   const calCells = useMemo(() => {
     const firstWD = getFirstWeekday(calYear, calMonth);
     const daysInMonth = getDaysInMonth(calYear, calMonth);
@@ -248,10 +355,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
     while (cells.length % 7 !== 0) cells.push(null);
     return cells;
   }, [calYear, calMonth]);
-
-  // ── Range visual helpers ──────────────────────────────────────────────────
-  const lo = rangeEnd ? (rangeStart < rangeEnd ? rangeStart : rangeEnd) : rangeStart;
-  const hi = rangeEnd ? (rangeStart < rangeEnd ? rangeEnd : rangeStart) : rangeStart;
 
   const getHoverLo = (hover: string) => (rangeStart < hover ? rangeStart : hover);
   const getHoverHi = (hover: string) => (rangeStart < hover ? hover : rangeStart);
@@ -271,7 +374,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
     return false;
   };
 
-  // ── Label ─────────────────────────────────────────────────────────────────
   const dateLabel = () => {
     if (!rangeEnd || rangeEnd === rangeStart) return fmtDateLabel(rangeStart);
     return `${fmtDateLabel(lo)} → ${fmtDateLabel(hi)}`;
@@ -279,10 +381,17 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
 
   const isRange = !!(rangeEnd && rangeEnd !== rangeStart);
 
+  if (!distributorId) {
+    return (
+      <div style={{ marginTop: 24, padding: 24, textAlign: 'center', color: muted, fontSize: 13, background: cardBg, border: `1px solid ${border}`, borderRadius: 12 }}>
+        {tr(t, 'histNoDistributor', "Tarix uchun distributor ID topilmadi")}
+      </div>
+    );
+  }
+
   return (
     <div style={{ marginTop: 24 }}>
 
-      {/* ── Date trigger button ── */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <button
           onClick={() => setCalOpen(o => !o)}
@@ -314,9 +423,11 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
           <ChevronDown size={13} color={calOpen ? indigo : muted}
             style={{ transform: calOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
         </button>
+        {loading && (
+          <span style={{ marginLeft: 10, fontSize: 11, color: muted }}>{tr(t, 'loading', 'Yuklanmoqda...')}</span>
+        )}
       </div>
 
-      {/* ── Calendar modal ── */}
       {calOpen && (
         <div
           onClick={() => { setCalOpen(false); if (pickStep === 'end') { setPickStep('start'); } }}
@@ -338,7 +449,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
               boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
             }}
           >
-            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <button onClick={prevMonth} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronLeft size={13} color={txt} />
@@ -350,21 +460,18 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
               </button>
             </div>
 
-            {/* Pick hint */}
             <div style={{ fontSize: 11, color: indigo, textAlign: 'center', marginBottom: 10, fontWeight: 600, background: `${indigo}12`, borderRadius: 8, padding: '5px 0' }}>
               {pickStep === 'start'
                 ? `📅 ${tr(t, 'calStartDate', "Boshlang'ich sanani tanlang")}`
                 : `📅 ${fmtDateLabel(rangeStart)} ${tr(t, 'histCalEndHint', "→ tugash sanasini tanlang")}`}
             </div>
 
-            {/* Weekday headers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 4 }}>
               {WD_LABELS.map(w => (
                 <div key={w} style={{ textAlign: 'center', fontSize: 10, color: muted, fontWeight: 700, padding: '2px 0' }}>{w}</div>
               ))}
             </div>
 
-            {/* Day grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
               {calCells.map((iso, i) => {
                 if (!iso) return <div key={`e-${i}`} />;
@@ -400,7 +507,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
               })}
             </div>
 
-            {/* Legend */}
             <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: indigo }} />
@@ -415,9 +521,7 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
         </div>
       )}
 
-      {/* ── Table section ── */}
       <>
-        {/* Summary cards */}
         <div style={{ display: 'grid', gridTemplateColumns: isSmall ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 8 : 10, marginBottom: 14 }}>
           {[
             { label: doneLabel, value: String(totalDone), color: green, icon: Check },
@@ -436,7 +540,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
           ))}
         </div>
 
-        {/* Filter pills */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {([
             { id: 'all',     label: tr(t, 'histAll', 'Barchasi'), count: records.length },
@@ -457,11 +560,12 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
           ))}
         </div>
 
-        {/* ── MOBILE CARD LIST ── */}
         {isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filtered.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>{tr(t, 'histNoData', "Ma'lumot yo'q")}</div>
+              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>
+                {loading ? tr(t, 'loading', 'Yuklanmoqda...') : tr(t, 'histNoData', "Ma'lumot yo'q")}
+              </div>
             ) : filtered.map((rec, ri) => {
               const isOpen = expandedKey === rec.uid;
               return (
@@ -470,12 +574,10 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                   borderRadius: 12, overflow: 'hidden',
                   transition: 'border-color .15s',
                 }}>
-                  {/* Card header row */}
                   <div
                     onClick={() => setExpandedKey(isOpen ? null : rec.uid)}
                     style={{ padding: '10px 12px', cursor: 'pointer' }}
                   >
-                    {/* Top row: number + status + name */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 10, color: muted, width: 18, flexShrink: 0, textAlign: 'center' }}>{ri + 1}</span>
                       <div style={{
@@ -507,7 +609,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                           )}
                         </div>
                       </div>
-                      {/* Right: sum + chevron */}
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: rec.status === 'done' ? green : muted }}>
                           {rec.status === 'done' ? `${formatNum(rec.totalSum)}` : '—'}
@@ -518,7 +619,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                         {isOpen ? <ChevronUp size={13} color={indigo} /> : <ChevronDown size={13} color={muted} />}
                       </div>
                     </div>
-                    {/* Status badge */}
                     <div style={{ marginTop: 6, marginLeft: 26 }}>
                       <span style={{
                         fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
@@ -530,35 +630,37 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                     </div>
                   </div>
 
-                  {/* Expanded products – mobile compact */}
                   {isOpen && (
                     <div style={{ borderTop: `1px solid ${D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.12)'}`, background: D ? 'rgba(99,102,241,0.06)' : 'rgba(99,102,241,0.025)', padding: '10px 12px' }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: indigo, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                         {tr(t, 'histProducts', 'Mahsulotlar')} ({rec.products.length} {tr(t, 'histCountUnit', 'ta')})
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {rec.products.map((p, pi) => (
-                          <div key={pi} style={{
-                            background: D ? 'rgba(255,255,255,0.03)' : '#ffffff',
-                            border: `1px solid ${D ? 'rgba(255,255,255,0.06)' : '#f0f0f0'}`,
-                            borderRadius: 8, padding: '8px 10px',
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nomi}</div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-                                  <span style={{ fontSize: 10, color: indigo, fontFamily: 'monospace', fontWeight: 600 }}>{p.kod}</span>
-                                  <span style={{ fontSize: 10, color: muted }}>{p.miqdor} {tr(t, 'histCountUnit', 'ta')} × {formatNum(p.narx)}</span>
+                      {rec.products.length === 0 ? (
+                        <div style={{ fontSize: 12, color: muted, padding: '8px 0' }}>{tr(t, 'histNoProducts', 'Mahsulot yo‘q')}</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {rec.products.map((p, pi) => (
+                            <div key={pi} style={{
+                              background: D ? 'rgba(255,255,255,0.03)' : '#ffffff',
+                              border: `1px solid ${D ? 'rgba(255,255,255,0.06)' : '#f0f0f0'}`,
+                              borderRadius: 8, padding: '8px 10px',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.nomi}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                                    <span style={{ fontSize: 10, color: indigo, fontFamily: 'monospace', fontWeight: 600 }}>{p.kod}</span>
+                                    <span style={{ fontSize: 10, color: muted }}>{p.miqdor} {tr(t, 'histCountUnit', 'ta')} × {formatNum(p.narx)}</span>
+                                  </div>
+                                </div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: green, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  {formatNum(p.summa)}
                                 </div>
                               </div>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: green, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                {formatNum(p.summa)}
-                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Total */}
+                          ))}
+                        </div>
+                      )}
                       <div style={{ marginTop: 8, padding: '8px 10px', background: D ? 'rgba(16,185,129,0.10)' : 'rgba(16,185,129,0.07)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: txt }}>{tr(t, 'histTotal', 'JAMI')}</span>
                         <span style={{ fontSize: 13, fontWeight: 700, color: green }}>{formatNum(rec.totalSum)} {currency}</span>
@@ -570,10 +672,8 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
             })}
           </div>
         ) : (
-          /* ── DESKTOP TABLE ── */
           <div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
 
-            {/* Header */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: isRange ? '28px 80px 1fr 80px 80px 100px 22px' : '28px 1fr 80px 80px 100px 22px',
@@ -585,15 +685,15 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
               ))}
             </div>
 
-            {/* Rows */}
             {filtered.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>{tr(t, 'histNoData', "Ma'lumot yo'q")}</div>
+              <div style={{ padding: 32, textAlign: 'center', color: muted, fontSize: 13 }}>
+                {loading ? tr(t, 'loading', 'Yuklanmoqda...') : tr(t, 'histNoData', "Ma'lumot yo'q")}
+              </div>
             ) : filtered.map((rec, ri) => {
               const isOpen = expandedKey === rec.uid;
               return (
                 <div key={rec.uid} style={{ borderBottom: ri < filtered.length - 1 ? `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f5f5f5'}` : 'none' }}>
 
-                  {/* Row */}
                   <div
                     onClick={() => setExpandedKey(isOpen ? null : rec.uid)}
                     style={{
@@ -659,11 +759,9 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                     </div>
                   </div>
 
-                  {/* ── Expanded products ── */}
                   {isOpen && (
                     <div style={{ padding: '0 14px 14px', background: D ? 'rgba(99,102,241,0.05)' : 'rgba(99,102,241,0.025)' }}>
                       <div style={{ border: `1px solid ${D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.2)'}`, borderRadius: 10, overflow: 'hidden' }}>
-                        {/* Excel header */}
                         <div style={{ display: 'grid', gridTemplateColumns: '32px 70px 1fr 60px 90px 100px', background: D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.1)', borderBottom: `1px solid ${D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.15)'}` }}>
                           {['№', tr(t, 'histColCode', 'Kod'), tr(t, 'histColProduct', 'Mahsulot nomi'), tr(t, 'histColQty', 'Miqdor'), tr(t, 'histColPrice', 'Narx'), tr(t, 'histColSum', 'Summa')].map((col, ci) => (
                             <div key={ci} style={{ padding: '7px 10px', fontSize: 10, fontWeight: 700, color: D ? '#a5b4fc' : '#4f46e5', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: ci < 5 ? `1px solid ${D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)'}` : 'none' }}>
@@ -671,8 +769,9 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                             </div>
                           ))}
                         </div>
-                        {/* Excel rows */}
-                        {rec.products.map((p, pi) => (
+                        {rec.products.length === 0 ? (
+                          <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: muted }}>{tr(t, 'histNoProducts', 'Mahsulot yo‘q')}</div>
+                        ) : rec.products.map((p, pi) => (
                           <div key={pi} style={{ display: 'grid', gridTemplateColumns: '32px 70px 1fr 60px 90px 100px', background: pi % 2 === 0 ? (D ? 'rgba(255,255,255,0.01)' : '#ffffff') : (D ? 'rgba(255,255,255,0.025)' : '#f9fafb'), borderBottom: pi < rec.products.length - 1 ? `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` : 'none' }}>
                             <div style={{ padding: '7px 10px', fontSize: 11, color: muted, textAlign: 'center', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{p.no}</div>
                             <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 600, color: indigo, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}`, fontFamily: 'monospace' }}>{p.kod}</div>
@@ -682,7 +781,6 @@ export function DayHistoryPanel({ empId, mode, D, t }: Props) {
                             <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: green, textAlign: 'right' }}>{formatNum(p.summa)}</div>
                           </div>
                         ))}
-                        {/* Total */}
                         <div style={{ display: 'grid', gridTemplateColumns: '32px 70px 1fr 60px 90px 100px', background: D ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.06)', borderTop: `2px solid ${D ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.2)'}` }}>
                           <div style={{ padding: '7px 10px', gridColumn: '1/5', fontSize: 11, fontWeight: 700, color: txt, borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{tr(t, 'histTotal', 'JAMI')}</div>
                           <div style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: txt, textAlign: 'right', borderRight: `1px solid ${D ? 'rgba(255,255,255,0.04)' : '#f0f0f0'}` }}>{formatNum(rec.products.reduce((s, p) => s + p.miqdor, 0))}</div>

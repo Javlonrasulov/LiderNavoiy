@@ -52,8 +52,15 @@ export class ClientsController {
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
     @Query('lineCode') lineCode?: string,
+    @Query('distributorId') distributorId?: string,
   ) {
-    return this.service.findAll(companyId, lineCode, this.scopeDistributorId(req.user));
+    const scoped = this.scopeDistributorId(req.user);
+    const filterDistributorId =
+      scoped ??
+      (req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER
+        ? distributorId
+        : undefined);
+    return this.service.findAll(companyId, lineCode, filterDistributorId);
   }
 
   @Get('search')
