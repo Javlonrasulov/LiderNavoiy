@@ -11,6 +11,7 @@ import { LINES, type AgentRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
 import { TrackingMap } from '../TrackingMap';
 import { DayHistoryPanel } from '../DayHistoryPanel';
+import { SingleDatePicker } from '../SingleDatePicker';
 import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
 import { MiniBarChart } from '../../MiniCharts';
@@ -118,6 +119,8 @@ interface TrackPoint {
   address: string;
   lat: number;
   lng: number;
+  /** False when visit has no real coordinates — keep in table, hide on map */
+  hasCoords: boolean;
   time: string | null;
   status: PointStatus;
   duration: number | null;
@@ -138,11 +141,14 @@ interface DayTrack {
   firstPointTime: string;
   lastPointTime: string;
   onlineHours: string;
-  empLat: number;
-  empLng: number;
+  empLat: number | null;
+  empLng: number | null;
   empOnline: boolean;
   empLastSeen: string;
   points: TrackPoint[];
+  /** Real GPS trail for the day (from getDailyRoute) */
+  gpsTrail: { lat: number; lng: number }[];
+  hasRealLocation: boolean;
 }
 
 function emptyDayTrack(dateStr: string): DayTrack {
@@ -165,11 +171,13 @@ function emptyDayTrack(dateStr: string): DayTrack {
     firstPointTime: '—',
     lastPointTime: '—',
     onlineHours: '—',
-    empLat: 40.0843,
-    empLng: 65.3791,
+    empLat: null,
+    empLng: null,
     empOnline: false,
     empLastSeen: '—',
     points: [],
+    gpsTrail: [],
+    hasRealLocation: false,
   };
 }
 
@@ -177,15 +185,15 @@ function fmtClock(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function fmtDurationMinutes(mins: number): string {
+function fmtDurationMinutes(mins: number, labels: { min: string; hour: string }): string {
   if (!mins || mins <= 0) return '—';
   const h = Math.floor(mins / 60);
   const m = Math.round(mins % 60);
-  if (h <= 0) return `${m} daq`;
-  return `${h} soat ${m} daq`;
+  if (h <= 0) return `${m} ${labels.min}`;
+  return `${h} ${labels.hour} ${m} ${labels.min}`;
 }
 
 function sameLocalDay(iso: string, dateStr: string): boolean {
@@ -197,6 +205,13 @@ function sameLocalDay(iso: string, dateStr: string): boolean {
   return `${y}-${m}-${day}` === dateStr;
 }
 
+function validCoord(lat: number | null | undefined, lng: number | null | undefined): boolean {
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
 async function fetchDayTrack(opts: {
   distributorId: string;
   dateStr: string;
@@ -205,84 +220,77 @@ async function fetchDayTrack(opts: {
   empLng?: number | null;
   lastLocationAt?: string | null;
   lastLoginAt?: string | null;
+  labels?: { min: string; hour: string; onlineNow: string; route: string };
 }): Promise<DayTrack> {
+  const labels = opts.labels ?? { min: 'daq', hour: 'soat', onlineNow: 'Hozir online', route: 'Marshrut' };
   const base = emptyDayTrack(opts.dateStr);
-  const [routeRes, visitsRes, clientsRes] = await Promise.allSettled([
+
+  // Faqat haqiqiy kunlik ma'lumot — barcha mijozlarni "missed" qilib qo'ymaymiz
+  const [routeRes, visitsRes] = await Promise.allSettled([
     api.getDailyRoute(opts.distributorId, opts.dateStr),
     api.getVisitsForDistributor(opts.distributorId, opts.dateStr),
-    api.getClients(undefined, opts.distributorId),
   ]);
 
   const route = routeRes.status === 'fulfilled' ? routeRes.value : null;
   const visits = visitsRes.status === 'fulfilled' ? visitsRes.value : [];
-  const clients = clientsRes.status === 'fulfilled' ? clientsRes.value : [];
 
-  const gpsPoints = route?.points ?? [];
+  const gpsPoints = (route?.points ?? []).filter(p => validCoord(p.latitude, p.longitude));
   const firstGps = gpsPoints[0];
   const lastGps = gpsPoints[gpsPoints.length - 1];
+  const gpsTrail = gpsPoints.map(p => ({ lat: p.latitude, lng: p.longitude }));
 
   const visitPoints: TrackPoint[] = visits
     .slice()
     .sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime())
     .map((v, i) => {
-      const lat = v.checkInLatitude ?? v.clientLatitude ?? 0;
-      const lng = v.checkInLongitude ?? v.clientLongitude ?? 0;
-      const hasCoords = lat !== 0 && lng !== 0;
-      const remote = !!v.fromClientOrder || (!v.checkInLatitude && !v.checkInLongitude);
+      const checkLat = v.checkInLatitude;
+      const checkLng = v.checkInLongitude;
+      const clientLat = v.clientLatitude;
+      const clientLng = v.clientLongitude;
+      const hasCheckIn = validCoord(checkLat, checkLng);
+      const hasClient = validCoord(clientLat, clientLng);
+      const hasCoords = hasCheckIn || hasClient;
+      const lat = hasCheckIn ? checkLat! : (hasClient ? clientLat! : 0);
+      const lng = hasCheckIn ? checkLng! : (hasClient ? clientLng! : 0);
+
+      const remote = !!v.fromClientOrder || !hasCheckIn;
       const hasOrder = Number(v.orderTotal) > 0;
       let status: PointStatus = 'visited';
       if (remote && hasOrder) status = 'remote_ordered';
       else if (hasOrder) status = 'ordered';
       else if (!remote) status = 'visited';
-      else status = 'visited';
+      else status = 'remote_ordered';
 
       return {
         idx: i + 1,
         name: v.clientName || 'Klient',
         address: v.clientAddress || '—',
-        lat: hasCoords ? lat : (lastGps?.latitude ?? base.empLat),
-        lng: hasCoords ? lng : (lastGps?.longitude ?? base.empLng),
+        lat,
+        lng,
+        hasCoords,
         time: fmtClock(v.visitedAt),
         status,
         duration: null,
       };
     });
 
-  const visitedClientIds = new Set(visits.map(v => v.clientId));
-  const missedClients = clients.filter(c =>
-    c.isActive !== false &&
-    !visitedClientIds.has(c.id) &&
-    c.latitude != null &&
-    c.longitude != null,
-  );
-
-  const missedPoints: TrackPoint[] = missedClients.map((c, i) => ({
-    idx: visitPoints.length + i + 1,
-    name: c.name,
-    address: c.address || '—',
-    lat: c.latitude!,
-    lng: c.longitude!,
-    time: null,
-    status: 'missed' as PointStatus,
-    duration: null,
-  }));
-
-  const points = [...visitPoints, ...missedPoints].map((p, i) => ({ ...p, idx: i + 1 }));
+  const points = visitPoints.map((p, i) => ({ ...p, idx: i + 1 }));
 
   const ordered = points.filter(p => p.status === 'ordered').length;
   const visitedNoOrder = points.filter(p => p.status === 'visited').length;
   const remoteOrdered = points.filter(p => p.status === 'remote_ordered').length;
-  const missed = points.filter(p => p.status === 'missed').length;
 
   const loginAt = opts.lastLoginAt && sameLocalDay(opts.lastLoginAt, opts.dateStr)
     ? opts.lastLoginAt
     : null;
 
-  const empLat = opts.empLat ?? lastGps?.latitude ?? base.empLat;
-  const empLng = opts.empLng ?? lastGps?.longitude ?? base.empLng;
+  const hasEmpGps = validCoord(opts.empLat, opts.empLng);
+  const hasTrailGps = !!lastGps;
+  const empLat = hasEmpGps ? opts.empLat! : (hasTrailGps ? lastGps.latitude : null);
+  const empLng = hasEmpGps ? opts.empLng! : (hasTrailGps ? lastGps.longitude : null);
   const empOnline = opts.empOnline;
   const empLastSeen = empOnline
-    ? 'Hozir online'
+    ? labels.onlineNow
     : (opts.lastLocationAt ? new Date(opts.lastLocationAt).toLocaleString() : '—');
 
   const durationMins = Number(route?.stats?.durationMinutes) || 0;
@@ -294,19 +302,21 @@ async function fetchDayTrack(opts: {
     visited: ordered,
     visitedNoOrder,
     remoteOrdered,
-    missed,
+    missed: 0,
     km: Math.round(km * 10) / 10,
-    startCity: firstGps ? 'Marshrut' : '—',
-    endCity: lastGps ? 'Marshrut' : '—',
+    startCity: firstGps ? labels.route : '—',
+    endCity: lastGps ? labels.route : '—',
     loginTime: fmtClock(loginAt),
     firstPointTime: fmtClock(firstGps?.recordedAt ?? visits[0]?.visitedAt),
     lastPointTime: fmtClock(lastGps?.recordedAt ?? visits[visits.length - 1]?.visitedAt),
-    onlineHours: fmtDurationMinutes(durationMins),
+    onlineHours: fmtDurationMinutes(durationMins, labels),
     empLat,
     empLng,
     empOnline,
     empLastSeen,
     points,
+    gpsTrail,
+    hasRealLocation: empLat != null && empLng != null,
   };
 }
 
@@ -469,12 +479,18 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       empLng: trackingEmp.lastLongitude,
       lastLocationAt: trackingEmp.lastLocationAt,
       lastLoginAt: trackingEmp.lastLoginAt,
+      labels: {
+        min: tr(t, 'trackMinutes', 'daq'),
+        hour: tr(t, 'trackHours', 'soat'),
+        onlineNow: tr(t, 'trackOnlineNow', 'Hozir online'),
+        route: tr(t, 'trackRoute', 'Marshrut'),
+      },
     })
       .then(track => { if (!cancelled) setDayTrack(track); })
       .catch(() => { if (!cancelled) setDayTrack(emptyDayTrack(selectedDate)); })
       .finally(() => { if (!cancelled) setLoadingTrack(false); });
     return () => { cancelled = true; };
-  }, [trackingEmp, selectedDate]);
+  }, [trackingEmp, selectedDate, t]);
 
   const filtered   = localEmps.filter(e => {
     const matchSearch =
@@ -641,12 +657,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     const filteredPoints = pointFilter
       ? dayTrack.points.filter(p => p.status === pointFilter)
       : dayTrack.points;
-
+    const mapPoints = filteredPoints.filter(p => p.hasCoords);
     const visitedCount = dayTrack.visited + dayTrack.visitedNoOrder;
     const completionPct = dayTrack.total > 0 ? Math.round((visitedCount / dayTrack.total) * 100) : 0;
     const empLastSeenLabel = dayTrack.empOnline
       ? tr(t, 'trackOnlineNow', 'Hozir online')
       : dayTrack.empLastSeen;
+    const empLocation = dayTrack.hasRealLocation && dayTrack.empLat != null && dayTrack.empLng != null
+      ? { lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }
+      : undefined;
 
     return (
       <div style={{ padding: '0 0 40px' }}>
@@ -682,12 +701,13 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             <div style={{ flex: 1, position: 'relative' }}>
               <TrackingMap
                 key={`${dayTrack.date}-${mapKey}-${pointFilter ?? 'all'}-fs`}
-                points={filteredPoints}
+                points={mapPoints}
                 startCity={dayTrack.startCity}
                 endCity={dayTrack.endCity}
                 D={D}
                 height={typeof window !== 'undefined' ? window.innerHeight - 52 : 600}
-                empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }}
+                empLocation={empLocation}
+                gpsTrail={dayTrack.gpsTrail}
                 t={t}
               />
             </div>
@@ -727,30 +747,29 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
 
         {/* ── Single date picker ── */}
         <div style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 14, padding: isSmall ? '10px 12px' : '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: isSmall ? 5 : 8, flexWrap: 'wrap' }}>
-          <CalendarDays size={isSmall ? 13 : 15} color={indigo} />
           {!isSmall && <span style={{ fontSize: 13, color: muted, fontWeight: 500 }}>{tr(t, 'trackDateLabel', 'Sana:')}</span>}
 
           {/* Prev day */}
           <button
             onClick={() => { const d = addDays(selectedDate, -1); setSelectedDate(d); setMapKey(k => k + 1); setPointFilter(null); }}
-            style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${border}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             <ChevronLeft size={14} color={txt} />
           </button>
 
-          <input
-            type="date"
+          <SingleDatePicker
             value={selectedDate}
             max={TODAY}
-            onChange={e => { setSelectedDate(e.target.value); setMapKey(k => k + 1); setPointFilter(null); }}
-            style={{ ...InputStyle, width: isSmall ? 130 : 150, padding: isSmall ? '6px 8px' : '7px 10px', fontSize: isSmall ? 12 : 13 }}
+            D={D}
+            onChange={d => { setSelectedDate(d); setMapKey(k => k + 1); setPointFilter(null); }}
+            onClear={() => { setSelectedDate(TODAY); setMapKey(k => k + 1); setPointFilter(null); }}
           />
 
           {/* Next day */}
           <button
             onClick={() => { const d = addDays(selectedDate, 1); if (d <= TODAY) { setSelectedDate(d); setMapKey(k => k + 1); setPointFilter(null); } }}
             disabled={selectedDate >= TODAY}
-            style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', cursor: selectedDate >= TODAY ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedDate >= TODAY ? 0.35 : 1 }}
+            style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${border}`, background: 'transparent', cursor: selectedDate >= TODAY ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: selectedDate >= TODAY ? 0.35 : 1 }}
           >
             <ChevronRight size={14} color={txt} />
           </button>
@@ -896,12 +915,13 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               <div style={{ isolation: 'isolate' as const, height: isMobile ? 280 : 560 }}>
                 <TrackingMap
                   key={`${dayTrack.date}-${mapKey}-${pointFilter ?? 'all'}-normal`}
-                  points={filteredPoints}
+                  points={mapPoints}
                   startCity={dayTrack.startCity}
                   endCity={dayTrack.endCity}
                   D={D}
                   height={isMobile ? 280 : 560}
-                  empLocation={{ lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }}
+                  empLocation={empLocation}
+                  gpsTrail={dayTrack.gpsTrail}
                   t={t}
                 />
               </div>
@@ -1482,7 +1502,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 <button type="button" onClick={() => { setTrackingEmp(emp); setSelectedDate(TODAY); setMapKey(k => k + 1); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center', height: isSmall ? 30 : 32, borderRadius: 8, border: `1px solid ${D ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)'}`, background: D ? 'rgba(99,102,241,0.10)' : 'rgba(99,102,241,0.06)', cursor: 'pointer' }}>
                   <Route size={11} color={indigo} />
-                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>Track</span>
+                  <span style={{ fontSize: isSmall ? 10 : 11, color: indigo, fontWeight: 600 }}>{tr(t, 'trackTitle', 'Tracking')}</span>
                 </button>
                 <div style={{ flex: isSmall ? 0 : 1 }} />
                 <button type="button" onClick={() => openEdit(emp)}
@@ -1561,7 +1581,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                   style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 7, border: `1px solid ${D ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.25)'}`, background: D ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)', color: indigo, fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.15)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)'; }}
-                  title="Trackingni ko'rish">
+                  title={tr(t, 'trackTitle', 'Tracking')}>
                   <Route size={11} />
                 </button>
                 <button type="button" onClick={() => openEdit(emp)}

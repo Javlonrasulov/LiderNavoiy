@@ -25,6 +25,8 @@ interface TrackingMapProps {
   D: boolean;
   height?: number;
   empLocation?: { lat: number; lng: number; online: boolean; lastSeen?: string };
+  /** Real GPS breadcrumb trail for the day */
+  gpsTrail?: { lat: number; lng: number }[];
   t?: Record<string, string>;
 }
 
@@ -157,7 +159,7 @@ function addDirectionArrows(
   }
 }
 
-export function TrackingMap({ points, D, height = 280, empLocation, t }: TrackingMapProps) {
+export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [], t }: TrackingMapProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<L.Map | null>(null);
   const tileLayerRef  = useRef<L.TileLayer | null>(null);
@@ -173,7 +175,15 @@ export function TrackingMap({ points, D, height = 280, empLocation, t }: Trackin
     const visitOrderMap = new Map<number, number>();
     visitedPath.forEach((p, i) => visitOrderMap.set(p.idx, i + 1));
 
-    const allCoords: [number, number][] = orderedPoints.map(p => [p.lat, p.lng]);
+    const trailCoords: [number, number][] = gpsTrail
+      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && !(p.lat === 0 && p.lng === 0))
+      .map(p => [p.lat, p.lng]);
+
+    const allCoords: [number, number][] = [
+      ...orderedPoints.map(p => [p.lat, p.lng] as [number, number]),
+      ...trailCoords,
+      ...(empLocation ? [[empLocation.lat, empLocation.lng] as [number, number]] : []),
+    ];
 
     let center: [number, number] = NAVOIY;
     if (allCoords.length > 0) {
@@ -194,6 +204,18 @@ export function TrackingMap({ points, D, height = 280, empLocation, t }: Trackin
 
     const added: L.Layer[] = [];
     const routeColor = '#6366f1';
+    const trailColor = D ? '#818cf8' : '#4f46e5';
+
+    // Haqiqiy GPS izi (kunlik marshrut)
+    if (trailCoords.length > 1) {
+      const gpsLine = L.polyline(trailCoords, {
+        color: trailColor,
+        weight: 3,
+        opacity: 0.55,
+        dashArray: '6 8',
+      }).addTo(map);
+      added.push(gpsLine);
+    }
 
     if (visitedPath.length > 1) {
       const routeCoords = visitedPath.map(p => [p.lat, p.lng] as [number, number]);
