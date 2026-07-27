@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  CalendarDays, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  ShoppingCart, Check, Clock, MapPin, TrendingUp, X,
+  CalendarDays, ChevronDown, ChevronUp,
+  ShoppingCart, Check, Clock, MapPin, TrendingUp,
 } from 'lucide-react';
 import { api, type BackendOrder } from '../../api/client';
+import { DateRangePicker } from './DateRangePicker';
 
 interface Props {
   /** @deprecated numeric seed — use distributorId */
@@ -17,10 +18,6 @@ interface Props {
 
 function tr(t: Record<string, string>, key: string, fallback: string): string {
   return t[key] || fallback;
-}
-
-function splitTrList(t: Record<string, string>, key: string, fallback: string): string[] {
-  return (t[key] || fallback).split(',').map(s => s.trim());
 }
 
 type OrderStatus = 'done' | 'pending';
@@ -136,12 +133,7 @@ function inDateWindow(dateStr: string, lo: string, hi: string): boolean {
   return dateStr >= lo && dateStr <= hi;
 }
 
-// ── Calendar helpers ──────────────────────────────────────────────────────────
 function getDaysInMonth(year: number, month: number) { return new Date(year, month + 1, 0).getDate(); }
-function getFirstWeekday(year: number, month: number) {
-  const d = new Date(year, month, 1).getDay();
-  return d === 0 ? 6 : d - 1;
-}
 function isoFromYMD(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
@@ -152,8 +144,6 @@ function fmtDateLabel(iso: string) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
-  const MONTH_NAMES = splitTrList(t, 'histMonths', 'Yanvar,Fevral,Mart,Aprel,May,Iyun,Iyul,Avgust,Sentabr,Oktabr,Noyabr,Dekabr');
-  const WD_LABELS = splitTrList(t, 'histWeekdays', 'Du,Se,Ch,Pa,Ju,Sh,Ya');
   const currency = tr(t, 'histCurrency', "so'm");
   const doneLabel = mode === 'delivery' ? tr(t, 'histDelivered', 'Yetkazildi') : tr(t, 'histOrdered', 'Zakaz berildi');
   const doneFilterLabel = mode === 'delivery' ? tr(t, 'histDelivered', 'Yetkazildi') : tr(t, 'histDone', 'Bajarildi');
@@ -161,8 +151,6 @@ export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
   const statusDone = mode === 'delivery' ? tr(t, 'histStatusDelivered', '✓ Yetkazildi') : tr(t, 'histStatusOrdered', '✓ Zakaz berildi');
   const statusPending = tr(t, 'histStatusPending', '⏳ Kutilmoqda');
   const pendingLabel = tr(t, 'histPending', 'Kutilmoqda');
-  const todayIso = localIso();
-  const now = new Date();
 
   const yesterday = (() => {
     const d = new Date();
@@ -172,8 +160,6 @@ export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
 
   const [rangeStart, setRangeStart] = useState<string>(yesterday);
   const [rangeEnd, setRangeEnd]     = useState<string | null>(null);
-  const [pickStep, setPickStep]     = useState<'start' | 'end'>('start');
-  const [hoverDate, setHoverDate]   = useState<string | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
   const [isSmall, setIsSmall]   = useState(false);
@@ -187,12 +173,11 @@ export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  const [calYear, setCalYear]   = useState(now.getFullYear());
-  const [calMonth, setCalMonth] = useState(now.getMonth());
+  const [calYear, setCalYear]   = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
 
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [filter, setFilter]           = useState<'all' | 'done' | 'pending'>('all');
-  const [calOpen, setCalOpen]         = useState(false);
 
   const [records, setRecords] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -323,61 +308,24 @@ export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
   const green  = '#10b981';
   const amber  = '#f59e0b';
 
-  const prevMonth = () => { if (calMonth === 0) { setCalYear(y => y - 1); setCalMonth(11); } else setCalMonth(m => m - 1); };
-  const nextMonth = () => { if (calMonth === 11) { setCalYear(y => y + 1); setCalMonth(0); } else setCalMonth(m => m + 1); };
-  const canGoNext = calYear < now.getFullYear() || (calYear === now.getFullYear() && calMonth < now.getMonth());
+  const handleRangeChange = useCallback((from: string, to: string) => {
+    setRangeStart(from);
+    setRangeEnd(from === to ? null : to);
+    setExpandedKey(null);
+    setFilter('all');
+  }, []);
 
-  const handleCalClick = (iso: string) => {
-    if (iso > todayIso) return;
-    if (pickStep === 'start') {
-      setRangeStart(iso);
-      setRangeEnd(null);
-      setPickStep('end');
-      setExpandedKey(null);
-      setFilter('all');
-    } else {
-      if (iso === rangeStart) {
-        setRangeEnd(null);
-      } else {
-        setRangeEnd(iso);
-      }
-      setPickStep('start');
-      setExpandedKey(null);
-      setCalOpen(false);
-    }
-  };
+  const handleClearRange = useCallback(() => {
+    setRangeStart(yesterday);
+    setRangeEnd(null);
+    setExpandedKey(null);
+    setFilter('all');
+  }, [yesterday]);
 
-  const calCells = useMemo(() => {
-    const firstWD = getFirstWeekday(calYear, calMonth);
-    const daysInMonth = getDaysInMonth(calYear, calMonth);
-    const cells: (string | null)[] = Array(firstWD).fill(null);
-    for (let d = 1; d <= daysInMonth; d++) cells.push(isoFromYMD(calYear, calMonth, d));
-    while (cells.length % 7 !== 0) cells.push(null);
-    return cells;
-  }, [calYear, calMonth]);
-
-  const getHoverLo = (hover: string) => (rangeStart < hover ? rangeStart : hover);
-  const getHoverHi = (hover: string) => (rangeStart < hover ? hover : rangeStart);
-
-  const isEdge = (iso: string) => {
-    if (iso === rangeStart) return true;
-    if (rangeEnd && iso === rangeEnd) return true;
-    if (pickStep === 'end' && hoverDate && iso === hoverDate) return true;
-    return false;
-  };
-  const isInRange = (iso: string) => {
-    if (pickStep === 'end' && hoverDate && hoverDate !== rangeStart) {
-      const hl = getHoverLo(hoverDate); const hh = getHoverHi(hoverDate);
-      return iso > hl && iso < hh;
-    }
-    if (rangeEnd && rangeEnd !== rangeStart) return iso > lo && iso < hi;
-    return false;
-  };
-
-  const dateLabel = () => {
-    if (!rangeEnd || rangeEnd === rangeStart) return fmtDateLabel(rangeStart);
-    return `${fmtDateLabel(lo)} → ${fmtDateLabel(hi)}`;
-  };
+  const handleViewMonthChange = useCallback((year: number, month: number) => {
+    setCalYear(year);
+    setCalMonth(month);
+  }, []);
 
   const isRange = !!(rangeEnd && rangeEnd !== rangeStart);
 
@@ -392,134 +340,21 @@ export function DayHistoryPanel({ distributorId, mode, D, t }: Props) {
   return (
     <div style={{ marginTop: 24 }}>
 
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
-        <button
-          onClick={() => setCalOpen(o => !o)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: isSmall ? 5 : 8,
-            padding: isSmall ? '7px 12px' : '8px 16px', borderRadius: 10, cursor: 'pointer',
-            border: `1.5px solid ${calOpen ? indigo : border}`,
-            background: calOpen ? `${indigo}12` : (D ? 'rgba(255,255,255,0.05)' : '#f3f4f6'),
-            color: calOpen ? indigo : txt, transition: 'all .15s',
-            maxWidth: '100%', overflow: 'hidden',
-          }}
-        >
-          <CalendarDays size={isSmall ? 12 : 14} color={indigo} style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: isSmall ? 11.5 : 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dateLabel()}</span>
-          {isRange && (
-            <span
-              onClick={e => {
-                e.stopPropagation();
-                setRangeEnd(null);
-                setPickStep('start');
-                setExpandedKey(null);
-                setFilter('all');
-              }}
-              style={{ display: 'flex', alignItems: 'center', color: muted, cursor: 'pointer', marginLeft: 2 }}
-            >
-              <X size={12} />
-            </span>
-          )}
-          <ChevronDown size={13} color={calOpen ? indigo : muted}
-            style={{ transform: calOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-        </button>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 10 }}>
+        <DateRangePicker
+          from={lo}
+          to={hi}
+          onChange={handleRangeChange}
+          onClear={handleClearRange}
+          D={D}
+          compact
+          hasDataDates={hasDataCache}
+          onViewMonthChange={handleViewMonthChange}
+        />
         {loading && (
-          <span style={{ marginLeft: 10, fontSize: 11, color: muted }}>{tr(t, 'loading', 'Yuklanmoqda...')}</span>
+          <span style={{ fontSize: 11, color: muted }}>{tr(t, 'loading', 'Yuklanmoqda...')}</span>
         )}
       </div>
-
-      {calOpen && (
-        <div
-          onClick={() => { setCalOpen(false); if (pickStep === 'end') { setPickStep('start'); } }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 999,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: cardBg,
-              border: `1px solid ${border}`,
-              borderRadius: 18,
-              padding: isSmall ? '14px 14px 12px' : '18px 20px 16px',
-              width: isSmall ? 'calc(100vw - 32px)' : 300,
-              maxWidth: 320,
-              boxShadow: '0 24px 64px rgba(0,0,0,0.4)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <button onClick={prevMonth} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ChevronLeft size={13} color={txt} />
-              </button>
-              <span style={{ fontSize: 13, fontWeight: 700, color: txt }}>{MONTH_NAMES[calMonth]} {calYear}</span>
-              <button onClick={nextMonth} disabled={!canGoNext}
-                style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${border}`, background: 'transparent', cursor: canGoNext ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canGoNext ? 1 : 0.3 }}>
-                <ChevronRight size={13} color={txt} />
-              </button>
-            </div>
-
-            <div style={{ fontSize: 11, color: indigo, textAlign: 'center', marginBottom: 10, fontWeight: 600, background: `${indigo}12`, borderRadius: 8, padding: '5px 0' }}>
-              {pickStep === 'start'
-                ? `📅 ${tr(t, 'calStartDate', "Boshlang'ich sanani tanlang")}`
-                : `📅 ${fmtDateLabel(rangeStart)} ${tr(t, 'histCalEndHint', "→ tugash sanasini tanlang")}`}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 4 }}>
-              {WD_LABELS.map(w => (
-                <div key={w} style={{ textAlign: 'center', fontSize: 10, color: muted, fontWeight: 700, padding: '2px 0' }}>{w}</div>
-              ))}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
-              {calCells.map((iso, i) => {
-                if (!iso) return <div key={`e-${i}`} />;
-                const isFuture = iso > todayIso;
-                const isToday = iso === todayIso;
-                const edge = isEdge(iso);
-                const inRng = isInRange(iso);
-                const hasData = hasDataCache[iso] ?? false;
-                const bg = edge ? indigo : inRng ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.12)') : isToday ? (D ? 'rgba(255,255,255,0.06)' : '#f3f4f6') : 'transparent';
-                const clr = edge ? '#fff' : isFuture ? (D ? '#2a2a2a' : '#d1d5db') : txt;
-                const brd = edge ? indigo : inRng ? (D ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)') : 'transparent';
-                return (
-                  <button key={iso} disabled={isFuture}
-                    onClick={() => handleCalClick(iso)}
-                    onMouseEnter={() => pickStep === 'end' && !isFuture && setHoverDate(iso)}
-                    onMouseLeave={() => setHoverDate(null)}
-                    style={{
-                      display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center',
-                      width: '100%', height: 34, borderRadius: 7,
-                      border: `1.5px solid ${brd}`, background: bg, color: clr,
-                      cursor: isFuture ? 'default' : 'pointer',
-                      fontSize: 11, fontWeight: (edge || isToday) ? 700 : 400,
-                      transition: 'all .1s', gap: 1, padding: 0,
-                    }}
-                  >
-                    <span>{new Date(iso + 'T00:00:00').getDate()}</span>
-                    {hasData && !isFuture && (
-                      <div style={{ width: 3, height: 3, borderRadius: '50%', background: edge ? '#fff' : green }} />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${border}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: indigo }} />
-                <span style={{ fontSize: 10, color: muted }}>{tr(t, 'calSelected', 'Tanlangan')}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: green }} />
-                <span style={{ fontSize: 10, color: muted }}>{tr(t, 'calHasData', "Ma'lumot bor")}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <>
         <div style={{ display: 'grid', gridTemplateColumns: isSmall ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: isMobile ? 8 : 10, marginBottom: 14 }}>

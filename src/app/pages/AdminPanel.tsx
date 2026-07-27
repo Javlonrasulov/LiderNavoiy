@@ -10,6 +10,7 @@ import { useAdminAuth, companyShowsTarozi } from '../components/AdminAuthContext
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
 
+import { isGpsLiveOnline } from '../utils/gpsOnline';
 import {
   AP, NAV_ITEMS_BASE, COMPANY_DATA, COMPANY_AGENTS,
   COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES,
@@ -73,9 +74,7 @@ function distributorToMarker(d: Distributor): EmployeeMarker | null {
   if (lat === 0 && lng === 0) return null;
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
   // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (90s)
-  const fresh = d.lastLocationAt
-    ? (Date.now() - new Date(d.lastLocationAt).getTime()) < 90_000
-    : false;
+  const fresh = isGpsLiveOnline(d.lastLocationAt);
   return {
     id: clientIdHash(d.id),
     name,

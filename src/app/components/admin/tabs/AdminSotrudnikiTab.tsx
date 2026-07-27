@@ -16,6 +16,7 @@ import type { EmployeeMarker } from '../../EmployeeMapModal';
 import { MiniBarChart } from '../../MiniCharts';
 import { api, type Distributor } from '../../../api/client';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
+import { isGpsLiveOnline } from '../../../utils/gpsOnline';
 
 interface Props {
   D: boolean;
@@ -73,13 +74,14 @@ function distributorToAgentRow(d: Distributor): AgentRow {
 function distributorToMapEmployee(d: Distributor): EmployeeMarker | null {
   if (d.lastLatitude == null || d.lastLongitude == null) return null;
   const name = d.user?.fullName?.trim() || d.user?.username || 'Agent';
+  const online = isGpsLiveOnline(d.lastLocationAt);
   return {
     id: stableAgentId(d.userId || d.id),
     name,
     avatar: nameInitials(name),
     role: 'agent',
-    online: d.isOnline,
-    lastSeen: d.lastLocationAt ? new Date(d.lastLocationAt).toLocaleString() : '',
+    online,
+    lastSeen: online ? 'Faol' : (d.lastLocationAt ? new Date(d.lastLocationAt).toLocaleString() : ''),
     lat: d.lastLatitude,
     lng: d.lastLongitude,
     orgId: d.companyId || undefined,
@@ -99,7 +101,7 @@ function toEmployee(a: AgentRow, i: number, fromBackend = false, dist?: Distribu
     hireDate: fromBackend ? '' : `${2019 + (i % 5)}-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 28) + 1).padStart(2, '0')}`,
     liniyaCount: count,
     lines,
-    isOnline: dist?.isOnline ?? false,
+    isOnline: isGpsLiveOnline(dist?.lastLocationAt),
     lastLocationAt: dist?.lastLocationAt ?? null,
     lastLoginAt: dist?.user?.lastLoginAt ?? null,
     lastLatitude: dist?.lastLatitude ?? null,
@@ -462,7 +464,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     fetchDayTrack({
       distributorId: trackingEmp.distributorId,
       dateStr: selectedDate,
-      empOnline: !!trackingEmp.isOnline,
+      empOnline: isGpsLiveOnline(trackingEmp.lastLocationAt),
       empLat: trackingEmp.lastLatitude,
       empLng: trackingEmp.lastLongitude,
       lastLocationAt: trackingEmp.lastLocationAt,

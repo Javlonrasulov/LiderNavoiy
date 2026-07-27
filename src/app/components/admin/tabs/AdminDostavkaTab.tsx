@@ -12,6 +12,7 @@ import L from 'leaflet';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 import { api, type BackendOrder, type Distributor } from '../../../api/client';
 import { isDeliveryHint } from '../../../utils/appUserCreds';
+import { isGpsLiveOnline } from '../../../utils/gpsOnline';
 import { DayHistoryPanel } from '../DayHistoryPanel';
 
 interface Props {
@@ -157,8 +158,9 @@ function distributorToDelivery(
     city: d.companyName || '—',
     lat: d.lastLatitude ?? NAVOIY[0],
     lng: d.lastLongitude ?? NAVOIY[1],
-    online: !!d.isOnline,
-    lastSeenLabel: d.isOnline
+    // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (90s)
+    online: isGpsLiveOnline(d.lastLocationAt),
+    lastSeenLabel: isGpsLiveOnline(d.lastLocationAt)
       ? 'Faol'
       : (d.lastLocationAt ? new Date(d.lastLocationAt).toLocaleString() : '—'),
     street: d.lineCode ? `Liniya ${d.lineCode}` : '—',

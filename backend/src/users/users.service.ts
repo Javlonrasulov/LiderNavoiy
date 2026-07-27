@@ -317,7 +317,9 @@ export class UsersService {
     const profile = user.distributorProfile;
     const distributorId = profile?.id;
     const isOnline = !!(
-      (distributorId && onlineIds.has(distributorId)) || profile?.isOnline
+      (distributorId && onlineIds.has(distributorId)) ||
+      (profile?.lastLocationAt &&
+        Date.now() - new Date(profile.lastLocationAt).getTime() <= 90_000)
     );
 
     let lastActiveAt: Date | null = user.lastLoginAt ?? null;

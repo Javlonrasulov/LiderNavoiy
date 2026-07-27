@@ -148,11 +148,11 @@ export class BootSeedService implements OnModuleInit {
           lineCode: 'D-01',
           phone: '+998907654321',
           position: 'Dostavkachi',
-          status: DistributorStatus.ON_ROUTE,
-          isOnline: true,
+          status: DistributorStatus.OFFLINE,
+          isOnline: false,
           lastLatitude: 40.1035,
           lastLongitude: 65.3792,
-          lastLocationAt: new Date(),
+          lastLocationAt: null,
         }),
       );
       this.logger.log('Boot seed: dostavkachi #1 yaratildi');
@@ -160,6 +160,16 @@ export class BootSeedService implements OnModuleInit {
       courierProfile.position = 'Dostavkachi';
       courierProfile.phone = courierProfile.phone || '+998907654321';
       courierProfile.lineCode = courierProfile.lineCode || 'D-01';
+      // Sticky online: GPS 90s dan eski bo‘lsa tozalaymiz (haqiqiy jonli courier ni buzmaymiz)
+      const locAt = courierProfile.lastLocationAt
+        ? new Date(courierProfile.lastLocationAt).getTime()
+        : 0;
+      if (!locAt || Date.now() - locAt > 90_000) {
+        courierProfile.isOnline = false;
+        if (courierProfile.status === DistributorStatus.ON_ROUTE) {
+          courierProfile.status = DistributorStatus.OFFLINE;
+        }
+      }
       // Emulator (AQSh) GPS saqlanib qolgan bo‘lsa — Navoiyga qaytaramiz
       if (
         courierProfile.lastLatitude == null ||
@@ -168,7 +178,10 @@ export class BootSeedService implements OnModuleInit {
       ) {
         courierProfile.lastLatitude = 40.1035;
         courierProfile.lastLongitude = 65.3792;
-        courierProfile.lastLocationAt = new Date();
+        // lastLocationAt yangilanmaydi — aks holda har restart da "online" ko‘rinadi
+        if (!courierProfile.lastLocationAt) {
+          courierProfile.lastLocationAt = null;
+        }
       }
       await this.profiles.save(courierProfile);
       courierUser.fullName = 'Irgashev Azizxon Ilxomovich';
@@ -199,7 +212,7 @@ export class BootSeedService implements OnModuleInit {
           isOnline: false,
           lastLatitude: 40.1150,
           lastLongitude: 65.3700,
-          lastLocationAt: new Date(),
+          lastLocationAt: null,
         }),
       );
       this.logger.log('Boot seed: dostavkachi #2 yaratildi');
@@ -207,6 +220,12 @@ export class BootSeedService implements OnModuleInit {
       courierProfile2.position = 'Dostavkachi';
       courierProfile2.phone = courierProfile2.phone || '+998901112233';
       courierProfile2.lineCode = courierProfile2.lineCode || 'D-02';
+      const locAt2 = courierProfile2.lastLocationAt
+        ? new Date(courierProfile2.lastLocationAt).getTime()
+        : 0;
+      if (!locAt2 || Date.now() - locAt2 > 90_000) {
+        courierProfile2.isOnline = false;
+      }
       if (
         courierProfile2.lastLatitude == null ||
         courierProfile2.lastLongitude == null ||
@@ -214,7 +233,9 @@ export class BootSeedService implements OnModuleInit {
       ) {
         courierProfile2.lastLatitude = 40.1150;
         courierProfile2.lastLongitude = 65.3700;
-        courierProfile2.lastLocationAt = new Date();
+        if (!courierProfile2.lastLocationAt) {
+          courierProfile2.lastLocationAt = null;
+        }
       }
       await this.profiles.save(courierProfile2);
       courierUser2.fullName = 'Buronov Feruz Baxromovich';

@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { DistributorProfile } from './entities/distributor-profile.entity';
 import { RedisService } from '../common/redis/redis.service';
 import { DistributorStatus } from '../common/enums';
+
+/** Redis TTL va dashboard bilan bir xil — sticky DB isOnline emas */
+const LOCATION_ONLINE_MAX_AGE_MS = 90_000;
 
 @Injectable()
 export class DistributorsService {
@@ -18,7 +21,8 @@ export class DistributorsService {
     if (companyId) {
       qb.where('(d.companyId = :companyId OR d.companyId IS NULL)', { companyId });
     }
-    return qb.getMany();
+    const list = await qb.getMany();
+    return this.applyFreshOnline(list);
   }
 
   async findOne(id: string) {
@@ -27,7 +31,8 @@ export class DistributorsService {
       relations: ['user'],
     });
     if (!distributor) throw new NotFoundException('Distributor not found');
-    return distributor;
+    const [fresh] = await this.applyFreshOnline([distributor]);
+    return fresh;
   }
 
   async updateStatus(id: string, status: DistributorStatus) {
@@ -54,5 +59,24 @@ export class DistributorsService {
       online.push(key.replace('online:', ''));
     }
     return online;
+  }
+
+  /** Sticky isOnline o‘rniga GPS yangiligini qo‘llaydi; eskirgan DB bayroqlarini tozalaydi */
+  private async applyFreshOnline(list: DistributorProfile[]): Promise<DistributorProfile[]> {
+    const now = Date.now();
+    const staleIds: string[] = [];
+    for (const d of list) {
+      const fresh =
+        d.lastLocationAt != null &&
+        now - new Date(d.lastLocationAt).getTime() <= LOCATION_ONLINE_MAX_AGE_MS;
+      if (d.isOnline && !fresh) staleIds.push(d.id);
+      d.isOnline = fresh;
+    }
+    if (staleIds.length > 0) {
+      void this.repo
+        .update({ id: In(staleIds) }, { isOnline: false, status: DistributorStatus.OFFLINE })
+        .catch(() => undefined);
+    }
+    return list;
   }
 }
