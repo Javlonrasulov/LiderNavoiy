@@ -1,9 +1,7 @@
-import { useEffect, useRef } from 'react';
-import L from 'leaflet';
 import { AlertTriangle, MapPin, X } from 'lucide-react';
 import { StoreIcon } from '../icons';
 import type { ClientRow } from '../../data/adminData';
-import { switchTileLayer, type LayerId } from '../MapLayerSwitcher';
+import { clientIdHash } from '../../utils/clientApi';
 
 function parseClientGps(gps: string | undefined | null): { lat: number; lng: number } | null {
   if (!gps?.includes(',')) return null;
@@ -68,48 +66,17 @@ export function ClientGpsWarningModal({ client, D, t, onClose }: Props) {
   );
 }
 
-/** Haqiqiy GPS bilan Leaflet xarita (attribution / OSM tugmasi yo'q) */
+/** Haqiqiy GPS bilan OSM embed (Leaflet yo'q — production crash oldini olish) */
 export function ClientMapModal({ client, D, t, onClose }: Props) {
   const coords = parseClientGps(client.gps);
-  const mapRef = useRef<L.Map | null>(null);
-  const tileRef = useRef<L.TileLayer | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!coords || !containerRef.current || mapRef.current) return;
-
-    const map = L.map(containerRef.current, {
-      center: [coords.lat, coords.lng],
-      zoom: 16,
-      zoomControl: true,
-      attributionControl: false,
-    });
-    switchTileLayer(map, tileRef, 'standard' as LayerId, D);
-    mapRef.current = map;
-
-    const pin = L.divIcon({
-      className: '',
-      iconSize: [28, 28],
-      iconAnchor: [14, 28],
-      html: `<div style="width:28px;height:28px;background:#10b981;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 10px rgba(0,0,0,.35);"></div>`,
-    });
-    L.marker([coords.lat, coords.lng], { icon: pin }).addTo(map);
-
-    const tmr = setTimeout(() => map.invalidateSize(true), 80);
-
-    return () => {
-      clearTimeout(tmr);
-      map.remove();
-      mapRef.current = null;
-      tileRef.current = null;
-    };
-  }, [coords?.lat, coords?.lng, D]);
 
   if (!coords) {
     return <ClientGpsWarningModal client={client} D={D} t={t} onClose={onClose} />;
   }
 
   const { lat, lng } = coords;
+  const delta = 0.008;
+  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&layer=mapnik&marker=${lat},${lng}`;
 
   return (
     <div
@@ -134,13 +101,24 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className={`w-7 h-7 flex items-center justify-center rounded-xl transition-colors flex-shrink-0
-              ${D ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`}
+              target="_blank"
+              rel="noreferrer"
+              className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors
+                ${D ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-700'}`}
+            >
+              OSM
+            </a>
+            <button
+              onClick={onClose}
+              className={`w-7 h-7 flex items-center justify-center rounded-xl transition-colors
+                ${D ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
         <div className={`flex items-center gap-4 px-4 py-2 text-xs font-mono ${D ? 'bg-gray-800/60 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
@@ -152,10 +130,11 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
           </span>
         </div>
 
-        <div
-          ref={containerRef}
-          className="client-map-leaflet"
-          style={{ width: '100%', height: 340 }}
+        <iframe
+          src={mapSrc}
+          title={t.mapLabel ?? 'Xarita'}
+          style={{ width: '100%', height: 340, border: 0, display: 'block' }}
+          loading="lazy"
         />
 
         {client.agent && (
@@ -171,4 +150,13 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
 
 export function clientHasGps(client: ClientRow): boolean {
   return parseClientGps(client.gps) !== null;
+}
+
+/** @deprecated — faqat eski taxminiy joylashuv uchun */
+export function approxClientCoords(client: ClientRow): { lat: number; lng: number } {
+  const seed = clientIdHash(client.id) % 500;
+  return {
+    lat: 40.0857 + ((seed * 7 + 13) % 100 - 50) * 0.004,
+    lng: 64.4432 + ((seed * 11 + 7) % 100 - 50) * 0.003,
+  };
 }
