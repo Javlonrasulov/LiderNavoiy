@@ -80,8 +80,11 @@ class DebtViewModel @Inject constructor(
         val range = _uiState.value.dateRange
         _uiState.update { state ->
             val payments = state.allPayments
+            val debt = profile?.debt?.takeIf { it > 0 }
+                ?: profile?.balance?.let { bal -> if (bal < 0) kotlin.math.abs(bal) else 0.0 }
+                ?: 0.0
             state.copy(
-                currentDebt = profile?.balance?.takeIf { it > 0 } ?: state.currentDebt,
+                currentDebt = debt,
                 filteredPayments = filterPayments(payments, range),
                 totalPaid = computeTotalPaid(payments, range),
             )

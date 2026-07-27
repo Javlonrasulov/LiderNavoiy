@@ -129,7 +129,7 @@ private fun updateFleetMap(
         if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
             return
         }
-        animateMarker(existingTruck, from, dest)
+        animateMarker(map, existingTruck, from, dest)
         // Route chizigini yangilash
         overlays.removeAll { it is Polyline }
         truckTarget.orders.forEach { order ->
@@ -166,7 +166,7 @@ private fun updateFleetMap(
     val cameraPoints = ArrayList<GeoPoint>()
     val ctx = map.context
     val storeSizeDp = if (compactMarkers) 40 else 48
-    val truckSizeDp = if (compactMarkers) 40 else 48
+    val truckSizeDp = if (compactMarkers) 32 else 36
     val idleStoreIcon = createDeliveryPinDrawable(
         context = ctx,
         sizeDp = storeSizeDp,
@@ -244,7 +244,12 @@ private fun updateFleetMap(
             }
         }
 
-        val truckIcon = createTruckMarkerDrawable(ctx, vehicle.orderCount, truckSizeDp)
+        val truckIcon = createTruckMarkerDrawable(
+            context = ctx,
+            orderCount = vehicle.orderCount,
+            sizeDp = truckSizeDp,
+            online = true,
+        )
         if (!vehicle.id.startsWith("dest-only") &&
             GeoCoords.isUsableCourier(
                 vehicle.courierLat,
@@ -255,7 +260,8 @@ private fun updateFleetMap(
         ) {
             Marker(map).apply {
                 position = GeoPoint(vehicle.courierLat, vehicle.courierLng)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                // Admin xarita: doira markazga bog‘lanadi (pin emas)
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                 icon = truckIcon
                 relatedObject = vehicle
                 disableMarkerBubble(this)
@@ -282,11 +288,7 @@ private fun updateFleetMap(
     if (fitCamera) runCamera() else map.invalidate()
 }
 
-private fun animateMarker(marker: Marker, from: GeoPoint, to: GeoPoint) {
-    val map = marker.mapView ?: run {
-        marker.position = to
-        return
-    }
+private fun animateMarker(map: MapView, marker: Marker, from: GeoPoint, to: GeoPoint) {
     val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
         duration = 850
         interpolator = android.view.animation.LinearInterpolator()

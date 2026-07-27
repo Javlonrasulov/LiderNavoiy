@@ -209,6 +209,12 @@ fun DashboardScreen(
         cancelLabel = t("com_cancel"),
     )
 
+    val recentOrders = remember(state.allOrders) {
+        state.allOrders
+            .sortedByDescending { it.updatedAt.ifBlank { it.createdAt } }
+            .take(3)
+    }
+
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -405,7 +411,7 @@ fun DashboardScreen(
                             StatCard(
                                 Icons.Default.CreditCard,
                                 t("dash_debt"),
-                                formatMoney(state.data?.balance ?: 0.0),
+                                formatMoney(state.data?.debt ?: 0.0),
                                 t("com_som"),
                                 LiquidGlass.Rose,
                                 Modifier.weight(1f),
@@ -413,7 +419,7 @@ fun DashboardScreen(
                             StatCard(
                                 Icons.Default.CardGiftcard,
                                 t("dash_bonus"),
-                                "4,850",
+                                formatMoney((state.data?.bonusPoints ?: 0).toDouble()),
                                 "ball",
                                 LiquidGlass.Emerald,
                                 Modifier.weight(1f),
@@ -429,7 +435,7 @@ fun DashboardScreen(
                             StatCard(
                                 Icons.Default.ShoppingBag,
                                 t("dash_active_orders"),
-                                "${filtered.activeOrderCount}",
+                                "${state.data?.activeOrderCount ?: filtered.activeOrderCount}",
                                 "ta",
                                 LiquidGlass.Cyan,
                                 Modifier.weight(1f),
@@ -437,8 +443,8 @@ fun DashboardScreen(
                             StatCard(
                                 Icons.Default.Star,
                                 t("dash_discount_level"),
-                                "VIP",
-                                "Gold",
+                                state.data?.discountLevel ?: "Standard",
+                                state.data?.discountSubtitle ?: "—",
                                 LiquidGlass.Amber,
                                 Modifier.weight(1f),
                             )
@@ -507,7 +513,7 @@ fun DashboardScreen(
                         Spacer(Modifier.height(12.dp))
                     }
 
-                    val orders = filtered.recentOrders
+                    val orders = recentOrders
                     if (orders.isEmpty()) {
                         item {
                             Box(
@@ -527,7 +533,7 @@ fun DashboardScreen(
                             }
                         }
                     } else {
-                        items(orders.take(3), key = { it.id }) { order ->
+                        items(orders, key = { it.id }) { order ->
                             Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                                 RecentOrderRow(order, lang, palette) {
                                     onNavigate(ClientRoutes.orderTracking(order.id))
@@ -754,7 +760,11 @@ private fun RecentOrderRow(
 ) {
     val status = orderStatusLabel(lang, order.status)
     val color = orderStatusColor(order.status, palette)
-    val product = order.items.firstOrNull()?.productName ?: order.id
+    val product = when {
+        order.items.isEmpty() -> "—"
+        order.items.size == 1 -> order.items.first().productName
+        else -> "${order.items.first().productName} · ${order.items.size} ta"
+    }
 
     Column(
         Modifier

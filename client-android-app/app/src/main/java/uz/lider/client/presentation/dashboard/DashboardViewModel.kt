@@ -81,7 +81,21 @@ class DashboardViewModel @Inject constructor(
         val ordersDeferred = async { profileRepository.getAllOrders() }
         val profile = profileDeferred.await()
         val allOrders = ordersDeferred.await()
-        val data = buildDashboardData(profile, allOrders)
+        val apiDash = runCatching { profileRepository.fetchDashboardSummary() }.getOrNull()
+        val local = profileRepository.buildDashboardFromProfileOrders(profile, allOrders)
+        val data = if (apiDash != null) {
+            local.copy(
+                debt = apiDash.debt.takeIf { it > 0 } ?: local.debt,
+                bonusPoints = maxOf(apiDash.bonusPoints, local.bonusPoints),
+                activeOrderCount = maxOf(apiDash.activeOrderCount, local.activeOrderCount),
+                discountLevel = apiDash.discountLevel.ifBlank { local.discountLevel },
+                discountSubtitle = apiDash.discountSubtitle.ifBlank { local.discountSubtitle },
+                balance = apiDash.balance,
+                totalPurchases = apiDash.totalPurchases.takeIf { it > 0 } ?: local.totalPurchases,
+            )
+        } else {
+            local
+        }
         val range = _uiState.value.dateRange
         val filtered = DashboardDateFilter.computeFiltered(allOrders, range)
         _uiState.update {
@@ -93,27 +107,6 @@ class DashboardViewModel @Inject constructor(
                 filtered = filtered,
             )
         }
-    }
-
-    private fun buildDashboardData(
-        profile: ClientProfile?,
-        orders: List<ClientOrder>,
-    ): DashboardData {
-        val effective = profile ?: ClientProfile(
-            id = "",
-            code = "",
-            name = "",
-            balance = 0.0,
-            totalPurchases = 0.0,
-            orderCount = orders.size,
-        )
-        return DashboardData(
-            profile = effective,
-            recentOrders = orders.take(5),
-            totalPurchases = profile?.totalPurchases ?: 0.0,
-            orderCount = profile?.orderCount ?: orders.size,
-            balance = profile?.balance ?: 0.0,
-        )
     }
 
     fun onDashboardVisible() {

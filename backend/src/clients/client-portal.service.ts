@@ -193,6 +193,8 @@ export class ClientPortalService {
       deliveryPerson,
       orderCount,
       totalPurchases: Number(totalPurchases?.total ?? 0),
+      bonusPoints: Math.max(0, Math.floor(Number(totalPurchases?.total ?? 0) / 1000)),
+      debt: Number(client.balance) < 0 ? Math.abs(Number(client.balance)) : 0,
     };
   }
 
@@ -405,13 +407,36 @@ export class ClientPortalService {
 
   async getDashboard(user: User) {
     const profile = await this.getProfile(user);
-    const recentOrders = (await this.getOrders(user)).slice(0, 5);
+    const orders = await this.getOrders(user);
+    const recentOrders = orders.slice(0, 5);
+    const activeOrders = orders.filter(
+      (o) => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.CANCELLED,
+    ).length;
+    const balance = Number(profile.balance ?? 0);
+    // Agent CRM: manfiy balans = qarzdorlik
+    const debt = balance < 0 ? Math.abs(balance) : 0;
+    const totalPurchases = Number(profile.totalPurchases ?? 0);
+    const bonusPoints = Math.max(0, Math.floor(totalPurchases / 1000));
+    const category = (profile.category || profile.priceCategory || 'Standard').trim();
+    const discountSubtitle =
+      profile.clientClass?.trim() ||
+      (category.toLowerCase() === 'vip'
+        ? 'Gold'
+        : category.toLowerCase() === 'premium'
+          ? 'Silver'
+          : profile.priceCategory?.trim() || '—');
+
     return {
       profile,
       recentOrders,
-      activeOrders: recentOrders.filter(
-        (o) => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.CANCELLED,
-      ).length,
+      activeOrders,
+      debt,
+      balance,
+      bonusPoints,
+      discountLevel: category,
+      discountSubtitle,
+      totalPurchases,
+      orderCount: Number(profile.orderCount ?? orders.length),
     };
   }
 
@@ -463,16 +488,17 @@ export class ClientPortalService {
       validOrders,
       productsById,
       productsByCode,
-      chartStart,
+      periodStart,
       now,
     );
+    // Eng ko'p sotilgan mahsulotlar — tanlangan davr buyurtmalaridan (miqdor bo'yicha)
     const topProducts = this.buildTopProducts(
       validOrders,
       productsById,
       productsByCode,
-      chartStart,
+      periodStart,
       now,
-      5,
+      10,
     );
 
     return {
@@ -632,33 +658,47 @@ export class ClientPortalService {
     end: Date,
     limit: number,
   ) {
-    const totals = new Map<string, { name: string; amount: number }>();
-    let grandTotal = 0;
+    const totals = new Map<
+      string,
+      { name: string; quantity: number; amount: number; unit: string }
+    >();
+    let grandQty = 0;
     for (const order of orders) {
       const created = new Date(order.createdAt);
-      if (created < start || created >= end) continue;
+      if (created < start || created > end) continue;
       for (const item of order.items ?? []) {
         const product = this.resolveProduct(item, productsById, productsByCode);
-        const key = product?.id ?? item.productCode;
+        const key = product?.id ?? item.productCode ?? item.productName;
         const name = product?.name ?? item.productName;
         if (!name?.trim()) continue;
-        const lineTotal = Number(item.quantity) * Number(item.price);
+        const qty = Number(item.quantity) || 0;
+        if (qty <= 0) continue;
+        const lineTotal = qty * Number(item.price);
         const existing = totals.get(key);
         if (existing) {
+          existing.quantity += qty;
           existing.amount += lineTotal;
         } else {
-          totals.set(key, { name, amount: lineTotal });
+          totals.set(key, {
+            name,
+            quantity: qty,
+            amount: lineTotal,
+            unit: product?.unit ?? item.unit ?? '',
+          });
         }
-        grandTotal += lineTotal;
+        grandQty += qty;
       }
     }
-    if (grandTotal <= 0) return [];
+    if (grandQty <= 0) return [];
     return [...totals.values()]
       .map((p) => ({
         name: p.name,
-        share: Math.round((p.amount / grandTotal) * 1000) / 10,
+        quantity: Math.round(p.quantity * 1000) / 1000,
+        amount: Math.round(p.amount),
+        unit: p.unit,
+        share: Math.round((p.quantity / grandQty) * 1000) / 10,
       }))
-      .sort((a, b) => b.share - a.share)
+      .sort((a, b) => b.quantity - a.quantity || b.amount - a.amount)
       .slice(0, limit);
   }
 }

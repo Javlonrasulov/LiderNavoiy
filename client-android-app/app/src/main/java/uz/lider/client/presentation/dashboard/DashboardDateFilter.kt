@@ -32,9 +32,12 @@ object DashboardDateFilter {
     private val displayFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
     fun lastMonthRange(today: LocalDate = LocalDate.now()): DashboardDateRange {
-        val firstDayLastMonth = today.minusMonths(1).withDayOfMonth(1)
-        val lastDayLastMonth = today.withDayOfMonth(1).minusDays(1)
-        return DashboardDateRange(start = firstDayLastMonth, end = lastDayLastMonth, isCustom = false)
+        // Default: joriy oy — «oxirgi buyurtmalar / xaridlar» bo‘sh qolmasin
+        return DashboardDateRange(
+            start = today.withDayOfMonth(1),
+            end = today,
+            isCustom = false,
+        )
     }
 
     fun todayRange(today: LocalDate = LocalDate.now()): DashboardDateRange =

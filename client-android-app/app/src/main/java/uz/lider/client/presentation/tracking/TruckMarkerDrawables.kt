@@ -36,99 +36,83 @@ private fun Bitmap.asMarkerDrawable(context: Context): Drawable =
     }
 
 /**
- * Premium glass vehicle marker — same language as store disc (Uber / Apple Maps).
- * White glass circle + stroke truck + soft droplet + optional count badge.
+ * Admin «Xodimlar joylashuvi» dostavkachi markeriga mos:
+ * yashil doira + 🚚 + online badge (pastda o‘ngda).
  */
-fun createTruckMarkerDrawable(context: Context, orderCount: Int, sizeDp: Int = 48): Drawable {
+fun createTruckMarkerDrawable(
+    context: Context,
+    orderCount: Int,
+    sizeDp: Int = 36,
+    online: Boolean = true,
+): Drawable {
     val d = context.resources.displayMetrics.density
-    val disc = (sizeDp * d).toInt().coerceIn(44, 120)
-    val pointer = (10f * d).toInt().coerceAtLeast(8)
-    val pad = (8f * d).toInt()
-    val badgeExtra = if (orderCount > 1) (10 * d).toInt() else 0
+    val disc = (sizeDp * d).toInt().coerceIn(36, 96)
+    val badgeExtra = if (orderCount > 1) (12 * d).toInt() else 0
+    val pad = (4 * d).toInt()
     val outW = disc + pad * 2 + badgeExtra
-    val outH = disc + pointer + pad
+    val outH = disc + pad * 2
     val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
 
-    val cx = outW / 2f - if (orderCount > 1) badgeExtra * 0.15f else 0f
+    val cx = pad + disc / 2f
     val cy = pad + disc / 2f
     val r = disc / 2f
-    val primary = 0xFF3B82F6.toInt()
 
-    canvas.drawOval(
-        RectF(cx - r * 0.55f, outH - pad * 0.35f - 4f * d, cx + r * 0.55f, outH.toFloat()),
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                cx, outH - pad * 0.2f, r * 0.55f,
-                intArrayOf(0x2E000000, 0x00000000),
-                floatArrayOf(0.2f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-        },
-    )
+    // Admin: delivery online = #10b981, border #6ee7b7
+    val fill = if (online) 0xFF10B981.toInt() else 0xFF6B7280.toInt()
+    val ring = if (online) 0xFF6EE7B7.toInt() else 0xFF9CA3AF.toInt()
+
+    // Soft shadow (admin box-shadow)
     canvas.drawCircle(
-        cx, cy + 3f * d,
-        r * 0.92f,
+        cx, cy + 1.5f * d,
+        r,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = RadialGradient(
-                cx, cy + 3f * d, r,
-                intArrayOf(0x33000000, 0x00000000),
+                cx, cy + 1.5f * d, r * 1.05f,
+                intArrayOf(0x66000000, 0x00000000),
                 floatArrayOf(0.55f, 1f),
                 Shader.TileMode.CLAMP,
             )
         },
     )
 
-    // Glass disc
+    canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
     canvas.drawCircle(
-        cx, cy, r,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xEFFFFFFF.toInt() },
-    )
-    canvas.drawCircle(
-        cx, cy, r,
+        cx, cy, r - 1.2f * d,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.2f * d
-            color = 0x66FFFFFF
+            strokeWidth = 2.5f * d
+            color = ring
         },
     )
 
-    // Stroke truck (~55%)
-    drawStrokeTruckIcon(canvas, cx, cy, disc * 0.55f, d, primary)
-
-    // Online / on-route badge
-    val badgeR = 4f * d
-    canvas.drawCircle(
-        cx + r * 0.62f, cy - r * 0.62f, badgeR + 1.6f * d,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE },
-    )
-    canvas.drawCircle(
-        cx + r * 0.62f, cy - r * 0.62f, badgeR,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF22C55E.toInt() },
-    )
-
-    // Soft droplet
-    val dropTop = cy + r - 1.5f * d
-    val dropBottom = dropTop + pointer
-    val drop = Path().apply {
-        moveTo(cx - 6f * d, dropTop)
-        lineTo(cx + 6f * d, dropTop)
-        quadTo(cx + 2.2f * d, dropTop + pointer * 0.55f, cx, dropBottom)
-        quadTo(cx - 2.2f * d, dropTop + pointer * 0.55f, cx - 6f * d, dropTop)
-        close()
+    // 🚚 — admin xarita bilan bir xil
+    val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = disc * 0.48f
     }
-    canvas.drawPath(
-        drop,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFFFFFFF.toInt()
-            alpha = 235
-        },
-    )
+    val emoji = "🚚"
+    val emojiY = cy - (emojiPaint.descent() + emojiPaint.ascent()) / 2f
+    canvas.drawText(emoji, cx, emojiY, emojiPaint)
 
+    // Online badge — pastki o‘ng (admin)
+    if (online) {
+        val br = 5f * d
+        val bx = cx + r * 0.55f
+        val by = cy + r * 0.55f
+        canvas.drawCircle(bx, by, br + 1.5f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+        })
+        canvas.drawCircle(bx, by, br, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF22C55E.toInt()
+        })
+    }
+
+    // Buyurtma soni badge (2+)
     if (orderCount > 1) {
         val countR = 9f * d
-        val bx = outW - countR - 2f * d
-        val by = countR + 2f * d
+        val bx = outW - countR - 1f * d
+        val by = countR + 1f * d
         canvas.drawCircle(bx, by, countR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BADGE_COLOR })
         canvas.drawCircle(
             bx, by, countR,
@@ -295,54 +279,6 @@ fun createDeliveryPinDrawable(
     )
 
     return bmp.asMarkerDrawable(context)
-}
-
-/** Flat side-profile truck — unused legacy kept off map; glass stroke used instead. */
-private fun drawStrokeTruckIcon(
-    canvas: Canvas,
-    cx: Float,
-    cy: Float,
-    size: Float,
-    dens: Float,
-    color: Int,
-) {
-    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        this.color = color
-        style = Paint.Style.STROKE
-        strokeWidth = (size * 0.085f).coerceAtLeast(1.8f * dens)
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    val left = cx - size * 0.5f
-    val top = cy - size * 0.5f
-    val s = size
-
-    // Cargo box
-    canvas.drawRoundRect(
-        RectF(left + s * 0.10f, top + s * 0.28f, left + s * 0.55f, top + s * 0.68f),
-        s * 0.06f, s * 0.06f, stroke,
-    )
-    // Cab
-    val cab = Path().apply {
-        moveTo(left + s * 0.55f, top + s * 0.42f)
-        lineTo(left + s * 0.55f, top + s * 0.68f)
-        lineTo(left + s * 0.78f, top + s * 0.68f)
-        quadTo(left + s * 0.88f, top + s * 0.68f, left + s * 0.88f, top + s * 0.58f)
-        lineTo(left + s * 0.88f, top + s * 0.48f)
-        quadTo(left + s * 0.88f, top + s * 0.38f, left + s * 0.78f, top + s * 0.38f)
-        lineTo(left + s * 0.62f, top + s * 0.38f)
-        quadTo(left + s * 0.55f, top + s * 0.38f, left + s * 0.55f, top + s * 0.42f)
-        close()
-    }
-    canvas.drawPath(cab, stroke)
-    // Windshield
-    canvas.drawRoundRect(
-        RectF(left + s * 0.62f, top + s * 0.42f, left + s * 0.80f, top + s * 0.54f),
-        s * 0.04f, s * 0.04f, stroke,
-    )
-    // Wheels
-    canvas.drawCircle(left + s * 0.28f, top + s * 0.74f, s * 0.09f, stroke)
-    canvas.drawCircle(left + s * 0.70f, top + s * 0.74f, s * 0.09f, stroke)
 }
 
 /** SF Symbols–style stroke storefront — never filled clipart. */

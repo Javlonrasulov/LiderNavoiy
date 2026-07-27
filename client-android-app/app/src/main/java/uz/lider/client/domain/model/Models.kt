@@ -75,8 +75,13 @@ data class ClientProfile(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val category: String? = null,
+    val clientClass: String? = null,
+    val priceCategory: String? = null,
     val balance: Double,
+    /** Qarzdorlik (manfiy balansning absolyuti). */
+    val debt: Double = 0.0,
     val totalPurchases: Double,
+    val bonusPoints: Int = 0,
     val orderCount: Int,
     val agentName: String? = null,
     val agentPosition: String? = null,
@@ -98,6 +103,20 @@ data class ClientProfile(
             else -> ""
         }
     }
+
+    fun discountTitle(): String =
+        category?.trim()?.takeIf { it.isNotEmpty() }
+            ?: priceCategory?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "Standard"
+
+    fun discountSubtitle(): String {
+        clientClass?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        return when (discountTitle().lowercase()) {
+            "vip" -> "Gold"
+            "premium" -> "Silver"
+            else -> priceCategory?.trim()?.takeIf { it.isNotEmpty() } ?: "—"
+        }
+    }
 }
 
 data class DashboardData(
@@ -106,6 +125,11 @@ data class DashboardData(
     val totalPurchases: Double,
     val orderCount: Int,
     val balance: Double,
+    val debt: Double = 0.0,
+    val bonusPoints: Int = 0,
+    val activeOrderCount: Int = 0,
+    val discountLevel: String = "Standard",
+    val discountSubtitle: String = "—",
 )
 
 data class AnalyticsMonthlyPoint(
@@ -127,6 +151,9 @@ data class AnalyticsCategoryShare(
 data class AnalyticsTopProduct(
     val name: String,
     val share: Double,
+    val quantity: Double = 0.0,
+    val amount: Double = 0.0,
+    val unit: String = "",
 )
 
 data class ClientAnalytics(

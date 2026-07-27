@@ -38,6 +38,9 @@ interface ApiService {
     @GET("client-portal/me")
     suspend fun getProfile(): ClientProfileDto
 
+    @GET("client-portal/dashboard")
+    suspend fun getClientDashboard(): uz.lider.client.data.remote.dto.ClientDashboardDto
+
     @GET("client-portal/orders")
     suspend fun getOrders(): List<ClientOrderDto>
 

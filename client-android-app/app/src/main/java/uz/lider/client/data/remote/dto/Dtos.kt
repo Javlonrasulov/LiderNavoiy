@@ -153,10 +153,15 @@ data class ClientProfileDto(
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val longitude: Double? = null,
     val category: String? = null,
+    val clientClass: String? = null,
+    val priceCategory: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val balance: Double = 0.0,
     @JsonAdapter(FlexibleDoubleAdapter::class)
+    val debt: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
     val totalPurchases: Double = 0.0,
+    val bonusPoints: Int? = null,
     val orderCount: Int = 0,
     val agentName: String? = null,
     val agentPosition: String? = null,
@@ -164,6 +169,22 @@ data class ClientProfileDto(
     val agentUserId: String? = null,
     val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPersonDto? = null,
+)
+
+data class ClientDashboardDto(
+    val profile: ClientProfileDto? = null,
+    val recentOrders: List<ClientOrderDto> = emptyList(),
+    val activeOrders: Int = 0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val debt: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val balance: Double = 0.0,
+    val bonusPoints: Int = 0,
+    val discountLevel: String? = null,
+    val discountSubtitle: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val totalPurchases: Double = 0.0,
+    val orderCount: Int = 0,
 )
 
 data class ApiErrorDto(
@@ -194,6 +215,11 @@ data class AnalyticsTopProductDto(
     val name: String,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val share: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val quantity: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val amount: Double = 0.0,
+    val unit: String? = null,
 )
 
 data class ClientAnalyticsDto(

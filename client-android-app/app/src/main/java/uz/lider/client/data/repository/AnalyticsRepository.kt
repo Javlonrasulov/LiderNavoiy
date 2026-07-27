@@ -49,7 +49,6 @@ class AnalyticsRepository @Inject constructor(
         val now = LocalDate.now(zone)
         val periodStart = periodStart(now, period)
         val prevStart = previousPeriodStart(periodStart, period)
-        val chartStart = now.minusMonths(5).withDayOfMonth(1)
 
         val productsById = products.associateBy { it.id }
         val productsByCode = products.associateBy { it.code }
@@ -73,10 +72,13 @@ class AnalyticsRepository @Inject constructor(
 
         val monthlyPurchases = buildMonthlyPurchases(orders, now, zone, 6)
         val weeklyDynamics = buildWeeklyDynamics(orders, now, zone)
-        val categories = buildCategoryBreakdown(orders, productsById, productsByCode, chartStart, now.plusDays(1), zone)
-            .ifEmpty { buildCatalogCategories(products) }
-        val topProducts = buildTopProducts(orders, productsById, productsByCode, chartStart, now.plusDays(1), zone, 5)
-            .ifEmpty { buildCatalogTopProducts(products) }
+        // Top / kategoriyalar — tanlangan davrdagi haqiqiy sotuvlardan
+        val categories = buildCategoryBreakdown(
+            orders, productsById, productsByCode, periodStart, now.plusDays(1), zone,
+        )
+        val topProducts = buildTopProducts(
+            orders, productsById, productsByCode, periodStart, now.plusDays(1), zone, 10,
+        )
 
         return ClientAnalytics(
             period = period,
@@ -200,46 +202,48 @@ class AnalyticsRepository @Inject constructor(
         zone: ZoneId,
         limit: Int,
     ): List<AnalyticsTopProduct> {
-        val totals = mutableMapOf<String, Pair<String, Double>>()
-        var grandTotal = 0.0
+        data class Acc(var name: String, var quantity: Double, var amount: Double, var unit: String)
+        val totals = mutableMapOf<String, Acc>()
+        var grandQty = 0.0
         for (order in orders) {
             val created = parseOrderDate(order.createdAt, zone)
             if (created.isBefore(start) || !created.isBefore(end)) continue
             for (item in order.items) {
                 val product = resolveProduct(item.productId, item.productCode, productsById, productsByCode)
-                val key = product?.id ?: item.productCode
+                val key = product?.id ?: item.productCode.ifBlank { item.productName }
                 val name = product?.name ?: item.productName
                 if (name.isBlank()) continue
-                val lineTotal = item.quantity * item.price
+                val qty = item.quantity
+                if (qty <= 0) continue
+                val lineTotal = qty * item.price
                 val existing = totals[key]
-                totals[key] = name to ((existing?.second ?: 0.0) + lineTotal)
-                grandTotal += lineTotal
+                if (existing != null) {
+                    existing.quantity += qty
+                    existing.amount += lineTotal
+                } else {
+                    totals[key] = Acc(
+                        name = name,
+                        quantity = qty,
+                        amount = lineTotal,
+                        unit = product?.unit ?: item.unit,
+                    )
+                }
+                grandQty += qty
             }
         }
-        if (grandTotal <= 0) return emptyList()
+        if (grandQty <= 0) return emptyList()
         return totals.values
-            .map { (name, amount) ->
-                AnalyticsTopProduct(name, round((amount / grandTotal) * 1000) / 10.0)
+            .map {
+                AnalyticsTopProduct(
+                    name = it.name,
+                    share = round((it.quantity / grandQty) * 1000) / 10.0,
+                    quantity = round(it.quantity * 1000) / 1000.0,
+                    amount = round(it.amount),
+                    unit = it.unit,
+                )
             }
-            .sortedByDescending { it.share }
+            .sortedWith(compareByDescending<AnalyticsTopProduct> { it.quantity }.thenByDescending { it.amount })
             .take(limit)
-    }
-
-    private fun buildCatalogCategories(products: List<Product>): List<AnalyticsCategoryShare> {
-        if (products.isEmpty()) return emptyList()
-        val grouped = products.groupBy { it.category?.takeIf { c -> c.isNotBlank() } ?: "Boshqa" }
-        val total = products.size.toDouble()
-        return grouped.entries
-            .map { (name, list) -> AnalyticsCategoryShare(name, round(list.size / total * 1000) / 10.0) }
-            .sortedByDescending { it.share }
-            .take(6)
-    }
-
-    private fun buildCatalogTopProducts(products: List<Product>): List<AnalyticsTopProduct> {
-        if (products.isEmpty()) return emptyList()
-        val top = products.take(5)
-        val share = round(1000.0 / top.size) / 10.0
-        return top.map { AnalyticsTopProduct(it.name, share) }
     }
 
     private fun parseOrderDate(createdAt: String, zone: ZoneId): LocalDate {
@@ -270,7 +274,13 @@ class AnalyticsRepository @Inject constructor(
             AnalyticsCategoryShare(it.name, it.share)
         },
         topProducts = topProducts.map {
-            AnalyticsTopProduct(it.name, it.share)
+            AnalyticsTopProduct(
+                name = it.name,
+                share = it.share,
+                quantity = it.quantity,
+                amount = it.amount,
+                unit = it.unit.orEmpty(),
+            )
         },
     )
 }

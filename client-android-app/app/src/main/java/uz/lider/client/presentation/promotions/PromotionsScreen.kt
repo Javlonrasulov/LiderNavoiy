@@ -26,10 +26,12 @@ import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,8 +54,12 @@ import uz.lider.client.presentation.theme.liquidGlassThemed
 import kotlinx.coroutines.delay
 
 @Composable
-fun PromotionsScreen(onBack: () -> Unit) {
+fun PromotionsScreen(
+    onBack: () -> Unit,
+    viewModel: PromotionsViewModel = hiltViewModel(),
+) {
     val lang = LocalAppLanguage.current
+    val promoState by viewModel.uiState.collectAsState()
     var tab by remember { mutableIntStateOf(0) }
     val tabs = listOf(
         localized("promo_discounts"),
@@ -135,7 +141,7 @@ fun PromotionsScreen(onBack: () -> Unit) {
                             PromoGradientCard(promo.title, promo.desc, promo.discount, promo.until)
                         }
                         1 -> {
-                            item { BonusPointsCard("4,850") }
+                            item { BonusPointsCard(promoState.bonusPointsLabel) }
                             items(bonusPrograms(lang)) { program ->
                                 GlassProgramCard(program.title, program.desc, program.active)
                             }

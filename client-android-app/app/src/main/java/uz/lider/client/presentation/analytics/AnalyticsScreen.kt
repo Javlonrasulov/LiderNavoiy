@@ -396,20 +396,53 @@ fun AnalyticsScreen(
                                     fontSize = 13.sp,
                                 )
                             } else {
-                                topProducts.forEach { product ->
-                                    Row(
+                                val accentColors = listOf(
+                                    LiquidGlass.Cyan,
+                                    LiquidGlass.Indigo,
+                                    LiquidGlass.Violet,
+                                    LiquidGlass.Emerald,
+                                    LiquidGlass.Amber,
+                                    LiquidGlass.Rose,
+                                )
+                                topProducts.forEachIndexed { index, product ->
+                                    Column(
                                         Modifier
                                             .fillMaxWidth()
                                             .padding(vertical = 6.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
                                     ) {
-                                        Text(product.name, color = LiquidTheme.text, fontSize = 13.sp)
-                                        Text(
-                                            "${product.share}%",
-                                            color = LiquidGlass.Cyan,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                product.name,
+                                                color = LiquidTheme.text,
+                                                fontSize = 13.sp,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            Text(
+                                                "${product.share}%",
+                                                color = LiquidGlass.Cyan,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        HorizontalProgressBar(
+                                            progress = (product.share / 100.0).toFloat(),
+                                            color = accentColors[index % accentColors.size],
+                                            trackColor = Color.White.copy(alpha = 0.10f),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
+                                        if (product.quantity > 0) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                "${formatMoney(product.quantity)} ${product.unit.ifBlank { "" }}".trim(),
+                                                color = LiquidTheme.textMuted,
+                                                fontSize = 11.sp,
+                                            )
+                                        }
                                     }
                                 }
                             }
