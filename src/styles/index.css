@@ -3,6 +3,11 @@
 @import './theme.css';
 @import 'leaflet/dist/leaflet.css';
 
+/* Mijoz xaritasi — OSM attribution yashirish */
+.client-map-leaflet .leaflet-control-attribution {
+  display: none !important;
+}
+
 /* Hide all scrollbars globally */
 *::-webkit-scrollbar { display: none; }
 * { -ms-overflow-style: none; scrollbar-width: none; }

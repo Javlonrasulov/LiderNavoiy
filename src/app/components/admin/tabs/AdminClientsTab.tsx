@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
-import { StoreIcon } from '../../icons';
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
@@ -16,6 +15,7 @@ import {
 } from '../../../utils/clientApi';
 import AddClient from '../../AddClient';
 import { ClientStatsPanel } from '../ClientStatsPanel';
+import { ClientMapModal, ClientGpsWarningModal, clientHasGps } from '../ClientMapModal';
 import { demo } from '../../../data/demoLimit';
 
 function hasApiToken(): boolean {
@@ -73,6 +73,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [clientStatusFilter, setClientStatusFilter] = useState<'all' | 'debtors' | 'inactive' | 'surplus'>('all');
   const [activeClient, setActiveClient] = useState<ClientRow | null>(null);
   const [clientMapOpen, setClientMapOpen] = useState(false);
+  const [clientGpsWarnOpen, setClientGpsWarnOpen] = useState(false);
   const [clientPhotoOpen, setClientPhotoOpen] = useState(false);
   const [showAddClient, setShowAddClient] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
@@ -584,7 +585,11 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           </button>
 
           <button
-            onClick={() => { if (activeClient) setClientMapOpen(true); }}
+            onClick={() => {
+              if (!activeClient) return;
+              if (clientHasGps(activeClient)) setClientMapOpen(true);
+              else setClientGpsWarnOpen(true);
+            }}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
               ${activeClient
                 ? D ? 'bg-sky-900/60 hover:bg-sky-800/60 text-sky-300' : 'bg-sky-50 hover:bg-sky-100 text-sky-700'
@@ -808,72 +813,23 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         <Pagination />
       </div>
 
-      {/* CLIENT MAP MODAL */}
-      {clientMapOpen && activeClient && (() => {
-        const coords = (() => {
-          if (activeClient.gps && activeClient.gps.includes(',')) {
-            const [la, ln] = activeClient.gps.split(',').map(Number);
-            if (!isNaN(la) && !isNaN(ln)) return { lat: la, lng: ln };
-          }
-          const seed = clientIdHash(activeClient.id) % 500;
-          return {
-            lat: 40.0857 + ((seed * 7 + 13) % 100 - 50) * 0.004,
-            lng: 64.4432 + ((seed * 11 + 7)  % 100 - 50) * 0.003,
-          };
-        })();
-        const { lat, lng } = coords;
-        const delta = 0.008;
-        const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-delta},${lat-delta},${lng+delta},${lat+delta}&layer=mapnik&marker=${lat},${lng}`;
-        return (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-            style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.65)' }}
-            onClick={() => setClientMapOpen(false)}>
-            <div className={`relative w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border ${D ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}
-              onClick={e => e.stopPropagation()}>
-              <div className={`flex items-center justify-between px-4 py-3 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${D ? 'bg-sky-900/60' : 'bg-sky-100'}`}>
-                    <StoreIcon size={16} color="currentColor" className={D ? 'text-sky-400' : 'text-sky-600'} animated={false} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{activeClient.name}</p>
-                    <p className={`text-xs truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {activeClient.territory || activeClient.legalAddr || `ID: ${activeClient.id}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <a href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`}
-                    target="_blank" rel="noreferrer"
-                    className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors
-                      ${D ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-700'}`}>
-                    OSM
-                  </a>
-                  <button onClick={() => setClientMapOpen(false)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-xl transition-colors
-                      ${D ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-                    <X size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className={`flex items-center gap-4 px-4 py-2 text-xs font-mono ${D ? 'bg-gray-800/60 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                <span>lat: {lat.toFixed(5)}</span>
-                <span>lng: {lng.toFixed(5)}</span>
-                {activeClient.gps
-                  ? <span className={`ml-auto text-[10px] ${D ? 'text-emerald-400' : 'text-emerald-600'}`}>{t.gpsAvailable}</span>
-                  : <span className={`ml-auto text-[10px] ${D ? 'text-amber-400' : 'text-amber-600'}`}>{t.approxLocation}</span>}
-              </div>
-              <iframe src={mapSrc} title={t.mapLabel} style={{ width: '100%', height: 340, border: 0, display: 'block' }} loading="lazy" />
-              {activeClient.agent && (
-                <div className={`px-4 py-2.5 text-xs flex items-center gap-2 border-t ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
-                  <span className="opacity-60">{t.colAgent}:</span>
-                  <span className="font-medium">{activeClient.agent}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* CLIENT MAP / GPS WARNING */}
+      {clientMapOpen && activeClient && (
+        <ClientMapModal
+          client={activeClient}
+          D={D}
+          t={t}
+          onClose={() => setClientMapOpen(false)}
+        />
+      )}
+      {clientGpsWarnOpen && activeClient && (
+        <ClientGpsWarningModal
+          client={activeClient}
+          D={D}
+          t={t}
+          onClose={() => setClientGpsWarnOpen(false)}
+        />
+      )}
 
       {/* CLIENT PHOTO MODAL */}
       {clientPhotoOpen && activeClient && (() => {
