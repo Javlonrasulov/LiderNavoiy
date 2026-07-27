@@ -206,10 +206,16 @@ function sameLocalDay(iso: string, dateStr: string): boolean {
 }
 
 function validCoord(lat: number | null | undefined, lng: number | null | undefined): boolean {
-  if (lat == null || lng == null) return false;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  if (lat === 0 && lng === 0) return false;
-  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
+  if (la === 0 && ln === 0) return false;
+  return Math.abs(la) <= 90 && Math.abs(ln) <= 180;
+}
+
+function asCoord(lat: number | null | undefined, lng: number | null | undefined): { lat: number; lng: number } | null {
+  if (!validCoord(lat, lng)) return null;
+  return { lat: Number(lat), lng: Number(lng) };
 }
 
 async function fetchDayTrack(opts: {
@@ -234,24 +240,26 @@ async function fetchDayTrack(opts: {
   const route = routeRes.status === 'fulfilled' ? routeRes.value : null;
   const visits = visitsRes.status === 'fulfilled' ? visitsRes.value : [];
 
-  const gpsPoints = (route?.points ?? []).filter(p => validCoord(p.latitude, p.longitude));
+  const gpsPoints = (route?.points ?? [])
+    .map(p => {
+      const c = asCoord(p.latitude, p.longitude);
+      if (!c) return null;
+      return { ...c, recordedAt: p.recordedAt };
+    })
+    .filter((p): p is { lat: number; lng: number; recordedAt: string } => !!p);
   const firstGps = gpsPoints[0];
   const lastGps = gpsPoints[gpsPoints.length - 1];
-  const gpsTrail = gpsPoints.map(p => ({ lat: p.latitude, lng: p.longitude }));
+  const gpsTrail = gpsPoints.map(p => ({ lat: p.lat, lng: p.lng }));
 
   const visitPoints: TrackPoint[] = visits
     .slice()
     .sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime())
     .map((v, i) => {
-      const checkLat = v.checkInLatitude;
-      const checkLng = v.checkInLongitude;
-      const clientLat = v.clientLatitude;
-      const clientLng = v.clientLongitude;
-      const hasCheckIn = validCoord(checkLat, checkLng);
-      const hasClient = validCoord(clientLat, clientLng);
-      const hasCoords = hasCheckIn || hasClient;
-      const lat = hasCheckIn ? checkLat! : (hasClient ? clientLat! : 0);
-      const lng = hasCheckIn ? checkLng! : (hasClient ? clientLng! : 0);
+      const check = asCoord(v.checkInLatitude, v.checkInLongitude);
+      const client = asCoord(v.clientLatitude, v.clientLongitude);
+      const coords = check ?? client;
+      const hasCheckIn = !!check;
+      const hasCoords = !!coords;
 
       const remote = !!v.fromClientOrder || !hasCheckIn;
       const hasOrder = Number(v.orderTotal) > 0;
@@ -265,8 +273,8 @@ async function fetchDayTrack(opts: {
         idx: i + 1,
         name: v.clientName || 'Klient',
         address: v.clientAddress || '—',
-        lat,
-        lng,
+        lat: coords?.lat ?? 0,
+        lng: coords?.lng ?? 0,
         hasCoords,
         time: fmtClock(v.visitedAt),
         status,
@@ -284,10 +292,9 @@ async function fetchDayTrack(opts: {
     ? opts.lastLoginAt
     : null;
 
-  const hasEmpGps = validCoord(opts.empLat, opts.empLng);
-  const hasTrailGps = !!lastGps;
-  const empLat = hasEmpGps ? opts.empLat! : (hasTrailGps ? lastGps.latitude : null);
-  const empLng = hasEmpGps ? opts.empLng! : (hasTrailGps ? lastGps.longitude : null);
+  const liveEmp = asCoord(opts.empLat, opts.empLng);
+  const trailEmp = lastGps ? { lat: lastGps.lat, lng: lastGps.lng } : null;
+  const empPos = liveEmp ?? trailEmp;
   const empOnline = opts.empOnline;
   const empLastSeen = empOnline
     ? labels.onlineNow
@@ -310,13 +317,13 @@ async function fetchDayTrack(opts: {
     firstPointTime: fmtClock(firstGps?.recordedAt ?? visits[0]?.visitedAt),
     lastPointTime: fmtClock(lastGps?.recordedAt ?? visits[visits.length - 1]?.visitedAt),
     onlineHours: fmtDurationMinutes(durationMins, labels),
-    empLat,
-    empLng,
+    empLat: empPos?.lat ?? null,
+    empLng: empPos?.lng ?? null,
     empOnline,
     empLastSeen,
     points,
     gpsTrail,
-    hasRealLocation: empLat != null && empLng != null,
+    hasRealLocation: empPos != null,
   };
 }
 
@@ -486,8 +493,16 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         route: tr(t, 'trackRoute', 'Marshrut'),
       },
     })
-      .then(track => { if (!cancelled) setDayTrack(track); })
-      .catch(() => { if (!cancelled) setDayTrack(emptyDayTrack(selectedDate)); })
+      .then(track => {
+        if (cancelled) return;
+        setDayTrack(track);
+        setMapKey(k => k + 1);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDayTrack(emptyDayTrack(selectedDate));
+        setMapKey(k => k + 1);
+      })
       .finally(() => { if (!cancelled) setLoadingTrack(false); });
     return () => { cancelled = true; };
   }, [trackingEmp, selectedDate, t]);
@@ -663,9 +678,25 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     const empLastSeenLabel = dayTrack.empOnline
       ? tr(t, 'trackOnlineNow', 'Hozir online')
       : dayTrack.empLastSeen;
+
+    // Kunlik trekdagi joylashuv, yo'q bo'lsa — jonli distributor GPS (ish stoli bilan bir xil)
+    const liveLat = trackingEmp.lastLatitude;
+    const liveLng = trackingEmp.lastLongitude;
+    const liveOk = liveLat != null && liveLng != null
+      && Number.isFinite(Number(liveLat)) && Number.isFinite(Number(liveLng))
+      && !(Number(liveLat) === 0 && Number(liveLng) === 0);
     const empLocation = dayTrack.hasRealLocation && dayTrack.empLat != null && dayTrack.empLng != null
-      ? { lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }
-      : undefined;
+      ? { lat: Number(dayTrack.empLat), lng: Number(dayTrack.empLng), online: dayTrack.empOnline, lastSeen: empLastSeenLabel }
+      : liveOk
+        ? {
+            lat: Number(liveLat),
+            lng: Number(liveLng),
+            online: isGpsLiveOnline(trackingEmp.lastLocationAt),
+            lastSeen: isGpsLiveOnline(trackingEmp.lastLocationAt)
+              ? tr(t, 'trackOnlineNow', 'Hozir online')
+              : (trackingEmp.lastLocationAt ? new Date(trackingEmp.lastLocationAt).toLocaleString() : '—'),
+          }
+        : undefined;
 
     return (
       <div style={{ padding: '0 0 40px' }}>

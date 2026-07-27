@@ -47,6 +47,14 @@ function statusColor(status: PointStatus): string {
   return '#9ca3af';
 }
 
+function toNumCoord(lat: number, lng: number): [number, number] | null {
+  const la = Number(lat);
+  const ln = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
+  if (la === 0 && ln === 0) return null;
+  return [la, ln];
+}
+
 /** Ekranda ko'rinadigan yo'nalish — xarita proyeksiyasiga mos */
 function screenAngle(map: L.Map, lat1: number, lng1: number, lat2: number, lng2: number): number {
   const p1 = map.latLngToContainerPoint([lat1, lng1]);
@@ -163,38 +171,15 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
   const containerRef  = useRef<HTMLDivElement>(null);
   const mapRef        = useRef<L.Map | null>(null);
   const tileLayerRef  = useRef<L.TileLayer | null>(null);
-  const layersRef     = useRef<L.Layer[]>([]);
+  const overlayRef    = useRef<L.Layer[]>([]);
 
   const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
+  // Map init (once)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-
-    const orderedPoints = [...points].sort((a, b) => a.idx - b.idx);
-    const visitedPath = orderedPoints.filter(p => isVisitedOnSite(p.status));
-    const visitOrderMap = new Map<number, number>();
-    visitedPath.forEach((p, i) => visitOrderMap.set(p.idx, i + 1));
-
-    const trailCoords: [number, number][] = gpsTrail
-      .filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng) && !(p.lat === 0 && p.lng === 0))
-      .map(p => [p.lat, p.lng]);
-
-    const allCoords: [number, number][] = [
-      ...orderedPoints.map(p => [p.lat, p.lng] as [number, number]),
-      ...trailCoords,
-      ...(empLocation ? [[empLocation.lat, empLocation.lng] as [number, number]] : []),
-    ];
-
-    let center: [number, number] = NAVOIY;
-    if (allCoords.length > 0) {
-      center = [
-        allCoords.reduce((s, c) => s + c[0], 0) / allCoords.length,
-        allCoords.reduce((s, c) => s + c[1], 0) / allCoords.length,
-      ];
-    }
-
     const map = L.map(containerRef.current, {
-      center,
+      center: NAVOIY,
       zoom: 12,
       zoomControl: false,
       attributionControl: false,
@@ -202,11 +187,63 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
     switchTileLayer(map, tileLayerRef, activeLayer, D);
     mapRef.current = map;
 
+    // Leaflet needs invalidate after layout
+    requestAnimationFrame(() => map.invalidateSize());
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      tileLayerRef.current = null;
+      overlayRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    switchTileLayer(map, tileLayerRef, activeLayer, D);
+  }, [activeLayer, D]);
+
+  // Redraw markers / trail whenever data changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const layer of overlayRef.current) {
+      map.removeLayer(layer);
+    }
+    overlayRef.current = [];
+
+    const orderedPoints = [...points]
+      .map(p => {
+        const c = toNumCoord(p.lat, p.lng);
+        if (!c) return null;
+        return { ...p, lat: c[0], lng: c[1] };
+      })
+      .filter((p): p is MapPoint => !!p)
+      .sort((a, b) => a.idx - b.idx);
+
+    const visitedPath = orderedPoints.filter(p => isVisitedOnSite(p.status));
+    const visitOrderMap = new Map<number, number>();
+    visitedPath.forEach((p, i) => visitOrderMap.set(p.idx, i + 1));
+
+    const trailCoords: [number, number][] = gpsTrail
+      .map(p => toNumCoord(p.lat, p.lng))
+      .filter((c): c is [number, number] => !!c);
+
+    const empCoord = empLocation ? toNumCoord(empLocation.lat, empLocation.lng) : null;
+
+    const allCoords: [number, number][] = [
+      ...orderedPoints.map(p => [p.lat, p.lng] as [number, number]),
+      ...trailCoords,
+      ...(empCoord ? [empCoord] : []),
+    ];
+
     const added: L.Layer[] = [];
     const routeColor = '#6366f1';
     const trailColor = D ? '#818cf8' : '#4f46e5';
 
-    // Haqiqiy GPS izi (kunlik marshrut)
     if (trailCoords.length > 1) {
       const gpsLine = L.polyline(trailCoords, {
         color: trailColor,
@@ -230,10 +267,7 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
 
     orderedPoints.forEach(p => {
       const visitOrder = visitOrderMap.get(p.idx);
-      const popupTitle = visitOrder
-        ? `#${visitOrder} · ${p.name}`
-        : p.name;
-
+      const popupTitle = visitOrder ? `#${visitOrder} · ${p.name}` : p.name;
       const popupHtml = `
         <div style="padding:6px 2px;min-width:180px;font-family:system-ui,sans-serif;">
           <div style="font-weight:700;font-size:13px;margin-bottom:2px;color:#111827">${popupTitle}</div>
@@ -263,7 +297,7 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
       added.push(marker);
     });
 
-    if (empLocation) {
+    if (empLocation && empCoord) {
       const pulseColor = empLocation.online ? '#10b981' : '#9ca3af';
       const empIcon = L.divIcon({
         className: '',
@@ -284,7 +318,7 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
             </div>
           </div>`,
       });
-      const empMarker = L.marker([empLocation.lat, empLocation.lng], { icon: empIcon, zIndexOffset: 1000 });
+      const empMarker = L.marker(empCoord, { icon: empIcon, zIndexOffset: 1000 });
       empMarker.bindPopup(`
         <div style="padding:6px 2px;min-width:160px;font-family:system-ui,sans-serif;">
           <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:4px;display:flex;align-items:center;gap:6px">
@@ -297,25 +331,17 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
       added.push(empMarker);
     }
 
-    layersRef.current = added;
+    overlayRef.current = added;
 
-    if (allCoords.length > 0) {
-      map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40], maxZoom: 14 });
-    }
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      tileLayerRef.current = null;
-      layersRef.current = [];
-    };
-  }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    switchTileLayer(map, tileLayerRef, activeLayer, D);
-  }, [activeLayer, D]);
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      if (allCoords.length > 0) {
+        map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40], maxZoom: 15 });
+      } else {
+        map.setView(NAVOIY, 12);
+      }
+    });
+  }, [points, gpsTrail, empLocation, D, t]);
 
   return (
     <div style={{ width: '100%', height, position: 'relative', overflow: 'hidden' }}>
