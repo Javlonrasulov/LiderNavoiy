@@ -101,26 +101,36 @@ export default function AdminLogin() {
     );
   };
 
-  /** Render free cold-start: health bilan uyg'otib, keyin login */
+  /** Har bir so'rov max N ms — aks holda brauzer cheksiz kutadi (Render hang) */
+  const withTimeout = (ms: number) => AbortSignal.timeout(ms);
+
+  /** Render free cold-start: qisqa timeout + ko'p urinish */
   const wakeAndLogin = async (user: string, pass: string) => {
-    setError(t.waking);
-    for (let i = 0; i < 8; i++) {
+    const wakeAttempts = 20;
+    let awake = false;
+    for (let i = 0; i < wakeAttempts; i++) {
+      setError(`${t.waking} (${i + 1}/${wakeAttempts})`);
       try {
-        await api.health();
+        await api.health({ signal: withTimeout(12_000) });
+        awake = true;
         break;
       } catch {
-        await sleep(4000);
+        await sleep(2000);
       }
     }
+    if (!awake) {
+      throw new Error('Backend ulanmagan');
+    }
+
     let lastErr: unknown;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       try {
-        return await api.login(user, pass);
+        return await api.login(user, pass, { signal: withTimeout(20_000) });
       } catch (err) {
         lastErr = err;
         if (!isNetworkError(err)) throw err;
-        setError(t.waking);
-        await sleep(5000);
+        setError(`${t.waking} (${i + 1}/6)`);
+        await sleep(3000);
       }
     }
     throw lastErr;

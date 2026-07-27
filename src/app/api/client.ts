@@ -251,7 +251,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  } catch {
+  } catch (err) {
+    const name = err instanceof Error ? err.name : '';
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      throw new Error('timeout');
+    }
     throw new Error(`Backend ulanmagan (${API_BASE})`);
   }
   if (!res.ok) {
@@ -266,10 +270,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // ─── Auth ───
 export const api = {
-  login: (username: string, password: string) =>
+  login: (username: string, password: string, init?: RequestInit) =>
     request<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+      ...init,
     }),
 
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
@@ -777,7 +782,7 @@ export const api = {
     }),
 
   // ─── Health ───
-  health: () => request<{ status: string }>('/health'),
+  health: (init?: RequestInit) => request<{ status: string }>('/health', init),
 
   // ─── Notifications (Push) ───
   getNotifications: () =>
