@@ -56,7 +56,11 @@ export class OrdersController {
     @Query('limit') limit?: string,
   ) {
     if (req.user.role === UserRole.DISTRIBUTOR) {
-      return this.service.findByDistributor(req.user.distributorProfile!.id);
+      return this.service.findByDistributor(
+        req.user.distributorProfile!.id,
+        from ? new Date(from.includes('T') ? from : `${from}T00:00:00+05:00`) : undefined,
+        to ? new Date(to.includes('T') ? to : `${to}T23:59:59.999+05:00`) : undefined,
+      );
     }
     const take = limit ? Number(limit) : 500;
     const opts = {

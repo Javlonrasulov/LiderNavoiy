@@ -11,7 +11,7 @@ import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 
 /** Pastki menyu kontenti balandligi (tizim tugmalari insetsiz). */
-val BottomNavBarInnerHeight = 90.dp
+val BottomNavBarInnerHeight = 70.dp
 
 /**
  * Pastki menyu + telefon navigatsiya panelining umumiy balandligi.
@@ -70,10 +70,10 @@ fun bottomNavSelectedTab(route: String?): NavTab? = when (route) {
 
 fun NavHostController.navigateBottomTab(tab: NavTab) {
     if (tab == NavTab.HOME) {
-        navigate(NavTab.HOME.route) {
-            popUpTo(NavTab.HOME.route) { inclusive = false }
-            launchSingleTop = true
-            restoreState = true
+        if (!popBackStack(NavTab.HOME.route, inclusive = false)) {
+            navigate(NavTab.HOME.route) {
+                launchSingleTop = true
+            }
         }
         return
     }

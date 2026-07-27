@@ -1,5 +1,11 @@
 package uz.distributor.crm.presentation.dashboard
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
@@ -59,6 +67,27 @@ fun DashboardScreen(
     val isDark = darkMode
     var showLangMenu by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    var toastIdSeq by remember { mutableIntStateOf(0) }
+    var activeToasts by remember { mutableStateOf<List<ComingSoonToast>>(emptyList()) }
+
+    fun showComingSoon() {
+        toastIdSeq += 1
+        activeToasts = activeToasts + ComingSoonToast(id = toastIdSeq, visible = true)
+    }
+
+    // Ko‘rsatish → plavniy yashirish → listdan olib tashlash
+    activeToasts.forEach { toast ->
+        key(toast.id) {
+            LaunchedEffect(toast.id) {
+                delay(2600)
+                activeToasts = activeToasts.map {
+                    if (it.id == toast.id) it.copy(visible = false) else it
+                }
+                delay(TOAST_EXIT_MS)
+                activeToasts = activeToasts.filter { it.id != toast.id }
+            }
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -97,11 +126,11 @@ fun DashboardScreen(
         add(StatItem(AppStrings.visitCount(lang), "${state.stats.visitCount} / ${state.stats.completedVisits} / ${state.stats.pendingVisits}", Icons.Default.CalendarMonth, Color(0xFFF97316), badge = "${state.stats.visitProgressPercent.toInt()}%", onClick = onVisitsClick))
         add(StatItem(AppStrings.totalSales(lang), cartValue, Icons.Default.ShoppingCart, Color(0xFF3B82F6), cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null, onClick = onOrderSummaryClick))
         add(StatItem(AppStrings.products(lang), "${state.productCount}", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))
-        add(StatItem(AppStrings.returns(lang), "0", Icons.Default.Inventory2, Color(0xFFEF4444)))
-        add(StatItem(AppStrings.cashPayments(lang), "0", Icons.Default.Payments, Color(0xFF10B981)))
-        add(StatItem(AppStrings.clickPayments(lang), "0", Icons.Default.CreditCard, Color(0xFF6366F1)))
-        add(StatItem(AppStrings.terminalPayments(lang), "0", Icons.Default.CheckCircle, Color(0xFF06B6D4)))
-        add(StatItem(AppStrings.bonusStickers(lang), "0", Icons.Default.EmojiEvents, Color(0xFFEC4899)))
+        add(StatItem(AppStrings.returns(lang), "0", Icons.Default.Inventory2, Color(0xFFEF4444), onClick = { showComingSoon() }))
+        add(StatItem(AppStrings.cashPayments(lang), "0", Icons.Default.Payments, Color(0xFF10B981), onClick = { showComingSoon() }))
+        add(StatItem(AppStrings.clickPayments(lang), "0", Icons.Default.CreditCard, Color(0xFF6366F1), onClick = { showComingSoon() }))
+        add(StatItem(AppStrings.terminalPayments(lang), "0", Icons.Default.CheckCircle, Color(0xFF06B6D4), onClick = { showComingSoon() }))
+        add(StatItem(AppStrings.bonusStickers(lang), "0", Icons.Default.EmojiEvents, Color(0xFFEC4899), onClick = { showComingSoon() }))
     }
     val displayed = if (state.showAll) statItems else statItems.take(4)
 
@@ -186,8 +215,16 @@ fun DashboardScreen(
                             state = state.refreshButtonState,
                             onClick = viewModel::refresh,
                         )
-                        SherinQuickAction(Icons.Default.Info, AppStrings.details(lang)) {}
-                        SherinQuickAction(Icons.Default.MoreHoriz, AppStrings.more(lang)) {}
+                        SherinQuickAction(
+                            Icons.Default.Info,
+                            AppStrings.details(lang),
+                            onClick = { showComingSoon() },
+                        )
+                        SherinQuickAction(
+                            Icons.Default.MoreHoriz,
+                            AppStrings.more(lang),
+                            onClick = { showComingSoon() },
+                        )
                     }
                 }
             }
@@ -243,8 +280,44 @@ fun DashboardScreen(
                 }
             }
         }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(top = 10.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            activeToasts.forEach { toast ->
+                key(toast.id) {
+                    AnimatedVisibility(
+                        visible = toast.visible,
+                        enter = fadeIn(tween(TOAST_ENTER_MS)) +
+                            slideInVertically(tween(TOAST_ENTER_MS)) { -it },
+                        exit = fadeOut(tween(TOAST_EXIT_MS)) +
+                            slideOutVertically(tween(TOAST_EXIT_MS)) { -it },
+                    ) {
+                        NavGlassInfoToast(
+                            title = AppStrings.comingSoon(lang),
+                            detail = AppStrings.comingSoonDetail(lang),
+                            isDark = isDark,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
+private const val TOAST_ENTER_MS = 320
+private const val TOAST_EXIT_MS = 380
+
+private data class ComingSoonToast(
+    val id: Int,
+    val visible: Boolean,
+)
 
 private data class StatItem(
     val label: String,
@@ -255,6 +328,92 @@ private data class StatItem(
     val cartBadge: String? = null,
     val onClick: () -> Unit = {},
 )
+
+/** NavGlass desktop toast uslubi — glass card + info accent */
+@Composable
+private fun NavGlassInfoToast(
+    title: String,
+    detail: String,
+    isDark: Boolean,
+) {
+    val accent = Color(0xFF2563EB)
+    // Light/Dark: glass — biroz shaffof, lekin matn o‘qiladi
+    val bg = if (isDark) {
+        Color(0xFF1E3A8A).copy(alpha = 0.38f)
+    } else {
+        Color(0xFFF8FAFC).copy(alpha = 0.78f)
+    }
+    val border = if (isDark) {
+        Color(0xFF3B82F6).copy(alpha = 0.40f)
+    } else {
+        Color.White.copy(alpha = 0.55f)
+    }
+    val titleColor = if (isDark) Color(0xFFBFDBFE) else Color(0xFF1E3A8A)
+    val detailColor = if (isDark) Color(0xFFE2E8F0).copy(alpha = 0.88f) else Color(0xFF334155).copy(alpha = 0.90f)
+    val iconBg = if (isDark) {
+        Color(0xFF3B82F6).copy(alpha = 0.20f)
+    } else {
+        Color(0xFFDBEAFE).copy(alpha = 0.70f)
+    }
+    val iconBorder = if (isDark) {
+        Color(0xFF3B82F6).copy(alpha = 0.28f)
+    } else {
+        Color(0xFF93C5FD).copy(alpha = 0.55f)
+    }
+    val iconTint = if (isDark) Color(0xFF93C5FD) else accent
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = Color.Black.copy(0.10f),
+                spotColor = Color.Black.copy(0.14f),
+            )
+            .clip(RoundedCornerShape(16.dp))
+            .background(bg)
+            .border(1.dp, border, RoundedCornerShape(16.dp)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconBg)
+                    .border(1.dp, iconBorder, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    letterSpacing = 0.3.sp,
+                    color = titleColor,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    detail,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = detailColor,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun SherinRefreshAction(

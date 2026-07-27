@@ -29,7 +29,6 @@ import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -66,8 +65,7 @@ fun OrderSummaryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageBg)
-            .padding(bottom = bottomNavHeight()),
+            .background(pageBg),
     ) {
         OrderSalesHeader(
             isDark = isDark,
@@ -110,6 +108,7 @@ fun OrderSummaryScreen(
                 } else {
                     null
                 },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             OrderSummaryTab.SENT -> SentOrdersContent(
                 orders = state.sentOrders,
@@ -122,6 +121,7 @@ fun OrderSummaryScreen(
                 cardBg = cardBg,
                 titleColor = titleColor,
                 onToggleOrder = viewModel::toggleSentOrderExpanded,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
             )
         }
     }
@@ -250,48 +250,52 @@ private fun CurrentOrderContent(
     onSubmit: () -> Unit,
     submitLabel: String = AppStrings.sendOrder(lang),
     addProductsLabel: String? = null,
+    modifier: Modifier = Modifier,
 ) {
     if (state.items.isEmpty()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = cardBg,
-                modifier = Modifier
+        Column(modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .weight(1f)
                     .fillMaxWidth()
-                    .border(1.dp, if (isDark) Color(0xFF374151) else CardBorder, RoundedCornerShape(16.dp)),
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    Modifier.padding(48.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = cardBg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, if (isDark) Color(0xFF374151) else CardBorder, RoundedCornerShape(16.dp)),
                 ) {
-                    Icon(
-                        Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = SubText,
-                        modifier = Modifier.size(56.dp),
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        AppStrings.cartEmptyHint(lang),
-                        color = SubText,
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    if (addProductsLabel != null) {
+                    Column(
+                        Modifier.padding(48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = SubText,
+                            modifier = Modifier.size(56.dp),
+                        )
                         Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = onEditClient,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-                        ) {
-                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(addProductsLabel)
+                        Text(
+                            AppStrings.cartEmptyHint(lang),
+                            color = SubText,
+                            fontSize = 14.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        if (addProductsLabel != null) {
+                            Spacer(Modifier.height(16.dp))
+                            Button(
+                                onClick = onEditClient,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                            ) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(addProductsLabel)
+                            }
                         }
                     }
                 }
@@ -300,102 +304,100 @@ private fun CurrentOrderContent(
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 16.dp,
-                    bottom = 140.dp,
-                ),
+    Column(modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 16.dp,
+                bottom = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                ClientOrderCard(
+                    clientCode = state.clientCode,
+                    clientName = state.clientName,
+                    items = state.items,
+                    productBrands = state.productBrands,
+                    expanded = state.clientExpanded,
+                    expandedItems = state.expandedItems,
+                    fmt = fmt,
+                    stockFmt = stockFmt,
+                    lang = lang,
+                    isDark = isDark,
+                    cardBg = cardBg,
+                    titleColor = titleColor,
+                    onToggleClient = onToggleClient,
+                    onToggleItem = onToggleItem,
+                    onUpdateQty = onUpdateQty,
+                    onRemoveItem = onRemoveItem,
+                    onEditClient = onEditClient,
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (isDark) SherinColors.CardDark else Color.White,
+            shadowElevation = 12.dp,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item {
-                    ClientOrderCard(
-                        clientCode = state.clientCode,
-                        clientName = state.clientName,
-                        items = state.items,
-                        productBrands = state.productBrands,
-                        expanded = state.clientExpanded,
-                        expandedItems = state.expandedItems,
-                        fmt = fmt,
-                        stockFmt = stockFmt,
-                        lang = lang,
-                        isDark = isDark,
-                        cardBg = cardBg,
-                        titleColor = titleColor,
-                        onToggleClient = onToggleClient,
-                        onToggleItem = onToggleItem,
-                        onUpdateQty = onUpdateQty,
-                        onRemoveItem = onRemoveItem,
-                        onEditClient = onEditClient,
-                    )
-                }
-            }
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
-                color = if (isDark) SherinColors.CardDark else Color.White,
-                shadowElevation = 12.dp,
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    TotalSummaryBar(
-                        total = state.total,
-                        fmt = fmt,
-                        lang = lang,
-                        isDark = isDark,
-                    )
-                    if (addProductsLabel != null) {
-                        OutlinedButton(
-                            onClick = onEditClient,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
-                        ) {
-                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(addProductsLabel, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                    Button(
-                        onClick = onSubmit,
+                TotalSummaryBar(
+                    total = state.total,
+                    fmt = fmt,
+                    lang = lang,
+                    isDark = isDark,
+                )
+                if (addProductsLabel != null) {
+                    OutlinedButton(
+                        onClick = onEditClient,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp),
-                        enabled = !state.isSubmitting && state.clientId.isNotBlank() && state.items.isNotEmpty(),
+                            .height(48.dp),
                         shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
                     ) {
-                        if (state.isSubmitting) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(
-                                if (addProductsLabel != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                submitLabel,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(addProductsLabel, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Button(
+                    onClick = onSubmit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    enabled = !state.isSubmitting && state.clientId.isNotBlank() && state.items.isNotEmpty(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                ) {
+                    if (state.isSubmitting) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            if (addProductsLabel != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            submitLabel,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
             }
@@ -719,19 +721,20 @@ private fun SentOrdersContent(
     cardBg: Color,
     titleColor: Color,
     onToggleOrder: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val borderColor = if (isDark) Color(0xFF374151) else CardBorder
     val pageBg = if (isDark) SherinColors.PageBgDark else Color(0xFFF3F4F6)
 
     when {
         isLoading -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = PrimaryBlue)
             }
         }
         orders.isEmpty() -> {
             Box(
-                Modifier
+                modifier
                     .fillMaxSize()
                     .background(pageBg)
                     .padding(16.dp),
@@ -778,14 +781,16 @@ private fun SentOrdersContent(
         }
         else -> {
             val todayTotal = orders.sumOf { it.total }
-            Box(Modifier.fillMaxSize()) {
+            Column(modifier.fillMaxSize()) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
                         top = 16.dp,
-                        bottom = 100.dp,
+                        bottom = 16.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -814,9 +819,7 @@ private fun SentOrdersContent(
                 }
 
                 Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     color = if (isDark) SherinColors.CardDark else Color.White,
                     shadowElevation = 12.dp,
                 ) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +22,8 @@ import uz.distributor.crm.data.remote.dto.VisitDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.plan.PlanDateFilter
+import uz.distributor.crm.presentation.plan.PlanDateRangeDialog
 import java.text.DecimalFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -40,20 +43,49 @@ fun VisitsListScreen(
     val cardBg = if (isDark) Color(0xFF17212B) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    PlanDateRangeDialog(
+        visible = showDatePicker,
+        isDark = isDark,
+        onDismiss = { showDatePicker = false },
+        onApply = { start, end -> viewModel.applyDateRange(start, end) },
+        onClear = { viewModel.clearDateRange() },
+        onPreset = { preset -> viewModel.onCalendarPreset(preset) },
+        initialStartMillis = PlanDateFilter.toStartMillis(state.dateRange.start),
+        initialEndMillis = PlanDateFilter.toStartMillis(state.dateRange.end),
+    )
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        AppStrings.visitsTitle(lang),
-                        fontWeight = FontWeight.SemiBold,
-                        color = textPrimary,
-                    )
+                    Column {
+                        Text(
+                            AppStrings.visitsTitle(lang),
+                            fontWeight = FontWeight.SemiBold,
+                            color = textPrimary,
+                            fontSize = 18.sp,
+                        )
+                        Text(
+                            PlanDateFilter.formatRange(state.dateRange),
+                            color = textMuted,
+                            fontSize = 12.sp,
+                        )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = textPrimary)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showDatePicker = true }) {
+                        Icon(
+                            Icons.Outlined.CalendarMonth,
+                            contentDescription = AppStrings.selectDatePeriod(lang),
+                            tint = Color(0xFF3B82F6),
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -147,7 +179,11 @@ private fun VisitListCard(
     lang: AppLanguage,
 ) {
     val fromClientOrder = visit.fromClientOrder ||
-        visit.notes?.startsWith("client_order:") == true
+        visit.notes?.startsWith("client_order:") == true ||
+        visit.orderSource.equals("client", ignoreCase = true)
+    val status = visit.orderStatus
+    val statusColor = orderStatusColor(status)
+    val statusText = AppStrings.orderStatusLabel(lang, status)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -185,16 +221,28 @@ private fun VisitListCard(
 
             if (fromClientOrder) {
                 Spacer(Modifier.height(10.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFEA580C).copy(alpha = 0.12f),
+                StatusChip(
+                    text = AppStrings.visitFromClientOrder(lang),
+                    color = Color(0xFFEA580C),
+                )
+            }
+
+            // Status har doim ko'rinsin (bor bo'lsa)
+            if (statusText.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        AppStrings.visitFromClientOrder(lang),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFFEA580C),
+                        AppStrings.statusLabel(lang),
+                        fontSize = 13.sp,
+                        color = textMuted,
+                    )
+                    StatusChip(
+                        text = statusText,
+                        color = statusColor,
                     )
                 }
             }
@@ -218,6 +266,33 @@ private fun VisitListCard(
             }
         }
     }
+}
+
+@Composable
+private fun StatusChip(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.14f),
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun orderStatusColor(status: String?): Color = when (status?.lowercase()) {
+    "pending" -> Color(0xFF6366F1)
+    "confirmed" -> Color(0xFF0EA5E9)
+    "packing" -> Color(0xFFF59E0B)
+    "on_way" -> Color(0xFF3B82F6)
+    "delivered" -> Color(0xFF10B981)
+    "cancelled" -> Color(0xFFEF4444)
+    else -> Color(0xFF6B7280)
 }
 
 private fun formatVisitTime(iso: String): String {

@@ -6,7 +6,7 @@ import {
   type LayerId,
 } from '../MapLayerSwitcher';
 
-type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered';
+type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered' | 'client_ordered';
 
 interface MapPoint {
   idx: number;
@@ -43,6 +43,7 @@ function isVisitedOnSite(status: PointStatus): boolean {
 function statusColor(status: PointStatus): string {
   if (status === 'ordered') return '#10b981';
   if (status === 'visited') return '#f59e0b';
+  if (status === 'client_ordered') return '#0ea5e9';
   if (status === 'remote_ordered') return '#6366f1';
   return '#9ca3af';
 }
@@ -132,12 +133,32 @@ function makeArrowIcon(angle: number, color: string): L.DivIcon {
   });
 }
 
+function makeClientIcon(D: boolean): L.DivIcon {
+  const borderColor = D ? '#1a1a1a' : '#ffffff';
+  return L.divIcon({
+    className: '',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -12],
+    html: `
+      <div style="width:22px;height:22px;border-radius:50%;background:#0ea5e9;border:2px solid ${borderColor};
+        box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.95;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
+        </svg>
+      </div>`,
+  });
+}
+
 function statusBadge(p: MapPoint, t?: Record<string, string>): string {
   if (p.status === 'ordered') {
     return `<span style="color:#10b981;font-weight:700">${tr(t, 'trackMapPopupOrdered', '✓ Borildi, zakaz olindi')}</span>`;
   }
   if (p.status === 'visited') {
     return `<span style="color:#f59e0b;font-weight:700">${tr(t, 'trackMapPopupVisited', '✓ Borildi, zakaz olinmadi')}</span>`;
+  }
+  if (p.status === 'client_ordered') {
+    return `<span style="color:#0ea5e9;font-weight:700">${tr(t, 'trackMapPopupClient', '📱 Mijoz ilovadan yubordi')}</span>`;
   }
   if (p.status === 'remote_ordered') {
     return `<span style="color:#6366f1;font-weight:700">${tr(t, 'trackMapPopupRemote', '📞 Bormay, zakaz olindi')}</span>`;
@@ -283,6 +304,9 @@ export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [
       if (visitOrder != null) {
         icon = makeVisitedIcon(p, visitOrder, D);
         zIndex = visitOrder;
+      } else if (p.status === 'client_ordered') {
+        icon = makeClientIcon(D);
+        zIndex = -5;
       } else if (p.status === 'remote_ordered') {
         icon = makeRemoteIcon(D);
         zIndex = -10;

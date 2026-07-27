@@ -97,15 +97,37 @@ object AppStrings {
     fun visitsTitle(lang: AppLanguage) = visitCount(lang)
     fun noVisits(lang: AppLanguage) = tr(
         lang,
-        "Bugun tashrif yo'q",
-        "Бугун ташриф йўқ",
-        "Сегодня визитов нет",
+        "Tanlangan davrda tashrif yo'q",
+        "Танланган даврда ташриф йўқ",
+        "Нет визитов за выбранный период",
     )
     fun visitFromClientOrder(lang: AppLanguage) = tr(
         lang,
         "Klient buyurtmasi",
         "Клиент буюртмаси",
         "Заказ клиента",
+    )
+    fun orderStatusReceived(lang: AppLanguage) = tr(lang, "Qabul qilindi", "Қабул қилинди", "Принят")
+    fun orderStatusWarehouse(lang: AppLanguage) = tr(lang, "Omborda", "Омборда", "На складе")
+    fun orderStatusPacking(lang: AppLanguage) = tr(lang, "Yig'ilmoqda", "Йиғилмоқда", "Комплектуется")
+    fun orderStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
+    fun orderStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
+    fun orderStatusCancelled(lang: AppLanguage) = tr(lang, "Bekor qilindi", "Бекор қилинди", "Отменён")
+    fun orderStatusLabel(lang: AppLanguage, status: String?): String = when (status?.lowercase()) {
+        "pending" -> orderStatusReceived(lang)
+        "confirmed" -> orderStatusWarehouse(lang)
+        "packing" -> orderStatusPacking(lang)
+        "on_way" -> orderStatusOnWay(lang)
+        "delivered" -> orderStatusDelivered(lang)
+        "cancelled" -> orderStatusCancelled(lang)
+        else -> status?.replace('_', ' ')?.replaceFirstChar { it.uppercase() }.orEmpty()
+    }
+    fun statusLabel(lang: AppLanguage) = tr(lang, "Status", "Статус", "Статус")
+    fun selectDatePeriod(lang: AppLanguage) = tr(
+        lang,
+        "Sana tanlash",
+        "Сана танлаш",
+        "Выбрать дату",
     )
     fun products(lang: AppLanguage) = tr(lang, "Mahsulotlar", "Маҳсулотлар", "Товары")
     fun clientOrders(lang: AppLanguage) = tr(lang, "Klient buyurtmalari", "Клиент буюртмалари", "Заказы клиентов")
@@ -431,7 +453,18 @@ object AppStrings {
     fun enterAmount(lang: AppLanguage) = tr(lang, "Summani kiriting", "Summani kiriting", "Введите сумму")
     fun selectTerminal(lang: AppLanguage) = tr(lang, "Terminalni tanlang", "Terminalni tanlang", "Выберите терминал")
     fun paymentAccepted(lang: AppLanguage) = tr(lang, "To'lov qabul qilindi", "Тўлов qabul qilindi", "Оплата принята")
-    fun comingSoon(lang: AppLanguage) = tr(lang, "Tez orada qo'shiladi", "Tez orada qo'shiladi", "Скоро будет доступно")
+    fun comingSoon(lang: AppLanguage) = tr(
+        lang,
+        "Ishlab chiqish jarayonida",
+        "Ишлаб чиқиш жараёнида",
+        "В разработке",
+    )
+    fun comingSoonDetail(lang: AppLanguage) = tr(
+        lang,
+        "Bu bo'lim tez orada qo'shiladi",
+        "Бу бўлим тез орада қўшилади",
+        "Этот раздел скоро будет доступен",
+    )
     fun paymentTransferSoon(lang: AppLanguage) = tr(
         lang,
         "Pul ko'chirish tez orada ishga tushadi",
@@ -483,19 +516,19 @@ object AppStrings {
     }
     fun productPosition(lang: AppLanguage, current: Int, total: Int) = "$current / $total"
     fun order(lang: AppLanguage) = tr(lang, "Buyurtma", "Буюртма", "Заказ")
-    fun currentOrder(lang: AppLanguage) = tr(lang, "Joriy buyurtma", "Жорий buyurtma", "Текущий заказ")
-    fun sentOrders(lang: AppLanguage) = tr(lang, "Yuborilgan buyurtmalar", "Юборилган buyurtmalar", "Отправленные заказы")
+    fun currentOrder(lang: AppLanguage) = tr(lang, "Joriy buyurtma", "Жорий буюртма", "Текущий заказ")
+    fun sentOrders(lang: AppLanguage) = tr(lang, "Yuborilgan buyurtmalar", "Юборилган буюртмалар", "Отправленные заказы")
     fun noSentOrdersToday(lang: AppLanguage) = tr(
         lang,
         "Bugun yuborilgan buyurtmalar yo'q",
-        "Бугун юборилган buyurtmalar йўқ",
+        "Бугун юборилган буюртмалар йўқ",
         "Сегодня отправленных заказов нет",
     )
     fun sendOrder(lang: AppLanguage) = tr(lang, "Yuborish", "Юбориш", "Отправить")
     fun orderSentBadge(lang: AppLanguage) = tr(lang, "Yuborildi", "Юборилди", "Отправлено")
     fun sentOrdersTodayCount(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "Bugun · $count ta buyurtma"
-        AppLanguage.UZ_CYRILLIC -> "Бугун · $count ta buyurtma"
+        AppLanguage.UZ_CYRILLIC -> "Бугун · $count та буюртма"
         AppLanguage.RUS -> "Сегодня · $count зак."
     }
     fun sentOrdersTodayTotal(lang: AppLanguage) = tr(lang, "Bugun jami", "Бугун жами", "Итого за день")

@@ -86,7 +86,7 @@ fun BottomNavBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(top = 2.dp, bottom = 14.dp),
+                .padding(top = 2.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             tabs.forEach { (tab, icon, label) ->

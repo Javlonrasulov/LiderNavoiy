@@ -5,7 +5,7 @@ import {
   GitBranch, Route, CalendarDays, ShoppingCart, XCircle,
   Clock, Navigation, ArrowRight, CheckCircle2, Circle,
   LogIn, Flag, Hourglass, Maximize2, Minimize2,
-  PhoneCall, Wifi, WifiOff, BarChart3,
+  PhoneCall, Wifi, WifiOff, BarChart3, Smartphone,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
@@ -111,7 +111,7 @@ function toEmployee(a: AgentRow, i: number, fromBackend = false, dist?: Distribu
 }
 
 // ── Tracking data generator ────────────────────────────────────────────────
-type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered';
+type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered' | 'client_ordered';
 
 interface TrackPoint {
   idx: number;
@@ -132,7 +132,8 @@ interface DayTrack {
   total: number;
   visited: number;         // borilgan, zakaz olingan (ordered)
   visitedNoOrder: number;  // borilgan, zakaz olinmagan
-  remoteOrdered: number;   // borilmagan, lekin zakaz olingan (qo'ng'iroq orqali)
+  remoteOrdered: number;   // agent bormay (telefon) zakaz olgan
+  clientOrdered: number;   // mijoz o'zi ilovadan zakaz yuborgan
   missed: number;          // borilmagan, zakaz ham olinmagan
   km: number;
   startCity: string;
@@ -163,6 +164,7 @@ function emptyDayTrack(dateStr: string): DayTrack {
     visited: 0,
     visitedNoOrder: 0,
     remoteOrdered: 0,
+    clientOrdered: 0,
     missed: 0,
     km: 0,
     startCity: '—',
@@ -303,13 +305,14 @@ async function fetchDayTrack(opts: {
       const hasCheckIn = !!check;
       const hasCoords = !!coords;
 
-      const remote = !!v.fromClientOrder || !hasCheckIn;
+      const fromApp = !!v.fromClientOrder || v.orderSource === 'client';
       const hasOrder = Number(v.orderTotal) > 0;
       let status: PointStatus = 'visited';
-      if (remote && hasOrder) status = 'remote_ordered';
+      if (fromApp && hasOrder) status = 'client_ordered';
+      else if (!hasCheckIn && hasOrder) status = 'remote_ordered';
       else if (hasOrder) status = 'ordered';
-      else if (!remote) status = 'visited';
-      else status = 'remote_ordered';
+      else if (hasCheckIn) status = 'visited';
+      else status = 'visited';
 
       return {
         idx: i + 1,
@@ -329,6 +332,7 @@ async function fetchDayTrack(opts: {
   const ordered = points.filter(p => p.status === 'ordered').length;
   const visitedNoOrder = points.filter(p => p.status === 'visited').length;
   const remoteOrdered = points.filter(p => p.status === 'remote_ordered').length;
+  const clientOrdered = points.filter(p => p.status === 'client_ordered').length;
 
   const loginAt = opts.lastLoginAt && sameLocalDay(opts.lastLoginAt, opts.dateStr)
     ? opts.lastLoginAt
@@ -352,6 +356,7 @@ async function fetchDayTrack(opts: {
     visited: ordered,
     visitedNoOrder,
     remoteOrdered,
+    clientOrdered,
     missed: 0,
     km: Math.round(km * 10) / 10,
     startCity: firstGps ? labels.route : '—',
@@ -399,6 +404,7 @@ function trackPointStatusShort(
   t: Record<string, string>,
 ): string {
   if (status === 'ordered') return tr(t, 'trackOrderTaken', 'Zakaz olindi');
+  if (status === 'client_ordered') return tr(t, 'trackClientShort', 'Ilovadan zakaz');
   if (status === 'remote_ordered') return tr(t, 'trackRemoteShort', 'Bormay zakaz');
   if (status === 'visited') return tr(t, 'trackNoOrder', "Zakaz yo'q");
   return tr(t, 'trackNotVisited', 'Borilmadi');
@@ -408,10 +414,19 @@ function trackPointStatusLong(
   status: PointStatus,
   t: Record<string, string>,
 ): string {
-  if (status === 'ordered') return tr(t, 'trackStatusOrdered', '✓ Borildi, zakaz olindi');
-  if (status === 'remote_ordered') return tr(t, 'trackStatusRemote', '📞 Bormay, zakaz olindi');
-  if (status === 'visited') return tr(t, 'trackStatusVisited', '✓ Borildi, zakaz olinmadi');
-  return tr(t, 'trackStatusMissed', '✗ Borilmadi, zakaz olinmadi');
+  if (status === 'ordered') return tr(t, 'trackStatusOrdered', 'Borildi, zakaz olindi');
+  if (status === 'client_ordered') return tr(t, 'trackStatusClient', 'Mijoz ilovadan zakaz yubordi');
+  if (status === 'remote_ordered') return tr(t, 'trackStatusRemote', 'Bormay, zakaz olindi');
+  if (status === 'visited') return tr(t, 'trackStatusVisited', 'Borildi, zakaz olinmadi');
+  return tr(t, 'trackStatusMissed', 'Borilmadi, zakaz olinmadi');
+}
+
+function trackStatusColor(status: PointStatus, green: string, amber: string, indigo: string, clientColor: string): string {
+  if (status === 'ordered') return green;
+  if (status === 'client_ordered') return clientColor;
+  if (status === 'remote_ordered') return indigo;
+  if (status === 'visited') return amber;
+  return '#9ca3af';
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
@@ -574,6 +589,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   const amber   = '#f59e0b';
   const red     = '#ef4444';
   const blue    = '#3b82f6';
+  const teal    = '#0ea5e9';
   const modalBg = D ? '#1c1c1e' : '#ffffff';
   const cardBg  = D ? '#161616' : '#ffffff';
 
@@ -862,14 +878,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
           </div>
         )}
 
-        {/* ── Summary stats (5 cards, no km) ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
+        {/* ── Summary stats ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(6,1fr)', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
           {[
-            { icon: Circle,       label: tr(t, 'trackTotalPoints', 'Jami nuqtalar'),             value: String(dayTrack.total),           color: '#94a3b8', filter: null },
-            { icon: CheckCircle2, label: tr(t, 'trackOrdered', 'Borildi, zakaz olindi'),         value: String(dayTrack.visited),         color: green,     filter: 'ordered' },
-            { icon: PhoneCall,    label: tr(t, 'trackRemoteOrdered', 'Bormay, zakaz olindi'),    value: String(dayTrack.remoteOrdered),   color: indigo,    filter: 'remote_ordered' },
-            { icon: ShoppingCart, label: tr(t, 'trackVisitedNoOrder', 'Borildi, zakaz olinmadi'),  value: String(dayTrack.visitedNoOrder),  color: amber,     filter: 'visited' },
-            { icon: XCircle,      label: tr(t, 'trackMissed', 'Borilmadi, zakaz olinmadi'),       value: String(dayTrack.missed),          color: '#9ca3af', filter: 'missed' },
+            { icon: Circle,       label: tr(t, 'trackTotalPoints', 'Jami nuqtalar'),               value: String(dayTrack.total),           color: '#94a3b8', filter: null as string | null },
+            { icon: CheckCircle2, label: tr(t, 'trackOrdered', 'Borildi, zakaz olindi'),           value: String(dayTrack.visited),         color: green,     filter: 'ordered' },
+            { icon: ShoppingCart, label: tr(t, 'trackVisitedNoOrder', 'Borildi, zakaz olinmadi'),   value: String(dayTrack.visitedNoOrder),  color: amber,     filter: 'visited' },
+            { icon: PhoneCall,    label: tr(t, 'trackRemoteOrdered', 'Bormay, zakaz olindi'),      value: String(dayTrack.remoteOrdered),   color: indigo,    filter: 'remote_ordered' },
+            { icon: Smartphone,   label: tr(t, 'trackClientOrdered', 'Mijoz ilovadan yubordi'),    value: String(dayTrack.clientOrdered),   color: teal,      filter: 'client_ordered' },
+            { icon: XCircle,      label: tr(t, 'trackMissed', 'Borilmadi, zakaz olinmadi'),         value: String(dayTrack.missed),          color: '#9ca3af', filter: 'missed' },
           ].map((s, idx) => {
             const isActive = pointFilter === s.filter;
             return (
@@ -880,7 +897,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                   background: isActive ? `${s.color}18` : cardBg,
                   border: `1.5px solid ${isActive ? s.color : border}`,
                   borderRadius: 12, padding: isSmall ? '10px 12px' : '14px 16px',
-                  gridColumn: isMobile && idx === 4 ? 'span 2' : undefined,
+                  gridColumn: isMobile && idx === 5 ? 'span 2' : undefined,
                   display: 'flex', flexDirection: isSmall ? 'row' : 'column',
                   alignItems: isSmall ? 'center' : 'flex-start', gap: isSmall ? 10 : 0,
                   cursor: 'pointer', transition: 'border-color .15s, background .15s',
@@ -921,11 +938,12 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 </div>
               </div>
               {/* Row 2: 4 stats in one row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 6 }}>
                 {[
-                  { v: dayTrack.visited,        c: green,     l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
-                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
-                  { v: dayTrack.visitedNoOrder, c: amber,     l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
+                  { v: dayTrack.visited,        c: green,  l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
+                  { v: dayTrack.visitedNoOrder, c: amber,  l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
+                  { v: dayTrack.remoteOrdered,  c: indigo, l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.clientOrdered,  c: teal,   l: tr(t, 'trackClientShort', 'Ilovadan') },
                   { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center', padding: '6px 4px', background: D ? 'rgba(255,255,255,0.03)' : '#f8f9fa', borderRadius: 8 }}>
@@ -960,8 +978,9 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               <div style={{ display: 'flex', gap: 14, marginRight: 4 }}>
                 {[
                   { v: dayTrack.visited,        c: green,     l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
-                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
                   { v: dayTrack.visitedNoOrder, c: amber,     l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
+                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.clientOrdered,  c: teal,      l: tr(t, 'trackClientShort', 'Ilovadan') },
                   { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center' }}>
@@ -1106,6 +1125,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                     <div style={{ fontSize: 10, color: muted, width: 20, textAlign: 'center', flexShrink: 0 }}>#{p.idx}</div>
                     <div style={{ flexShrink: 0 }}>
                       {p.status === 'ordered' ? <ShoppingCart size={14} color={green} />
+                        : p.status === 'client_ordered' ? <Smartphone size={14} color={teal} />
                         : p.status === 'remote_ordered' ? <PhoneCall size={14} color={blue} />
                         : p.status === 'visited' ? <CheckCircle2 size={14} color={amber} />
                         : <XCircle size={14} color={D ? '#4b5563' : '#d1d5db'} />}
@@ -1116,8 +1136,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                     </div>
                     <span style={{
                       fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 6, whiteSpace: 'nowrap', flexShrink: 0,
-                      background: p.status === 'ordered' ? `${green}18` : p.status === 'remote_ordered' ? `${indigo}18` : p.status === 'visited' ? `${amber}18` : D ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
-                      color: p.status === 'ordered' ? green : p.status === 'remote_ordered' ? indigo : p.status === 'visited' ? amber : '#9ca3af',
+                      background: `${trackStatusColor(p.status, green, amber, indigo, teal)}18`,
+                      color: trackStatusColor(p.status, green, amber, indigo, teal),
                     }}>
                       {trackPointStatusShort(p.status, t)}
                     </span>
@@ -1148,11 +1168,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                     <div key={p.idx} style={{
                       display: 'grid', gridTemplateColumns: '28px 28px 1fr auto 80px 90px',
                       gap: 10, padding: '8px 8px', borderRadius: 8, alignItems: 'center',
-                      background: p.status === 'missed' ? (D ? 'rgba(239,68,68,0.04)' : 'rgba(239,68,68,0.02)') : p.status === 'remote_ordered' ? (D ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.03)') : 'transparent',
+                      background: p.status === 'missed' ? (D ? 'rgba(239,68,68,0.04)' : 'rgba(239,68,68,0.02)')
+                        : p.status === 'client_ordered' ? (D ? 'rgba(14,165,233,0.06)' : 'rgba(14,165,233,0.04)')
+                        : p.status === 'remote_ordered' ? (D ? 'rgba(59,130,246,0.04)' : 'rgba(59,130,246,0.03)')
+                        : 'transparent',
                     }}>
                       <div style={{ fontSize: 11, color: muted, textAlign: 'right' }}>#{p.idx}</div>
                       <div style={{ display: 'flex', justifyContent: 'center' }}>
                         {p.status === 'ordered' ? <ShoppingCart size={13} color={green} />
+                          : p.status === 'client_ordered' ? <Smartphone size={13} color={teal} />
                           : p.status === 'remote_ordered' ? <PhoneCall size={13} color={blue} />
                           : p.status === 'visited' ? <CheckCircle2 size={13} color={amber} />
                           : <XCircle size={13} color={D ? '#4b5563' : '#d1d5db'} />}
@@ -1163,8 +1187,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                       </div>
                       <span style={{
                         fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap',
-                        background: p.status === 'ordered' ? `${green}18` : p.status === 'remote_ordered' ? `${indigo}18` : p.status === 'visited' ? `${amber}18` : D ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
-                        color: p.status === 'ordered' ? green : p.status === 'remote_ordered' ? indigo : p.status === 'visited' ? amber : '#9ca3af',
+                        background: `${trackStatusColor(p.status, green, amber, indigo, teal)}18`,
+                        color: trackStatusColor(p.status, green, amber, indigo, teal),
                       }}>
                         {trackPointStatusLong(p.status, t)}
                       </span>

@@ -101,11 +101,42 @@ export class OrdersService {
     return { synced: saved.length, orders: saved };
   }
 
-  findByDistributor(distributorId: string) {
-    return this.repo.find({
-      where: { distributorId },
-      order: { createdAt: 'DESC' },
-      take: 100,
+  async findByDistributor(distributorId: string, from?: Date, to?: Date) {
+    const qb = this.repo
+      .createQueryBuilder('o')
+      .where('o.distributorId = :distributorId', { distributorId })
+      .orderBy('o.createdAt', 'DESC')
+      .take(from && to ? 500 : 100);
+
+    if (from && to) {
+      qb.andWhere('o.createdAt BETWEEN :from AND :to', { from, to });
+    }
+
+    const orders = await qb.getMany();
+    if (orders.length === 0) return [];
+
+    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+    return orders.map((order) => {
+      const client = clientMap.get(order.clientId);
+      return {
+        id: order.id,
+        clientId: order.clientId,
+        distributorId: order.distributorId,
+        visitId: order.visitId,
+        status: order.status,
+        source: order.source,
+        totalAmount: Number(order.totalAmount),
+        items: order.items,
+        isUrgent: !!order.isUrgent,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        clientName: client?.name ?? 'Klient',
+        clientCode: client?.code ?? '',
+        clientAddress: client?.address ?? null,
+      };
     });
   }
 

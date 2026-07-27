@@ -186,6 +186,9 @@ data class VisitDto(
     val clientAddress: String? = null,
     val fromClientOrder: Boolean = false,
     val notes: String? = null,
+    val orderId: String? = null,
+    val orderStatus: String? = null,
+    val orderSource: String? = null,
 )
 
 data class OrderDto(
@@ -196,6 +199,7 @@ data class OrderDto(
     val items: List<OrderItemDto> = emptyList(),
     val status: String? = null,
     val source: String? = null,
+    val visitId: String? = null,
     val clientName: String? = null,
     val clientCode: String? = null,
     val clientAddress: String? = null,

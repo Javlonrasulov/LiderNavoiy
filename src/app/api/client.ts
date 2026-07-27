@@ -489,6 +489,7 @@ export const api = {
       clientLatitude: number | null;
       clientLongitude: number | null;
       fromClientOrder: boolean;
+      orderSource?: string | null;
     }>>(`/visits/admin?distributorId=${encodeURIComponent(distributorId)}&date=${encodeURIComponent(date)}`),
 
   getVisitsForDistributorRange: (distributorId: string, from: string, to: string) =>
@@ -508,6 +509,7 @@ export const api = {
       clientLatitude: number | null;
       clientLongitude: number | null;
       fromClientOrder: boolean;
+      orderSource?: string | null;
     }>>(
       `/visits/admin?distributorId=${encodeURIComponent(distributorId)}` +
         `&from=${encodeURIComponent(`${from}T00:00:00+05:00`)}` +
