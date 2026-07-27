@@ -83,7 +83,7 @@ fun DashboardScreen(
                 activeToasts = activeToasts.map {
                     if (it.id == toast.id) it.copy(visible = false) else it
                 }
-                delay(TOAST_EXIT_MS)
+                delay(TOAST_EXIT_MS.toLong())
                 activeToasts = activeToasts.filter { it.id != toast.id }
             }
         }
