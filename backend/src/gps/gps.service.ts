@@ -24,7 +24,13 @@ export class GpsService {
     private readonly trackingGateway: TrackingGateway,
   ) {}
 
-  async ingestSingle(distributorId: string, dto: LocationPointDto): Promise<LocationPoint> {
+  async ingestSingle(distributorId: string, dto: LocationPointDto): Promise<LocationPoint | null> {
+    if (!this.isAcceptableGps(dto.latitude, dto.longitude)) {
+      this.logger.warn(
+        `Rejected GPS ingest for ${distributorId}: ${dto.latitude},${dto.longitude}`,
+      );
+      return null;
+    }
     const point = await this.savePoint(distributorId, dto);
     await this.updateLiveLocation(distributorId, dto);
     this.trackingGateway.broadcastLocationUpdate(distributorId, dto);
@@ -32,7 +38,10 @@ export class GpsService {
   }
 
   async ingestBatch(distributorId: string, dto: BatchLocationDto): Promise<{ saved: number }> {
-    const entities = dto.points.map((p: LocationPointDto) =>
+    const valid = dto.points.filter((p) => this.isAcceptableGps(p.latitude, p.longitude));
+    if (valid.length === 0) return { saved: 0 };
+
+    const entities = valid.map((p: LocationPointDto) =>
       this.locationRepo.create({
         distributorId,
         latitude: p.latitude,
@@ -50,7 +59,7 @@ export class GpsService {
 
     await this.locationRepo.save(entities);
 
-    const latest = dto.points[dto.points.length - 1];
+    const latest = valid[valid.length - 1];
     if (latest) {
       await this.updateLiveLocation(distributorId, latest);
       this.trackingGateway.broadcastLocationUpdate(distributorId, latest);
@@ -205,17 +214,17 @@ export class GpsService {
     return Date.now() - profile.lastLocationAt.getTime() <= maxAgeMs;
   }
 
+  /** O'zbekiston + buffer — emulator (US) / Null Island ni rad etish */
+  private isAcceptableGps(lat: number, lng: number): boolean {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (Math.abs(lat) < 0.05 && Math.abs(lng) < 0.05) return false;
+    if (lat < 37.0 || lat > 45.8) return false;
+    if (lng < 55.0 || lng > 73.5) return false;
+    return true;
+  }
+
   private async updateLiveLocation(distributorId: string, dto: LocationPointDto) {
-    // Null Island / emulator / okean GPS ni DB ga yozmaslik
-    if (
-      !Number.isFinite(dto.latitude) ||
-      !Number.isFinite(dto.longitude) ||
-      (Math.abs(dto.latitude) < 0.05 && Math.abs(dto.longitude) < 0.05) ||
-      dto.latitude < 37.0 ||
-      dto.latitude > 45.8 ||
-      dto.longitude < 55.0 ||
-      dto.longitude > 73.5
-    ) {
+    if (!this.isAcceptableGps(dto.latitude, dto.longitude)) {
       this.logger.warn(
         `Rejected out-of-area GPS for ${distributorId}: ${dto.latitude},${dto.longitude}`,
       );

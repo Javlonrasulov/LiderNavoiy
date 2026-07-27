@@ -210,12 +210,52 @@ function validCoord(lat: number | null | undefined, lng: number | null | undefin
   const ln = Number(lng);
   if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
   if (la === 0 && ln === 0) return false;
-  return Math.abs(la) <= 90 && Math.abs(ln) <= 180;
+  if (Math.abs(la) > 90 || Math.abs(ln) > 180) return false;
+  // O'zbekiston + buffer — US/emulator nuqtalarini chiqarish
+  if (la < 37 || la > 45.8 || ln < 55 || ln > 73.5) return false;
+  return true;
 }
 
 function asCoord(lat: number | null | undefined, lng: number | null | undefined): { lat: number; lng: number } | null {
   if (!validCoord(lat, lng)) return null;
   return { lat: Number(lat), lng: Number(lng) };
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Teleport/xato GPS nuqtalarini trail dan olib tashlash */
+function filterGpsTrail(
+  points: { lat: number; lng: number; recordedAt?: string }[],
+): { lat: number; lng: number; recordedAt?: string }[] {
+  const MAX_JUMP_KM = 80;
+  const out: { lat: number; lng: number; recordedAt?: string }[] = [];
+  for (const p of points) {
+    if (!validCoord(p.lat, p.lng)) continue;
+    if (out.length === 0) {
+      out.push(p);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (haversineKm(prev.lat, prev.lng, p.lat, p.lng) > MAX_JUMP_KM) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+function trailDistanceKm(points: { lat: number; lng: number }[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+  }
+  return Math.round(total * 10) / 10;
 }
 
 async function fetchDayTrack(opts: {
@@ -240,13 +280,15 @@ async function fetchDayTrack(opts: {
   const route = routeRes.status === 'fulfilled' ? routeRes.value : null;
   const visits = visitsRes.status === 'fulfilled' ? visitsRes.value : [];
 
-  const gpsPoints = (route?.points ?? [])
-    .map(p => {
-      const c = asCoord(p.latitude, p.longitude);
-      if (!c) return null;
-      return { ...c, recordedAt: p.recordedAt };
-    })
-    .filter((p): p is { lat: number; lng: number; recordedAt: string } => !!p);
+  const gpsPoints = filterGpsTrail(
+    (route?.points ?? [])
+      .map(p => {
+        const c = asCoord(p.latitude, p.longitude);
+        if (!c) return null;
+        return { ...c, recordedAt: p.recordedAt };
+      })
+      .filter((p): p is { lat: number; lng: number; recordedAt: string } => !!p),
+  );
   const firstGps = gpsPoints[0];
   const lastGps = gpsPoints[gpsPoints.length - 1];
   const gpsTrail = gpsPoints.map(p => ({ lat: p.lat, lng: p.lng }));
@@ -301,7 +343,8 @@ async function fetchDayTrack(opts: {
     : (opts.lastLocationAt ? new Date(opts.lastLocationAt).toLocaleString() : '—');
 
   const durationMins = Number(route?.stats?.durationMinutes) || 0;
-  const km = Number(route?.stats?.totalDistanceKm) || 0;
+  const apiKm = Number(route?.stats?.totalDistanceKm) || 0;
+  const km = gpsTrail.length >= 2 ? trailDistanceKm(gpsTrail) : apiKm;
 
   return {
     ...base,
