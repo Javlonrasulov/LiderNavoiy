@@ -73,7 +73,7 @@ function distributorToMarker(d: Distributor): EmployeeMarker | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat === 0 && lng === 0) return null;
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
-  // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (90s)
+  // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (180s)
   const fresh = isGpsLiveOnline(d.lastLocationAt);
   return {
     id: clientIdHash(d.id),
@@ -276,9 +276,9 @@ export default function AdminPanel() {
       socket = s;
     });
 
-    // Eski WS nuqtalarini offline qilish (90s)
+    // Eski WS nuqtalarini offline qilish (180s)
     const expire = window.setInterval(() => {
-      const cutoff = Date.now() - 90_000;
+      const cutoff = Date.now() - 180_000;
       setLiveLocations(prev => {
         let changed = false;
         const next = { ...prev };
@@ -418,7 +418,7 @@ export default function AdminPanel() {
       const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
         && !(live.lat === 0 && live.lng === 0)
         && Math.abs(live.lat) <= 90 && Math.abs(live.lng) <= 180;
-      const liveOnline = live.online && (now - live.at) < 90_000;
+      const liveOnline = live.online && (now - live.at) < 180_000;
 
       if (existing) {
         byDist.set(distributorId, {

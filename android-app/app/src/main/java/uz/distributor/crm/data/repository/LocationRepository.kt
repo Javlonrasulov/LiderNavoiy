@@ -11,7 +11,9 @@ import uz.distributor.crm.data.remote.dto.BatchLocationRequest
 import uz.distributor.crm.data.remote.dto.LocationPointDto
 import uz.distributor.crm.domain.model.LocationPoint
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,8 +28,22 @@ class LocationRepository @Inject constructor(
         timeZone = TimeZone.getTimeZone("UTC")
     }
 
-    suspend fun saveLocation(point: LocationPoint) {
+    suspend fun saveLocation(point: LocationPoint): Long =
         db.pendingLocationDao().insert(point.toEntity(deviceId))
+
+    /**
+     * Har nuqta: 1) Room ga yo‘l tarixi sifatida 2) Socket jonli 3) REST.
+     * Internet yo‘q / REST xato → PENDING qoladi, keyin sync.
+     */
+    suspend fun sendRealtime(point: LocationPoint) {
+        val localId = saveLocation(point)
+        trackingSocket.emitLocation(point)
+        try {
+            api.sendLocation(point.toDto())
+            db.pendingLocationDao().updateStatus(listOf(localId), SyncStatus.SYNCED.name)
+        } catch (_: Exception) {
+            // PENDING — internet qaytganda syncPendingLocations / WorkManager
+        }
     }
 
     suspend fun syncPendingLocations(): Int {
@@ -43,18 +59,9 @@ class LocationRepository @Inject constructor(
             db.pendingLocationDao().updateStatus(ids, SyncStatus.SYNCED.name)
             db.pendingLocationDao().deleteOldSynced(System.currentTimeMillis() - 7 * 86400000L)
             response.saved
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             db.pendingLocationDao().updateStatus(ids, SyncStatus.PENDING.name)
             0
-        }
-    }
-
-    suspend fun sendRealtime(point: LocationPoint) {
-        trackingSocket.emitLocation(point)
-        try {
-            api.sendLocation(point.toDto())
-        } catch (_: Exception) {
-            saveLocation(point)
         }
     }
 

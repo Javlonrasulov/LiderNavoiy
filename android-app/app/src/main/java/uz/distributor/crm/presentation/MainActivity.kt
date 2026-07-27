@@ -26,6 +26,7 @@ import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.AppNavHost
 import uz.distributor.crm.presentation.theme.DistributorTheme
+import uz.distributor.crm.service.LocationTrackingController
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var authRepository: AuthRepository
     @Inject lateinit var appSettingsRepository: AppSettingsRepository
     @Inject lateinit var messagesRealtime: MessagesRealtimeCoordinator
+    @Inject lateinit var locationTrackingController: LocationTrackingController
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -49,6 +51,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             if (authRepository.restoreSession()) {
                 messagesRealtime.start()
+                // Sessiya tiklanganda GPS kuzatuvni qayta yoqish (admin online uchun muhim)
+                locationTrackingController.startIfReady()
             }
         }
         requestNotificationPermission()
@@ -59,6 +63,15 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalAppLanguage provides language) {
                     AppNavHost()
                 }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            if (authRepository.restoreSession()) {
+                locationTrackingController.startIfReady()
             }
         }
     }

@@ -207,6 +207,7 @@ fun LocationRequiredScreen(
 
 private fun startTrackingAndContinue(context: android.content.Context, onReady: () -> Unit) {
     LocationSyncWorker.enqueue(context)
+    LocationSyncWorker.enqueueImmediate(context)
     ContextCompat.startForegroundService(
         context,
         Intent(context, LocationTrackingService::class.java).apply {

@@ -8,7 +8,7 @@ import { LocationPointDto, BatchLocationDto, RouteHistoryQueryDto } from './dto/
 import { DistributorStatus } from '../common/enums';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 
-const LIVE_LOCATION_TTL = 90; // 90 soniya — haqiqiy online
+const LIVE_LOCATION_TTL = 180; // 3 daqiqa — qisqa uzilishlarda offline bo'lib qolmasin
 
 @Injectable()
 export class GpsService {
@@ -188,7 +188,7 @@ export class GpsService {
   }
 
   /** Redis online yoki oxirgi GPS yangimi */
-  async isLiveOnline(distributorId: string, maxAgeMs = 90_000): Promise<boolean> {
+  async isLiveOnline(distributorId: string, maxAgeMs = 180_000): Promise<boolean> {
     try {
       const online = await this.redis.getJson(`online:${distributorId}`);
       if (online) return true;

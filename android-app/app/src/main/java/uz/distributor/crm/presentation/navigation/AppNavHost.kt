@@ -53,6 +53,7 @@ import javax.inject.Inject
 class SplashViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val deviceLocationProvider: DeviceLocationProvider,
+    private val locationTrackingController: uz.distributor.crm.service.LocationTrackingController,
 ) : ViewModel() {
     /** true = main, false = login, null = location_required (sessiya bor, GPS yo'q) */
     fun checkAuth(onResult: (Boolean?) -> Unit) {
@@ -60,7 +61,10 @@ class SplashViewModel @Inject constructor(
             val loggedIn = authRepository.restoreSession()
             when {
                 !loggedIn -> onResult(false)
-                deviceLocationProvider.isReadyForTracking() -> onResult(true)
+                deviceLocationProvider.isReadyForTracking() -> {
+                    locationTrackingController.startIfReady()
+                    onResult(true)
+                }
                 else -> onResult(null)
             }
         }

@@ -1,5 +1,5 @@
-/** GPS "jonli" deb hisoblanadigan maksimal yosh (dashboard / Redis TTL bilan bir xil). */
-export const GPS_ONLINE_MAX_AGE_MS = 90_000;
+/** GPS "jonli" deb hisoblanadigan maksimal yosh (backend Redis TTL bilan bir xil — 3 daqiqa). */
+export const GPS_ONLINE_MAX_AGE_MS = 180_000;
 
 /** Sticky DB isOnline emas — faqat oxirgi GPS yangiligi. */
 export function isGpsLiveOnline(

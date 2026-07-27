@@ -153,6 +153,7 @@ fun LoginScreen(
                 return@LaunchedEffect
             }
             LocationSyncWorker.enqueue(context)
+            LocationSyncWorker.enqueueImmediate(context)
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, LocationTrackingService::class.java).apply {

@@ -164,7 +164,7 @@ export class BootSeedService implements OnModuleInit {
       const locAt = courierProfile.lastLocationAt
         ? new Date(courierProfile.lastLocationAt).getTime()
         : 0;
-      if (!locAt || Date.now() - locAt > 90_000) {
+      if (!locAt || Date.now() - locAt > 180_000) {
         courierProfile.isOnline = false;
         if (courierProfile.status === DistributorStatus.ON_ROUTE) {
           courierProfile.status = DistributorStatus.OFFLINE;
@@ -223,7 +223,7 @@ export class BootSeedService implements OnModuleInit {
       const locAt2 = courierProfile2.lastLocationAt
         ? new Date(courierProfile2.lastLocationAt).getTime()
         : 0;
-      if (!locAt2 || Date.now() - locAt2 > 90_000) {
+      if (!locAt2 || Date.now() - locAt2 > 180_000) {
         courierProfile2.isOnline = false;
       }
       if (

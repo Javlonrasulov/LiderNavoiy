@@ -61,7 +61,7 @@ function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
 }
 
 /** Oxirgi GPS 90 soniyadan yangi bo'lsa — haqiqiy online */
-const LOCATION_ONLINE_MAX_AGE_MS = 90_000;
+const LOCATION_ONLINE_MAX_AGE_MS = 180_000;
 
 function formatLastSeen(date: Date | null | undefined): string {
   if (!date) return '—';

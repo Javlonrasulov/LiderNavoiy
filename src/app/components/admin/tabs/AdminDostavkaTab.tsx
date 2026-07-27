@@ -158,7 +158,7 @@ function distributorToDelivery(
     city: d.companyName || '—',
     lat: d.lastLatitude ?? NAVOIY[0],
     lng: d.lastLongitude ?? NAVOIY[1],
-    // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (90s)
+    // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (180s)
     online: isGpsLiveOnline(d.lastLocationAt),
     lastSeenLabel: isGpsLiveOnline(d.lastLocationAt)
       ? 'Faol'

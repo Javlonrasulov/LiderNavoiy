@@ -11,9 +11,18 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
-import com.google.android.gms.location.*
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.location.FusedLocationProviderClient
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import uz.distributor.crm.R
 import uz.distributor.crm.data.local.AgentLocationHolder
 import uz.distributor.crm.data.remote.TrackingSocketManager
@@ -34,14 +43,14 @@ class LocationTrackingService : Service() {
     private lateinit var locationCallback: LocationCallback
 
     companion object {
-        /** Yangi kanal — IMPORTANCE_MIN (eski kanal o‘zgarmaydi) */
-        const val CHANNEL_ID = "location_tracking_silent"
+        const val CHANNEL_ID = "location_tracking_active"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        /** Yandex Taxi uslubi — 1 soniyada yuqori aniqlik */
-        const val INTERVAL_MS = 1_000L
-        const val MAX_ACCURACY_M = 50f
+        /** Yuqori aniqlik — har 2 soniyada */
+        const val INTERVAL_MS = 2_000L
+        /** Soft filter: juda yomon fixni tashlash, lekin jonli holatni o‘ldirmaslik */
+        const val MAX_ACCURACY_M = 100f
     }
 
     override fun onCreate() {
@@ -77,7 +86,7 @@ class LocationTrackingService : Service() {
         dismissStaleNotifications()
         trackingSocket.connect()
 
-        // Android FGS: avval qisqa foreground, keyin bildirishnomani olib tashlash (GPS davom etadi)
+        // Haqiqiy foreground service — OS GPS ni o‘chirmasligi uchun bildirishnoma qoladi
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -85,54 +94,51 @@ class LocationTrackingService : Service() {
             @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_DETACH)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
             .setMinUpdateIntervalMillis(INTERVAL_MS)
-            .setMinUpdateDistanceMeters(1f)
+            .setMinUpdateDistanceMeters(0f)
             .setWaitForAccurateLocation(true)
-            .setMaxUpdateDelayMillis(INTERVAL_MS)
+            .setMaxUpdateDelayMillis(INTERVAL_MS * 2)
             .build()
 
         try {
             fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             stopSelf()
         }
     }
 
     private fun stopTracking() {
-        fusedClient.removeLocationUpdates(locationCallback)
+        runCatching { fusedClient.removeLocationUpdates(locationCallback) }
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
 
-    /** Eski APK dagi «GPS kuzatuv faol» bildirishnomasini tozalash */
     private fun dismissStaleNotifications() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancel(NOTIFICATION_ID)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.deleteNotificationChannel("location_tracking")
+            nm.deleteNotificationChannel("location_tracking_silent")
         }
     }
 
     private fun setupLocationCallback() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                // Eng aniq nuqtani tanlash
                 val loc = result.locations
                     .filter { it.hasAccuracy() }
                     .minByOrNull { it.accuracy }
                     ?: result.lastLocation
                     ?: return
 
-                // Juda noaniq GPS ni o'tkazib yuborish (birinchi fixdan keyin)
-                if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) {
-                    if (agentLocationHolder.location.value != null) return
+                // Faqat ekstremal noaniqlikni tashlash (>100m). Yaxshiroq fix kelguncha kutamiz
+                // lekin birinchi fixni har doim qabul qilamiz.
+                if (loc.hasAccuracy() &&
+                    loc.accuracy > MAX_ACCURACY_M &&
+                    agentLocationHolder.location.value != null
+                ) {
+                    return
                 }
 
                 val point = LocationPoint(
@@ -160,15 +166,15 @@ class LocationTrackingService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(" ")
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentText(getString(R.string.channel_location_active))
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(intent)
             .setOngoing(true)
             .setSilent(true)
             .setShowWhen(false)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
@@ -176,7 +182,7 @@ class LocationTrackingService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.channel_location),
-            NotificationManager.IMPORTANCE_MIN,
+            NotificationManager.IMPORTANCE_LOW,
         ).apply {
             description = getString(R.string.channel_location_desc)
             setShowBadge(false)

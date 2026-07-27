@@ -74,23 +74,8 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   async handleDisconnect(client: Socket) {
-    const { distributorId } = client.data;
-    if (distributorId) {
-      try {
-        await this.gpsService.markOffline(distributorId);
-      } catch {
-        await this.redis.del(`online:${distributorId}`);
-      }
-      this.server.to('admins').emit('distributor:offline', {
-        distributorId,
-        timestamp: new Date().toISOString(),
-      });
-      // Mijozlar kuzatishi uchun ham
-      this.server.to(`watch:${distributorId}`).emit('courier:offline', {
-        distributorId,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    // Online holat faqat GPS TTL bilan belgilanadi.
+    // Socket qisqa uzilsa ham agent REST orqali GPS yuboraveradi — darhol offline qilmaymiz.
     this.logger.log(`Client disconnected: ${client.id}`);
   }
 
