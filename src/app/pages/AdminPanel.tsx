@@ -72,15 +72,16 @@ function distributorToMarker(d: Distributor): EmployeeMarker | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat === 0 && lng === 0) return null;
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
+  // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (90s)
   const fresh = d.lastLocationAt
-    ? (Date.now() - new Date(d.lastLocationAt).getTime()) < 5 * 60_000
+    ? (Date.now() - new Date(d.lastLocationAt).getTime()) < 90_000
     : false;
   return {
     id: clientIdHash(d.id),
     name,
     avatar: initialsOf(name),
     role: detectEmpRole(d.position),
-    online: !!d.isOnline || fresh,
+    online: fresh,
     lastSeen: formatEmpLastSeen(d.lastLocationAt),
     lat,
     lng,
@@ -119,6 +120,7 @@ export default function AdminPanel() {
     online: boolean;
     lastSeen: string;
     name?: string;
+    at: number;
   }>>({});
 
   const companyBtnRef = useRef<HTMLButtonElement>(null);
@@ -251,22 +253,11 @@ export default function AdminPanel() {
             lng: data.longitude,
             online: true,
             lastSeen: 'hozir',
+            at: Date.now(),
           },
         }));
       },
-      onOnline: (d) => {
-        if (!d.distributorId) return;
-        setLiveLocations(prev => ({
-          ...prev,
-          [d.distributorId!]: {
-            ...(prev[d.distributorId!] ?? { lat: 0, lng: 0 }),
-            online: true,
-            lastSeen: 'hozir',
-            lat: prev[d.distributorId!]?.lat ?? 0,
-            lng: prev[d.distributorId!]?.lng ?? 0,
-          },
-        }));
-      },
+      // Online faqat location:live dan — socket ulanishi yetarli emas
       onOffline: (d) => {
         if (!d.distributorId) return;
         setLiveLocations(prev => {
@@ -274,7 +265,7 @@ export default function AdminPanel() {
           if (!cur) return prev;
           return {
             ...prev,
-            [d.distributorId!]: { ...cur, online: false, lastSeen: 'hozirgina' },
+            [d.distributorId!]: { ...cur, online: false, lastSeen: 'hozirgina', at: Date.now() },
           };
         });
       },
@@ -286,9 +277,25 @@ export default function AdminPanel() {
       socket = s;
     });
 
+    // Eski WS nuqtalarini offline qilish (90s)
+    const expire = window.setInterval(() => {
+      const cutoff = Date.now() - 90_000;
+      setLiveLocations(prev => {
+        let changed = false;
+        const next = { ...prev };
+        for (const [id, live] of Object.entries(next)) {
+          if (live.online && live.at < cutoff) {
+            next[id] = { ...live, online: false, lastSeen: '1+ daqiqa oldin' };
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 15_000);
     return () => {
       cancelled = true;
       socket?.disconnect();
+      clearInterval(expire);
     };
   }, [isLoggedIn]);
 
@@ -406,18 +413,20 @@ export default function AdminPanel() {
     }
 
     // 3) WebSocket jonli yangilanish
+    const now = Date.now();
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
       const hasCoords = Number.isFinite(live.lat) && Number.isFinite(live.lng)
         && !(live.lat === 0 && live.lng === 0)
         && Math.abs(live.lat) <= 90 && Math.abs(live.lng) <= 180;
+      const liveOnline = live.online && (now - live.at) < 90_000;
 
       if (existing) {
         byDist.set(distributorId, {
           ...existing,
           ...(hasCoords ? { lat: live.lat, lng: live.lng } : {}),
-          online: live.online,
-          lastSeen: live.lastSeen || existing.lastSeen,
+          online: liveOnline,
+          lastSeen: liveOnline ? (live.lastSeen || existing.lastSeen) : existing.lastSeen,
         });
         continue;
       }
@@ -428,7 +437,7 @@ export default function AdminPanel() {
           name: live.name || 'Agent',
           avatar: initialsOf(live.name || 'A'),
           role: 'agent',
-          online: live.online,
+          online: liveOnline,
           lastSeen: live.lastSeen || 'hozir',
           lat: live.lat,
           lng: live.lng,

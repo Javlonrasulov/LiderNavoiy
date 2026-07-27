@@ -11,12 +11,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.data.repository.OrderRepository
 import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
+import uz.lider.client.map.GeoCoords
 import javax.inject.Inject
 
 data class OrderTrackingUiState(
@@ -37,50 +39,89 @@ data class OrderTrackingUiState(
 class OrderTrackingViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val roadRouteService: RoadRouteService,
+    private val trackingSocket: TrackingSocketManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OrderTrackingUiState())
     val uiState: StateFlow<OrderTrackingUiState> = _uiState.asStateFlow()
     private var pollJob: Job? = null
     private var routeJob: Job? = null
+    private var socketJob: Job? = null
+    private var lastRouteAt = 0L
 
     fun load(orderId: String) {
         pollJob?.cancel()
+        socketJob?.cancel()
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
             reloadQuiet(orderId)
             _uiState.update { it.copy(loading = false) }
+            startCourierWatch()
         }
+        // HTTP zaxira — WS ishlamasa ham 2s da yangilanadi
         pollJob = viewModelScope.launch {
             while (isActive) {
-                delay(8_000)
+                delay(2_000)
                 reloadQuiet(orderId)
+                startCourierWatch()
+            }
+        }
+        socketJob = viewModelScope.launch {
+            trackingSocket.locations.collect { event ->
+                applyLiveCourier(event.latitude, event.longitude, online = true)
             }
         }
     }
 
     suspend fun refresh(orderId: String) {
         reloadQuiet(orderId)
+        startCourierWatch()
+    }
+
+    private fun startCourierWatch() {
+        val id = _uiState.value.tracking?.deliveryPerson?.distributorId
+        if (!_uiState.value.showLiveMap || id.isNullOrBlank()) {
+            trackingSocket.unwatch()
+            return
+        }
+        trackingSocket.watchCourier(id)
     }
 
     private suspend fun reloadQuiet(orderId: String) {
         val order = orderRepository.getOrder(orderId) ?: _uiState.value.order
         val tracking = orderRepository.getOrderTracking(orderId)
         applyTracking(order, tracking)
-        refreshRoadRoute(tracking)
+        refreshRoadRoute(tracking, force = false)
     }
 
     override fun onCleared() {
         pollJob?.cancel()
         routeJob?.cancel()
+        socketJob?.cancel()
+        trackingSocket.unwatch()
         super.onCleared()
+    }
+
+    private fun applyLiveCourier(lat: Double, lng: Double, online: Boolean) {
+        val current = _uiState.value.tracking ?: return
+        val person = current.deliveryPerson ?: return
+        if (!GeoCoords.isUsableCourier(lat, lng, current.deliveryLatitude, current.deliveryLongitude)) {
+            return
+        }
+        val updated = current.copy(
+            deliveryPerson = person.copy(
+                latitude = lat,
+                longitude = lng,
+                isOnline = online,
+            ),
+        )
+        applyTracking(_uiState.value.order, updated)
+        refreshRoadRoute(updated, force = false)
     }
 
     private fun applyTracking(order: ClientOrder?, tracking: OrderTrackingDetails?) {
         val status = OrderStatus.fromKey(tracking?.status ?: order?.status)
         val cancelled = status == OrderStatus.CANCELLED
-        // pending = agent kutilyapti (1); confirmed = agent omborga yuborgan (2)
-        // packing = tarozida yig'ildi (3); on_way = dostavchikka yuklandi (4)
         val step = when (status) {
             OrderStatus.PENDING -> 1
             OrderStatus.CONFIRMED -> 2
@@ -92,7 +133,7 @@ class OrderTrackingViewModel @Inject constructor(
         val showLiveMap = status == OrderStatus.ON_WAY || status == OrderStatus.DELIVERED
         val distance = if (showLiveMap) {
             tracking?.distanceKm
-                ?.takeIf { uz.lider.client.map.GeoCoords.isPlausibleRouteDistanceKm(it) }
+                ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                 ?.let { formatDistance(it) }
                 ?: "—"
         } else {
@@ -117,7 +158,7 @@ class OrderTrackingViewModel @Inject constructor(
         }
     }
 
-    private fun refreshRoadRoute(tracking: OrderTrackingDetails?) {
+    private fun refreshRoadRoute(tracking: OrderTrackingDetails?, force: Boolean) {
         if (!_uiState.value.showLiveMap) {
             _uiState.update { it.copy(routePoints = emptyList()) }
             return
@@ -126,13 +167,27 @@ class OrderTrackingViewModel @Inject constructor(
         val courierLng = tracking?.deliveryPerson?.longitude
         val deliveryLat = tracking?.deliveryLatitude
         val deliveryLng = tracking?.deliveryLongitude
-        if (!uz.lider.client.map.GeoCoords.isUsableCourier(
-                courierLat, courierLng, deliveryLat, deliveryLng,
-            )
-        ) {
+        if (!GeoCoords.isUsableCourier(courierLat, courierLng, deliveryLat, deliveryLng)) {
             _uiState.update { it.copy(routePoints = emptyList()) }
             return
         }
+        val now = System.currentTimeMillis()
+        // Marshrutni har 8s da yangilash — marker esa har WS/HTTP da siljiydi
+        if (!force && now - lastRouteAt < 8_000 && _uiState.value.routePoints.isNotEmpty()) {
+            val km = RoadRouteService.haversineM(
+                courierLat!!, courierLng!!, deliveryLat!!, deliveryLng!!,
+            ) / 1000.0
+            if (GeoCoords.isPlausibleRouteDistanceKm(km)) {
+                _uiState.update {
+                    it.copy(
+                        distance = formatDistance(km),
+                        etaLabel = "${maxOf(5, Math.round((km / 30.0) * 60).toInt())} min",
+                    )
+                }
+            }
+            return
+        }
+        lastRouteAt = now
         routeJob?.cancel()
         routeJob = viewModelScope.launch {
             val route = roadRouteService.fetchDrivingRoute(
@@ -141,9 +196,7 @@ class OrderTrackingViewModel @Inject constructor(
                 toLat = deliveryLat!!,
                 toLng = deliveryLng!!,
             )
-            if (route != null &&
-                uz.lider.client.map.GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)
-            ) {
+            if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                 _uiState.update {
                     it.copy(
                         routePoints = route.points,

@@ -229,6 +229,7 @@ export class ClientPortalService {
     let deliveryPerson:
       | {
           userId: string | null;
+          distributorId: string;
           name: string;
           position: string | null;
           phone: string | null;
@@ -293,7 +294,10 @@ export class ClientPortalService {
 
         deliveryPerson = {
           ...contact,
-          isOnline: deliveryDistributor.isOnline ?? false,
+          distributorId: deliveryDistributor.id,
+          isOnline: await this.gpsService.isLiveOnline(
+            order.deliveryDistributorId || deliveryDistributor.id,
+          ),
           latitude: personLat,
           longitude: personLng,
           lastLocationAt: personLastAt,

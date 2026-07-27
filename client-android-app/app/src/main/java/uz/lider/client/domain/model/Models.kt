@@ -155,6 +155,7 @@ data class OrderTrackingInfo(
 
 data class DeliveryPersonTracking(
     val userId: String? = null,
+    val distributorId: String? = null,
     val name: String,
     val position: String? = null,
     val phone: String? = null,

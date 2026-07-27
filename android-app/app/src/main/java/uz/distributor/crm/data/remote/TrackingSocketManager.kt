@@ -1,27 +1,35 @@
 package uz.distributor.crm.data.remote
 
 import android.util.Log
-import com.google.gson.Gson
 import io.socket.client.IO
 import io.socket.client.Socket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.domain.model.LocationPoint
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class TrackingSocketManager @Inject constructor(
     private val tokenHolder: TokenHolder,
-    private val gson: Gson,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var socket: Socket? = null
     @Volatile private var connected = false
+    @Volatile private var pendingPoint: LocationPoint? = null
+
+    private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
 
     fun connect() {
         scope.launch {
@@ -36,7 +44,8 @@ class TrackingSocketManager @Inject constructor(
                     forceNew = true
                     reconnection = true
                     reconnectionAttempts = Int.MAX_VALUE
-                    reconnectionDelay = 2_000
+                    reconnectionDelay = 1_000
+                    reconnectionDelayMax = 5_000
                     auth = mapOf("token" to token)
                 }
                 val url = BuildConfig.WS_BASE_URL.trimEnd('/')
@@ -44,6 +53,7 @@ class TrackingSocketManager @Inject constructor(
                     on(Socket.EVENT_CONNECT) {
                         connected = true
                         Log.d(TAG, "Socket connected")
+                        pendingPoint?.let { flushPending(it) }
                     }
                     on(Socket.EVENT_DISCONNECT) {
                         connected = false
@@ -61,28 +71,28 @@ class TrackingSocketManager @Inject constructor(
     }
 
     fun emitLocation(point: LocationPoint) {
+        pendingPoint = point
         if (socket?.connected() != true) {
             connect()
             return
         }
+        flushPending(point)
+    }
+
+    private fun flushPending(point: LocationPoint) {
         try {
-            val payload = gson.toJson(
-                mapOf(
-                    "latitude" to point.latitude,
-                    "longitude" to point.longitude,
-                    "speed" to point.speed,
-                    "accuracy" to point.accuracy,
-                    "altitude" to point.altitude,
-                    "bearing" to point.bearing,
-                    "recordedAt" to java.text.SimpleDateFormat(
-                        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-                        java.util.Locale.US,
-                    ).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                        .format(java.util.Date(point.recordedAt)),
-                    "deviceId" to point.deviceId,
-                ),
-            )
-            socket?.emit("location:update", org.json.JSONObject(payload))
+            val payload = JSONObject().apply {
+                put("latitude", point.latitude)
+                put("longitude", point.longitude)
+                put("recordedAt", isoFormat.format(Date(point.recordedAt)))
+                point.speed?.let { put("speed", it) }
+                point.accuracy?.let { put("accuracy", it) }
+                point.altitude?.let { put("altitude", it) }
+                point.bearing?.let { put("bearing", it) }
+                point.deviceId?.let { put("deviceId", it) }
+            }
+            socket?.emit("location:update", payload)
+            pendingPoint = null
         } catch (e: Exception) {
             Log.w(TAG, "emit location failed", e)
         }

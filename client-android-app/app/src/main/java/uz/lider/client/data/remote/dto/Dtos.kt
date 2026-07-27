@@ -101,6 +101,7 @@ data class ClientOrderDto(
 
 data class DeliveryPersonTrackingDto(
     val userId: String? = null,
+    val distributorId: String? = null,
     val name: String,
     val position: String? = null,
     val phone: String? = null,

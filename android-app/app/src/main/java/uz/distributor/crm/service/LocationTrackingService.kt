@@ -39,7 +39,9 @@ class LocationTrackingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        const val INTERVAL_MS = 2_000L
+        /** Yandex Taxi uslubi — 1 soniyada yuqori aniqlik */
+        const val INTERVAL_MS = 1_000L
+        const val MAX_ACCURACY_M = 50f
     }
 
     override fun onCreate() {
@@ -92,8 +94,9 @@ class LocationTrackingService : Service() {
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
             .setMinUpdateIntervalMillis(INTERVAL_MS)
-            .setWaitForAccurateLocation(false)
-            .setMaxUpdateDelayMillis(INTERVAL_MS * 2)
+            .setMinUpdateDistanceMeters(1f)
+            .setWaitForAccurateLocation(true)
+            .setMaxUpdateDelayMillis(INTERVAL_MS)
             .build()
 
         try {
@@ -120,20 +123,30 @@ class LocationTrackingService : Service() {
     private fun setupLocationCallback() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { loc ->
-                    val point = LocationPoint(
-                        latitude = loc.latitude,
-                        longitude = loc.longitude,
-                        speed = if (loc.hasSpeed()) loc.speed else null,
-                        accuracy = if (loc.hasAccuracy()) loc.accuracy else null,
-                        altitude = if (loc.hasAltitude()) loc.altitude else null,
-                        bearing = if (loc.hasBearing()) loc.bearing else null,
-                        recordedAt = loc.time,
-                    )
-                    agentLocationHolder.update(point)
-                    scope.launch {
-                        locationRepository.sendRealtime(point)
-                    }
+                // Eng aniq nuqtani tanlash
+                val loc = result.locations
+                    .filter { it.hasAccuracy() }
+                    .minByOrNull { it.accuracy }
+                    ?: result.lastLocation
+                    ?: return
+
+                // Juda noaniq GPS ni o'tkazib yuborish (birinchi fixdan keyin)
+                if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M) {
+                    if (agentLocationHolder.location.value != null) return
+                }
+
+                val point = LocationPoint(
+                    latitude = loc.latitude,
+                    longitude = loc.longitude,
+                    speed = if (loc.hasSpeed()) loc.speed else null,
+                    accuracy = if (loc.hasAccuracy()) loc.accuracy else null,
+                    altitude = if (loc.hasAltitude()) loc.altitude else null,
+                    bearing = if (loc.hasBearing()) loc.bearing else null,
+                    recordedAt = loc.time,
+                )
+                agentLocationHolder.update(point)
+                scope.launch {
+                    locationRepository.sendRealtime(point)
                 }
             }
         }

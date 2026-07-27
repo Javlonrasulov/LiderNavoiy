@@ -128,16 +128,23 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     const map = mapRef.current;
     if (!map || !open) return;
 
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current.clear();
-
     const filtered = employees.filter(e => {
       if (filter !== 'all' && e.role !== filter) return false;
       if (onlineOnly && !e.online) return false;
       return true;
     });
+    const nextIds = new Set(filtered.map(e => e.distributorId || String(e.id)));
+
+    // O'chirilgan markerlar
+    markersRef.current.forEach((marker, key) => {
+      if (!nextIds.has(key)) {
+        marker.remove();
+        markersRef.current.delete(key);
+      }
+    });
 
     filtered.forEach(emp => {
+      const key = emp.distributorId || String(emp.id);
       const isHL = highlighted === emp.id;
       const roleLabel   = emp.role === 'agent'
         ? (t.empRoleAgent    || 'Agent')
@@ -146,24 +153,35 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
         ? (t.empOnline  || 'Online')
         : (t.empOffline || 'Offline');
       const statusColor = emp.online ? '#22c55e' : '#ef4444';
-
-      const marker = L.marker([emp.lat, emp.lng], {
-        icon: makeIcon(emp.role, emp.online, isHL),
-        zIndexOffset: isHL ? 1000 : 0,
-      });
-      marker.bindPopup(`
+      const popupHtml = `
         <div style="min-width:150px;font-family:sans-serif;">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px;">${emp.name}</div>
           <div style="font-size:11px;color:#6b7280;margin-bottom:2px;">${roleLabel}</div>
           <div style="font-size:11px;color:${statusColor};font-weight:600;">${statusLabel}</div>
           <div style="font-size:10px;color:#9ca3af;margin-top:4px;">${emp.lastSeen}</div>
-        </div>`);
-      marker.addTo(map);
-      markersRef.current.set(emp.distributorId || String(emp.id), marker);
+        </div>`;
 
-      if (isHL) {
-        setTimeout(() => marker.openPopup(), 150);
+      const existing = markersRef.current.get(key);
+      if (existing) {
+        const cur = existing.getLatLng();
+        if (Math.abs(cur.lat - emp.lat) > 1e-7 || Math.abs(cur.lng - emp.lng) > 1e-7) {
+          existing.setLatLng([emp.lat, emp.lng]);
+        }
+        existing.setIcon(makeIcon(emp.role, emp.online, isHL));
+        existing.setZIndexOffset(isHL ? 1000 : 0);
+        existing.setPopupContent(popupHtml);
+        if (isHL) setTimeout(() => existing.openPopup(), 150);
+        return;
       }
+
+      const marker = L.marker([emp.lat, emp.lng], {
+        icon: makeIcon(emp.role, emp.online, isHL),
+        zIndexOffset: isHL ? 1000 : 0,
+      });
+      marker.bindPopup(popupHtml);
+      marker.addTo(map);
+      markersRef.current.set(key, marker);
+      if (isHL) setTimeout(() => marker.openPopup(), 150);
     });
   }, [employees, filter, onlineOnly, open, highlighted, t]);
 

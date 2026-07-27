@@ -3,11 +3,11 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: "REPLACE_WITH_FIREBASE_API_KEY",
-  authDomain: "REPLACE.firebaseapp.com",
-  projectId: "REPLACE_WITH_YOUR_PROJECT_ID",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:0000000000000000000000",
+  apiKey: "AIzaSyDpg4icTQaSClHihEe1HYdUI36vLArbX7Y",
+  authDomain: "lider-navoiy.firebaseapp.com",
+  projectId: "lider-navoiy",
+  messagingSenderId: "6609188812",
+  appId: "1:6609188812:web:77f0592b76c5e6232f4f69",
 });
 
 const messaging = firebase.messaging();

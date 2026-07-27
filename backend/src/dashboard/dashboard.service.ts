@@ -60,8 +60,8 @@ function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
   return 'agent';
 }
 
-/** 5 daqiqadan yangi GPS yoki Redis — online badge */
-const LOCATION_ONLINE_MAX_AGE_MS = 5 * 60_000;
+/** Oxirgi GPS 90 soniyadan yangi bo'lsa — haqiqiy online */
+const LOCATION_ONLINE_MAX_AGE_MS = 90_000;
 
 function formatLastSeen(date: Date | null | undefined): string {
   if (!date) return '—';
@@ -458,11 +458,8 @@ export class DashboardService {
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
       const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
-      const online =
-        onlineIds.has(d.id)
-        || liveMap.has(d.id)
-        || ageMs <= LOCATION_ONLINE_MAX_AGE_MS
-        || d.isOnline === true;
+      // Sticky DB isOnline ISHLATILMAYDI — faqat yangi GPS (90s)
+      const online = ageMs <= LOCATION_ONLINE_MAX_AGE_MS;
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {

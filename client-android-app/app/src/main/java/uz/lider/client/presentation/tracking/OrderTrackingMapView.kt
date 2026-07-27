@@ -101,6 +101,7 @@ private fun updateFleetMap(
     selectedStoreOrderId: String?,
     onVehicleClick: (LiveMapVehicle) -> Unit,
     onStoreClick: (StoreCallout) -> Unit,
+    fitCamera: Boolean,
 ) {
     map.setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
     map.setMultiTouchControls(interactive)
@@ -108,6 +109,58 @@ private fun updateFleetMap(
     map.isFocusable = interactive
 
     val overlays = map.overlays
+    val existingTruck = overlays
+        .filterIsInstance<Marker>()
+        .firstOrNull { it.relatedObject is LiveMapVehicle && !(it.relatedObject as LiveMapVehicle).id.startsWith("dest-only") }
+    val truckTarget = vehicles.firstOrNull { !it.id.startsWith("dest-only") }
+    val canSlideTruck = existingTruck != null &&
+        truckTarget != null &&
+        GeoCoords.isUsableCourier(
+            truckTarget.courierLat,
+            truckTarget.courierLng,
+            truckTarget.orders.firstOrNull()?.deliveryLat,
+            truckTarget.orders.firstOrNull()?.deliveryLng,
+        )
+
+    // Yandex Taxi: faqat kuryer siljisa — marker ni siljitish, xaritani qayta qurmaslik
+    if (canSlideTruck && !fitCamera) {
+        val dest = GeoPoint(truckTarget!!.courierLat, truckTarget.courierLng)
+        val from = existingTruck!!.position
+        if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
+            return
+        }
+        animateMarker(existingTruck, from, dest)
+        // Route chizigini yangilash
+        overlays.removeAll { it is Polyline }
+        truckTarget.orders.forEach { order ->
+            val roadGeo = order.routePoints
+                .filter { isValidCoord(it.latitude, it.longitude) }
+                .filter { GeoCoords.isInServiceArea(it.latitude, it.longitude) }
+                .map { GeoPoint(it.latitude, it.longitude) }
+            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
+                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
+            } else null
+            val linePoints = when {
+                roadGeo.size >= 2 -> roadGeo
+                delivery != null -> listOf(dest, delivery)
+                else -> emptyList()
+            }
+            if (linePoints.size >= 2) {
+                Polyline().apply {
+                    setPoints(linePoints)
+                    outlinePaint.color = ROUTE_COLOR
+                    outlinePaint.strokeWidth = if (roadGeo.size >= 2) 10f else 6f
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                    outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                    outlinePaint.isAntiAlias = true
+                }.also { overlays.add(0, it) }
+            }
+        }
+        existingTruck.relatedObject = truckTarget
+        map.invalidate()
+        return
+    }
+
     overlays.removeAll { it is Marker || it is Polyline }
 
     val cameraPoints = ArrayList<GeoPoint>()
@@ -226,7 +279,27 @@ private fun updateFleetMap(
         applyCamera(map, distinct)
         map.invalidate()
     }
-    runCamera()
+    if (fitCamera) runCamera() else map.invalidate()
+}
+
+private fun animateMarker(marker: Marker, from: GeoPoint, to: GeoPoint) {
+    val map = marker.mapView ?: run {
+        marker.position = to
+        return
+    }
+    val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+        duration = 850
+        interpolator = android.view.animation.LinearInterpolator()
+        addUpdateListener { a ->
+            val t = a.animatedValue as Float
+            marker.position = GeoPoint(
+                from.latitude + (to.latitude - from.latitude) * t,
+                from.longitude + (to.longitude - from.longitude) * t,
+            )
+            map.invalidate()
+        }
+    }
+    anim.start()
 }
 
 @Composable
@@ -241,6 +314,13 @@ fun OrderTrackingMapView(
     val mapRef = remember { mutableStateOf<MapView?>(null) }
     val clickHandler = rememberUpdatedState(onVehicleClick)
     var selectedStore by remember { mutableStateOf<StoreCallout?>(null) }
+    var cameraFitted by remember { mutableStateOf(false) }
+    val vehicleSignature = remember(vehicles) {
+        vehicles.joinToString("|") { v ->
+            "${v.id}:${v.courierLat},${v.courierLng}:${v.orders.size}"
+        }
+    }
+    val prevSignature = remember { mutableStateOf<String?>(null) }
 
     DisposableEffect(lifecycle) {
         fun startMap() = mapRef.value?.onResume()
@@ -296,6 +376,7 @@ fun OrderTrackingMapView(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                 }
+                val shouldFit = prevSignature.value == null || !cameraFitted
                 updateFleetMap(
                     map = map,
                     vehicles = vehicles,
@@ -307,7 +388,12 @@ fun OrderTrackingMapView(
                         clickHandler.value(it)
                     },
                     onStoreClick = { selectedStore = it },
+                    fitCamera = shouldFit,
                 )
+                if (vehicles.isNotEmpty()) {
+                    prevSignature.value = vehicleSignature
+                    cameraFitted = true
+                }
             },
             onRelease = { map ->
                 map.onPause()

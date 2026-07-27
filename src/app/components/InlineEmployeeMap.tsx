@@ -47,7 +47,7 @@ export function InlineEmployeeMap({
   const mapRef     = useRef<L.Map | null>(null);
   const divRef     = useRef<HTMLDivElement>(null);
   const tileRef    = useRef<L.TileLayer | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
@@ -70,7 +70,11 @@ export function InlineEmployeeMap({
 
     setTimeout(() => map.invalidateSize(true), 100);
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+    };
   }, []);
 
   useEffect(() => {
@@ -89,23 +93,45 @@ export function InlineEmployeeMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
 
-    employees.filter(e => !onlineOnly || e.online).forEach(emp => {
+    const visible = employees.filter(e => !onlineOnly || e.online);
+    const nextIds = new Set(visible.map(e => e.distributorId || String(e.id)));
+
+    markersRef.current.forEach((marker, key) => {
+      if (!nextIds.has(key)) {
+        marker.remove();
+        markersRef.current.delete(key);
+      }
+    });
+
+    visible.forEach(emp => {
+      const key = emp.distributorId || String(emp.id);
       const roleLabel   = emp.role === 'agent' ? (t.empRoleAgent || 'Agent') : (t.empRoleDelivery || 'Dostavkachi');
       const statusColor = emp.online ? '#22c55e' : '#ef4444';
       const statusLabel = emp.online ? (t.empOnline || 'Online') : (t.empOffline || 'Offline');
-      const marker = L.marker([emp.lat, emp.lng], { icon: makeMarkerIcon(emp.role, emp.online) });
-      marker.bindPopup(`
+      const popupHtml = `
         <div style="min-width:130px;font-family:sans-serif;">
           <div style="font-weight:700;font-size:12px;margin-bottom:3px;">${emp.name}</div>
           <div style="font-size:10px;color:#6b7280;">${roleLabel}</div>
           <div style="font-size:10px;color:${statusColor};font-weight:600;">${statusLabel}</div>
           <div style="font-size:10px;color:#9ca3af;margin-top:3px;">${emp.lastSeen}</div>
-        </div>`, { closeButton: false });
+        </div>`;
+
+      const existing = markersRef.current.get(key);
+      if (existing) {
+        const cur = existing.getLatLng();
+        if (Math.abs(cur.lat - emp.lat) > 1e-7 || Math.abs(cur.lng - emp.lng) > 1e-7) {
+          existing.setLatLng([emp.lat, emp.lng]);
+        }
+        existing.setIcon(makeMarkerIcon(emp.role, emp.online));
+        existing.setPopupContent(popupHtml);
+        return;
+      }
+
+      const marker = L.marker([emp.lat, emp.lng], { icon: makeMarkerIcon(emp.role, emp.online) });
+      marker.bindPopup(popupHtml, { closeButton: false });
       marker.addTo(map);
-      markersRef.current.push(marker);
+      markersRef.current.set(key, marker);
     });
   }, [employees, onlineOnly, t]);
 

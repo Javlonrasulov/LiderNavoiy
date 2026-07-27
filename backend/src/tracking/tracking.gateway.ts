@@ -55,21 +55,19 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       if (payload.distributorId) {
         client.join(`distributor:${payload.distributorId}`);
-        await this.redis.setJson(`online:${payload.distributorId}`, {
-          socketId: client.id,
-          connectedAt: new Date().toISOString(),
-        }, 300);
+        // Online faqat GPS kelganda — ulanishning o'zi yetarli emas
       }
 
       if (payload.role === 'admin' || payload.role === 'manager') {
         client.join('admins');
       }
 
+      // Mijoz APK ham tracking socketga ulanishi mumkin (watch:courier)
+      if (payload.role === 'client') {
+        client.join(`client:${payload.sub}`);
+      }
+
       this.logger.log(`Client connected: ${client.id} (${payload.username})`);
-      this.server.to('admins').emit('distributor:online', {
-        distributorId: payload.distributorId,
-        timestamp: new Date().toISOString(),
-      });
     } catch {
       client.disconnect();
     }
@@ -78,8 +76,17 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleDisconnect(client: Socket) {
     const { distributorId } = client.data;
     if (distributorId) {
-      await this.redis.del(`online:${distributorId}`);
+      try {
+        await this.gpsService.markOffline(distributorId);
+      } catch {
+        await this.redis.del(`online:${distributorId}`);
+      }
       this.server.to('admins').emit('distributor:offline', {
+        distributorId,
+        timestamp: new Date().toISOString(),
+      });
+      // Mijozlar kuzatishi uchun ham
+      this.server.to(`watch:${distributorId}`).emit('courier:offline', {
         distributorId,
         timestamp: new Date().toISOString(),
       });
@@ -105,12 +112,37 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     return { status: 'ok' };
   }
 
+  @SubscribeMessage('watch:courier')
+  handleWatchCourier(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { distributorId?: string },
+  ) {
+    const id = body?.distributorId;
+    if (!id) return { status: 'error' };
+    client.join(`watch:${id}`);
+    return { status: 'ok' };
+  }
+
+  @SubscribeMessage('unwatch:courier')
+  handleUnwatchCourier(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { distributorId?: string },
+  ) {
+    const id = body?.distributorId;
+    if (!id) return { status: 'error' };
+    client.leave(`watch:${id}`);
+    return { status: 'ok' };
+  }
+
   broadcastLocationUpdate(distributorId: string, data: LocationPointDto) {
-    this.server.to('admins').emit('location:live', {
+    const payload = {
       distributorId,
       ...data,
       receivedAt: new Date().toISOString(),
-    });
+    };
+    this.server.to('admins').emit('location:live', payload);
+    // Mijoz APK — Yandex Taxi uslubida jonli kuzatuv
+    this.server.to(`watch:${distributorId}`).emit('courier:location', payload);
   }
 
   broadcastStatusUpdate(distributorId: string, status: string) {

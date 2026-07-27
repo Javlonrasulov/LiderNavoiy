@@ -8,7 +8,7 @@ import { LocationPointDto, BatchLocationDto, RouteHistoryQueryDto } from './dto/
 import { DistributorStatus } from '../common/enums';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 
-const LIVE_LOCATION_TTL = 300; // 5 daqiqa
+const LIVE_LOCATION_TTL = 90; // 90 soniya — haqiqiy online
 
 @Injectable()
 export class GpsService {
@@ -169,6 +169,42 @@ export class GpsService {
     await this.updateLiveLocation(distributorId, dto);
   }
 
+  /** Socket uzilganda — online holatni tozalash (oxirgi nuqta saqlanadi) */
+  async markOffline(distributorId: string) {
+    try {
+      await this.distributorRepo.update(distributorId, {
+        isOnline: false,
+        status: DistributorStatus.OFFLINE,
+      });
+    } catch {
+      /* ignore */
+    }
+    try {
+      await this.redis.del(`online:${distributorId}`);
+      // location:live ni o'chirmaymiz — oxirgi joy xaritada qoladi
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Redis online yoki oxirgi GPS yangimi */
+  async isLiveOnline(distributorId: string, maxAgeMs = 90_000): Promise<boolean> {
+    try {
+      const online = await this.redis.getJson(`online:${distributorId}`);
+      if (online) return true;
+      const live = await this.redis.getJson<{ recordedAt?: string }>(`location:live:${distributorId}`);
+      if (live?.recordedAt) {
+        const age = Date.now() - new Date(live.recordedAt).getTime();
+        if (age <= maxAgeMs) return true;
+      }
+    } catch {
+      /* fall through to DB */
+    }
+    const profile = await this.distributorRepo.findOne({ where: { id: distributorId } });
+    if (!profile?.lastLocationAt) return false;
+    return Date.now() - profile.lastLocationAt.getTime() <= maxAgeMs;
+  }
+
   private async updateLiveLocation(distributorId: string, dto: LocationPointDto) {
     const recordedAt = dto.recordedAt ? new Date(dto.recordedAt) : new Date();
     await this.distributorRepo.update(distributorId, {
@@ -181,13 +217,18 @@ export class GpsService {
 
     const ttl = LIVE_LOCATION_TTL;
     try {
-      await this.redis.setJson(`location:live:${distributorId}`, dto, ttl);
+      await this.redis.setJson(`location:live:${distributorId}`, {
+        ...dto,
+        recordedAt: Number.isNaN(recordedAt.getTime())
+          ? new Date().toISOString()
+          : recordedAt.toISOString(),
+      }, ttl);
       await this.redis.setJson(`online:${distributorId}`, {
         updatedAt: new Date().toISOString(),
         source: 'gps',
       }, ttl);
     } catch {
-      // Redis ishlamasa ham DB yangilangan — xarita DB dan o'qiydi
+      // Redis ishlamasa ham DB yangilangan
     }
   }
 }
