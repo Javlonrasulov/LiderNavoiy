@@ -46,6 +46,7 @@ class TrackingSocketManager @Inject constructor(
                     reconnectionAttempts = Int.MAX_VALUE
                     reconnectionDelay = 1_000
                     reconnectionDelayMax = 5_000
+                    transports = arrayOf("websocket")
                     auth = mapOf("token" to token)
                 }
                 val url = BuildConfig.WS_BASE_URL.trimEnd('/')
@@ -53,6 +54,11 @@ class TrackingSocketManager @Inject constructor(
                     on(Socket.EVENT_CONNECT) {
                         connected = true
                         Log.d(TAG, "Socket connected")
+                        pendingPoint?.let { flushPending(it) }
+                    }
+                    on("reconnect") {
+                        connected = true
+                        Log.d(TAG, "Socket reconnected")
                         pendingPoint?.let { flushPending(it) }
                     }
                     on(Socket.EVENT_DISCONNECT) {

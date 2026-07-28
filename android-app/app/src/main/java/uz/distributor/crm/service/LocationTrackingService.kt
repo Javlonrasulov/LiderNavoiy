@@ -98,7 +98,7 @@ class LocationTrackingService : Service() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
             .setMinUpdateIntervalMillis(INTERVAL_MS)
             .setMinUpdateDistanceMeters(0f)
-            .setWaitForAccurateLocation(true)
+            .setWaitForAccurateLocation(false)
             .setMaxUpdateDelayMillis(INTERVAL_MS * 2)
             .build()
 

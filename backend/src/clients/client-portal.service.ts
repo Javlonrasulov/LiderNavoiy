@@ -250,27 +250,37 @@ export class ClientPortalService {
         let personLng: number | null = null;
         let personLastAt: string | null = null;
 
-        // Avval buyurtmadagi biriktirilgan (jonli GPS) manbani tekshiramiz — ko‘pincha mashina shu
+        // Avval haqiqiy dostavkachi, keyin buyurtmadagi id — eng YANGI GPS ni olamiz
+        // (agent id biriktirilgan bo‘lsa eski nuqta doimo «yutib» qolmasin)
         const gpsSourceIds = [
-          order.deliveryDistributorId,
           deliveryDistributor.id,
+          order.deliveryDistributorId,
         ].filter((id, i, arr): id is string => !!id && arr.indexOf(id) === i);
+
+        type GpsCand = { lat: number; lng: number; atMs: number; atIso: string | null };
+        const candidates: GpsCand[] = [];
 
         for (const gpsId of gpsSourceIds) {
           try {
             const live = await this.gpsService.getLastLocation(gpsId);
-            if (this.isUsableCourierCoord(live.latitude, live.longitude, deliveryLat, deliveryLng)) {
-              personLat = live.latitude;
-              personLng = live.longitude;
-              personLastAt = live.recordedAt ?? null;
-              break;
+            if (
+              this.isUsableCourierCoord(live.latitude, live.longitude, deliveryLat, deliveryLng)
+            ) {
+              const atIso = live.recordedAt ?? null;
+              const atMs = atIso ? Date.parse(atIso) : 0;
+              candidates.push({
+                lat: live.latitude,
+                lng: live.longitude,
+                atMs: Number.isFinite(atMs) ? atMs : 0,
+                atIso,
+              });
             }
           } catch {
             /* try next */
           }
         }
 
-        if (personLat == null || personLng == null) {
+        if (candidates.length === 0) {
           for (const gpsId of gpsSourceIds) {
             const profile =
               gpsId === deliveryDistributor.id
@@ -286,20 +296,30 @@ export class ClientPortalService {
                 deliveryLng,
               )
             ) {
-              personLat = profile.lastLatitude;
-              personLng = profile.lastLongitude;
-              personLastAt = profile.lastLocationAt?.toISOString() ?? null;
-              break;
+              const atIso = profile.lastLocationAt?.toISOString() ?? null;
+              const atMs = profile.lastLocationAt?.getTime() ?? 0;
+              candidates.push({
+                lat: profile.lastLatitude,
+                lng: profile.lastLongitude,
+                atMs,
+                atIso,
+              });
             }
           }
+        }
+
+        candidates.sort((a, b) => b.atMs - a.atMs);
+        const best = candidates[0];
+        if (best) {
+          personLat = best.lat;
+          personLng = best.lng;
+          personLastAt = best.atIso;
         }
 
         deliveryPerson = {
           ...contact,
           distributorId: deliveryDistributor.id,
-          isOnline: await this.gpsService.isLiveOnline(
-            order.deliveryDistributorId || deliveryDistributor.id,
-          ),
+          isOnline: await this.gpsService.isLiveOnline(deliveryDistributor.id),
           latitude: personLat,
           longitude: personLng,
           lastLocationAt: personLastAt,

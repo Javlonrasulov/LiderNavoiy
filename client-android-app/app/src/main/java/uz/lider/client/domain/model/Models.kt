@@ -189,6 +189,7 @@ data class DeliveryPersonTracking(
     val isOnline: Boolean = false,
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val lastLocationAt: String? = null,
 )
 
 data class OrderTrackingDetails(

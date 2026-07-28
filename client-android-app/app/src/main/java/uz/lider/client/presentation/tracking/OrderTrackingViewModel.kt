@@ -19,6 +19,7 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
 import uz.lider.client.map.GeoCoords
+import java.time.Instant
 import javax.inject.Inject
 
 data class OrderTrackingUiState(
@@ -48,6 +49,8 @@ class OrderTrackingViewModel @Inject constructor(
     private var routeJob: Job? = null
     private var socketJob: Job? = null
     private var lastRouteAt = 0L
+    /** Oxirgi WS/jonli GPS vaqti — eski HTTP nuqta buni yozib yubormasin */
+    private var liveCourierAtMs = 0L
 
     fun load(orderId: String) {
         pollJob?.cancel()
@@ -68,7 +71,14 @@ class OrderTrackingViewModel @Inject constructor(
         }
         socketJob = viewModelScope.launch {
             trackingSocket.locations.collect { event ->
-                applyLiveCourier(event.latitude, event.longitude, online = true)
+                val watched = _uiState.value.tracking?.deliveryPerson?.distributorId
+                if (!watched.isNullOrBlank() && event.distributorId != watched) return@collect
+                applyLiveCourier(
+                    lat = event.latitude,
+                    lng = event.longitude,
+                    online = true,
+                    recordedAt = event.recordedAt,
+                )
             }
         }
     }
@@ -90,8 +100,9 @@ class OrderTrackingViewModel @Inject constructor(
     private suspend fun reloadQuiet(orderId: String) {
         val order = orderRepository.getOrder(orderId) ?: _uiState.value.order
         val tracking = orderRepository.getOrderTracking(orderId)
-        applyTracking(order, tracking)
-        refreshRoadRoute(tracking, force = false)
+        val merged = mergePreserveLiveCoords(tracking)
+        applyTracking(order, merged)
+        refreshRoadRoute(merged, force = false)
     }
 
     override fun onCleared() {
@@ -102,21 +113,65 @@ class OrderTrackingViewModel @Inject constructor(
         super.onCleared()
     }
 
-    private fun applyLiveCourier(lat: Double, lng: Double, online: Boolean) {
+    private fun applyLiveCourier(
+        lat: Double,
+        lng: Double,
+        online: Boolean,
+        recordedAt: String? = null,
+    ) {
         val current = _uiState.value.tracking ?: return
         val person = current.deliveryPerson ?: return
         if (!GeoCoords.isUsableCourier(lat, lng, current.deliveryLatitude, current.deliveryLongitude)) {
             return
         }
+        liveCourierAtMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
+        val distKm = distanceKmOrNull(lat, lng, current.deliveryLatitude, current.deliveryLongitude)
         val updated = current.copy(
+            distanceKm = distKm ?: current.distanceKm,
+            etaMinutes = distKm?.let { etaFromKm(it) } ?: current.etaMinutes,
             deliveryPerson = person.copy(
                 latitude = lat,
                 longitude = lng,
                 isOnline = online,
+                lastLocationAt = recordedAt ?: person.lastLocationAt,
             ),
         )
         applyTracking(_uiState.value.order, updated)
         refreshRoadRoute(updated, force = false)
+    }
+
+    /**
+     * WS orqali kelgan yangi nuqtani 20s ichida eski HTTP javob bilan almashtirmaslik.
+     */
+    private fun mergePreserveLiveCoords(incoming: OrderTrackingDetails?): OrderTrackingDetails? {
+        if (incoming == null) return null
+        val currentPerson = _uiState.value.tracking?.deliveryPerson ?: return incoming
+        val nextPerson = incoming.deliveryPerson ?: return incoming
+        val curLat = currentPerson.latitude
+        val curLng = currentPerson.longitude
+        if (curLat == null || curLng == null || liveCourierAtMs <= 0L) return incoming
+
+        val liveAge = System.currentTimeMillis() - liveCourierAtMs
+        val httpAt = parseIsoMs(nextPerson.lastLocationAt) ?: 0L
+        val httpIsNewer = httpAt > liveCourierAtMs + 500
+        if (liveAge > 20_000 || httpIsNewer) {
+            if (httpIsNewer) liveCourierAtMs = httpAt
+            return incoming
+        }
+
+        val distKm = distanceKmOrNull(
+            curLat, curLng, incoming.deliveryLatitude, incoming.deliveryLongitude,
+        )
+        return incoming.copy(
+            distanceKm = distKm ?: incoming.distanceKm,
+            etaMinutes = distKm?.let { etaFromKm(it) } ?: incoming.etaMinutes,
+            deliveryPerson = nextPerson.copy(
+                latitude = curLat,
+                longitude = curLng,
+                isOnline = true,
+                lastLocationAt = currentPerson.lastLocationAt ?: nextPerson.lastLocationAt,
+            ),
+        )
     }
 
     private fun applyTracking(order: ClientOrder?, tracking: OrderTrackingDetails?) {
@@ -181,7 +236,7 @@ class OrderTrackingViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         distance = formatDistance(km),
-                        etaLabel = "${maxOf(5, Math.round((km / 30.0) * 60).toInt())} min",
+                        etaLabel = "${etaFromKm(km)} min",
                     )
                 }
             }
@@ -208,6 +263,24 @@ class OrderTrackingViewModel @Inject constructor(
                 _uiState.update { it.copy(routePoints = emptyList()) }
             }
         }
+    }
+
+    private fun distanceKmOrNull(
+        lat: Double,
+        lng: Double,
+        deliveryLat: Double?,
+        deliveryLng: Double?,
+    ): Double? {
+        if (deliveryLat == null || deliveryLng == null) return null
+        val km = RoadRouteService.haversineM(lat, lng, deliveryLat, deliveryLng) / 1000.0
+        return km.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+    }
+
+    private fun etaFromKm(km: Double): Int = maxOf(5, Math.round((km / 30.0) * 60).toInt())
+
+    private fun parseIsoMs(value: String?): Long? {
+        if (value.isNullOrBlank()) return null
+        return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
     }
 
     private fun formatDistance(km: Double): String =

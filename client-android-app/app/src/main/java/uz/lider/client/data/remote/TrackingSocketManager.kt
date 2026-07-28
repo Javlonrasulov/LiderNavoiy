@@ -32,36 +32,58 @@ class TrackingSocketManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var socket: Socket? = null
-    @Volatile private var watchingId: String? = null
+    private val watchingIds = linkedSetOf<String>()
 
     private val _locations = MutableSharedFlow<CourierLocationEvent>(extraBufferCapacity = 64)
     val locations: SharedFlow<CourierLocationEvent> = _locations.asSharedFlow()
 
     fun watchCourier(distributorId: String) {
         if (distributorId.isBlank()) return
-        watchingId = distributorId
+        synchronized(watchingIds) {
+            watchingIds.clear()
+            watchingIds.add(distributorId)
+        }
+        connectAndWatch()
+    }
+
+    fun watchCouriers(distributorIds: Collection<String>) {
+        val next = distributorIds.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        synchronized(watchingIds) {
+            watchingIds.clear()
+            watchingIds.addAll(next)
+        }
+        if (next.isEmpty()) {
+            unwatch()
+            return
+        }
         connectAndWatch()
     }
 
     fun unwatch() {
-        val id = watchingId
-        watchingId = null
+        val ids = synchronized(watchingIds) {
+            watchingIds.toList().also { watchingIds.clear() }
+        }
         scope.launch {
-            if (id != null && socket?.connected() == true) {
-                socket?.emit("unwatch:courier", JSONObject().put("distributorId", id))
+            if (socket?.connected() == true) {
+                ids.forEach { id ->
+                    socket?.emit("unwatch:courier", JSONObject().put("distributorId", id))
+                }
             }
             disconnectInternal()
         }
     }
 
+    private fun snapshotWatching(): List<String> =
+        synchronized(watchingIds) { watchingIds.toList() }
+
     private fun connectAndWatch() {
         scope.launch {
             val token = tokenHolder.getToken()
-            val target = watchingId
-            if (token.isNullOrBlank() || target.isNullOrBlank()) return@launch
+            val targets = snapshotWatching()
+            if (token.isNullOrBlank() || targets.isEmpty()) return@launch
 
             if (socket?.connected() == true) {
-                socket?.emit("watch:courier", JSONObject().put("distributorId", target))
+                emitWatchAll(targets)
                 return@launch
             }
 
@@ -73,21 +95,28 @@ class TrackingSocketManager @Inject constructor(
                     reconnection = true
                     reconnectionAttempts = Int.MAX_VALUE
                     reconnectionDelay = 1_000
+                    reconnectionDelayMax = 5_000
+                    transports = arrayOf("websocket")
                     auth = mapOf("token" to token)
                 }
                 socket = IO.socket("$base/tracking", options).apply {
                     on(Socket.EVENT_CONNECT) {
                         Log.d(TAG, "Tracking connected")
-                        watchingId?.let { id ->
-                            emit("watch:courier", JSONObject().put("distributorId", id))
-                        }
+                        emitWatchAll(snapshotWatching())
+                    }
+                    on("reconnect") {
+                        Log.d(TAG, "Tracking reconnected")
+                        emitWatchAll(snapshotWatching())
                     }
                     on(Socket.EVENT_DISCONNECT) {
                         Log.d(TAG, "Tracking disconnected")
                     }
                     on("courier:location") { args ->
                         parseLocation(args)?.let { event ->
-                            scope.launch { _locations.emit(event) }
+                            val watching = snapshotWatching()
+                            if (watching.isEmpty() || event.distributorId in watching) {
+                                scope.launch { _locations.emit(event) }
+                            }
                         }
                     }
                 }
@@ -95,6 +124,12 @@ class TrackingSocketManager @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Tracking socket failed", e)
             }
+        }
+    }
+
+    private fun emitWatchAll(ids: List<String>) {
+        ids.forEach { id ->
+            socket?.emit("watch:courier", JSONObject().put("distributorId", id))
         }
     }
 

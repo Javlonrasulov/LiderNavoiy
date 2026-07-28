@@ -75,6 +75,7 @@ class OrderRepository @Inject constructor(
                 isOnline = it.isOnline,
                 latitude = it.latitude,
                 longitude = it.longitude,
+                lastLocationAt = it.lastLocationAt,
             )
         },
     )
