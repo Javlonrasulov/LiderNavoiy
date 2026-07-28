@@ -613,32 +613,32 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
   /* ── Reys holati ── */
   const reysOptions=[
     t.otgrProcess   ?? 'Jarayonda',
-    t.otgrDone      ?? 'Yakunlangan',
+    t.otgrDone      ?? 'Yuborilgan',
     t.otgrCancelled ?? 'Bekor',
   ];
   const reysKeyToLabel=(key:string)=>({
     process  : t.otgrProcess   ?? 'Jarayonda',
-    done     : t.otgrDone      ?? 'Yakunlangan',
+    done     : t.otgrDone      ?? 'Yuborilgan',
     cancelled: t.otgrCancelled ?? 'Bekor',
   }[key] ?? key);
   const reysLabelToKey=(lbl:string)=>{
     const map:Record<string,string>={
       [t.otgrProcess   ??'Jarayonda']  :'process',
-      [t.otgrDone      ??'Yakunlangan']:'done',
+      [t.otgrDone      ??'Yuborilgan']:'done',
       [t.otgrCancelled ??'Bekor']      :'cancelled',
     };
     return map[lbl]??'process';
   };
   const reysColorMapLabel:Record<string,string>={
     [t.otgrProcess   ??'Jarayonda']  :'#f59e0b',
-    [t.otgrDone      ??'Yakunlangan']:'#10b981',
+    [t.otgrDone      ??'Yuborilgan']:'#10b981',
     [t.otgrCancelled ??'Bekor']      :'#ef4444',
   };
 
   /* ── Status badge ── */
   const statusBadge=(s:ZayavkaStatus)=>{
     const c={otgr:'#10b981',process:'#f59e0b',done:'#6366f1',cancelled:'#ef4444'}[s];
-    const l={otgr:'Отгр.',process:t.otgrProcess??'Jarayonda',done:t.otgrDone??'Yakunlandi',cancelled:t.otgrCancelled??'Bekor'}[s];
+    const l={otgr:'Отгр.',process:t.otgrProcess??'Jarayonda',done:t.otgrDone??'Yuborilgan',cancelled:t.otgrCancelled??'Bekor'}[s];
     return(
       <span style={{display:'inline-block',padding:'1px 7px',borderRadius:4,fontSize:10,
         background:c,color:'#fff',fontWeight:600,whiteSpace:'nowrap'}}>{l}</span>

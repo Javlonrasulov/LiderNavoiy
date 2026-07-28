@@ -343,7 +343,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
   const statusBadge = (s: OtgrStatus) => {
     const cfg = {
       process:   { bg: '#f59e0b', label: t.otgrProcess   ?? 'Jarayonda'   },
-      done:      { bg: '#10b981', label: t.otgrDone       ?? 'Yakunlangan' },
+      done:      { bg: '#10b981', label: t.otgrDone       ?? 'Yuborilgan' },
       cancelled: { bg: '#ef4444', label: t.otgrCancelled  ?? 'Bekor'       },
     }[s];
     return (
@@ -358,7 +358,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
   const TABS: { id: FilterTab; label: string }[] = [
     { id: 'all',       label: t.zAll         ?? 'Barchasi'   },
     { id: 'process',   label: t.otgrProcess  ?? 'Jarayonda'  },
-    { id: 'done',      label: t.otgrDone     ?? 'Yakunlangan'},
+    { id: 'done',      label: t.otgrDone     ?? 'Yuborilgan'},
     { id: 'cancelled', label: t.otgrCancelled?? 'Bekor'      },
   ];
 
