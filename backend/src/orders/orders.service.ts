@@ -147,15 +147,20 @@ export class OrdersService {
     });
   }
 
-  /** Dostavkachi: admin Tovar yuklash orqali biriktirilgan (on_way) buyurtmalar */
+  /** Dostavkachi: admin Tovar yuklash orqali biriktirilgan (on_way) buyurtmalar.
+   *  Klient tracking bilan bir xil qoida + bir xil klientning barcha on_way
+   *  buyurtmalari (bitta biriktirilgan bo‘lsa ham qolganlari ko‘rinsin). */
   async findForDelivery(deliveryDistributorId: string) {
+    const me = await this.profileRepo.findOne({
+      where: { id: deliveryDistributorId },
+      relations: ['user'],
+    });
+    if (!me) return [];
+
     const orders = await this.repo.find({
-      where: {
-        deliveryDistributorId,
-        status: OrderStatus.ON_WAY,
-      },
+      where: { status: OrderStatus.ON_WAY },
       order: { updatedAt: 'DESC' },
-      take: 100,
+      take: 300,
     });
     if (orders.length === 0) return [];
 
@@ -163,29 +168,104 @@ export class OrdersService {
     const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
     const clientMap = new Map(clients.map((c) => [c.id, c]));
 
-    return orders.map((order) => {
+    const courierCache = new Map<string, string | null>();
+    const myClientIds = new Set<string>();
+
+    for (const order of orders) {
       const client = clientMap.get(order.clientId);
-      return {
-        id: order.id,
-        clientId: order.clientId,
-        distributorId: order.distributorId,
-        deliveryDistributorId: order.deliveryDistributorId,
-        visitId: order.visitId,
-        status: order.status,
-        source: order.source,
-        totalAmount: Number(order.totalAmount),
-        items: order.items,
-        isUrgent: !!order.isUrgent,
-        createdAt: order.createdAt,
-        updatedAt: order.updatedAt,
-        clientName: client?.name ?? 'Klient',
-        clientCode: client?.code ?? '',
-        clientAddress: client?.address ?? null,
-        clientPhone: client?.phone ?? null,
-        clientLatitude: client?.latitude ?? null,
-        clientLongitude: client?.longitude ?? null,
-      };
-    });
+      if (!client) continue;
+
+      // To‘g‘ridan-to‘g‘ri biriktirilgan
+      if (order.deliveryDistributorId === deliveryDistributorId) {
+        myClientIds.add(order.clientId);
+        continue;
+      }
+
+      // Klient portalidagi fallback (bo‘sh / agentga biriktirilgan)
+      const resolvedId = await this.resolveDeliveryDistributorId(
+        order.deliveryDistributorId,
+        client,
+        courierCache,
+      );
+      if (resolvedId === deliveryDistributorId) {
+        myClientIds.add(order.clientId);
+      }
+    }
+
+    if (myClientIds.size === 0) return [];
+
+    // Shu klientlarning BARCHA on_way buyurtmalari (ikkita zakaz muammosi)
+    return orders
+      .filter((order) => myClientIds.has(order.clientId))
+      .map((order) => {
+        const client = clientMap.get(order.clientId)!;
+        return {
+          id: order.id,
+          clientId: order.clientId,
+          distributorId: order.distributorId,
+          deliveryDistributorId: order.deliveryDistributorId ?? deliveryDistributorId,
+          visitId: order.visitId,
+          status: order.status,
+          source: order.source,
+          totalAmount: Number(order.totalAmount),
+          items: order.items,
+          isUrgent: !!order.isUrgent,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          clientName: client.name ?? 'Klient',
+          clientCode: client.code ?? '',
+          clientAddress: client.address ?? null,
+          clientPhone: client.phone ?? null,
+          clientLatitude: client.latitude ?? null,
+          clientLongitude: client.longitude ?? null,
+        };
+      });
+  }
+
+  /** Klient portalidagi resolveDeliveryDistributor bilan bir xil qoida */
+  private async resolveDeliveryDistributorId(
+    deliveryDistributorId: string | null,
+    client: Client,
+    cache: Map<string, string | null>,
+  ): Promise<string | null> {
+    const agentId = client.distributorId ?? null;
+    let deliveryId = deliveryDistributorId;
+
+    if (!deliveryId || (agentId && deliveryId === agentId)) {
+      const cacheKey = `${client.companyId ?? '__none__'}|${agentId ?? ''}`;
+      if (!cache.has(cacheKey)) {
+        cache.set(cacheKey, await this.findCompanyCourierId(client.companyId, agentId));
+      }
+      deliveryId = cache.get(cacheKey) ?? null;
+    }
+
+    return deliveryId;
+  }
+
+  private async findCompanyCourierId(
+    companyId: string | null | undefined,
+    excludeDistributorId?: string | null,
+  ): Promise<string | null> {
+    const qb = this.profileRepo
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.user', 'u')
+      .where('1=1');
+    if (companyId) {
+      qb.andWhere('d.companyId = :companyId', { companyId });
+    }
+    if (excludeDistributorId) {
+      qb.andWhere('d.id != :excludeId', { excludeId: excludeDistributorId });
+    }
+    qb.andWhere(
+      `(LOWER(COALESCE(d.position, '')) LIKE :p
+        OR LOWER(COALESCE(u.position, '')) LIKE :p
+        OR LOWER(COALESCE(u.username, '')) LIKE :p
+        OR LOWER(COALESCE(u.fullName, '')) LIKE :p)`,
+      { p: '%dostav%' },
+    );
+    qb.orderBy('d.updatedAt', 'DESC').take(1);
+    const row = await qb.getOne();
+    return row?.id ?? null;
   }
 
   async findClientOrdersForAgent(distributorId: string, status?: OrderStatus) {
@@ -594,6 +674,26 @@ export class OrdersService {
       order.deliveryDistributorId = dto.deliveryDistributorId;
     }
     const saved = await this.repo.save(order);
+
+    // Tovar yuklash: shu klientning boshqa on_way buyurtmalariga ham shu haydovchini biriktir
+    const assignedDriver =
+      dto.deliveryDistributorId !== undefined
+        ? dto.deliveryDistributorId
+        : saved.deliveryDistributorId;
+    if (assignedDriver && saved.status === OrderStatus.ON_WAY) {
+      await this.repo
+        .createQueryBuilder()
+        .update(Order)
+        .set({ deliveryDistributorId: assignedDriver })
+        .where('clientId = :clientId', { clientId: saved.clientId })
+        .andWhere('id != :id', { id: saved.id })
+        .andWhere('status = :onWay', { onWay: OrderStatus.ON_WAY })
+        .andWhere(
+          '(deliveryDistributorId IS NULL OR deliveryDistributorId = :agentId)',
+          { agentId: saved.distributorId },
+        )
+        .execute();
+    }
 
     if (dto.status !== undefined && dto.status !== prevStatus) {
       const notify = this.clientNotifyForStatus(dto.status);

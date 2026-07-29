@@ -91,15 +91,28 @@ export class ClientPortalController {
   }
 
   @Get('products')
-  @ApiOperation({ summary: 'Product catalog for client' })
-  products(@Query('category') category?: string) {
-    return this.service.listProducts(category);
+  @ApiOperation({ summary: 'Product catalog for client (scoped by org)' })
+  products(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('category') category?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.listProducts(
+      req.user,
+      category,
+      this.companyId(headers, companyId),
+    );
   }
 
   @Get('products/categories')
-  @ApiOperation({ summary: 'Product categories for client' })
-  categories() {
-    return this.service.productCategories();
+  @ApiOperation({ summary: 'Product categories for client (scoped by org)' })
+  categories(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.productCategories(req.user, this.companyId(headers, companyId));
   }
 
   @Get('analytics')

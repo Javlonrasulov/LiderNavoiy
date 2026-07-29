@@ -38,10 +38,14 @@ interface ApiService {
     suspend fun refresh(@Body body: RefreshRequest): AuthResponseDto
 
     @GET("client-portal/me")
-    suspend fun getProfile(): ClientProfileDto
+    suspend fun getProfile(
+        @Header("X-Company-Id") companyId: String? = null,
+    ): ClientProfileDto
 
     @GET("client-portal/dashboard")
-    suspend fun getClientDashboard(): uz.lider.client.data.remote.dto.ClientDashboardDto
+    suspend fun getClientDashboard(
+        @Header("X-Company-Id") companyId: String? = null,
+    ): uz.lider.client.data.remote.dto.ClientDashboardDto
 
     @GET("client-portal/orders")
     suspend fun getOrders(

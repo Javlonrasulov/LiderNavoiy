@@ -90,6 +90,7 @@ import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
@@ -138,8 +139,19 @@ fun DashboardScreen(
     var showLiveMapFullscreen by remember { mutableStateOf(false) }
     val filtered = state.filtered
     val live = state.liveFleet
-    val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
+    val periodLabel = state.dateRange?.let { DashboardDateFilter.formatRange(it) }
     val listState = rememberLazyListState()
+    val orgs = state.data?.organizations.orEmpty()
+        .ifEmpty {
+            filtered.purchasesByOrg.map {
+                uz.lider.client.domain.model.ClientOrganization(
+                    companyId = it.companyId,
+                    name = it.name.ifBlank { it.shortName },
+                    shortName = it.shortName,
+                    clientId = "",
+                )
+            }
+        }
     val density = LocalDensity.current
     val isDark = LiquidTheme.isDark
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -205,10 +217,10 @@ fun DashboardScreen(
         visible = showDatePicker,
         onDismiss = { showDatePicker = false },
         onApply = { start, end -> viewModel.setDateRange(start, end) },
-        onClear = { viewModel.resetToLastMonth() },
+        onClear = { viewModel.clearDateRange() },
         onSelectAll = { viewModel.selectAllDates() },
-        initialStartMillis = DashboardDateFilter.toStartMillis(state.dateRange.start),
-        initialEndMillis = DashboardDateFilter.toStartMillis(state.dateRange.end),
+        initialStartMillis = state.dateRange?.let { DashboardDateFilter.toStartMillis(it.start) },
+        initialEndMillis = state.dateRange?.let { DashboardDateFilter.toStartMillis(it.end) },
         salesDays = salesDays,
         title = t("dash_select_dates"),
         applyLabel = t("dash_apply_dates"),
@@ -327,23 +339,25 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Tanlangan sana oralig‘i — har doim ko‘rinsin
-                    item {
-                        Box(
-                            Modifier
-                                .padding(horizontal = 16.dp)
-                                .padding(bottom = 12.dp)
-                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                .background(LiquidGlass.GradientPrimary)
-                                .clickable { showDatePicker = true }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                periodLabel,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                    // Tanlangan sana oralig‘i — faqat filtr bor bo‘lsa
+                    if (periodLabel != null) {
+                        item {
+                            Box(
+                                Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 12.dp)
+                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                    .background(LiquidGlass.GradientPrimary)
+                                    .clickable { showDatePicker = true }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text(
+                                    periodLabel,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
                         }
                     }
 
@@ -382,11 +396,31 @@ fun DashboardScreen(
                                 .padding(20.dp),
                         ) {
                             Column {
-                                Text(
-                                    t("dash_total_purchases"),
-                                    color = Color.White.copy(alpha = 0.75f),
-                                    fontSize = 13.sp,
-                                )
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        t("dash_total_purchases"),
+                                        color = Color.White.copy(alpha = 0.75f),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(end = 8.dp),
+                                    )
+                                    if (orgs.size >= 2) {
+                                        OrgSwitcherChips(
+                                            organizations = orgs,
+                                            selectedCompanyId = state.purchasesCompanyId
+                                                ?: orgs.firstOrNull()?.companyId,
+                                            onSelect = viewModel::selectPurchasesOrganization,
+                                            onDark = true,
+                                            compact = true,
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
                                 Text(
                                     "${formatMoney(filtered.totalPurchases)} ${t("com_som")}",
                                     color = Color.White,
@@ -394,19 +428,6 @@ fun DashboardScreen(
                                     fontSize = 28.sp,
                                     lineHeight = 34.sp,
                                 )
-                                if (filtered.purchasesByOrg.size >= 2) {
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        filtered.purchasesByOrg.joinToString(" · ") { share ->
-                                            "${share.shortName} ${formatMoney(share.total)}"
-                                        },
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        fontSize = 12.sp,
-                                        lineHeight = 16.sp,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
                                 Spacer(Modifier.height(8.dp))
                                 SimpleAreaChart(
                                     filtered.chartValues,

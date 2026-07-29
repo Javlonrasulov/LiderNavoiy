@@ -4,12 +4,18 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('products')
+@Index(['companyId'])
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  /** boran | zarafshon | … — katalog tashkilot bo‘yicha */
+  @Column({ type: 'varchar', nullable: true })
+  companyId: string | null;
 
   @Column()
   code: string;

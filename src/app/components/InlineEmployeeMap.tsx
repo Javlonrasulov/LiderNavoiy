@@ -54,6 +54,8 @@ export function InlineEmployeeMap({
   const divRef     = useRef<HTMLDivElement>(null);
   const tileRef    = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  /** Kamerani faqat bir marta joylashtiramiz — keyin foydalanuvchi zoom/pan saqlanadi */
+  const cameraReadyRef = useRef(false);
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
 
@@ -61,6 +63,7 @@ export function InlineEmployeeMap({
     if (!divRef.current || mapRef.current) return;
 
     const [safeLat, safeLng] = safeCenter(centerCoord);
+    cameraReadyRef.current = false;
 
     const map = L.map(divRef.current, {
       center: [safeLat, safeLng],
@@ -75,13 +78,20 @@ export function InlineEmployeeMap({
     switchTileLayer(map, tileRef, activeLayer, dark);
     mapRef.current = map;
 
+    const lockCamera = () => { cameraReadyRef.current = true; };
+    map.on('zoomstart', lockCamera);
+    map.on('dragstart', lockCamera);
+
     setTimeout(() => map.invalidateSize(true), 100);
     setTimeout(() => map.invalidateSize(true), 400);
 
     return () => {
+      map.off('zoomstart', lockCamera);
+      map.off('dragstart', lockCamera);
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();
+      cameraReadyRef.current = false;
     };
   }, []);
 
@@ -90,14 +100,6 @@ export function InlineEmployeeMap({
     if (!map) return;
     switchTileLayer(map, tileRef, activeLayer, dark);
   }, [activeLayer, dark]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const center = safeCenter(centerCoord);
-    const zoom = initialZoom && initialZoom >= 5 && initialZoom <= 18 ? initialZoom : 13;
-    map.setView(center, zoom, { animate: false });
-  }, [centerCoord[0], centerCoord[1], initialZoom]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -145,8 +147,8 @@ export function InlineEmployeeMap({
       markersRef.current.set(key, marker);
     });
 
-    // Markerlar bo'lsa — ularni ko'rsatish (okeanga tushmaslik)
-    if (visible.length >= 1) {
+    // Faqat birinchi marta markerlar kelganda kamera — keyin zoom saqlanadi
+    if (!cameraReadyRef.current && visible.length >= 1) {
       try {
         const group = L.featureGroup([...markersRef.current.values()]);
         const bounds = group.getBounds();
@@ -154,8 +156,10 @@ export function InlineEmployeeMap({
           map.fitBounds(bounds.pad(0.35), { animate: false, maxZoom: 14 });
         }
       } catch {
-        /* ignore */
+        const center = safeCenter(centerCoord);
+        map.setView(center, initialZoom || 13, { animate: false });
       }
+      cameraReadyRef.current = true;
     }
   }, [employees, onlineOnly, t]);
 

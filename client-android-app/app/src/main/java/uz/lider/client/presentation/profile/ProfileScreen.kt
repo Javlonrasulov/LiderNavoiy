@@ -69,6 +69,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import uz.lider.client.domain.model.ContactPerson
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
@@ -349,6 +350,20 @@ fun ProfileScreen(
                                 localized("prof_address"),
                                 profile?.address?.takeIf { it.isNotBlank() } ?: "—",
                                 Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Amber)),
+                            )
+                        }
+                    }
+
+                    // ── Tashkilot tanlash (katalog/buyurtmalar kabi) ─────────
+                    if (state.organizations.size >= 2) {
+                        item {
+                            OrgSwitcherChips(
+                                organizations = state.organizations,
+                                selectedCompanyId = state.selectedCompanyId,
+                                onSelect = viewModel::selectOrganization,
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(top = 16.dp),
                             )
                         }
                     }

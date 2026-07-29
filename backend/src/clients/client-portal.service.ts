@@ -680,12 +680,18 @@ export class ClientPortalService {
     };
   }
 
-  listProducts(category?: string) {
-    return this.productsService.findInStock(category);
+  async listProducts(user: User, category?: string, companyId?: string | null) {
+    const client = await this.resolveActiveClient(user, companyId);
+    const scope = client.companyId?.trim() || companyId?.trim() || null;
+    if (!scope) return [];
+    return this.productsService.findInStock(category, scope);
   }
 
-  productCategories() {
-    return this.productsService.getCategories(true);
+  async productCategories(user: User, companyId?: string | null) {
+    const client = await this.resolveActiveClient(user, companyId);
+    const scope = client.companyId?.trim() || companyId?.trim() || null;
+    if (!scope) return [];
+    return this.productsService.getCategories(true, scope);
   }
 
   listPromotions() {
@@ -701,7 +707,7 @@ export class ClientPortalService {
     });
     const validOrders = orders.filter((o) => o.status !== OrderStatus.CANCELLED);
     const { byId: productsById, byCode: productsByCode } =
-      await this.productsService.findActiveMaps();
+      await this.productsService.findActiveMaps(client.companyId);
 
     const now = new Date();
     const periodStart = this.periodStart(now, period);

@@ -6,11 +6,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.repository.AnalyticsRepository
 import uz.lider.client.data.repository.AppSettingsRepository
+import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.domain.model.ClientAnalytics
+import uz.lider.client.domain.model.ClientOrganization
 import uz.lider.client.presentation.components.ChartVisualStyle
 import java.time.LocalDate
 import javax.inject.Inject
@@ -25,27 +29,41 @@ data class AnalyticsUiState(
     val customStartDate: LocalDate? = null,
     val customEndDate: LocalDate? = null,
     val showCalendar: Boolean = false,
+    val organizations: List<ClientOrganization> = emptyList(),
+    val selectedCompanyId: String? = null,
 )
 
 @HiltViewModel
 class AnalyticsViewModel @Inject constructor(
     private val analyticsRepository: AnalyticsRepository,
     private val appSettingsRepository: AppSettingsRepository,
+    private val selectedOrgHolder: SelectedOrgHolder,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AnalyticsUiState())
     val uiState: StateFlow<AnalyticsUiState> = _uiState.asStateFlow()
 
     init {
-        load("month")
+        viewModelScope.launch {
+            combine(
+                selectedOrgHolder.organizations,
+                selectedOrgHolder.selectedCompanyId,
+            ) { orgs, selected -> orgs to selected }
+                .collect { (orgs, selected) ->
+                    _uiState.update {
+                        it.copy(organizations = orgs, selectedCompanyId = selected)
+                    }
+                }
+        }
         viewModelScope.launch {
             appSettingsRepository.chartStyle.collect { style ->
                 _uiState.update { it.copy(chartStyle = style) }
             }
         }
         viewModelScope.launch {
-            val days = analyticsRepository.getSalesDays()
-            _uiState.update { it.copy(salesDays = days) }
+            ensureOrgs()
+            load("month")
         }
     }
 
@@ -53,6 +71,22 @@ class AnalyticsViewModel @Inject constructor(
         if (_uiState.value.period == period) return
         _uiState.update { it.copy(period = period, customStartDate = null, customEndDate = null) }
         load(period)
+    }
+
+    fun selectOrganization(companyId: String) {
+        if (companyId == selectedOrgHolder.selectedCompanyId.value) return
+        selectedOrgHolder.select(companyId)
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    loadFailed = false,
+                    customStartDate = null,
+                    customEndDate = null,
+                )
+            }
+            reloadCurrent()
+        }
     }
 
     fun openCalendar() {
@@ -75,8 +109,14 @@ class AnalyticsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val data = analyticsRepository.getAnalyticsByRange(start, end)
+            val days = analyticsRepository.getSalesDays()
             _uiState.update {
-                it.copy(loading = false, data = data, loadFailed = data == null)
+                it.copy(
+                    loading = false,
+                    data = data,
+                    loadFailed = data == null,
+                    salesDays = days,
+                )
             }
         }
     }
@@ -93,23 +133,14 @@ class AnalyticsViewModel @Inject constructor(
     }
 
     fun refresh() {
-        val s = _uiState.value
-        if (s.customStartDate != null && s.customEndDate != null) {
-            applyDateRange(s.customStartDate, s.customEndDate)
-        } else {
-            load(s.period, showLoading = false)
+        viewModelScope.launch {
+            reloadCurrent(showLoading = false)
         }
     }
 
     suspend fun refreshSuspend() {
-        val s = _uiState.value
-        if (s.customStartDate != null && s.customEndDate != null) {
-            val data = analyticsRepository.getAnalyticsByRange(s.customStartDate, s.customEndDate)
-            _uiState.update { it.copy(data = data, loadFailed = data == null) }
-        } else {
-            val data = analyticsRepository.getAnalytics(s.period)
-            _uiState.update { it.copy(data = data, loadFailed = data == null) }
-        }
+        ensureOrgs()
+        reloadCurrent(showLoading = false)
     }
 
     private fun load(period: String, showLoading: Boolean = true) {
@@ -118,13 +149,46 @@ class AnalyticsViewModel @Inject constructor(
                 _uiState.update { it.copy(loading = true, loadFailed = false) }
             }
             val data = analyticsRepository.getAnalytics(period)
+            val days = analyticsRepository.getSalesDays()
             _uiState.update {
                 it.copy(
                     loading = false,
                     data = data,
                     loadFailed = data == null,
+                    salesDays = days,
+                    organizations = selectedOrgHolder.organizations.value,
+                    selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
                 )
             }
+        }
+    }
+
+    private suspend fun ensureOrgs() {
+        if (selectedOrgHolder.organizations.value.isEmpty()) {
+            profileRepository.getProfile()
+        }
+    }
+
+    private suspend fun reloadCurrent(showLoading: Boolean = true) {
+        if (showLoading) {
+            _uiState.update { it.copy(loading = true, loadFailed = false) }
+        }
+        val s = _uiState.value
+        val data = if (s.customStartDate != null && s.customEndDate != null) {
+            analyticsRepository.getAnalyticsByRange(s.customStartDate, s.customEndDate)
+        } else {
+            analyticsRepository.getAnalytics(s.period)
+        }
+        val days = analyticsRepository.getSalesDays()
+        _uiState.update {
+            it.copy(
+                loading = false,
+                data = data,
+                loadFailed = data == null,
+                salesDays = days,
+                organizations = selectedOrgHolder.organizations.value,
+                selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
+            )
         }
     }
 }

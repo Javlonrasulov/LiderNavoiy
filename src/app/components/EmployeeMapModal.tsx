@@ -65,7 +65,9 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
   const mapRef       = useRef<L.Map | null>(null);
   const divRef       = useRef<HTMLDivElement>(null);
   const tileRef      = useRef<L.TileLayer | null>(null);
-  const markersRef   = useRef<Map<number, L.Marker>>(new Map());
+  const markersRef   = useRef<Map<string, L.Marker>>(new Map());
+  /** Modal ochilganda bir marta markaz — GPS yangilanganda zoom qaytmasin */
+  const cameraReadyRef = useRef(false);
 
   const [filter,      setFilter]      = useState<'all' | 'agent' | 'delivery'>('all');
   const [onlineOnly,  setOnlineOnly]  = useState(false);
@@ -88,6 +90,7 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     const safeLng = centerCoord && isInServiceArea(centerCoord[0], centerCoord[1])
       ? centerCoord[1]
       : NAVOIY[1];
+    cameraReadyRef.current = false;
 
     const map = L.map(divRef.current, {
       center: [safeLat, safeLng],
@@ -100,14 +103,21 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     switchTileLayer(map, tileRef, activeLayer, dark);
     mapRef.current = map;
 
+    const lockCamera = () => { cameraReadyRef.current = true; };
+    map.on('zoomstart', lockCamera);
+    map.on('dragstart', lockCamera);
+
     requestAnimationFrame(refreshMapSize);
     setTimeout(refreshMapSize, 100);
     setTimeout(refreshMapSize, 350);
 
     return () => {
+      map.off('zoomstart', lockCamera);
+      map.off('dragstart', lockCamera);
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();
+      cameraReadyRef.current = false;
     };
   }, [open]);
 
@@ -117,17 +127,14 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     switchTileLayer(map, tileRef, activeLayer, dark);
   }, [activeLayer, dark, open]);
 
+  // centerCoord GPS o'rtachasi o'zgarganda zoomni qayta tiklamaymiz
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !open || !centerCoord) return;
-    if (!isInServiceArea(centerCoord[0], centerCoord[1])) {
-      map.flyTo(NAVOIY, initialZoom || DEFAULT_ZOOM, { duration: 0.9 });
-      return;
-    }
-    setSearchQuery('');
-    setHighlighted(null);
-    map.flyTo(centerCoord, initialZoom || DEFAULT_ZOOM, { duration: 0.9 });
-  }, [centerCoord?.[0], centerCoord?.[1], open]);
+    if (!map || !open || cameraReadyRef.current) return;
+    if (!centerCoord || !isInServiceArea(centerCoord[0], centerCoord[1])) return;
+    map.setView(centerCoord, initialZoom || DEFAULT_ZOOM, { animate: false });
+    cameraReadyRef.current = true;
+  }, [open]);
 
   useEffect(() => {
     const timer = setTimeout(refreshMapSize, 320);
@@ -146,7 +153,6 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
     });
     const nextIds = new Set(filtered.map(e => e.distributorId || String(e.id)));
 
-    // O'chirilgan markerlar
     markersRef.current.forEach((marker, key) => {
       if (!nextIds.has(key)) {
         marker.remove();

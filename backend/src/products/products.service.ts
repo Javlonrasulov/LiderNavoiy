@@ -33,28 +33,42 @@ export class ProductsService {
     return imageUrl;
   }
 
-  findAll(category?: string) {
+  private applyCompanyFilter(
+    qb: ReturnType<Repository<Product>['createQueryBuilder']>,
+    companyId?: string | null,
+  ) {
+    if (companyId) {
+      qb.andWhere('p.companyId = :companyId', { companyId });
+    }
+    return qb;
+  }
+
+  findAll(category?: string, companyId?: string | null) {
     const qb = this.repo.createQueryBuilder('p').where('p.isActive = true');
+    this.applyCompanyFilter(qb, companyId);
     if (category) qb.andWhere('p.category = :category', { category });
     return qb.orderBy('p.name', 'ASC').getMany();
   }
 
-  findInStock(category?: string) {
+  findInStock(category?: string, companyId?: string | null) {
     const qb = this.repo
       .createQueryBuilder('p')
       .where('p.isActive = true')
       .andWhere('p.stockBalance > 0');
+    this.applyCompanyFilter(qb, companyId);
     if (category) qb.andWhere('p.category = :category', { category });
     return qb.orderBy('p.name', 'ASC').getMany();
   }
 
-  async findInStockMap(): Promise<Map<string, Product>> {
-    const products = await this.findInStock();
+  async findInStockMap(companyId?: string | null): Promise<Map<string, Product>> {
+    const products = await this.findInStock(undefined, companyId);
     return new Map(products.map((p) => [p.id, p]));
   }
 
-  async findActiveMaps(): Promise<{ byId: Map<string, Product>; byCode: Map<string, Product> }> {
-    const products = await this.findAll();
+  async findActiveMaps(
+    companyId?: string | null,
+  ): Promise<{ byId: Map<string, Product>; byCode: Map<string, Product> }> {
+    const products = await this.findAll(undefined, companyId);
     return {
       byId: new Map(products.map((p) => [p.id, p])),
       byCode: new Map(products.map((p) => [p.code, p])),
@@ -65,27 +79,54 @@ export class ProductsService {
     return this.repo.findOne({ where: { id } });
   }
 
-  getCategories(inStockOnly = false) {
+  getCategories(inStockOnly = false, companyId?: string | null) {
     const qb = this.repo
       .createQueryBuilder('p')
       .select('DISTINCT p.category', 'category')
       .where('p.category IS NOT NULL')
       .andWhere('p.isActive = true');
+    this.applyCompanyFilter(qb, companyId);
     if (inStockOnly) qb.andWhere('p.stockBalance > 0');
     return qb.orderBy('p.category', 'ASC').getRawMany();
   }
 
-  async create(dto: CreateProductDto) {
-    const exists = await this.repo.findOne({ where: { code: dto.code } });
-    if (exists) throw new ConflictException('Product code already exists');
-    const sameName = await this.repo
+  private async assertCodeAvailable(code: string, companyId: string | null, excludeId?: string) {
+    const qb = this.repo
       .createQueryBuilder('p')
-      .where('LOWER(TRIM(p.name)) = LOWER(TRIM(:name))', { name: dto.name })
-      .andWhere('p.isActive = true')
-      .getOne();
+      .where('p.code = :code', { code })
+      .andWhere('p.isActive = true');
+    if (companyId) {
+      qb.andWhere('p.companyId = :companyId', { companyId });
+    } else {
+      qb.andWhere('p.companyId IS NULL');
+    }
+    if (excludeId) qb.andWhere('p.id != :excludeId', { excludeId });
+    const exists = await qb.getOne();
+    if (exists) throw new ConflictException('Product code already exists');
+  }
+
+  private async assertNameAvailable(name: string, companyId: string | null, excludeId?: string) {
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('LOWER(TRIM(p.name)) = LOWER(TRIM(:name))', { name })
+      .andWhere('p.isActive = true');
+    if (companyId) {
+      qb.andWhere('p.companyId = :companyId', { companyId });
+    } else {
+      qb.andWhere('p.companyId IS NULL');
+    }
+    if (excludeId) qb.andWhere('p.id != :excludeId', { excludeId });
+    const sameName = await qb.getOne();
     if (sameName) throw new ConflictException('Product name already exists');
+  }
+
+  async create(dto: CreateProductDto) {
+    const companyId = dto.companyId?.trim() || null;
+    await this.assertCodeAvailable(dto.code, companyId);
+    await this.assertNameAvailable(dto.name, companyId);
     const imageUrl = await this.resolveImageUrl(dto.imageUrl);
     const product = this.repo.create({
+      companyId,
       code: dto.code,
       name: dto.name,
       category: dto.category ?? null,
@@ -102,13 +143,27 @@ export class ProductsService {
   async update(id: string, dto: UpdateProductDto) {
     const product = await this.repo.findOne({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
+    const nextCompanyId =
+      dto.companyId !== undefined ? dto.companyId?.trim() || null : product.companyId;
     if (dto.code && dto.code !== product.code) {
-      const exists = await this.repo.findOne({ where: { code: dto.code } });
-      if (exists) throw new ConflictException('Product code already exists');
+      await this.assertCodeAvailable(dto.code, nextCompanyId, id);
+    }
+    if (dto.name && dto.name !== product.name) {
+      await this.assertNameAvailable(dto.name, nextCompanyId, id);
+    }
+    if (
+      dto.companyId !== undefined &&
+      nextCompanyId !== product.companyId &&
+      !dto.code &&
+      !dto.name
+    ) {
+      await this.assertCodeAvailable(product.code, nextCompanyId, id);
+      await this.assertNameAvailable(product.name, nextCompanyId, id);
     }
     const imageUrl = await this.resolveImageUrl(dto.imageUrl);
     Object.assign(product, {
       ...dto,
+      companyId: nextCompanyId,
       category: dto.category === undefined ? product.category : dto.category,
       brand: dto.brand === undefined ? product.brand : dto.brand,
       imageUrl: imageUrl === undefined ? product.imageUrl : imageUrl,

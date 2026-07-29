@@ -50,6 +50,7 @@ import uz.lider.client.presentation.components.AnalyticsTrendChart
 import uz.lider.client.presentation.components.ChartPoint
 import uz.lider.client.presentation.components.ChartVisualStyle
 import uz.lider.client.presentation.components.HorizontalProgressBar
+import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.formatChartAmount
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
@@ -162,6 +163,14 @@ fun AnalyticsScreen(
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                             )
+                            if (state.organizations.size >= 2) {
+                                Spacer(Modifier.height(12.dp))
+                                OrgSwitcherChips(
+                                    organizations = state.organizations,
+                                    selectedCompanyId = state.selectedCompanyId,
+                                    onSelect = viewModel::selectOrganization,
+                                )
+                            }
                             Spacer(Modifier.height(12.dp))
                         }
                     }

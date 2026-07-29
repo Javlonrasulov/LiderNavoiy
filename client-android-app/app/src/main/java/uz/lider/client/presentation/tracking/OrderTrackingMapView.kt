@@ -301,9 +301,9 @@ private fun updateFleetMap(
         ) {
             Marker(map).apply {
                 position = GeoPoint(vehicle.courierLat, vehicle.courierLng)
-                // Admin xarita: doira markazga bog‘lanadi (pin emas)
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = truckIcon
+                // Doira markazi geo-nuqtaga — label uning ustida
+                setAnchor(Marker.ANCHOR_CENTER, truckIcon.discAnchorY)
+                icon = truckIcon.drawable
                 relatedObject = vehicle
                 disableMarkerBubble(this)
                 setOnMarkerClickListener { marker, mapView ->

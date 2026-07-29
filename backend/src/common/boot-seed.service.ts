@@ -47,6 +47,19 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`companies.warehouseName migrate: ${(err as Error).message}`);
     }
 
+    // products.companyId — katalog tashkilot bo‘yicha; eski qatorlar → boran
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS "companyId" varchar NULL
+      `);
+      await this.dataSource.query(`
+        UPDATE products SET "companyId" = 'boran' WHERE "companyId" IS NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`products.companyId migrate: ${(err as Error).message}`);
+    }
+
     try {
       await this.dataSource.query(`
         ALTER TABLE orders

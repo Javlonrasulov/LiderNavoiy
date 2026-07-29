@@ -37,16 +37,22 @@ private fun Bitmap.asMarkerDrawable(context: Context): Drawable =
 
 /**
  * Admin «Xodimlar joylashuvi» dostavkachi markeriga mos:
- * yashil doira + 🚚 + online badge (pastda o‘ngda).
- * Ixtiyoriy `orgLabel` — doira ostida org shortName.
+ * yashil doira + 🚚 + online badge.
+ * Ixtiyoriy `orgLabel` — doira **ustida** org shortName.
  */
+data class TruckMarkerIcon(
+    val drawable: Drawable,
+    /** Geo-nuqta bog‘lanadigan doira markazi (0..1). */
+    val discAnchorY: Float,
+)
+
 fun createTruckMarkerDrawable(
     context: Context,
     orderCount: Int,
     sizeDp: Int = 36,
     online: Boolean = true,
     orgLabel: String? = null,
-): Drawable {
+): TruckMarkerIcon {
     val d = context.resources.displayMetrics.density
     val disc = (sizeDp * d).toInt().coerceIn(36, 96)
     val badgeExtra = if (orderCount > 1) (12 * d).toInt() else 0
@@ -59,98 +65,28 @@ fun createTruckMarkerDrawable(
         typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
         isFakeBoldText = true
     }
-    val labelH = if (label != null) {
-        (labelPaint.descent() - labelPaint.ascent() + 4f * d).toInt()
+    val labelGap = 2f * d
+    val labelBlockH = if (label != null) {
+        val textH = labelPaint.descent() - labelPaint.ascent()
+        textH + 4f * d + labelGap
     } else {
-        0
+        0f
     }
-    val outW = maxOf(disc + pad * 2 + badgeExtra, if (label != null) {
-        (labelPaint.measureText(label) + 10f * d).toInt()
-    } else {
-        0
-    })
-    val outH = disc + pad * 2 + labelH
+    val outW = maxOf(
+        disc + pad * 2 + badgeExtra,
+        if (label != null) (labelPaint.measureText(label) + 10f * d).toInt() else 0,
+    )
+    val outH = (labelBlockH + disc + pad * 2).toInt()
     val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
 
     val cx = outW / 2f
-    val cy = pad + disc / 2f
+    val discTop = pad + labelBlockH
+    val cy = discTop + disc / 2f
     val r = disc / 2f
+    val discAnchorY = cy / outH
 
-    // Admin: delivery online = #10b981, border #6ee7b7
-    val fill = if (online) 0xFF10B981.toInt() else 0xFF6B7280.toInt()
-    val ring = if (online) 0xFF6EE7B7.toInt() else 0xFF9CA3AF.toInt()
-
-    // Soft shadow (admin box-shadow)
-    canvas.drawCircle(
-        cx, cy + 1.5f * d,
-        r,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                cx, cy + 1.5f * d, r * 1.05f,
-                intArrayOf(0x66000000, 0x00000000),
-                floatArrayOf(0.55f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-        },
-    )
-
-    canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
-    canvas.drawCircle(
-        cx, cy, r - 1.2f * d,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.5f * d
-            color = ring
-        },
-    )
-
-    // 🚚 — admin xarita bilan bir xil
-    val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
-        textSize = disc * 0.48f
-    }
-    val emoji = "🚚"
-    val emojiY = cy - (emojiPaint.descent() + emojiPaint.ascent()) / 2f
-    canvas.drawText(emoji, cx, emojiY, emojiPaint)
-
-    // Online badge — pastki o‘ng (admin)
-    if (online) {
-        val br = 5f * d
-        val bx = cx + r * 0.55f
-        val by = cy + r * 0.55f
-        canvas.drawCircle(bx, by, br + 1.5f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-        })
-        canvas.drawCircle(bx, by, br, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFF22C55E.toInt()
-        })
-    }
-
-    // Buyurtma soni badge (2+)
-    if (orderCount > 1) {
-        val countR = 9f * d
-        val bx = outW - countR - 1f * d
-        val by = countR + 1f * d
-        canvas.drawCircle(bx, by, countR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BADGE_COLOR })
-        canvas.drawCircle(
-            bx, by, countR,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
-                style = Paint.Style.STROKE
-                strokeWidth = 2f * d
-            },
-        )
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-            textAlign = Paint.Align.CENTER
-            textSize = 10.5f * d
-            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
-        }
-        val countLabel = if (orderCount > 9) "9+" else orderCount.toString()
-        canvas.drawText(countLabel, bx, by - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint)
-    }
-
+    // Label — mashina ustida
     if (label != null) {
         val pillPadX = 5f * d
         val pillPadY = 2f * d
@@ -159,7 +95,7 @@ fun createTruckMarkerDrawable(
         val pillW = tw + pillPadX * 2
         val pillH = textH + pillPadY * 2
         val pillLeft = cx - pillW / 2f
-        val pillTop = pad + disc + 1f * d
+        val pillTop = pad.toFloat()
         val pillRect = RectF(pillLeft, pillTop, pillLeft + pillW, pillTop + pillH)
         canvas.drawRoundRect(
             pillRect,
@@ -185,7 +121,79 @@ fun createTruckMarkerDrawable(
         )
     }
 
-    return bmp.asMarkerDrawable(context)
+    // Admin: delivery online = #10b981, border #6ee7b7
+    val fill = if (online) 0xFF10B981.toInt() else 0xFF6B7280.toInt()
+    val ring = if (online) 0xFF6EE7B7.toInt() else 0xFF9CA3AF.toInt()
+
+    canvas.drawCircle(
+        cx, cy + 1.5f * d,
+        r,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                cx, cy + 1.5f * d, r * 1.05f,
+                intArrayOf(0x66000000, 0x00000000),
+                floatArrayOf(0.55f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        },
+    )
+
+    canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
+    canvas.drawCircle(
+        cx, cy, r - 1.2f * d,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * d
+            color = ring
+        },
+    )
+
+    val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = disc * 0.48f
+    }
+    val emojiY = cy - (emojiPaint.descent() + emojiPaint.ascent()) / 2f
+    canvas.drawText("🚚", cx, emojiY, emojiPaint)
+
+    if (online) {
+        val br = 5f * d
+        val bx = cx + r * 0.55f
+        val by = cy + r * 0.55f
+        canvas.drawCircle(bx, by, br + 1.5f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+        })
+        canvas.drawCircle(bx, by, br, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF22C55E.toInt()
+        })
+    }
+
+    if (orderCount > 1) {
+        val countR = 9f * d
+        val bx = outW - countR - 1f * d
+        val by = discTop + countR + 1f * d
+        canvas.drawCircle(bx, by, countR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BADGE_COLOR })
+        canvas.drawCircle(
+            bx, by, countR,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                style = Paint.Style.STROKE
+                strokeWidth = 2f * d
+            },
+        )
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textAlign = Paint.Align.CENTER
+            textSize = 10.5f * d
+            typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+        }
+        val countLabel = if (orderCount > 9) "9+" else orderCount.toString()
+        canvas.drawText(countLabel, bx, by - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint)
+    }
+
+    return TruckMarkerIcon(
+        drawable = bmp.asMarkerDrawable(context),
+        discAnchorY = discAnchorY,
+    )
 }
 
 /**

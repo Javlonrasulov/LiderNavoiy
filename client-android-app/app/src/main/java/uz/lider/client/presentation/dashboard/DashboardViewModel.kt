@@ -38,7 +38,9 @@ data class DashboardUiState(
     val clientName: String = "",
     val allOrders: List<ClientOrder> = emptyList(),
     val promotions: List<uz.lider.client.domain.model.Promotion> = emptyList(),
-    val dateRange: DashboardDateRange = DashboardDateFilter.lastMonthRange(),
+    /** null = sana filtri yo‘q (tozalangan) — chip ko‘rinmaydi */
+    val dateRange: DashboardDateRange? = DashboardDateFilter.lastMonthRange(),
+    val purchasesCompanyId: String? = null,
     val filtered: DashboardFiltered = DashboardFiltered(0.0, 0, emptyList(), listOf(0f, 0f)),
     val liveFleet: LiveFleetUi? = null,
 )
@@ -115,7 +117,12 @@ class DashboardViewModel @Inject constructor(
             local
         }
         val range = _uiState.value.dateRange
-        val filtered = DashboardDateFilter.computeFiltered(allOrders, range)
+        var companyId = _uiState.value.purchasesCompanyId
+        val orgs = data.organizations
+        if (companyId == null || orgs.none { it.companyId == companyId }) {
+            companyId = orgs.firstOrNull()?.companyId
+        }
+        val filtered = DashboardDateFilter.computeFiltered(allOrders, range, companyId)
         _uiState.update {
             it.copy(
                 data = data,
@@ -123,6 +130,7 @@ class DashboardViewModel @Inject constructor(
                 allOrders = allOrders,
                 promotions = promotions,
                 dateRange = range,
+                purchasesCompanyId = companyId,
                 filtered = filtered,
             )
         }
@@ -148,20 +156,44 @@ class DashboardViewModel @Inject constructor(
         applyRange(DashboardDateFilter.lastMonthRange())
     }
 
+    /** Kalendardan «tozalash» — sana filtri olib tashlanadi, chip yashirinadi. */
+    fun clearDateRange() {
+        applyRange(null)
+    }
+
     fun selectAllDates() {
         applyRange(DashboardDateFilter.allOrdersRange(_uiState.value.allOrders))
     }
 
-    private fun applyRange(range: DashboardDateRange) {
+    fun selectPurchasesOrganization(companyId: String?) {
+        val id = companyId ?: return
         _uiState.update { state ->
             state.copy(
-                dateRange = range,
-                filtered = DashboardDateFilter.computeFiltered(state.allOrders, range),
+                purchasesCompanyId = id,
+                filtered = DashboardDateFilter.computeFiltered(
+                    state.allOrders,
+                    state.dateRange,
+                    id,
+                ),
             )
         }
     }
 
-    fun dateRangeLabel(): String = DashboardDateFilter.formatRange(_uiState.value.dateRange)
+    private fun applyRange(range: DashboardDateRange?) {
+        _uiState.update { state ->
+            state.copy(
+                dateRange = range,
+                filtered = DashboardDateFilter.computeFiltered(
+                    state.allOrders,
+                    range,
+                    state.purchasesCompanyId,
+                ),
+            )
+        }
+    }
+
+    fun dateRangeLabel(): String =
+        _uiState.value.dateRange?.let { DashboardDateFilter.formatRange(it) }.orEmpty()
 
     private fun ensureLiveDeliveryPolling(reuseOrdersOnce: Boolean = false) {
         if (livePollJob?.isActive == true) {
@@ -187,7 +219,11 @@ class DashboardViewModel @Inject constructor(
                 _uiState.update { state ->
                     state.copy(
                         allOrders = fetched,
-                        filtered = DashboardDateFilter.computeFiltered(fetched, state.dateRange),
+                        filtered = DashboardDateFilter.computeFiltered(
+                            fetched,
+                            state.dateRange,
+                            state.purchasesCompanyId,
+                        ),
                     )
                 }
             }

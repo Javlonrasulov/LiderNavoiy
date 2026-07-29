@@ -2,6 +2,11 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateProductDto {
+  @ApiPropertyOptional({ description: 'Organization id (boran, zarafshon, …)' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
   @ApiProperty()
   @IsString()
   code: string;

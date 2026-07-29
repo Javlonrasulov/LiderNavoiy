@@ -625,11 +625,16 @@ export const api = {
   },
 
   // ─── Products ───
-  getProducts: (category?: string) =>
-    request<Array<{
+  getProducts: (category?: string, companyId?: string) => {
+    const q = new URLSearchParams();
+    if (category) q.set('category', category);
+    if (companyId) q.set('companyId', companyId);
+    const qs = q.toString();
+    return request<Array<{
       id: string;
       code: string;
       name: string;
+      companyId?: string | null;
       category: string | null;
       brand: string | null;
       price: number | string;
@@ -637,10 +642,13 @@ export const api = {
       stockBalance: number | string;
       imageUrl?: string | null;
       isActive?: boolean;
-    }>>(`/products${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+    }>>(`/products${qs ? `?${qs}` : ''}`);
+  },
 
-  getProductCategories: () =>
-    request<Array<{ category: string }>>('/products/categories'),
+  getProductCategories: (companyId?: string) =>
+    request<Array<{ category: string }>>(
+      `/products/categories${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`,
+    ),
 
   getProductCategoryMeta: () =>
     request<Array<{
@@ -735,6 +743,7 @@ export const api = {
     request<{ ok: boolean }>(`/products/category-meta/${metaId}`, { method: 'DELETE' }),
 
   createProduct: (body: {
+    companyId?: string;
     code: string;
     name: string;
     category?: string;
@@ -748,6 +757,7 @@ export const api = {
       id: string;
       code: string;
       name: string;
+      companyId?: string | null;
       category: string | null;
       brand: string | null;
       price: number | string;
@@ -760,6 +770,7 @@ export const api = {
     }),
 
   updateProduct: (id: string, body: {
+    companyId?: string;
     code?: string;
     name?: string;
     category?: string;
@@ -774,6 +785,7 @@ export const api = {
       id: string;
       code: string;
       name: string;
+      companyId?: string | null;
       category: string | null;
       brand: string | null;
       price: number | string;

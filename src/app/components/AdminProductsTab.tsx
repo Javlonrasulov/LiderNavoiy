@@ -322,7 +322,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         api.getProducts(),
         loadCategoryMetaRows(),
       ]);
-      const mapped = data.map((item) => backendToAdminProduct(item, viewOrg === 'all' ? 'boran' : viewOrg));
+      const mapped = data.map((item) => backendToAdminProduct(item));
       setProducts(mapped);
       setCategoryMetaRows(metaRows);
       setCategories(buildCategoriesFromProducts(mapped, metaRows));

@@ -110,14 +110,25 @@ object DashboardDateFilter {
         }
     }
 
-    fun filterOrders(orders: List<ClientOrder>, range: DashboardDateRange): List<ClientOrder> =
-        orders.filter { order ->
+    fun filterOrders(orders: List<ClientOrder>, range: DashboardDateRange?): List<ClientOrder> {
+        if (range == null) return orders
+        return orders.filter { order ->
             val date = parseOrderDate(order.createdAt) ?: return@filter false
             !date.isBefore(range.start) && !date.isAfter(range.end)
         }
+    }
 
-    fun computeFiltered(orders: List<ClientOrder>, range: DashboardDateRange): DashboardFiltered {
-        val inRange = filterOrders(orders, range)
+    fun computeFiltered(
+        orders: List<ClientOrder>,
+        range: DashboardDateRange?,
+        companyId: String? = null,
+    ): DashboardFiltered {
+        val dateFiltered = filterOrders(orders, range)
+        val inRange = if (companyId.isNullOrBlank()) {
+            dateFiltered
+        } else {
+            dateFiltered.filter { it.companyId == companyId }
+        }
         val purchases = inRange
             .filter { OrderStatus.fromKey(it.status) != OrderStatus.CANCELLED }
             .sumOf { it.totalAmount }
@@ -125,17 +136,19 @@ object DashboardDateFilter {
             val status = OrderStatus.fromKey(it.status)
             status != OrderStatus.DELIVERED && status != OrderStatus.CANCELLED
         }
-        val chart = buildChart(inRange, range)
-        val byOrg = inRange
+        val chartRange = range ?: allOrdersRange(inRange)
+        val chart = buildChart(inRange, chartRange)
+        val byOrgSource = dateFiltered
             .filter { OrderStatus.fromKey(it.status) != OrderStatus.CANCELLED }
+        val byOrg = byOrgSource
             .groupBy { it.companyId.orEmpty() }
             .filterKeys { it.isNotEmpty() }
-            .map { (companyId, list) ->
+            .map { (id, list) ->
                 OrgPurchaseShare(
-                    companyId = companyId,
+                    companyId = id,
                     shortName = list.firstOrNull()?.companyShortName
                         ?: list.firstOrNull()?.companyName
-                        ?: companyId,
+                        ?: id,
                     name = list.firstOrNull()?.companyName.orEmpty(),
                     total = list.sumOf { it.totalAmount },
                 )

@@ -29,7 +29,8 @@ class ProfileRepository @Inject constructor(
 ) {
     suspend fun getProfile(): ClientProfile? {
         return try {
-            api.getProfile().toDomain().also { rememberOrgs(it.organizations) }
+            val companyId = selectedOrgHolder.getSelectedCompanyId()
+            api.getProfile(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
         } catch (_: Exception) {
             null
         }
@@ -40,7 +41,8 @@ class ProfileRepository @Inject constructor(
     /** Faqat `/client-portal/dashboard` — null agar xato. */
     suspend fun fetchDashboardSummary(): DashboardData? =
         runCatching {
-            api.getClientDashboard().toDomain().also { rememberOrgs(it.organizations) }
+            val companyId = selectedOrgHolder.getSelectedCompanyId()
+            api.getClientDashboard(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
         }.getOrNull()
 
     suspend fun getDashboardData(): DashboardData {

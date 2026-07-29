@@ -4,6 +4,7 @@ export interface BackendProduct {
   id: string;
   code: string;
   name: string;
+  companyId?: string | null;
   category: string | null;
   brand: string | null;
   price: number | string;
@@ -33,13 +34,14 @@ function toNumber(value: number | string | null | undefined): number {
 
 export function backendToAdminProduct(
   product: BackendProduct,
-  org = 'boran',
+  fallbackOrg = 'boran',
 ): AdminProduct {
   const tipTo = unitToTipTo(product.unit);
   const price = toNumber(product.price);
   const stock = toNumber(product.stockBalance);
   const brand = product.brand ?? '';
   const category = product.category ?? brand;
+  const org = product.companyId?.trim() || fallbackOrg;
 
   return {
     id: product.id,
@@ -67,6 +69,7 @@ export function backendToAdminProduct(
 
 export function adminToCreatePayload(product: AdminProduct) {
   return {
+    companyId: product.org || 'boran',
     code: product.kod,
     name: product.ismi,
     category: product.gruppa || product.brend || undefined,

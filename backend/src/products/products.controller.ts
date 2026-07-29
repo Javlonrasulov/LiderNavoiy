@@ -22,14 +22,17 @@ export class ProductsController {
 
   @Get()
   @ApiOperation({ summary: 'List products' })
-  findAll(@Query('category') category?: string) {
-    return this.service.findAll(category);
+  findAll(
+    @Query('category') category?: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.findAll(category, companyId?.trim() || null);
   }
 
   @Get('categories')
   @ApiOperation({ summary: 'List product categories' })
-  categories() {
-    return this.service.getCategories();
+  categories(@Query('companyId') companyId?: string) {
+    return this.service.getCategories(false, companyId?.trim() || null);
   }
 
   @Get('category-meta')
