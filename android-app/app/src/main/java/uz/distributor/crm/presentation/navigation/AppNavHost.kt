@@ -23,6 +23,7 @@ import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.presentation.auth.LocationRequiredScreen
@@ -60,6 +61,22 @@ class SplashViewModel @Inject constructor(
     /** true = main, false = login, null = location_required (sessiya bor, GPS yo'q) */
     fun checkAuth(onResult: (Boolean?) -> Unit) {
         viewModelScope.launch {
+            launch {
+                runCatching {
+                    withTimeout(8_000) {
+                        okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                            .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                            .newCall(
+                                okhttp3.Request.Builder()
+                                    .url("${uz.distributor.crm.BuildConfig.API_BASE_URL.trimEnd('/')}/health")
+                                    .get()
+                                    .build(),
+                            ).execute().close()
+                    }
+                }
+            }
             val loggedIn = authRepository.restoreSession()
             when {
                 !loggedIn -> onResult(false)

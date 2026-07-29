@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.location.LocationAccessState
 import uz.distributor.crm.data.remote.ApiErrorMapper
@@ -84,10 +85,13 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorKey = null) }
             try {
-                authRepository.login(username, password)
+                withTimeout(45_000) {
+                    authRepository.login(username, password)
+                }
                 messagesRealtime.start()
-                runCatching { pushRepository.registerCurrentToken() }
+                // FCM kutish loginni bloklamasin
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                runCatching { pushRepository.registerCurrentToken() }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorKey = ApiErrorMapper.toKey(e))

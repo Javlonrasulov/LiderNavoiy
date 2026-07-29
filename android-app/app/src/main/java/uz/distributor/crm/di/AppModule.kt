@@ -39,7 +39,7 @@ object AppModule {
             else HttpLoggingInterceptor.Level.NONE
         }
         val authInterceptor = Interceptor { chain ->
-            val token = kotlinx.coroutines.runBlocking { tokenHolder.getToken() }
+            val token = tokenHolder.peekToken()
             val request = if (token != null) {
                 chain.request().newBuilder().addHeader("Authorization", "Bearer $token").build()
             } else chain.request()
@@ -49,8 +49,11 @@ object AppModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            .connectTimeout(35, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(50, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
     }
 

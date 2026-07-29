@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
@@ -156,18 +157,20 @@ class DashboardViewModel @Inject constructor(
             val cartItemsCount = cart.size
 
             try {
-                val stats = dashboardRepository.getStats()
-                val productCount = dashboardRefreshRepository.syncSessionBaseline()
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        user = user,
-                        formattedDate = today,
-                        stats = stats,
-                        productCount = productCount,
-                        cartTotal = cartTotal,
-                        cartItemsCount = cartItemsCount,
-                    )
+                withTimeout(25_000) {
+                    val stats = dashboardRepository.getStats()
+                    val productCount = dashboardRefreshRepository.syncSessionBaseline()
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            user = user,
+                            formattedDate = today,
+                            stats = stats,
+                            productCount = productCount,
+                            cartTotal = cartTotal,
+                            cartItemsCount = cartItemsCount,
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update {
