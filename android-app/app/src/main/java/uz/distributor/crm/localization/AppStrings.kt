@@ -142,6 +142,81 @@ object AppStrings {
     fun deliveryStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
     fun deliveryStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
     fun deliveryNavigate(lang: AppLanguage) = tr(lang, "Navigatorda ochish", "Навигаторда очиш", "Открыть навигатор")
+    fun deliveryAddressLabel(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
+    fun deliveryPhoneLabel(lang: AppLanguage) = tr(lang, "Telefon", "Телефон", "Телефон")
+    fun deliveryTotalLabel(lang: AppLanguage) = tr(lang, "Jami summa", "Жами сумма", "Итого")
+    fun deliveryProductsLabel(lang: AppLanguage) = tr(lang, "Mahsulotlar", "Маҳсулотлар", "Товары")
+    fun deliveryOrderCode(lang: AppLanguage) = tr(lang, "Kod", "Код", "Код")
+    fun deliveryCallClient(lang: AppLanguage) = tr(lang, "Mijozga qo'ng'iroq", "Мижозга қўнғироқ", "Позвонить клиенту")
+    fun deliveryOrderDetailTitle(lang: AppLanguage) = tr(lang, "Buyurtma", "Буюртма", "Заказ")
+    fun deliveryMarkDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
+    fun deliveryCollectPayment(lang: AppLanguage) = tr(lang, "To'lov olish", "Тўлов олиш", "Принять оплату")
+    fun deliveryChangeDue(lang: AppLanguage) = tr(lang, "Muddatni o'zgartirish", "Муддатни ўзгартириш", "Изменить срок")
+    fun deliveryPayTerminal(lang: AppLanguage) = tr(lang, "Terminal", "Терминал", "Терминал")
+    fun deliveryPayLater(lang: AppLanguage) = tr(lang, "Pul keyin", "Пул кейин", "Оплата позже")
+    fun deliveryPayLaterDesc(lang: AppLanguage) = tr(
+        lang,
+        "Muddatli to'lov (qarz)",
+        "Муддатли тўлов (қарз)",
+        "Отсроченный платёж",
+    )
+    fun deliveryRemaining(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
+    fun deliveryAmountLabel(lang: AppLanguage) = tr(lang, "Summa", "Сумма", "Сумма")
+    fun deliveryDueAtLabel(lang: AppLanguage) = tr(lang, "To'lov muddati", "Тўлов муддати", "Срок оплаты")
+    fun deliveryPhotoOptional(lang: AppLanguage) = tr(
+        lang,
+        "Rasm (ixtiyoriy)",
+        "Расм (ихтиёрий)",
+        "Фото (необязательно)",
+    )
+    fun deliveryGallery(lang: AppLanguage) = tr(lang, "Galereya", "Галерея", "Галерея")
+    fun deliveryCamera(lang: AppLanguage) = tr(lang, "Kamera", "Камера", "Камера")
+    fun deliveryPhotoSelected(lang: AppLanguage) = tr(lang, "Rasm tanlandi", "Расм танланди", "Фото выбрано")
+    fun deliveryNoTerminals(lang: AppLanguage) = tr(
+        lang,
+        "Biriktirilgan terminal yo'q",
+        "Бириктирилган терминал йўқ",
+        "Нет назначенных терминалов",
+    )
+    fun deliveryInvalidAmount(lang: AppLanguage) = tr(lang, "Noto'g'ri summa", "Нотўғри сумма", "Неверная сумма")
+    fun deliveryInvalidDue(lang: AppLanguage) = tr(
+        lang,
+        "Sana/vaqtni to'g'ri kiriting",
+        "Сана/вақтни тўғри киритинг",
+        "Укажите корректную дату/время",
+    )
+    fun deliveryReturnTitle(lang: AppLanguage) = tr(lang, "Vozvrat", "Возврат", "Возврат")
+    fun deliveryReturnHint(lang: AppLanguage) = tr(
+        lang,
+        "Qaytariladigan mahsulotlarni tanlang",
+        "Қайтариладиган маҳсулотларни танланг",
+        "Выберите товары для возврата",
+    )
+    fun deliveryReturnNote(lang: AppLanguage) = tr(lang, "Izoh", "Изоҳ", "Примечание")
+    fun deliveryReturnPickItems(lang: AppLanguage) = tr(
+        lang,
+        "Kamida bitta mahsulot tanlang",
+        "Камида битта маҳсулот танланг",
+        "Выберите хотя бы один товар",
+    )
+    fun deliveryReturnRequested(lang: AppLanguage) = tr(
+        lang,
+        "Vozvrat so'rovi yuborildi",
+        "Возврат сўрови юборилди",
+        "Заявка на возврат отправлена",
+    )
+    fun deliveryPaymentOk(lang: AppLanguage) = tr(
+        lang,
+        "Saqlandi",
+        "Сақланди",
+        "Сохранено",
+    )
+    fun deliveryDueUpdated(lang: AppLanguage) = tr(
+        lang,
+        "Muddat yangilandi",
+        "Муддат янгиланди",
+        "Срок обновлён",
+    )
     fun noClientOrders(lang: AppLanguage) = tr(
         lang,
         "Yangi klient buyurtmasi yo'q",

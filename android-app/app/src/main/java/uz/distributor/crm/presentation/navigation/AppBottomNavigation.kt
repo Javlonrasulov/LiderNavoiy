@@ -43,6 +43,7 @@ private val bottomNavPrefixRoutes = listOf(
     "visit/",
     "order/",
     "reconciliation/",
+    "delivery/",
 )
 
 private val bottomNavRoutePatterns = setOf(
@@ -51,6 +52,7 @@ private val bottomNavRoutePatterns = setOf(
     "order/{clientId}",
     "order/cart",
     "reconciliation/{clientId}",
+    "delivery/{orderId}",
 )
 
 fun showsBottomNav(route: String?): Boolean {
@@ -59,12 +61,13 @@ fun showsBottomNav(route: String?): Boolean {
     return bottomNavPrefixRoutes.any { route.startsWith(it) }
 }
 
-fun bottomNavSelectedTab(route: String?): NavTab? = when (route) {
-    "main", "products", "profile" -> NavTab.HOME
-    "delivery" -> NavTab.DELIVERY
-    "location" -> NavTab.LOCATION
-    "plan" -> NavTab.PLAN
-    "messages" -> NavTab.MESSAGES
+fun bottomNavSelectedTab(route: String?): NavTab? = when {
+    route == null -> null
+    route == "main" || route == "products" || route == "profile" -> NavTab.HOME
+    route == "delivery" || route.startsWith("delivery/") -> NavTab.DELIVERY
+    route == "location" -> NavTab.LOCATION
+    route == "plan" -> NavTab.PLAN
+    route == "messages" -> NavTab.MESSAGES
     else -> null
 }
 

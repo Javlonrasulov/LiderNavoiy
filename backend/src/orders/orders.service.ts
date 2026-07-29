@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
-import { OrderStatus, OrderSource, VisitStatus } from '../common/enums';
+import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
@@ -147,7 +147,7 @@ export class OrdersService {
     });
   }
 
-  /** Dostavkachi: admin Tovar yuklash orqali biriktirilgan (on_way) buyurtmalar.
+  /** Dostavkachi: on_way + yetkazilgan lekin to‘lanmagan (qisman/qarz) buyurtmalar.
    *  Klient tracking bilan bir xil qoida + bir xil klientning barcha on_way
    *  buyurtmalari (bitta biriktirilgan bo‘lsa ham qolganlari ko‘rinsin). */
   async findForDelivery(deliveryDistributorId: string) {
@@ -157,21 +157,37 @@ export class OrdersService {
     });
     if (!me) return [];
 
-    const orders = await this.repo.find({
+    const onWay = await this.repo.find({
       where: { status: OrderStatus.ON_WAY },
       order: { updatedAt: 'DESC' },
       take: 300,
     });
-    if (orders.length === 0) return [];
 
-    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const unpaidDelivered = await this.repo.find({
+      where: {
+        status: OrderStatus.DELIVERED,
+        deliveryDistributorId,
+        paymentStatus: In([
+          OrderPaymentStatus.UNPAID,
+          OrderPaymentStatus.PARTIAL,
+        ]),
+      },
+      order: { updatedAt: 'DESC' },
+      take: 200,
+    });
+
+    if (onWay.length === 0 && unpaidDelivered.length === 0) return [];
+
+    const clientIds = [
+      ...new Set([...onWay, ...unpaidDelivered].map((o) => o.clientId)),
+    ];
     const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
     const clientMap = new Map(clients.map((c) => [c.id, c]));
 
     const courierCache = new Map<string, string | null>();
     const myClientIds = new Set<string>();
 
-    for (const order of orders) {
+    for (const order of onWay) {
       const client = clientMap.get(order.clientId);
       if (!client) continue;
 
@@ -192,34 +208,49 @@ export class OrdersService {
       }
     }
 
-    if (myClientIds.size === 0) return [];
+    const mapOrder = (order: Order) => {
+      const client = clientMap.get(order.clientId)!;
+      return {
+        id: order.id,
+        clientId: order.clientId,
+        distributorId: order.distributorId,
+        deliveryDistributorId: order.deliveryDistributorId ?? deliveryDistributorId,
+        visitId: order.visitId,
+        status: order.status,
+        source: order.source,
+        totalAmount: Number(order.totalAmount),
+        paidAmount: Number(order.paidAmount || 0),
+        returnedAmount: Number(order.returnedAmount || 0),
+        paymentStatus: order.paymentStatus ?? OrderPaymentStatus.UNPAID,
+        items: order.items,
+        isUrgent: !!order.isUrgent,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        clientName: client.name ?? 'Klient',
+        clientCode: client.code ?? '',
+        clientAddress: client.address ?? null,
+        clientPhone: client.phone ?? null,
+        clientLatitude: client.latitude ?? null,
+        clientLongitude: client.longitude ?? null,
+      };
+    };
 
-    // Shu klientlarning BARCHA on_way buyurtmalari (ikkita zakaz muammosi)
-    return orders
+    const onWayMine = onWay
       .filter((order) => myClientIds.has(order.clientId))
-      .map((order) => {
-        const client = clientMap.get(order.clientId)!;
-        return {
-          id: order.id,
-          clientId: order.clientId,
-          distributorId: order.distributorId,
-          deliveryDistributorId: order.deliveryDistributorId ?? deliveryDistributorId,
-          visitId: order.visitId,
-          status: order.status,
-          source: order.source,
-          totalAmount: Number(order.totalAmount),
-          items: order.items,
-          isUrgent: !!order.isUrgent,
-          createdAt: order.createdAt,
-          updatedAt: order.updatedAt,
-          clientName: client.name ?? 'Klient',
-          clientCode: client.code ?? '',
-          clientAddress: client.address ?? null,
-          clientPhone: client.phone ?? null,
-          clientLatitude: client.latitude ?? null,
-          clientLongitude: client.longitude ?? null,
-        };
-      });
+      .map(mapOrder);
+
+    const unpaidMine = unpaidDelivered
+      .filter((o) => clientMap.has(o.clientId))
+      .map(mapOrder);
+
+    const seen = new Set<string>();
+    const merged: ReturnType<typeof mapOrder>[] = [];
+    for (const o of [...onWayMine, ...unpaidMine]) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      merged.push(o);
+    }
+    return merged;
   }
 
   /** Klient portalidagi resolveDeliveryDistributor bilan bir xil qoida */

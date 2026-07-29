@@ -1,7 +1,9 @@
 package uz.distributor.crm.presentation.delivery
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalShipping
@@ -29,7 +32,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,13 +45,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,17 +61,18 @@ import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.bottomNavHeight
-import java.text.DecimalFormat
+
+private val Accent = Color(0xFF6366F1)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeliveryOrdersScreen(
+    onOrderClick: (String) -> Unit,
     viewModel: DeliveryOrdersViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val state by viewModel.uiState.collectAsState()
-    val formatter = remember { DecimalFormat("#,###") }
     val bg = if (isDark) Color(0xFF0E1621) else Color(0xFFF3F4F6)
     val cardBg = if (isDark) Color(0xFF17212B) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
@@ -89,7 +93,7 @@ fun DeliveryOrdersScreen(
                     if (state.orders.isNotEmpty()) {
                         Text(
                             "${state.orders.size}",
-                            color = Color(0xFF6366F1),
+                            color = Accent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
                             modifier = Modifier.padding(end = 4.dp),
@@ -116,7 +120,7 @@ fun DeliveryOrdersScreen(
                 state.isLoading -> {
                     CircularProgressIndicator(
                         Modifier.align(Alignment.Center),
-                        color = Color(0xFF6366F1),
+                        color = Accent,
                     )
                 }
                 state.orders.isEmpty() -> {
@@ -150,11 +154,11 @@ fun DeliveryOrdersScreen(
                         items(state.orders, key = { it.id }) { order ->
                             DeliveryOrderCard(
                                 order = order,
-                                formatter = formatter,
                                 cardBg = cardBg,
                                 textPrimary = textPrimary,
                                 textMuted = textMuted,
                                 lang = lang,
+                                onCardClick = { onOrderClick(order.id) },
                             )
                         }
                     }
@@ -182,188 +186,110 @@ fun DeliveryOrdersScreen(
 @Composable
 private fun DeliveryOrderCard(
     order: OrderDto,
-    formatter: DecimalFormat,
     cardBg: Color,
     textPrimary: Color,
     textMuted: Color,
     lang: AppLanguage,
+    onCardClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val isOnWay = order.status == "on_way"
-    val statusColor = if (isOnWay) Color(0xFFF59E0B) else Color(0xFF22C55E)
-    val statusLabel = if (isOnWay) {
-        AppStrings.deliveryStatusOnWay(lang)
-    } else {
-        AppStrings.deliveryStatusDelivered(lang)
-    }
-
-    val hasCoords = order.clientLatitude != null && order.clientLongitude != null
-    val hasAddress = !order.clientAddress.isNullOrBlank()
-    val canNavigate = hasCoords || hasAddress
+    val name = order.clientName ?: AppStrings.clientFallback(lang)
+    val address = order.clientAddress?.takeIf { it.isNotBlank() }
+    val phone = order.clientPhone?.takeIf { it.isNotBlank() }
+    val canNavigate = (order.clientLatitude != null && order.clientLongitude != null) ||
+        !order.clientAddress.isNullOrBlank()
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCardClick),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Sarlavha + status
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Text(
+                name,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 17.sp,
+                color = textPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (order.needsPaymentFollowUp) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    order.clientName ?: AppStrings.clientFallback(lang),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
-                    color = textPrimary,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    statusLabel,
-                    color = statusColor,
+                    "${AppStrings.deliveryCollectPayment(lang)} · ${AppStrings.deliveryRemaining(lang)}",
+                    color = Color(0xFFD97706),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
 
-            if (!order.clientCode.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(order.clientCode, color = textMuted, fontSize = 12.sp)
-            }
-
-            // Manzil — bosilganda navigatsiya
-            if (hasCoords || hasAddress) {
+            if (address != null) {
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = if (canNavigate) {
-                        Modifier.clickable {
-                            val uri = if (hasCoords) {
-                                // Koordinata bilan — aniq GPS manzil
-                                Uri.parse("geo:${order.clientLatitude},${order.clientLongitude}?q=${order.clientLatitude},${order.clientLongitude}(${Uri.encode(order.clientName ?: "")})")
-                            } else {
-                                // Faqat matn manzil
-                                Uri.parse("geo:0,0?q=${Uri.encode(order.clientAddress!!)}")
-                            }
-                            val intent = Intent(Intent.ACTION_VIEW, uri)
-                            intent.setPackage("com.google.android.apps.maps")
-                            if (intent.resolveActivity(context.packageManager) != null) {
-                                context.startActivity(intent)
-                            } else {
-                                // Google Maps o'rnatilmagan — boshqa xarita app
-                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            }
-                        }
-                    } else Modifier,
-                ) {
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Default.Place,
                         null,
-                        tint = if (canNavigate) Color(0xFF6366F1) else textMuted,
-                        modifier = Modifier.size(16.dp).padding(top = 2.dp),
+                        tint = textMuted,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(top = 2.dp),
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        order.clientAddress ?: "",
-                        color = if (canNavigate) Color(0xFF6366F1) else textMuted,
-                        fontSize = 13.sp,
+                        address,
+                        color = textMuted,
+                        fontSize = 14.sp,
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
 
-            if (!order.clientPhone.isNullOrBlank()) {
-                Spacer(Modifier.height(4.dp))
+            if (phone != null) {
+                Spacer(Modifier.height(10.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${order.clientPhone}"))
-                        context.startActivity(intent)
-                    },
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(
-                        Icons.Default.Phone,
-                        null,
-                        tint = Color(0xFF6366F1),
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
                     Text(
-                        order.clientPhone,
-                        color = Color(0xFF6366F1),
-                        fontSize = 13.sp,
+                        phone,
+                        color = textPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
                     )
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Accent.copy(alpha = 0.12f))
+                            .clickable {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Phone,
+                            contentDescription = AppStrings.deliveryCallClient(lang),
+                            tint = Accent,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "${formatter.format(order.totalAmount)} ${AppStrings.sumCurrency(lang)}",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = textPrimary,
-            )
-
-            if (order.items.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                order.items.take(5).forEach { item ->
-                    Text(
-                        "• ${item.productName} × ${formatter.format(item.quantity)} ${item.unit}",
-                        color = textMuted,
-                        fontSize = 12.sp,
-                    )
-                }
-                if (order.items.size > 5) {
-                    Text(
-                        "+${order.items.size - 5} ${AppStrings.items(lang)}",
-                        color = textMuted,
-                        fontSize = 12.sp,
-                    )
-                }
-            }
-
-            // Navigator tugmasi
             if (canNavigate) {
                 Spacer(Modifier.height(12.dp))
-                Divider(color = textMuted.copy(alpha = 0.15f))
-                Spacer(Modifier.height(10.dp))
                 Button(
-                    onClick = {
-                        val uri = if (hasCoords) {
-                            Uri.parse("google.navigation:q=${order.clientLatitude},${order.clientLongitude}&mode=d")
-                        } else {
-                            Uri.parse("google.navigation:q=${Uri.encode(order.clientAddress!!)}&mode=d")
-                        }
-                        val intent = Intent(Intent.ACTION_VIEW, uri)
-                        intent.setPackage("com.google.android.apps.maps")
-                        if (intent.resolveActivity(context.packageManager) != null) {
-                            context.startActivity(intent)
-                        } else {
-                            // Fallback: Yandex Navigator yoki boshqa maps
-                            val fallback = if (hasCoords) {
-                                Uri.parse("yandexnavi://build_route_on_map?lat_to=${order.clientLatitude}&lon_to=${order.clientLongitude}")
-                            } else {
-                                Uri.parse("geo:0,0?q=${Uri.encode(order.clientAddress!!)}")
-                            }
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, fallback))
-                            } catch (_: Exception) {
-                                // Hech qanday navigator yo'q — oddiy maps ochiladi
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://maps.google.com/?q=${order.clientLatitude ?: ""},${order.clientLongitude ?: ""}"),
-                                    ),
-                                )
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
-                    shape = RoundedCornerShape(10.dp),
+                    onClick = { openNavigation(context, order) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(vertical = 10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp),
                 ) {
                     Icon(
                         Icons.Default.Navigation,
@@ -381,5 +307,39 @@ private fun DeliveryOrderCard(
                 }
             }
         }
+    }
+}
+
+internal fun openNavigation(context: Context, order: OrderDto) {
+    val hasCoords = order.clientLatitude != null && order.clientLongitude != null
+    val uri = if (hasCoords) {
+        Uri.parse("google.navigation:q=${order.clientLatitude},${order.clientLongitude}&mode=d")
+    } else {
+        Uri.parse("google.navigation:q=${Uri.encode(order.clientAddress.orEmpty())}&mode=d")
+    }
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+    intent.setPackage("com.google.android.apps.maps")
+    if (intent.resolveActivity(context.packageManager) != null) {
+        context.startActivity(intent)
+        return
+    }
+    val fallback = if (hasCoords) {
+        Uri.parse(
+            "yandexnavi://build_route_on_map?lat_to=${order.clientLatitude}&lon_to=${order.clientLongitude}",
+        )
+    } else {
+        Uri.parse("geo:0,0?q=${Uri.encode(order.clientAddress.orEmpty())}")
+    }
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, fallback))
+    } catch (_: Exception) {
+        context.startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse(
+                    "https://maps.google.com/?q=${order.clientLatitude ?: ""},${order.clientLongitude ?: ""}",
+                ),
+            ),
+        )
     }
 }

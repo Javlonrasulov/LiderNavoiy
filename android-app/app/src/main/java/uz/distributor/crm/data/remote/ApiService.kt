@@ -83,6 +83,37 @@ interface ApiService {
     @GET("orders/delivery")
     suspend fun getDeliveryOrders(): List<OrderDto>
 
+    @GET("terminals/my")
+    suspend fun getMyTerminals(): List<PaymentTerminalDto>
+
+    @PATCH("orders/{id}/deliver")
+    suspend fun deliverOrder(
+        @Path("id") id: String,
+        @Body body: DeliverOrderRequest,
+    ): Map<String, Any>
+
+    @POST("orders/{id}/payments")
+    suspend fun collectOrderPayment(
+        @Path("id") id: String,
+        @Body body: CollectPaymentRequest,
+    ): Map<String, Any>
+
+    @PATCH("orders/{id}/payments/due")
+    suspend fun updatePaymentDue(
+        @Path("id") id: String,
+        @Body body: UpdateDueAtRequest,
+    ): Map<String, Any>
+
+    @Multipart
+    @POST("orders/upload-payment-photo")
+    suspend fun uploadPaymentPhoto(@Part file: MultipartBody.Part): PaymentPhotoUploadDto
+
+    @POST("orders/{id}/returns")
+    suspend fun createOrderReturn(
+        @Path("id") id: String,
+        @Body body: CreateReturnRequest,
+    ): Map<String, Any>
+
     @PATCH("orders/{id}/send-to-warehouse")
     suspend fun sendOrderToWarehouse(
         @Path("id") id: String,

@@ -214,6 +214,9 @@ data class OrderDto(
     val clientId: String,
     val createdAt: String,
     @JsonAdapter(FlexibleDoubleAdapter::class) val totalAmount: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val paidAmount: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val returnedAmount: Double = 0.0,
+    val paymentStatus: String? = null,
     val items: List<OrderItemDto> = emptyList(),
     val status: String? = null,
     val source: String? = null,
@@ -227,7 +230,15 @@ data class OrderDto(
     val deliveryDistributorId: String? = null,
     val updatedAt: String? = null,
     val isUrgent: Boolean = false,
-)
+) {
+    val remainingBalance: Double
+        get() = (totalAmount - returnedAmount - paidAmount).coerceAtLeast(0.0)
+
+    val needsPaymentFollowUp: Boolean
+        get() = status == "delivered" &&
+            (paymentStatus == "unpaid" || paymentStatus == "partial") &&
+            remainingBalance > 0.01
+}
 
 data class SendToWarehouseRequest(
     val isUrgent: Boolean = false,
@@ -318,6 +329,44 @@ data class UploadResponseDto(
     val fileSize: Int,
     val messageType: String,
 )
+
+data class PaymentPhotoUploadDto(
+    val url: String,
+    val fullUrl: String? = null,
+)
+
+data class PaymentTerminalDto(
+    val id: String,
+    val name: String,
+    val code: String? = null,
+    val isActive: Boolean = true,
+)
+
+data class DeliverOrderRequest(
+    val paymentMethod: String,
+    val terminalId: String? = null,
+    val amount: Double? = null,
+    val dueAt: String? = null,
+    val photoUrl: String? = null,
+)
+
+data class CollectPaymentRequest(
+    val paymentMethod: String,
+    val terminalId: String? = null,
+    val amount: Double,
+    val dueAt: String? = null,
+    val photoUrl: String? = null,
+)
+
+data class UpdateDueAtRequest(
+    val dueAt: String,
+)
+
+data class CreateReturnRequest(
+    val items: List<OrderItemDto>,
+    val note: String? = null,
+)
+
 data class StartConversationRequest(val userId: String)
 
 data class PlanCategoryDto(

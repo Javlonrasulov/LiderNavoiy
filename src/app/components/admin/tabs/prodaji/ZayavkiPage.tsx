@@ -17,7 +17,7 @@ function hasApiToken(): boolean {
 
 /* ─── Types ────────────────────────────────────────────────── */
 type Status    = 'pri' | 'otr' | 'cancelled';
-type FilterTab = 'all' | 'notShipped' | 'notProcessed' | 'deleted';
+type FilterTab = 'all' | 'notShipped' | 'notProcessed' | 'deleted' | 'vozvrat';
 
 export type Zayavka = ZayavkaRow & { id: string | number };
 
@@ -112,6 +112,18 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   const [loading,      setLoading]      = useState(false);
   const [loadError,    setLoadError]    = useState<string | null>(null);
   const [backendReady, setBackendReady] = useState(hasApiToken());
+  const [returns, setReturns] = useState<Array<{
+    id: string;
+    orderId: string;
+    status: string;
+    items: Array<{ productName: string; quantity: number; price: number }>;
+    totalAmount: number;
+    clientName?: string | null;
+    clientCode?: string | null;
+    note?: string | null;
+    createdAt: string;
+  }>>([]);
+  const [returnsLoading, setReturnsLoading] = useState(false);
 
   const companyId = selectedCompanyIds?.size === 1
     ? [...selectedCompanyIds][0]
@@ -142,6 +154,26 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
   }, [companyId]);
 
   useEffect(() => { refreshOrders(); }, [refreshOrders]);
+
+  useEffect(() => {
+    if (tab !== 'vozvrat' || !hasApiToken()) {
+      setReturns([]);
+      return;
+    }
+    let cancelled = false;
+    setReturnsLoading(true);
+    api.getReturns('pending')
+      .then((list) => {
+        if (!cancelled) setReturns(list);
+      })
+      .catch(() => {
+        if (!cancelled) setReturns([]);
+      })
+      .finally(() => {
+        if (!cancelled) setReturnsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [tab]);
 
   useEffect(() => {
     const handler = () => { refreshOrders(); };
@@ -241,6 +273,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
     { id: 'notShipped',   label: t.zNotShipped   ?? 'Не отгруженные' },
     { id: 'notProcessed', label: t.zNotProcessed ?? 'Не проведенные' },
     { id: 'deleted',      label: t.zDeleted      ?? 'Удалённые'      },
+    { id: 'vozvrat',      label: t.zVozvrat      ?? 'Vozvrat'        },
   ];
 
   /* ── Convert pendingOrders → Zayavka rows ── */
@@ -899,8 +932,88 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
           </div>
         )}
         {filterTabsRow}
-        {toolbarRow}
+        {tab !== 'vozvrat' && toolbarRow}
 
+        {tab === 'vozvrat' ? (
+          <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
+            {returnsLoading && <div style={{ color: muted, padding: 16 }}>…</div>}
+            {!returnsLoading && returns.length === 0 && (
+              <div style={{ color: muted, padding: 24, textAlign: 'center' }}>
+                {t.zVozvratEmpty ?? 'Vozvrat so\'rovlari yo\'q'}
+              </div>
+            )}
+            {returns.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  background: card,
+                  border: `1px solid ${brd}`,
+                  borderRadius: 12,
+                  padding: 14,
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, color: txt }}>
+                      {r.clientName ?? 'Klient'} {r.clientCode ? `(${r.clientCode})` : ''}
+                    </div>
+                    <div style={{ fontSize: 12, color: muted }}>
+                      {new Date(r.createdAt).toLocaleString()} · {Math.round(r.totalAmount).toLocaleString()} сум
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await api.acceptReturn(r.id);
+                        setReturns((prev) => prev.filter((x) => x.id !== r.id));
+                      }}
+                      style={{
+                        border: 'none',
+                        background: '#22c55e',
+                        color: '#fff',
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}
+                    >
+                      {t.zAccept ?? 'Qabul'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await api.rejectReturn(r.id);
+                        setReturns((prev) => prev.filter((x) => x.id !== r.id));
+                      }}
+                      style={{
+                        border: `1px solid ${brd}`,
+                        background: 'transparent',
+                        color: muted,
+                        borderRadius: 8,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                      }}
+                    >
+                      {t.zReject ?? 'Rad'}
+                    </button>
+                  </div>
+                </div>
+                {r.items.map((it, i) => (
+                  <div key={i} style={{ fontSize: 12, color: muted }}>
+                    • {it.productName} × {it.quantity}
+                  </div>
+                ))}
+                {r.note && (
+                  <div style={{ fontSize: 12, color: muted, marginTop: 6 }}>{r.note}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
         {/* DESKTOP TABLE */}
         <div className="desktop-only" style={{ flex:1, display:'none', flexDirection:'column', minHeight:0 }}>
           {tableInner(tableRef)}
@@ -1014,6 +1127,8 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* ── DETAIL MODAL ── */}

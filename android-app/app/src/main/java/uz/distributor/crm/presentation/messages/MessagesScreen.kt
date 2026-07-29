@@ -32,6 +32,7 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.SherinPageHeader
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
 import java.time.ZoneId
@@ -95,8 +96,14 @@ fun MessagesScreen(
             .ifBlank { "?" }
     }
 
+    val navBottom = bottomNavHeight()
+
     Box(Modifier.fillMaxSize().background(listBg)) {
-        Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = navBottom),
+        ) {
             val onContactsTab = state.selectedTab == MessagesListTab.CONTACTS
             SherinPageHeader(
                 title = if (onContactsTab) AppStrings.contactsTab(lang) else AppStrings.messagesTitle(lang),
@@ -269,7 +276,7 @@ private fun ChatsTabContent(
         else -> {
             LazyColumn(
                 modifier = modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 8.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
             ) {
                 items(filtered, key = { it.id }) { conv ->
                     ConversationRow(

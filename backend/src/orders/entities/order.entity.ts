@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-import { OrderStatus, OrderSource } from '../../common/enums';
+import { OrderStatus, OrderSource, OrderPaymentStatus } from '../../common/enums';
 
 @Entity('orders')
 @Index(['distributorId', 'createdAt'])
@@ -42,6 +42,18 @@ export class Order {
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  paidAmount: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  returnedAmount: number;
+
+  @Column({ type: 'varchar', default: OrderPaymentStatus.UNPAID })
+  paymentStatus: OrderPaymentStatus;
+
+  @Column({ type: 'varchar', nullable: true })
+  lastPaymentPhotoUrl: string | null;
 
   @Column({ type: 'jsonb', default: [] })
   items: OrderItem[];

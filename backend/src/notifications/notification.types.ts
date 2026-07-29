@@ -8,6 +8,8 @@ export enum NotificationType {
   GPS = 'gps',
   SYSTEM = 'system',
   MESSAGE = 'message',
+  PAYMENT = 'payment',
+  PAYMENT_REMINDER = 'payment_reminder',
 }
 
 export const NOTIFICATION_TEMPLATES = {

@@ -34,6 +34,31 @@ export enum OrderSource {
   CLIENT = 'client',
 }
 
+export enum PaymentMethod {
+  CASH = 'cash',
+  TERMINAL = 'terminal',
+  DEFERRED = 'deferred',
+}
+
+export enum PaymentStatus {
+  PENDING = 'pending',
+  PARTIAL = 'partial',
+  PAID = 'paid',
+  CANCELLED = 'cancelled',
+}
+
+export enum OrderPaymentStatus {
+  UNPAID = 'unpaid',
+  PARTIAL = 'partial',
+  PAID = 'paid',
+}
+
+export enum OrderReturnStatus {
+  PENDING = 'pending',
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+}
+
 export enum SyncStatus {
   PENDING = 'pending',
   SYNCED = 'synced',

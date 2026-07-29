@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { DistributorsModule } from './distributors/distributors.module';
 import { GpsModule } from './gps/gps.module';
@@ -20,6 +21,9 @@ import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
 import { PromotionsModule } from './promotions/promotions.module';
+import { TerminalsModule } from './terminals/terminals.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ReturnsModule } from './returns/returns.module';
 import { RedisModule } from './common/redis/redis.module';
 import { User } from './auth/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
@@ -30,6 +34,7 @@ import { BootSeedService } from './common/boot-seed.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService): TypeOrmModuleOptions => {
@@ -83,6 +88,9 @@ import { BootSeedService } from './common/boot-seed.service';
     CompaniesModule,
     PlansModule,
     PromotionsModule,
+    TerminalsModule,
+    PaymentsModule,
+    ReturnsModule,
   ],
   providers: [BootSeedService],
 })

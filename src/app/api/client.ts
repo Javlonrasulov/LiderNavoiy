@@ -1025,6 +1025,65 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // ─── Payment terminals ───
+  getTerminals: (companyId?: string) =>
+    request<
+      Array<{
+        id: string;
+        name: string;
+        code: string | null;
+        companyId: string | null;
+        assignedDistributorId: string | null;
+        assignedName?: string | null;
+        isActive: boolean;
+      }>
+    >(`/terminals${companyId ? `?companyId=${companyId}` : ''}`),
+
+  createTerminal: (body: {
+    name: string;
+    code?: string | null;
+    companyId?: string | null;
+    assignedDistributorId?: string | null;
+    isActive?: boolean;
+  }) =>
+    request('/terminals', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateTerminal: (
+    id: string,
+    body: {
+      name?: string;
+      code?: string | null;
+      companyId?: string | null;
+      assignedDistributorId?: string | null;
+      isActive?: boolean;
+    },
+  ) =>
+    request(`/terminals/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  deleteTerminal: (id: string) =>
+    request(`/terminals/${id}`, { method: 'DELETE' }),
+
+  getReturns: (status?: string) =>
+    request<
+      Array<{
+        id: string;
+        orderId: string;
+        status: string;
+        items: Array<{ productName: string; quantity: number; price: number }>;
+        totalAmount: number;
+        clientName?: string | null;
+        clientCode?: string | null;
+        note?: string | null;
+        createdAt: string;
+      }>
+    >(`/returns${status ? `?status=${status}` : ''}`),
+
+  acceptReturn: (id: string) =>
+    request(`/returns/${id}/accept`, { method: 'PATCH' }),
+
+  rejectReturn: (id: string) =>
+    request(`/returns/${id}/reject`, { method: 'PATCH' }),
+
   // ─── Health ───
   health: (init?: RequestInit) => request<{ status: string }>('/health', init),
 

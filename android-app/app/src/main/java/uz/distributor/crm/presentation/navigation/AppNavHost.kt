@@ -34,6 +34,7 @@ import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
+import uz.distributor.crm.presentation.delivery.DeliveryOrderDetailScreen
 import uz.distributor.crm.presentation.delivery.DeliveryOrdersScreen
 import uz.distributor.crm.presentation.location.LocationScreen
 import uz.distributor.crm.presentation.messages.ChatScreen
@@ -101,7 +102,7 @@ fun AppNavHost(
     }
 
     LaunchedEffect(currentRoute, isDeliveryPerson) {
-        if (currentRoute == "delivery" && !isDeliveryPerson) {
+        if (currentRoute?.startsWith("delivery") == true && !isDeliveryPerson) {
             navController.navigate("main") {
                 popUpTo("main") { inclusive = true }
                 launchSingleTop = true
@@ -213,7 +214,19 @@ fun AppNavHost(
         }
         composable("delivery") {
             if (isDeliveryPerson) {
-                DeliveryOrdersScreen()
+                DeliveryOrdersScreen(
+                    onOrderClick = { id -> navController.navigate("delivery/$id") },
+                )
+            }
+        }
+        composable(
+            route = "delivery/{orderId}",
+            arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+        ) {
+            if (isDeliveryPerson) {
+                DeliveryOrderDetailScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
         composable(
