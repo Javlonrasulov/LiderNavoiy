@@ -44,6 +44,9 @@ class AuthRepository @Inject constructor(
 
     val isLoggedIn: Flow<Boolean> = context.authDataStore.data.map { it[accessTokenKey] != null }
 
+    /** Interceptor retry uchun joriy access token. */
+    suspend fun peekAccessToken(): String? = tokenHolder.getToken()
+
     suspend fun login(username: String, password: String): AuthTokens {
         val response = api.login(LoginRequest(username, password))
         if (response.user.role != "client") {

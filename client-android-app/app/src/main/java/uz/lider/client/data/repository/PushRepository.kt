@@ -3,6 +3,7 @@ package uz.lider.client.data.repository
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import uz.lider.client.data.local.TokenHolder
 import uz.lider.client.data.remote.ApiService
 import javax.inject.Inject
@@ -15,7 +16,13 @@ class PushRepository @Inject constructor(
 ) {
     suspend fun registerCurrentToken() {
         if (tokenHolder.getToken() == null) return
-        val fcmToken = FirebaseMessaging.getInstance().token.await()
+        // FCM getToken() ba'zan hech qachon tugamaydi — login spinner osilib qolmasin
+        val fcmToken = withTimeoutOrNull(8_000) {
+            FirebaseMessaging.getInstance().token.await()
+        } ?: run {
+            Log.w(TAG, "FCM token timeout — skip push register")
+            return
+        }
         registerToken(fcmToken)
     }
 

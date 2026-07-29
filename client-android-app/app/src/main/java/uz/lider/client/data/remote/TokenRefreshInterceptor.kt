@@ -37,6 +37,15 @@ class TokenRefreshInterceptor @Inject constructor(
                 .build()
         }
 
-        return chain.proceed(request)
+        // Yangi access token bilan qayta so‘rov (eski Authorization header qayta ishlatilmasin)
+        val newToken = runBlocking { authRepository.get().peekAccessToken() }
+        val retry = if (!newToken.isNullOrBlank()) {
+            request.newBuilder()
+                .header("Authorization", "Bearer $newToken")
+                .build()
+        } else {
+            request
+        }
+        return chain.proceed(retry)
     }
 }

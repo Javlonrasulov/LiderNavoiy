@@ -56,8 +56,9 @@ class LoginViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true, errorKey = null) }
             try {
                 authRepository.login(username, password)
-                runCatching { pushRepository.registerCurrentToken() }
+                // Avval kirish — FCM kutish loginni bloklamasin
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                runCatching { pushRepository.registerCurrentToken() }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, errorKey = ApiErrorMapper.toKey(e))

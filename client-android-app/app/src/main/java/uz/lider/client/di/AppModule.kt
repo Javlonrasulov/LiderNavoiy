@@ -58,8 +58,12 @@ object AppModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
+            // Render free-tier cold start 30–60s+ bo‘lishi mumkin
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
     }
 
