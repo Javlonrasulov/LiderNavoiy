@@ -163,11 +163,12 @@ object AppStrings {
     fun deliveryRemaining(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
     fun deliveryAmountLabel(lang: AppLanguage) = tr(lang, "Summa", "Сумма", "Сумма")
     fun deliveryDueAtLabel(lang: AppLanguage) = tr(lang, "To'lov muddati", "Тўлов муддати", "Срок оплаты")
+    fun deliveryTimeLabel(lang: AppLanguage) = tr(lang, "Vaqt", "Вақт", "Время")
     fun deliveryPhotoOptional(lang: AppLanguage) = tr(
         lang,
-        "Rasm (ixtiyoriy)",
-        "Расм (ихтиёрий)",
-        "Фото (необязательно)",
+        "Pul olgan odamingiz rasmi (ixtiyoriy)",
+        "Пул олган одамингиз расми (ихтиёрий)",
+        "Фото человека, у которого взяли деньги (необязательно)",
     )
     fun deliveryGallery(lang: AppLanguage) = tr(lang, "Galereya", "Галерея", "Галерея")
     fun deliveryCamera(lang: AppLanguage) = tr(lang, "Kamera", "Камера", "Камера")
@@ -185,7 +186,7 @@ object AppStrings {
         "Сана/вақтни тўғри киритинг",
         "Укажите корректную дату/время",
     )
-    fun deliveryReturnTitle(lang: AppLanguage) = tr(lang, "Vozvrat", "Возврат", "Возврат")
+    fun deliveryReturnTitle(lang: AppLanguage) = tr(lang, "Vozvrat", "Қайтариш", "Возврат")
     fun deliveryReturnHint(lang: AppLanguage) = tr(
         lang,
         "Qaytariladigan mahsulotlarni tanlang",
@@ -202,7 +203,7 @@ object AppStrings {
     fun deliveryReturnRequested(lang: AppLanguage) = tr(
         lang,
         "Vozvrat so'rovi yuborildi",
-        "Возврат сўрови юборилди",
+        "Қайтариш сўрови юборилди",
         "Заявка на возврат отправлена",
     )
     fun deliveryPaymentOk(lang: AppLanguage) = tr(
@@ -313,13 +314,27 @@ object AppStrings {
     fun messagesTitle(lang: AppLanguage) = navLabel(NavTab.MESSAGES, lang)
     fun search(lang: AppLanguage) = tr(lang, "Qidirish...", "Қидириш...", "Поиск...")
     fun noChats(lang: AppLanguage) = tr(lang, "Xabar yo'q", "Хабар йўқ", "Нет сообщений")
+    fun chatEmpty(lang: AppLanguage) = tr(
+        lang,
+        "Hali xabar yo'q — yozishni boshlang",
+        "Ҳали хабар йўқ — ёзишни бошланг",
+        "Пока нет сообщений — начните переписку",
+    )
     fun msgLoadError(lang: AppLanguage) = tr(lang, "Serverga ulanib bo'lmadi", "Серверга уланиб бўлмади", "Не удалось подключиться к серверу")
     fun startChat(lang: AppLanguage) = tr(lang, "Suhbat boshlash", "Суҳбат бошлаш", "Начать чат")
     fun selectContact(lang: AppLanguage) = tr(lang, "Kontaktni tanlang", "Контактни танланг", "Выберите контакт")
     fun chatsTab(lang: AppLanguage) = tr(lang, "Suhbatlar", "Суҳбатлар", "Чаты")
     fun contactsTab(lang: AppLanguage) = tr(lang, "Kontaktlar", "Контактлар", "Контакты")
+    fun clientsChatTab(lang: AppLanguage) = tr(lang, "Klientlar", "Клиентлар", "Клиенты")
     fun noContacts(lang: AppLanguage) = tr(lang, "Kontakt topilmadi", "Контакт топилмади", "Контакты не найдены")
+    fun noClientContacts(lang: AppLanguage) = tr(
+        lang,
+        "Biriktirilgan klientlar topilmadi (yoki ilova login yo'q)",
+        "Бириктирилган клиентлар топилмади (ёки илова логин йўқ)",
+        "Нет закреплённых клиентов (или нет логина в приложении)",
+    )
     fun searchContacts(lang: AppLanguage) = tr(lang, "Kontaktlarni qidirish", "Контактларни қидириш", "Поиск контактов")
+    fun searchClientContacts(lang: AppLanguage) = tr(lang, "Klientlarni qidirish", "Клиентларни қидириш", "Поиск клиентов")
     fun contactsCount(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "$count ta kontakt"
         AppLanguage.UZ_CYRILLIC -> "$count та контакт"
@@ -327,10 +342,18 @@ object AppStrings {
         else if (count % 10 in 2..4 && count % 100 !in 12..14) "$count контакта"
         else "$count контактов"
     }
+    fun clientsChatCount(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta klient"
+        AppLanguage.UZ_CYRILLIC -> "$count та клиент"
+        AppLanguage.RUS -> if (count % 10 == 1 && count % 100 != 11) "$count клиент"
+        else if (count % 10 in 2..4 && count % 100 !in 12..14) "$count клиента"
+        else "$count клиентов"
+    }
     fun userRoleLabel(lang: AppLanguage, role: String) = when (role.lowercase()) {
         "admin" -> tr(lang, "Admin", "Админ", "Админ")
         "manager" -> tr(lang, "Menejer", "Менежер", "Менеджер")
         "distributor" -> tr(lang, "Agent", "Агент", "Агент")
+        "client" -> tr(lang, "Klient", "Клиент", "Клиент")
         else -> role
     }
     fun serverHint(lang: AppLanguage, host: String) = when (lang) {
@@ -343,14 +366,14 @@ object AppStrings {
     fun attachDoc(lang: AppLanguage) = tr(lang, "Hujjat", "Ҳужжат", "Документ")
     fun previewImage(lang: AppLanguage) = tr(lang, "Rasm", "Расм", "Фото")
     fun previewFile(lang: AppLanguage) = tr(lang, "Fayl", "Файл", "Файл")
-    fun msgLoading(lang: AppLanguage) = tr(lang, "Yuklanmoqda...", "Юкланмоқda...", "Загрузка...")
+    fun msgLoading(lang: AppLanguage) = tr(lang, "Yuklanmoqda...", "Юкланмоқда...", "Загрузка...")
     fun msgDelete(lang: AppLanguage) = tr(lang, "O'chirish", "Ўчириш", "Удалить")
     fun msgForward(lang: AppLanguage) = tr(lang, "Yuborish", "Юбориш", "Переслать")
-    fun msgCancel(lang: AppLanguage) = tr(lang, "Bekor qilish", "Бекор қilish", "Отмена")
-    fun msgDeleteConfirm(lang: AppLanguage) = tr(lang, "Ushbu xabarni o'chirish?", "Ушбу хabarni ўчириш?", "Удалить это сообщение?")
+    fun msgCancel(lang: AppLanguage) = tr(lang, "Bekor qilish", "Бекор қилиш", "Отмена")
+    fun msgDeleteConfirm(lang: AppLanguage) = tr(lang, "Ushbu xabarni o'chirish?", "Ушбу хабарни ўчириш?", "Удалить это сообщение?")
     fun msgDeleteForAll(lang: AppLanguage, name: String) = when (lang) {
         AppLanguage.UZ_LATIN -> "Shuningdek $name uchun ham o'chirish"
-        AppLanguage.UZ_CYRILLIC -> "Шунингdek $name учун ҳам ўчириш"
+        AppLanguage.UZ_CYRILLIC -> "Шунингдек $name учун ҳам ўчириш"
         AppLanguage.RUS -> "Также удалить для $name"
     }
     fun todayClients(lang: AppLanguage) = tr(lang, "Bugungi klientlar", "Бугунги клиентлар", "Сегодняшние клиенты")
@@ -363,12 +386,12 @@ object AppStrings {
         else if (count % 10 in 2..4 && count % 100 !in 12..14) "$count товара"
         else "$count товаров"
     }
-    fun productAvailable(lang: AppLanguage) = tr(lang, "Mavjud", "Mavjud", "В наличии")
-    fun productColCode(lang: AppLanguage) = tr(lang, "Kod", "Kod", "Код")
-    fun productColName(lang: AppLanguage) = tr(lang, "Mahsulot", "Mahsulot", "Товар")
-    fun productColBrand(lang: AppLanguage) = tr(lang, "Brend", "Brend", "Бренд")
-    fun productColPrice(lang: AppLanguage) = tr(lang, "Narx", "Narx", "Цена")
-    fun productColUnit(lang: AppLanguage) = tr(lang, "O'lchov", "O'lchov", "Ед.")
+    fun productAvailable(lang: AppLanguage) = tr(lang, "Mavjud", "Мавжуд", "В наличии")
+    fun productColCode(lang: AppLanguage) = tr(lang, "Kod", "Код", "Код")
+    fun productColName(lang: AppLanguage) = tr(lang, "Mahsulot", "Маҳсулот", "Товар")
+    fun productColBrand(lang: AppLanguage) = tr(lang, "Brend", "Бренд", "Бренд")
+    fun productColPrice(lang: AppLanguage) = tr(lang, "Narx", "Нарх", "Цена")
+    fun productColUnit(lang: AppLanguage) = tr(lang, "O'lchov", "Ўлчов", "Ед.")
     fun productUnitsPerPack(lang: AppLanguage) = tr(lang, "sht. up", "шт.уп", "шт.уп")
     fun productNetto(lang: AppLanguage) = "Netto"
     fun productBrutto(lang: AppLanguage) = "Brutto"
@@ -432,7 +455,7 @@ object AppStrings {
     fun errorProductsLoadFailed(lang: AppLanguage) = tr(
         lang,
         "Mahsulotlar yuklanmadi. Internet yoki serverni tekshiring",
-        "Маҳсулотлар юкланмади. Инternet ёки серверни текширинг",
+        "Маҳсулотлар юкланмади. Интернет ёки серверни текширинг",
         "Не удалось загрузить товары. Проверьте интернет или сервер",
     )
     fun errorProductsNotFound(lang: AppLanguage) = tr(
@@ -497,38 +520,53 @@ object AppStrings {
     fun reconciliationDocTitle(lang: AppLanguage) = tr(
         lang,
         "Hisoblashuv dalolatnomasi",
-        "Ҳisoblashuv dalolatnomasi",
+        "Ҳисоблашув далолатномаси",
         "Акт сверки",
     )
-    fun periodLabel(lang: AppLanguage) = tr(lang, "Davr", "Davr", "Период")
-    fun colDate(lang: AppLanguage) = tr(lang, "Sana", "Sana", "Дата")
-    fun colOperation(lang: AppLanguage) = tr(lang, "Operatsiya", "Operatsiya", "Операция")
-    fun colDebit(lang: AppLanguage) = tr(lang, "Debet", "Debet", "Дебет")
-    fun colCredit(lang: AppLanguage) = tr(lang, "Kredit", "Kredit", "Кредит")
-    fun totalTurnover(lang: AppLanguage) = tr(lang, "Jami oborot", "Jami oborot", "Итого оборот")
+    fun periodLabel(lang: AppLanguage) = tr(lang, "Davr", "Давр", "Период")
+    fun colDate(lang: AppLanguage) = tr(lang, "Sana", "Сана", "Дата")
+    fun colOperation(lang: AppLanguage) = tr(lang, "Operatsiya", "Операция", "Операция")
+    fun colDebit(lang: AppLanguage) = tr(lang, "Debet", "Дебет", "Дебет")
+    fun colCredit(lang: AppLanguage) = tr(lang, "Kredit", "Кредит", "Кредит")
+    fun totalTurnover(lang: AppLanguage) = tr(lang, "Jami oborot", "Жами оборот", "Итого оборот")
     fun debtAmount(lang: AppLanguage, amount: String) = when (lang) {
         AppLanguage.UZ_LATIN -> "Qarz $amount sum"
-        AppLanguage.UZ_CYRILLIC -> "Қarz $amount sum"
+        AppLanguage.UZ_CYRILLIC -> "Қарз $amount сум"
         AppLanguage.RUS -> "Долг $amount сум"
     }
-    fun selectDateRange(lang: AppLanguage) = tr(lang, "Davrni tanlang", "Davrni tanlang", "Выберите период")
-    fun applyDateRange(lang: AppLanguage) = tr(lang, "Tanlash", "Tanlash", "Выбрать")
+    fun selectDateRange(lang: AppLanguage) = tr(lang, "Davrni tanlang", "Даврни танланг", "Выберите период")
+    fun applyDateRange(lang: AppLanguage) = tr(lang, "Tanlash", "Танлаш", "Выбрать")
     fun payment(lang: AppLanguage) = tr(lang, "To'lov", "Тўлов", "Оплата")
     fun phoneLabel(lang: AppLanguage) = tr(lang, "Telefon", "Телефон", "Телефон")
-    fun addressLabel(lang: AppLanguage) = tr(lang, "Manzil", "Мanzil", "Адрес")
+    fun addressLabel(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
     fun landmarkLabel(lang: AppLanguage) = tr(lang, "Orientr", "Ориентр", "Ориентир")
     fun categoryLabel(lang: AppLanguage) = tr(lang, "Kategoriya", "Категория", "Категория")
     fun agentLabel(lang: AppLanguage) = tr(lang, "Agent", "Агент", "Агент")
-    fun selectPaymentType(lang: AppLanguage) = tr(lang, "To'lov turini tanlang", "Тўлов turini tanlang", "Выберите тип оплаты")
-    fun paymentCash(lang: AppLanguage) = tr(lang, "Naxt", "Нaqd", "Наличные")
-    fun paymentCashDesc(lang: AppLanguage) = tr(lang, "Naqd pul", "Нaqd pul", "Наличные")
+    fun selectPaymentType(lang: AppLanguage) = tr(
+        lang,
+        "To'lov turini tanlang",
+        "Тўлов турини танланг",
+        "Выберите тип оплаты",
+    )
+    fun paymentCash(lang: AppLanguage) = tr(lang, "Naqd", "Нақд", "Наличные")
+    fun paymentCashDesc(lang: AppLanguage) = tr(lang, "Naqd pul", "Нақд пул", "Наличные")
     fun paymentCard(lang: AppLanguage) = tr(lang, "Bank karta", "Банк карта", "Банковская карта")
-    fun paymentCardDesc(lang: AppLanguage) = tr(lang, "Terminal orqali", "Terminal orqali", "Через терминал")
+    fun paymentCardDesc(lang: AppLanguage) = tr(lang, "Terminal orqali", "Терминал орқали", "Через терминал")
     fun paymentTransfer(lang: AppLanguage) = tr(lang, "Pul ko'chirish", "Пул кўчириш", "Перевод")
-    fun paymentTransferDesc(lang: AppLanguage) = tr(lang, "Bank hisobi orqali", "Bank hisobi orqali", "Через банковский счёт")
-    fun enterAmount(lang: AppLanguage) = tr(lang, "Summani kiriting", "Summani kiriting", "Введите сумму")
-    fun selectTerminal(lang: AppLanguage) = tr(lang, "Terminalni tanlang", "Terminalni tanlang", "Выберите терминал")
-    fun paymentAccepted(lang: AppLanguage) = tr(lang, "To'lov qabul qilindi", "Тўлов qabul qilindi", "Оплата принята")
+    fun paymentTransferDesc(lang: AppLanguage) = tr(
+        lang,
+        "Bank hisobi orqali",
+        "Банк ҳисоби орқали",
+        "Через банковский счёт",
+    )
+    fun enterAmount(lang: AppLanguage) = tr(lang, "Summani kiriting", "Суммани киритинг", "Введите сумму")
+    fun selectTerminal(lang: AppLanguage) = tr(lang, "Terminalni tanlang", "Терминални танланг", "Выберите терминал")
+    fun paymentAccepted(lang: AppLanguage) = tr(
+        lang,
+        "To'lov qabul qilindi",
+        "Тўлов қабул қилинди",
+        "Оплата принята",
+    )
     fun comingSoon(lang: AppLanguage) = tr(
         lang,
         "Ishlab chiqish jarayonida",
@@ -544,7 +582,7 @@ object AppStrings {
     fun paymentTransferSoon(lang: AppLanguage) = tr(
         lang,
         "Pul ko'chirish tez orada ishga tushadi",
-        "Пул кўчириш tez orada ishga tushadi",
+        "Пул кўчириш тез орада ишга тушади",
         "Перевод скоро будет доступен",
     )
     fun clientNotFound(lang: AppLanguage) = tr(lang, "Klient topilmadi", "Клиент топилмади", "Клиент не найден")
@@ -563,14 +601,14 @@ object AppStrings {
     fun reload(lang: AppLanguage) = tr(lang, "Qayta yuklash", "Қайта юклаш", "Перезагрузить")
     fun noProductsInCategory(lang: AppLanguage) = tr(lang, "Bu kategoriyada mahsulot yo'q", "Бу категорияда маҳсулот йўқ", "В этой категории нет товаров")
     fun stock(lang: AppLanguage) = tr(lang, "Sklad", "Склад", "Склад")
-    fun priceLabel(lang: AppLanguage) = tr(lang, "Narx", "Нarx", "Цена")
-    fun quantityLabel(lang: AppLanguage) = tr(lang, "Miqdor", "Мiqdor", "Количество")
-    fun commentPlaceholder(lang: AppLanguage) = tr(lang, "Izoh...", "Izoh...", "Комментарий...")
+    fun priceLabel(lang: AppLanguage) = tr(lang, "Narx", "Нарх", "Цена")
+    fun quantityLabel(lang: AppLanguage) = tr(lang, "Miqdor", "Миқдор", "Количество")
+    fun commentPlaceholder(lang: AppLanguage) = tr(lang, "Izoh...", "Изоҳ...", "Комментарий...")
     fun addToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shish", "Саватга қўшиш", "В корзину")
     fun addedToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shildi", "Саватга қўшилди", "Добавлено в корзину")
     fun cartPreviewTitle(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "Savatcha · $count ta"
-        AppLanguage.UZ_CYRILLIC -> "Саватча · $count ta"
+        AppLanguage.UZ_CYRILLIC -> "Саватча · $count та"
         AppLanguage.RUS -> "Корзина · $count шт."
     }
     fun cartEmpty(lang: AppLanguage) = tr(lang, "Savatcha bo'sh", "Саватча бўш", "Корзина пуста")
@@ -668,14 +706,14 @@ object AppStrings {
     fun planClearDates(lang: AppLanguage) = tr(lang, "Tozalash", "Тозалаш", "Сбросить")
 
     fun addClientTitle(lang: AppLanguage) = tr(lang, "Yangi mijoz", "Янги мижоз", "Новый клиент")
-    fun clientName(lang: AppLanguage) = tr(lang, "Ism (do'kon nomi)", "Исм (до'кон номи)", "Название")
+    fun clientName(lang: AppLanguage) = tr(lang, "Ism (do'kon nomi)", "Исм (дўкон номи)", "Название")
     fun clientInn(lang: AppLanguage) = tr(lang, "INN", "ИНН", "ИНН")
     fun clientPhone(lang: AppLanguage) = tr(lang, "Telefon raqami", "Телефон рақами", "Номер телефона")
     fun clientAddress(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
     fun clientLine(lang: AppLanguage) = tr(lang, "Liniya", "Линия", "Линия")
     fun selectLine(lang: AppLanguage) = tr(lang, "Liniyani tanlang", "Линияни танланг", "Выберите линию")
     fun clientLocation(lang: AppLanguage) = tr(lang, "Xaritada joyi", "Харитада жойи", "Место на карте")
-    fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дo'кон расми", "Фото магазина")
+    fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дўкон расми", "Фото магазина")
     fun useMyLocation(lang: AppLanguage) = tr(lang, "Mening joyim", "Менинг жойим", "Моё местоположение")
     fun tapMapHint(lang: AppLanguage) = tr(
         lang,
@@ -727,13 +765,13 @@ object AppStrings {
     fun errorPhotoRequired(lang: AppLanguage) = tr(
         lang,
         "Do'kon rasmini qo'shing",
-        "Дo'кон расмини қo'shing",
+        "Дўкон расмини қўшинг",
         "Добавьте фото магазина",
     )
     fun errorLocationFailed(lang: AppLanguage) = tr(
         lang,
         "Joylashuv aniqlanmadi — GPS ruxsatini yoqing",
-        "Жойлашув аниқланмади — GPS рuxsatini ёqing",
+        "Жойлашув аниқланмади — GPS рухсатини ёқинг",
         "Не удалось определить местоположение — включите GPS",
     )
     fun errorSaveFailed(lang: AppLanguage) = tr(lang, "Saqlashda xatolik", "Сақлашда хатолик", "Ошибка сохранения")

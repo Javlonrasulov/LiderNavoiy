@@ -32,7 +32,6 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.SherinPageHeader
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.time.Instant
 import java.time.ZoneId
@@ -67,24 +66,17 @@ fun MessagesScreen(
     }
 
     val filteredContacts = remember(search, state.contacts) {
-        state.contacts
-            .distinctBy { it.id }
-            .filter { contact ->
-                val name = contact.fullName.orEmpty()
-                val user = contact.username.orEmpty()
-                name.contains(search, ignoreCase = true) ||
-                    user.contains(search, ignoreCase = true)
-            }
-            .sortedWith(
-                compareBy(
-                    { sectionLetter(it.fullName.orEmpty()) },
-                    { it.fullName.orEmpty().lowercase() },
-                ),
-            )
+        filterContacts(state.contacts, search)
+    }
+    val filteredClientContacts = remember(search, state.clientContacts) {
+        filterContacts(state.clientContacts, search)
     }
 
     val contactListItems = remember(filteredContacts) {
         buildContactListItems(filteredContacts)
+    }
+    val clientContactListItems = remember(filteredClientContacts) {
+        buildContactListItems(filteredClientContacts)
     }
 
     val totalUnread = state.conversations.sumOf { it.unreadCount }
@@ -96,24 +88,27 @@ fun MessagesScreen(
             .ifBlank { "?" }
     }
 
-    val navBottom = bottomNavHeight()
-
     Box(Modifier.fillMaxSize().background(listBg)) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(bottom = navBottom),
-        ) {
-            val onContactsTab = state.selectedTab == MessagesListTab.CONTACTS
+        Column(Modifier.fillMaxSize()) {
+            val headerTitle = when (state.selectedTab) {
+                MessagesListTab.CONTACTS -> AppStrings.contactsTab(lang)
+                MessagesListTab.CLIENTS -> AppStrings.clientsChatTab(lang)
+                MessagesListTab.CHATS -> AppStrings.messagesTitle(lang)
+            }
+            val searchPlaceholder = when (state.selectedTab) {
+                MessagesListTab.CONTACTS -> AppStrings.searchContacts(lang)
+                MessagesListTab.CLIENTS -> AppStrings.searchClientContacts(lang)
+                MessagesListTab.CHATS -> AppStrings.search(lang)
+            }
             SherinPageHeader(
-                title = if (onContactsTab) AppStrings.contactsTab(lang) else AppStrings.messagesTitle(lang),
+                title = headerTitle,
                 isDark = isDark,
                 onBack = { onNavigate(NavTab.HOME) },
                 searchQuery = search,
                 onSearchChange = { search = it },
-                searchPlaceholder = if (onContactsTab) AppStrings.searchContacts(lang) else AppStrings.search(lang),
+                searchPlaceholder = searchPlaceholder,
                 centerBadge = {
-                    if (!onContactsTab && totalUnread > 0) {
+                    if (state.selectedTab == MessagesListTab.CHATS && totalUnread > 0) {
                         Box(
                             Modifier
                                 .background(Color(0xFFEF4444), CircleShape)
@@ -133,8 +128,6 @@ fun MessagesScreen(
                 lang = lang,
             )
 
-            // weight to‘g‘ridan-to‘g‘ri Column bolasida — aks holda list balandligi qisqarib
-            // pastida oq “blok” ko‘rinadi va nomlar uning orqasida qolib ketadi.
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (state.selectedTab) {
                     MessagesListTab.CHATS -> ChatsTabContent(
@@ -147,7 +140,7 @@ fun MessagesScreen(
                         lang = lang,
                         apiHost = apiHost,
                         onReload = { viewModel.load() },
-                        onOpenContacts = { viewModel.selectTab(MessagesListTab.CONTACTS) },
+                        onOpenContacts = { viewModel.selectTab(MessagesListTab.CLIENTS) },
                         onChatClick = onChatClick,
                         previewLast = { previewLast(it, lang) },
                     )
@@ -158,7 +151,21 @@ fun MessagesScreen(
                         error = state.error,
                         isDark = isDark,
                         lang = lang,
+                        emptyMessage = AppStrings.noContacts(lang),
+                        countLabel = { AppStrings.contactsCount(lang, it) },
                         onReload = { viewModel.loadContacts(force = true) },
+                        onContactClick = { viewModel.startConversation(it, onChatClick) },
+                    )
+                    MessagesListTab.CLIENTS -> ContactsTabContent(
+                        modifier = Modifier.fillMaxSize(),
+                        isLoading = state.clientContactsLoading,
+                        listItems = clientContactListItems,
+                        error = state.error,
+                        isDark = isDark,
+                        lang = lang,
+                        emptyMessage = AppStrings.noClientContacts(lang),
+                        countLabel = { AppStrings.clientsChatCount(lang, it) },
+                        onReload = { viewModel.loadClientContacts(force = true) },
                         onContactClick = { viewModel.startConversation(it, onChatClick) },
                     )
                 }
@@ -181,6 +188,7 @@ private fun MessagesTabRow(
     val tabs = listOf(
         MessagesListTab.CHATS to AppStrings.chatsTab(lang),
         MessagesListTab.CONTACTS to AppStrings.contactsTab(lang),
+        MessagesListTab.CLIENTS to AppStrings.clientsChatTab(lang),
     )
 
     Column(Modifier.fillMaxWidth().background(bg)) {
@@ -196,9 +204,10 @@ private fun MessagesTabRow(
                 ) {
                     Text(
                         label,
-                        fontSize = 15.sp,
+                        fontSize = 13.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (isSelected) activeColor else inactiveColor,
+                        maxLines = 1,
                     )
                     if (isSelected) {
                         Box(
@@ -304,6 +313,8 @@ private fun ContactsTabContent(
     error: String?,
     isDark: Boolean,
     lang: uz.distributor.crm.localization.AppLanguage,
+    emptyMessage: String,
+    countLabel: (Int) -> String,
     onReload: () -> Unit,
     onContactClick: (String) -> Unit,
 ) {
@@ -328,7 +339,7 @@ private fun ContactsTabContent(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(
-                    if (error != null) AppStrings.apiError(lang, error) else AppStrings.noContacts(lang),
+                    if (error != null) AppStrings.apiError(lang, error) else emptyMessage,
                     color = Color(0xFF9CA3AF),
                     textAlign = TextAlign.Center,
                 )
@@ -356,7 +367,7 @@ private fun ContactsTabContent(
                     when (item) {
                         is ContactListItem.Summary -> {
                             Text(
-                                AppStrings.contactsCount(lang, item.count),
+                                countLabel(item.count),
                                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                                 fontSize = 14.sp,
                                 color = Color(0xFF6AB2F2),
@@ -389,6 +400,23 @@ private fun ContactsTabContent(
             }
         }
     }
+}
+
+private fun filterContacts(contacts: List<ChatContactDto>, search: String): List<ChatContactDto> {
+    return contacts
+        .distinctBy { it.id }
+        .filter { contact ->
+            val name = contact.fullName.orEmpty()
+            val user = contact.username.orEmpty()
+            name.contains(search, ignoreCase = true) ||
+                user.contains(search, ignoreCase = true)
+        }
+        .sortedWith(
+            compareBy(
+                { sectionLetter(it.fullName.orEmpty()) },
+                { it.fullName.orEmpty().lowercase() },
+            ),
+        )
 }
 
 private sealed class ContactListItem {

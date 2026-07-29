@@ -6,6 +6,7 @@ import { Conversation } from './entities/conversation.entity';
 import { ChatMessage } from './entities/chat-message.entity';
 import { MessageDeletion } from './entities/message-deletion.entity';
 import { User } from '../auth/entities/user.entity';
+import { Client } from '../clients/entities/client.entity';
 import { MessagesService } from './messages.service';
 import { MessagesController } from './messages.controller';
 import { MessagesGateway } from './messages.gateway';
@@ -14,7 +15,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, ChatMessage, MessageDeletion, User]),
+    TypeOrmModule.forFeature([Conversation, ChatMessage, MessageDeletion, User, Client]),
     NotificationsModule,
     ConfigModule,
     JwtModule.register({}),

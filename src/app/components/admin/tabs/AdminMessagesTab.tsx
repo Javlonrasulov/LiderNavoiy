@@ -177,12 +177,15 @@ export function AdminMessagesTab() {
     setLoading(true);
     setError(null);
     try {
-      const [convs, cts] = await Promise.all([
+      const [convs, staff, clients] = await Promise.all([
         api.getConversations(),
         api.getContacts(selectedCompany?.id),
+        api.getClientContacts().catch(() => [] as ChatContact[]),
       ]);
       setConversations(convs);
-      setContacts(cts);
+      const byId = new Map<string, ChatContact>();
+      for (const c of [...staff, ...clients]) byId.set(c.id, c);
+      setContacts([...byId.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz')));
       triggerUnreadRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);

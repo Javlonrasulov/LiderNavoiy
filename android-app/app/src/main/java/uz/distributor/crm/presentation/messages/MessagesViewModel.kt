@@ -17,7 +17,7 @@ import uz.distributor.crm.data.repository.MessageRepository
 import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import javax.inject.Inject
 
-enum class MessagesListTab { CHATS, CONTACTS }
+enum class MessagesListTab { CHATS, CONTACTS, CLIENTS }
 
 data class MessagesUiState(
     val isLoading: Boolean = true,
@@ -25,6 +25,9 @@ data class MessagesUiState(
     val contacts: List<ChatContactDto> = emptyList(),
     val contactsLoading: Boolean = false,
     val contactsLoaded: Boolean = false,
+    val clientContacts: List<ChatContactDto> = emptyList(),
+    val clientContactsLoading: Boolean = false,
+    val clientContactsLoaded: Boolean = false,
     val selectedTab: MessagesListTab = MessagesListTab.CHATS,
     val myUserId: String? = null,
     val error: String? = null,
@@ -72,12 +75,15 @@ class MessagesViewModel @Inject constructor(
 
     fun selectTab(tab: MessagesListTab) {
         _uiState.update { it.copy(selectedTab = tab, error = null) }
-        if (tab == MessagesListTab.CONTACTS) {
-            loadContacts(force = true)
+        when (tab) {
+            MessagesListTab.CONTACTS -> loadContacts(force = true)
+            MessagesListTab.CLIENTS -> loadClientContacts(force = true)
+            MessagesListTab.CHATS -> Unit
         }
     }
 
     fun loadContacts(force: Boolean = false) {
+        if (!force && _uiState.value.contactsLoaded) return
         if (_uiState.value.contactsLoading) return
         viewModelScope.launch {
             _uiState.update { it.copy(contactsLoading = true, error = null) }
@@ -94,6 +100,29 @@ class MessagesViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(contactsLoading = false, error = ApiErrorMapper.toKey(e))
+                }
+            }
+        }
+    }
+
+    fun loadClientContacts(force: Boolean = false) {
+        if (!force && _uiState.value.clientContactsLoaded) return
+        if (_uiState.value.clientContactsLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(clientContactsLoading = true, error = null) }
+            try {
+                val clients = messageRepository.getClientContacts()
+                _uiState.update {
+                    it.copy(
+                        clientContacts = clients,
+                        clientContactsLoaded = true,
+                        clientContactsLoading = false,
+                        error = null,
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(clientContactsLoading = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }

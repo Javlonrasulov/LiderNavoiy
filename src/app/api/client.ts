@@ -1135,6 +1135,8 @@ export const api = {
   getContacts: (companyId?: string) =>
     request<ChatContact[]>(`/messages/contacts${companyId ? `?companyId=${companyId}` : ''}`),
 
+  getClientContacts: () => request<ChatContact[]>('/messages/client-contacts'),
+
   getConversations: () => request<ChatConversation[]>('/messages/conversations'),
 
   startConversation: (userId: string) =>

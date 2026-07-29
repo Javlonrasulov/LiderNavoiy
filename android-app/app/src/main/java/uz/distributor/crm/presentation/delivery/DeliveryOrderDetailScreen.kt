@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
@@ -60,7 +59,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import java.text.DecimalFormat
 
 private val Accent = Color(0xFF6366F1)
@@ -81,7 +79,6 @@ fun DeliveryOrderDetailScreen(
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
     val chipBg = if (isDark) Color(0xFF17212B) else Color.White
-    val bottomPad = bottomNavHeight()
     val context = LocalContext.current
 
     var showDeliverSheet by remember { mutableStateOf(false) }
@@ -190,9 +187,6 @@ fun DeliveryOrderDetailScreen(
                 } else {
                     AppStrings.deliveryStatusDelivered(lang)
                 }
-                val canNavigate =
-                    (order.clientLatitude != null && order.clientLongitude != null) ||
-                        !order.clientAddress.isNullOrBlank()
                 val name = order.clientName ?: AppStrings.clientFallback(lang)
                 val remaining = order.remainingBalance
 
@@ -203,7 +197,7 @@ fun DeliveryOrderDetailScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
                         .padding(top = 16.dp)
-                        .padding(bottom = bottomPad + 24.dp),
+                        .padding(bottom = 16.dp),
                 ) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -411,31 +405,6 @@ fun DeliveryOrderDetailScreen(
                             Text(
                                 AppStrings.deliveryReturnTitle(lang),
                                 color = Color(0xFFEF4444),
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp,
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                    }
-
-                    if (canNavigate) {
-                        Button(
-                            onClick = { openNavigation(context, order) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(vertical = 14.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.Navigation,
-                                null,
-                                modifier = Modifier.size(20.dp),
-                                tint = Color.White,
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                AppStrings.deliveryNavigate(lang),
-                                color = Color.White,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 15.sp,
                             )

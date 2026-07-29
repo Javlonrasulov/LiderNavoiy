@@ -34,6 +34,8 @@ class MessageRepository @Inject constructor(
 
     suspend fun getContacts(): List<ChatContactDto> = api.getChatContacts()
 
+    suspend fun getClientContacts(): List<ChatContactDto> = api.getClientChatContacts()
+
     suspend fun startConversation(userId: String): ConversationDto =
         api.startConversation(StartConversationRequest(userId))
 

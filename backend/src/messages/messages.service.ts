@@ -11,6 +11,7 @@ import { Conversation } from './entities/conversation.entity';
 import { ChatMessage } from './entities/chat-message.entity';
 import { MessageDeletion } from './entities/message-deletion.entity';
 import { User } from '../auth/entities/user.entity';
+import { Client } from '../clients/entities/client.entity';
 import { UserRole } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
@@ -73,6 +74,8 @@ export class MessagesService {
     private readonly deletionRepo: Repository<MessageDeletion>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
   ) {}
@@ -118,14 +121,99 @@ export class MessagesService {
   }
 
   async getContacts(userId: string, _companyId?: string): Promise<ChatUserDto[]> {
-    // Barcha rollardagi faol foydalanuvchilar (admin, menejer, agent, klient)
+    // Xodimlar: admin, menejer, agent (klientlar alohida — client-contacts)
     const users = await this.userRepo
       .createQueryBuilder('u')
       .where('u.isActive = :active', { active: true })
       .andWhere('u.id != :userId', { userId })
+      .andWhere('u.role != :clientRole', { clientRole: UserRole.CLIENT })
       .orderBy('u.fullName', 'ASC')
       .getMany();
     return users.map((u) => this.toUserDto(u));
+  }
+
+  /**
+   * Agentga biriktirilgan va ilova loginiga ega klientlar.
+   * Admin/menejer — barcha faol klient akkauntlari.
+   */
+  async getClientContacts(userId: string): Promise<ChatUserDto[]> {
+    const viewer = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['distributorProfile'],
+    });
+    if (!viewer) return [];
+
+    if (viewer.role === UserRole.DISTRIBUTOR) {
+      const distributorId = viewer.distributorProfile?.id;
+      if (!distributorId) return [];
+
+      const clients = await this.clientRepo.find({
+        where: { distributorId, isActive: true },
+        select: ['id', 'name', 'code'],
+      });
+      if (!clients.length) return [];
+
+      const clientIds = clients.map((c) => c.id);
+      const users = await this.userRepo.find({
+        where: {
+          role: UserRole.CLIENT,
+          isActive: true,
+          clientId: In(clientIds),
+        },
+      });
+
+      const clientMap = new Map(clients.map((c) => [c.id, c]));
+      return users
+        .map((u) => {
+          const client = u.clientId ? clientMap.get(u.clientId) : undefined;
+          return {
+            id: u.id,
+            fullName: (client?.name || u.fullName || u.username).trim(),
+            role: u.role,
+            username: u.username,
+          };
+        })
+        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
+    }
+
+    if (viewer.role === UserRole.ADMIN || viewer.role === UserRole.MANAGER) {
+      const users = await this.userRepo.find({
+        where: { role: UserRole.CLIENT, isActive: true },
+        relations: ['client'],
+      });
+      return users
+        .map((u) => ({
+          id: u.id,
+          fullName: (u.client?.name || u.fullName || u.username).trim(),
+          role: u.role,
+          username: u.username,
+        }))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
+    }
+
+    return [];
+  }
+
+  private async assertCanStartConversation(actorId: string, other: User) {
+    if (other.role !== UserRole.CLIENT) return;
+
+    const actor = await this.userRepo.findOne({
+      where: { id: actorId },
+      relations: ['distributorProfile'],
+    });
+    if (!actor) throw new ForbiddenException('Not allowed');
+
+    // Agent faqat o'ziga biriktirilgan klient bilan yozishadi
+    if (actor.role === UserRole.DISTRIBUTOR) {
+      const distributorId = actor.distributorProfile?.id;
+      if (!distributorId || !other.clientId) {
+        throw new ForbiddenException('Client is not assigned to you');
+      }
+      const client = await this.clientRepo.findOne({ where: { id: other.clientId } });
+      if (!client || client.distributorId !== distributorId) {
+        throw new ForbiddenException('Client is not assigned to you');
+      }
+    }
   }
 
   async findOrCreateConversation(userId: string, otherUserId: string): Promise<ConversationDto> {
@@ -135,6 +223,8 @@ export class MessagesService {
 
     const other = await this.userRepo.findOne({ where: { id: otherUserId, isActive: true } });
     if (!other) throw new NotFoundException('User not found');
+
+    await this.assertCanStartConversation(userId, other);
 
     const [low, high] = this.pairIds(userId, otherUserId);
     let conv = await this.convRepo.findOne({ where: { userLowId: low, userHighId: high } });

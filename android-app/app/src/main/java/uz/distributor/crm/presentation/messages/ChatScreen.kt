@@ -1,16 +1,14 @@
 package uz.distributor.crm.presentation.messages
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -32,13 +31,8 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -48,10 +42,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
@@ -64,7 +64,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
     conversationId: String,
@@ -78,8 +78,10 @@ fun ChatScreen(
     var showAttach by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteForEveryone by remember { mutableStateOf(true) }
+    var previewImageUrl by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val selectionMode = state.selectedIds.isNotEmpty()
     val canDeleteForAll = state.selectedIds.any { id ->
         state.messages.find { it.id == id }?.senderId == state.myUserId
@@ -126,21 +128,55 @@ fun ChatScreen(
     val other = state.conversation?.otherUser
     val title = other?.fullName ?: AppStrings.messagesTitle(lang)
 
+    previewImageUrl?.let { url ->
+        Dialog(
+            onDismissRequest = { previewImageUrl = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .clickable { previewImageUrl = null },
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(url).crossfade(true).build(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentScale = ContentScale.Fit,
+                )
+                IconButton(
+                    onClick = { previewImageUrl = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(8.dp),
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             if (selectionMode) {
                 TopAppBar(
-                    title = {},
-                    navigationIcon = {},
-                    actions = {
-                        TextButton(onClick = { /* forward */ }, enabled = false) {
-                            Text(
-                                "${AppStrings.msgForward(lang).uppercase()} ${state.selectedIds.size}",
-                                color = Color(0xFF6AB2F2).copy(alpha = 0.5f),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
+                    title = {
+                        Text(
+                            "${state.selectedIds.size}",
+                            color = textPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = textPrimary)
                         }
+                    },
+                    actions = {
                         TextButton(onClick = {
                             deleteForEveryone = canDeleteForAll
                             showDeleteDialog = true
@@ -169,7 +205,11 @@ fun ChatScreen(
                         Column {
                             Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
                             other?.role?.let {
-                                Text(it, fontSize = 12.sp, color = textMuted)
+                                Text(
+                                    AppStrings.userRoleLabel(lang, it),
+                                    fontSize = 12.sp,
+                                    color = textMuted,
+                                )
                             }
                         }
                     },
@@ -219,7 +259,7 @@ fun ChatScreen(
                             .fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(AppStrings.noChats(lang), color = textMuted, fontSize = 14.sp)
+                        Text(AppStrings.chatEmpty(lang), color = textMuted, fontSize = 14.sp)
                     }
                 } else {
                     LazyColumn(
@@ -236,7 +276,12 @@ fun ChatScreen(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.toggleSelection(msg.id) },
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (selectionMode) viewModel.toggleSelection(msg.id)
+                                        },
+                                        onLongClick = { viewModel.toggleSelection(msg.id) },
+                                    ),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 MessageBubble(
@@ -248,6 +293,18 @@ fun ChatScreen(
                                     textPrimary = textPrimary,
                                     textMuted = textMuted,
                                     resolveUrl = { viewModel.resolveFileUrl(it) },
+                                    onImageClick = { url ->
+                                        if (!selectionMode) previewImageUrl = url
+                                    },
+                                    onDocumentClick = { url ->
+                                        if (!selectionMode) {
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+                                                )
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier.weight(1f),
                                 )
                                 if (selectionMode) {
@@ -381,7 +438,6 @@ fun ChatScreen(
                         .background(Color.Black.copy(alpha = if (isDark) 0.45f else 0.25f)),
                 )
             }
-
         }
     }
 
@@ -431,7 +487,6 @@ fun ChatScreen(
 
 /** Telegram attach popup o‘lchamlari */
 private val AttachMenuWidth = 248.dp
-private val AttachMenuHeight = 96.dp
 
 @Composable
 private fun AttachPickerMenuContent(
@@ -504,6 +559,8 @@ private fun MessageBubble(
     textPrimary: Color,
     textMuted: Color,
     resolveUrl: (String?) -> String,
+    onImageClick: (String) -> Unit = {},
+    onDocumentClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -521,26 +578,30 @@ private fun MessageBubble(
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp).widthIn(max = 280.dp)) {
                 if (msg.messageType == "image" && !msg.fileUrl.isNullOrBlank()) {
+                    val imageUrl = resolveUrl(msg.fileUrl)
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(resolveUrl(msg.fileUrl))
+                            .data(imageUrl)
                             .crossfade(true)
                             .build(),
                         contentDescription = msg.fileName,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 220.dp)
-                            .clip(RoundedCornerShape(8.dp)),
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onImageClick(imageUrl) },
                         contentScale = ContentScale.Crop,
                     )
                     Spacer(Modifier.height(4.dp))
                 }
                 if (msg.messageType == "document" && !msg.fileUrl.isNullOrBlank()) {
+                    val docUrl = resolveUrl(msg.fileUrl)
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isMine) Color.White.copy(0.1f) else if (isDark) Color(0xFF242F3D) else Color(0xFFF3F4F6))
+                            .clickable { onDocumentClick(docUrl) }
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {

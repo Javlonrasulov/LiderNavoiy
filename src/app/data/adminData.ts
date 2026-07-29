@@ -1748,7 +1748,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     som: 'сум', pieces: 'шт.', productCount: 'товар',
     newAgent: 'Новый агент', newCategory: 'Новая категория',
     newTerminal: 'Новый терминал', newProduct: 'Новый товар',
-    cancel: 'Отмена', save: 'Сохранить',
+    cancel: 'Отмена',
     nameSurname: 'Имя Фамилия', phone: 'Телефон (+998 ...)',
     monthlyPlan: 'Месячный план (сум)', loginLabel: 'Логин', passwordLabel: 'Пароль',
     catName: 'Название категории', catEmoji: 'Эмодзи (напр.: 🥤)',
