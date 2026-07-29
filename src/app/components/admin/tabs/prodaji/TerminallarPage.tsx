@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CreditCard, Plus, Trash2 } from 'lucide-react';
-import { api, type Distributor } from '../../../api/client';
+import { api, type Distributor } from '../../../../api/client';
 
 interface Terminal {
   id: string;
