@@ -4,20 +4,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.repository.DebtRepository
+import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.ProfileRepository
+import uz.lider.client.presentation.components.formatCompactMoney
 import uz.lider.client.presentation.dashboard.DashboardDateFilter
 import uz.lider.client.presentation.dashboard.DashboardDateRange
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class DebtPayment(
     val date: String,
     val amount: String,
+    val amountValue: Double = 0.0,
     val typeKey: String,
     val isPayment: Boolean,
 ) {
@@ -34,30 +42,33 @@ data class DebtPayment(
 
 data class DebtUiState(
     val loading: Boolean = true,
-    val currentDebt: Double = 2_500_000.0,
-    val creditLimit: Double = 10_000_000.0,
-    val allPayments: List<DebtPayment> = defaultPayments,
+    val currentDebt: Double = 0.0,
+    val creditLimit: Double? = null,
+    val allPayments: List<DebtPayment> = emptyList(),
     val dateRange: DashboardDateRange = DashboardDateFilter.lastMonthRange(),
     val filteredPayments: List<DebtPayment> = emptyList(),
     val totalPaid: Double = 0.0,
-) {
-    companion object {
-        private val defaultPayments = listOf(
-            DebtPayment("05.06.2026", "1,500,000", "debt_payment", true),
-            DebtPayment("28.05.2026", "2,000,000", "debt_payment", true),
-            DebtPayment("20.05.2026", "800,000", "debt_added", false),
-            DebtPayment("15.05.2026", "3,200,000", "debt_payment", true),
-        )
-    }
-}
+    val chartValues: List<Float> = emptyList(),
+    val chartLabels: List<String> = emptyList(),
+    val chartValueLabels: List<String> = emptyList(),
+    /** Kalendarda kun ostidagi qarz summasi (faqat qarz qo'shilgan kunlar). */
+    val dayDebtAmounts: Map<LocalDate, Double> = emptyMap(),
+)
 
 @HiltViewModel
 class DebtViewModel @Inject constructor(
+    private val debtRepository: DebtRepository,
     private val profileRepository: ProfileRepository,
+    paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DebtUiState())
     val uiState: StateFlow<DebtUiState> = _uiState.asStateFlow()
+
+    /** To‘lov pushdan keyin 30 daqiqa — rasm eslatmasi */
+    val showPayPhotoBanner: StateFlow<Boolean> = paymentPhotoAlertStore.state
+        .map { it.isActive }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     init {
         load()
@@ -76,17 +87,48 @@ class DebtViewModel @Inject constructor(
     }
 
     private suspend fun reloadQuiet() {
-        val profile = profileRepository.getProfile()
         val range = _uiState.value.dateRange
+        // To'liq tarix — kalendar markerlari + lokal filtr uchun
+        val debt = debtRepository.getDebt()
+
+        if (debt != null) {
+            val dayAmounts = buildDayDebtAmounts(debt.history)
+            val filtered = filterPayments(debt.history, range)
+            val chart = buildDailyChart(filtered, range)
+            _uiState.update { state ->
+                state.copy(
+                    currentDebt = debt.currentDebt,
+                    creditLimit = debt.creditLimit,
+                    allPayments = debt.history,
+                    filteredPayments = filtered,
+                    totalPaid = filtered.filter { it.isPayment }.sumOf { it.amountValue },
+                    chartValues = chart.values,
+                    chartLabels = chart.labels,
+                    chartValueLabels = chart.valueLabels,
+                    dayDebtAmounts = dayAmounts,
+                )
+            }
+            return
+        }
+
+        val profile = profileRepository.getProfile()
+        val currentDebt = profile?.debt?.takeIf { it > 0 }
+            ?: profile?.balance?.let { bal -> if (bal < 0) kotlin.math.abs(bal) else 0.0 }
+            ?: 0.0
         _uiState.update { state ->
-            val payments = state.allPayments
-            val debt = profile?.debt?.takeIf { it > 0 }
-                ?: profile?.balance?.let { bal -> if (bal < 0) kotlin.math.abs(bal) else 0.0 }
-                ?: 0.0
             state.copy(
-                currentDebt = debt,
-                filteredPayments = filterPayments(payments, range),
-                totalPaid = computeTotalPaid(payments, range),
+                currentDebt = currentDebt,
+                creditLimit = null,
+                allPayments = emptyList(),
+                filteredPayments = emptyList(),
+                totalPaid = 0.0,
+                chartValues = listOf(currentDebt.toFloat(), currentDebt.toFloat()),
+                chartLabels = emptyList(),
+                chartValueLabels = listOf(
+                    formatCompactMoney(currentDebt),
+                    formatCompactMoney(currentDebt),
+                ),
+                dayDebtAmounts = emptyMap(),
             )
         }
     }
@@ -107,14 +149,42 @@ class DebtViewModel @Inject constructor(
         applyRange(DashboardDateFilter.lastMonthRange())
     }
 
-    private fun applyRange(range: DashboardDateRange) {
-        _uiState.update { state ->
-            val payments = state.allPayments
-            state.copy(
-                dateRange = range,
-                filteredPayments = filterPayments(payments, range),
-                totalPaid = computeTotalPaid(payments, range),
+    fun selectAll() {
+        val all = _uiState.value.allPayments
+        val dates = all.mapNotNull { it.localDate() }
+        val range = if (dates.isEmpty()) {
+            DashboardDateFilter.lastMonthRange()
+        } else {
+            DashboardDateRange(
+                start = dates.minOrNull()!!,
+                end = dates.maxOrNull()!!.coerceAtMost(LocalDate.now()),
+                isCustom = true,
             )
+        }
+        applyRange(range)
+    }
+
+    private fun applyRange(range: DashboardDateRange) {
+        val all = _uiState.value.allPayments
+        if (all.isNotEmpty()) {
+            val filtered = filterPayments(all, range)
+            val chart = buildDailyChart(filtered, range)
+            _uiState.update { state ->
+                state.copy(
+                    dateRange = range,
+                    filteredPayments = filtered,
+                    totalPaid = filtered.filter { it.isPayment }.sumOf { it.amountValue },
+                    chartValues = chart.values,
+                    chartLabels = chart.labels,
+                    chartValueLabels = chart.valueLabels,
+                )
+            }
+        } else {
+            _uiState.update { it.copy(dateRange = range, loading = true) }
+            viewModelScope.launch {
+                reloadQuiet()
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
@@ -124,10 +194,84 @@ class DebtViewModel @Inject constructor(
             !date.isBefore(range.start) && !date.isAfter(range.end)
         }
 
-    private fun computeTotalPaid(payments: List<DebtPayment>, range: DashboardDateRange): Double =
-        filterPayments(payments, range)
-            .filter { it.isPayment }
-            .sumOf { payment ->
-                payment.amount.replace(",", "").toDoubleOrNull() ?: 0.0
+    private fun buildDayDebtAmounts(payments: List<DebtPayment>): Map<LocalDate, Double> {
+        val map = mutableMapOf<LocalDate, Double>()
+        for (payment in payments) {
+            if (payment.isPayment) continue
+            val date = payment.localDate() ?: continue
+            map[date] = (map[date] ?: 0.0) + payment.amountValue
+        }
+        return map
+    }
+
+    private data class ChartSeries(
+        val values: List<Float>,
+        val labels: List<String>,
+        val valueLabels: List<String>,
+    )
+
+    /** Tanlangan davrdagi kunlik qarz (qo'shilgan) dinamikasi. */
+    private fun buildDailyChart(payments: List<DebtPayment>, range: DashboardDateRange): ChartSeries {
+        val dayFmt = DateTimeFormatter.ofPattern("dd.MM")
+        val totalDays = ChronoUnit.DAYS.between(range.start, range.end).toInt() + 1
+        val debtByDay = payments
+            .filter { !it.isPayment }
+            .groupBy { it.localDate() }
+            .mapNotNull { (d, list) -> d?.let { it to list.sumOf { p -> p.amountValue } } }
+            .toMap()
+
+        if (totalDays <= 1) {
+            val amount = debtByDay[range.start] ?: 0.0
+            val label = range.start.format(dayFmt)
+            val compact = formatCompactMoney(amount)
+            return ChartSeries(
+                values = listOf(amount.toFloat(), amount.toFloat()),
+                labels = listOf(label, label),
+                valueLabels = listOf(compact, compact),
+            )
+        }
+
+        // Ko'p kun bo'lsa — 6–8 nuqtaga guruhlash
+        val pointCount = when {
+            totalDays <= 7 -> totalDays
+            totalDays <= 31 -> minOf(totalDays, 7)
+            else -> 6
+        }
+
+        val values = mutableListOf<Float>()
+        val labels = mutableListOf<String>()
+        val valueLabels = mutableListOf<String>()
+
+        for (i in 0 until pointCount) {
+            val bucketStart = range.start.plusDays((i.toLong() * totalDays) / pointCount)
+            val bucketEnd = if (i == pointCount - 1) {
+                range.end
+            } else {
+                range.start.plusDays(((i + 1).toLong() * totalDays) / pointCount - 1)
             }
+            var sum = 0.0
+            var d = bucketStart
+            while (!d.isAfter(bucketEnd)) {
+                sum += debtByDay[d] ?: 0.0
+                d = d.plusDays(1)
+            }
+            values += sum.toFloat()
+            labels += if (bucketStart == bucketEnd) {
+                bucketStart.format(dayFmt)
+            } else {
+                bucketStart.format(dayFmt)
+            }
+            valueLabels += formatCompactMoney(sum)
+        }
+
+        return if (values.size == 1) {
+            ChartSeries(
+                values = listOf(values[0], values[0]),
+                labels = listOf(labels[0], labels[0]),
+                valueLabels = listOf(valueLabels[0], valueLabels[0]),
+            )
+        } else {
+            ChartSeries(values, labels, valueLabels)
+        }
+    }
 }

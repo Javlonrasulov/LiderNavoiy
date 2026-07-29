@@ -87,6 +87,7 @@ fun OrderTrackingScreen(
     viewModel: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val showMapRoutePayHint by viewModel.showMapRoutePayHint.collectAsState()
     val lang = LocalAppLanguage.current
     val isDark = LiquidTheme.isDark
     val text = LiquidTheme.text
@@ -111,6 +112,8 @@ fun OrderTrackingScreen(
             routeStops = tracking?.routeStops.orEmpty(),
             stopsBeforeYou = tracking?.stopsBeforeYou ?: 0,
             totalStops = tracking?.totalStops ?: 0,
+            showPayPhotoHint = showMapRoutePayHint,
+            onDismissPayPhotoHint = { viewModel.dismissMapRoutePayHint() },
             onDismiss = { showFullScreenMap = false },
         )
     }
@@ -647,9 +650,16 @@ private fun FullScreenOrderTrackingMapDialog(
     routeStops: List<uz.lider.client.domain.model.RouteStopInfo> = emptyList(),
     stopsBeforeYou: Int = 0,
     totalStops: Int = 0,
+    showPayPhotoHint: Boolean = true,
+    onDismissPayPhotoHint: () -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val overlayBg = Color(0xF00B1220)
+    var mapLayer by remember { mutableStateOf(uz.lider.client.map.MapTileSources.defaultLayer) }
+    val navBottom = WindowInsets.navigationBars
+        .asPaddingValues()
+        .calculateBottomPadding()
+        .coerceAtLeast(48.dp)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -684,70 +694,83 @@ private fun FullScreenOrderTrackingMapDialog(
                 routeStops = routeStops,
                 stopsBeforeYou = stopsBeforeYou,
                 totalStops = totalStops,
+                mapLayer = mapLayer,
                 isDark = false,
                 modifier = Modifier.fillMaxSize(),
             )
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(overlayBg),
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = localized("com_back"),
-                        tint = Color.White,
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(overlayBg),
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = localized("com_back"),
+                            tint = Color.White,
+                        )
+                    }
+                    Text(
+                        localized("track_title"),
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .shadow(8.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(overlayBg)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                     )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(overlayBg),
+                    ) {
+                        Icon(
+                            Icons.Default.FullscreenExit,
+                            contentDescription = localized("track_map_minimize"),
+                            tint = Color.White,
+                        )
+                    }
                 }
-                Text(
-                    localized("track_title"),
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .shadow(8.dp, RoundedCornerShape(14.dp))
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(overlayBg)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(overlayBg),
-                ) {
-                    Icon(
-                        Icons.Default.FullscreenExit,
-                        contentDescription = localized("track_map_minimize"),
-                        tint = Color.White,
+                Spacer(Modifier.height(10.dp))
+                if (showPayPhotoHint) {
+                    uz.lider.client.presentation.components.PaymentPhotoReminderBanner(
+                        text = localized("track_pay_photo_hint"),
+                        onDismiss = onDismissPayPhotoHint,
                     )
                 }
             }
+            uz.lider.client.presentation.map.MapLayerPicker(
+                activeLayer = mapLayer,
+                onLayerChange = { mapLayer = it },
+                modifier = Modifier.align(Alignment.BottomStart),
+                bottomPadding = navBottom + 72.dp,
+            )
             TrackingMapInfoOverlay(
                 distance = distance,
                 stopsBeforeYou = stopsBeforeYou,
                 totalStops = totalStops,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = WindowInsets.navigationBars
-                            .asPaddingValues()
-                            .calculateBottomPadding()
-                            .coerceAtLeast(48.dp) + 16.dp,
-                    ),
+                    .padding(bottom = navBottom + 16.dp),
             )
         }
     }

@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus, OrderSource, UserRole } from '../common/enums';
+import { OrderStatus, OrderSource, PaymentStatus, UserRole } from '../common/enums';
 import { Company } from '../companies/entities/company.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
@@ -11,6 +11,7 @@ import { OrdersService } from '../orders/orders.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
 import { PromotionsService } from '../promotions/promotions.service';
+import { OrderPayment } from '../payments/entities/order-payment.entity';
 import { Client } from './entities/client.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
 import { GpsService } from '../gps/gps.service';
@@ -37,6 +38,8 @@ export class ClientPortalService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(UserClientMembership)
     private readonly membershipRepo: Repository<UserClientMembership>,
+    @InjectRepository(OrderPayment)
+    private readonly paymentRepo: Repository<OrderPayment>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
     private readonly promotionsService: PromotionsService,
@@ -792,6 +795,173 @@ export class ClientPortalService {
 
   listPromotions() {
     return this.promotionsService.findActiveForClient();
+  }
+
+  async getDebt(
+    user: User,
+    companyId?: string | null,
+    from?: string,
+    to?: string,
+  ) {
+    const client = await this.resolveActiveClient(user, companyId);
+    const clientId = client.id;
+    const balance = Number(client.balance) || 0;
+    const currentDebt = balance < 0 ? Math.abs(balance) : 0;
+
+    const [orders, payments] = await Promise.all([
+      this.orderRepo.find({
+        where: { clientId },
+        order: { createdAt: 'DESC' },
+        take: 300,
+      }),
+      this.paymentRepo.find({
+        where: { clientId },
+        order: { createdAt: 'DESC' },
+        take: 300,
+      }),
+    ]);
+
+    const validOrders = orders.filter((o) => o.status !== OrderStatus.CANCELLED);
+
+    type HistoryRow = {
+      id: string;
+      date: string;
+      amount: number;
+      type: 'payment' | 'debt';
+      method: string | null;
+      orderId: string | null;
+      createdAt: Date;
+    };
+
+    const history: HistoryRow[] = [];
+
+    for (const payment of payments) {
+      const paid = Number(payment.paidAmount) || 0;
+      if (paid <= 0.01) continue;
+      if (payment.status === PaymentStatus.CANCELLED) continue;
+      history.push({
+        id: `pay-${payment.id}`,
+        date: this.fmtDebtDate(new Date(payment.createdAt)),
+        amount: Math.round(paid),
+        type: 'payment',
+        method: payment.method ?? null,
+        orderId: payment.orderId,
+        createdAt: new Date(payment.createdAt),
+      });
+    }
+
+    for (const order of validOrders) {
+      const amount = Number(order.totalAmount) || 0;
+      if (amount <= 0) continue;
+      // Faqat yetkazilgan buyurtmalar — real qarzdorlik yozuvi
+      if (order.status !== OrderStatus.DELIVERED) continue;
+      history.push({
+        id: `ord-${order.id}`,
+        date: this.fmtDebtDate(new Date(order.createdAt)),
+        amount: Math.round(amount),
+        type: 'debt',
+        method: null,
+        orderId: order.id,
+        createdAt: new Date(order.createdAt),
+      });
+    }
+
+    history.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const fromDate = from ? this.parseDebtDateParam(from) : null;
+    const toDate = to ? this.parseDebtDateParam(to, true) : null;
+
+    const filtered = history.filter((row) => {
+      if (fromDate && row.createdAt < fromDate) return false;
+      if (toDate && row.createdAt > toDate) return false;
+      return true;
+    });
+
+    const totalPaid = filtered
+      .filter((r) => r.type === 'payment')
+      .reduce((s, r) => s + r.amount, 0);
+
+    const monthlyDebt = this.buildMonthlyDebtSeries(
+      currentDebt,
+      history,
+      new Date(),
+      6,
+    );
+
+    return {
+      currentDebt: Math.round(currentDebt),
+      balance: Math.round(balance),
+      creditLimit: null as number | null,
+      totalPaid: Math.round(totalPaid),
+      history: filtered.map(({ createdAt: _c, ...rest }) => rest),
+      monthlyDebt,
+    };
+  }
+
+  private fmtDebtDate(d: Date): string {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}.${month}.${year}`;
+  }
+
+  private parseDebtDateParam(value: string, endOfDay = false): Date | null {
+    const iso = Date.parse(value);
+    if (!Number.isNaN(iso)) {
+      const d = new Date(iso);
+      if (endOfDay) d.setHours(23, 59, 59, 999);
+      return d;
+    }
+    const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
+    if (!m) return null;
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    if (endOfDay) d.setHours(23, 59, 59, 999);
+    else d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  /** Reconstruct approximate month-end debt for the last N months (walk back from current). */
+  private buildMonthlyDebtSeries(
+    currentDebt: number,
+    history: Array<{ type: 'payment' | 'debt'; amount: number; createdAt: Date }>,
+    now: Date,
+    months: number,
+  ) {
+    const events = [...history].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    let running = currentDebt;
+    let eventIdx = 0;
+    const points: { year: number; month: number; amount: number }[] = [];
+
+    for (let i = 0; i < months; i++) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(
+        monthDate.getFullYear(),
+        monthDate.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+
+      while (eventIdx < events.length && events[eventIdx].createdAt > monthEnd) {
+        const ev = events[eventIdx];
+        // Reverse apply: undo payment → debt up; undo order → debt down
+        if (ev.type === 'payment') running += ev.amount;
+        else running -= ev.amount;
+        eventIdx += 1;
+      }
+
+      points.push({
+        year: monthDate.getFullYear(),
+        month: monthDate.getMonth() + 1,
+        amount: Math.max(0, Math.round(running)),
+      });
+    }
+
+    return points.reverse();
   }
 
   async getAnalytics(user: User, period: 'week' | 'month' | 'year' = 'month', companyId?: string | null) {

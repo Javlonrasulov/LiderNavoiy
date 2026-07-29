@@ -7,17 +7,24 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.local.AgentLocationHolder
 import uz.distributor.crm.data.remote.TrackingSocketManager
+import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.data.repository.AppSettingsRepository
+import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
+import uz.distributor.crm.data.repository.DeliveryRepository
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.localization.AppLanguage
 import javax.inject.Inject
 
 data class LocationUiState(
+    val isDeliveryPerson: Boolean = false,
     val clients: List<Client> = emptyList(),
+    /** Dostavchik: yuklangan (on_way) + to'lov kutayotgan buyurtmalar */
+    val deliveryOrders: List<OrderDto> = emptyList(),
     val agentLocation: LocationPoint? = null,
     val selectedClient: Client? = null,
+    val selectedOrderId: String? = null,
     val selectedDay: String = "today",
     val sheetFraction: Float = 0.42f,
     val isLoading: Boolean = true,
@@ -27,6 +34,8 @@ data class LocationUiState(
 @HiltViewModel
 class LocationViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
+    private val deliveryRepository: DeliveryRepository,
+    private val authRepository: AuthRepository,
     private val agentLocationHolder: AgentLocationHolder,
     private val trackingSocket: TrackingSocketManager,
     private val appSettingsRepository: AppSettingsRepository,
@@ -55,7 +64,12 @@ class LocationViewModel @Inject constructor(
                     _uiState.update { it.copy(agentLocation = loc) }
                 }
         }
-        loadClients()
+        viewModelScope.launch {
+            val user = authRepository.getUserFlow().first()
+            val isDelivery = user?.isDeliveryPerson() == true
+            _uiState.update { it.copy(isDeliveryPerson = isDelivery) }
+            if (isDelivery) loadDeliveryOrders() else loadClients()
+        }
     }
 
     fun loadClients() {
@@ -66,8 +80,34 @@ class LocationViewModel @Inject constructor(
         }
     }
 
+    fun loadDeliveryOrders() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val orders = sortDeliveryOrders(deliveryRepository.getAssignedOrders())
+                _uiState.update {
+                    it.copy(
+                        deliveryOrders = orders,
+                        isLoading = false,
+                        selectedOrderId = it.selectedOrderId?.takeIf { id -> orders.any { o -> o.id == id } },
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isLoading = false, deliveryOrders = emptyList()) }
+            }
+        }
+    }
+
+    fun refresh() {
+        if (_uiState.value.isDeliveryPerson) loadDeliveryOrders() else loadClients()
+    }
+
     fun selectClient(client: Client) {
-        _uiState.update { it.copy(selectedClient = client) }
+        _uiState.update { it.copy(selectedClient = client, selectedOrderId = null) }
+    }
+
+    fun selectOrder(order: OrderDto) {
+        _uiState.update { it.copy(selectedOrderId = order.id, selectedClient = null) }
     }
 
     fun setSelectedDay(day: String) {
@@ -75,7 +115,7 @@ class LocationViewModel @Inject constructor(
     }
 
     fun updateSheetFraction(fraction: Float) {
-        _uiState.update { it.copy(sheetFraction = fraction.coerceIn(0.22f, 0.72f)) }
+        _uiState.update { it.copy(sheetFraction = fraction.coerceIn(0.22f, 0.88f)) }
     }
 
     fun toggleDarkMode() {
@@ -88,6 +128,9 @@ class LocationViewModel @Inject constructor(
 
     fun filteredClients(): List<Client> {
         val state = _uiState.value
+        if (state.isDeliveryPerson) {
+            return state.deliveryOrders.map { it.toMapClient() }
+        }
         val dayKey = when (state.selectedDay) {
             "today" -> {
                 val cal = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
@@ -108,4 +151,32 @@ class LocationViewModel @Inject constructor(
         }
         return byDay.ifEmpty { state.clients }
     }
+
+    fun selectedMapId(): String? {
+        val state = _uiState.value
+        return if (state.isDeliveryPerson) state.selectedOrderId else state.selectedClient?.id
+    }
+
+    private fun sortDeliveryOrders(orders: List<OrderDto>): List<OrderDto> {
+        val onWay = orders.filter { it.status == "on_way" }
+            .sortedWith(
+                compareBy<OrderDto> { it.deliverySequence ?: Int.MAX_VALUE }
+                    .thenByDescending { it.updatedAt ?: it.createdAt },
+            )
+        val rest = orders.filter { it.status != "on_way" }
+            .sortedByDescending { it.updatedAt ?: it.createdAt }
+        return onWay + rest
+    }
 }
+
+/** Xarita markerlari uchun Order → Client (id = order.id) */
+private fun OrderDto.toMapClient(): Client = Client(
+    id = id,
+    code = clientCode.orEmpty(),
+    name = clientName.orEmpty().ifBlank { clientCode.orEmpty() },
+    address = clientAddress,
+    balance = remainingBalance,
+    latitude = clientLatitude,
+    longitude = clientLongitude,
+    phone = clientPhone,
+)

@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import uz.lider.client.R
+import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.presentation.MainActivity
 
 object NotificationHelper {
@@ -33,10 +34,14 @@ object NotificationHelper {
         context: Context,
         title: String,
         body: String,
+        type: String? = null,
+        orderId: String? = null,
         notificationId: Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (!type.isNullOrBlank()) putExtra(PaymentPhotoAlertStore.EXTRA_TYPE, type)
+            if (!orderId.isNullOrBlank()) putExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, orderId)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,

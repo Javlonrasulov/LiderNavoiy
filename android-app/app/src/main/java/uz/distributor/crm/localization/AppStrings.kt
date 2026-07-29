@@ -1,4 +1,4 @@
-﻿package uz.distributor.crm.localization
+package uz.distributor.crm.localization
 
 import uz.distributor.crm.presentation.components.NavTab
 
@@ -182,6 +182,12 @@ object AppStrings {
     fun deliveryRemaining(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
     fun deliveryAmountLabel(lang: AppLanguage) = tr(lang, "Summa", "Сумма", "Сумма")
     fun deliveryDueAtLabel(lang: AppLanguage) = tr(lang, "To'lov muddati", "Тўлов муддати", "Срок оплаты")
+    fun deliveryPromisedUntil(lang: AppLanguage) = tr(
+        lang,
+        "Vada qilingan",
+        "Ваъда қилинган",
+        "Обещано до",
+    )
     fun deliveryTimeLabel(lang: AppLanguage) = tr(lang, "Vaqt", "Вақт", "Время")
     fun deliveryPhotoOptional(lang: AppLanguage) = tr(
         lang,

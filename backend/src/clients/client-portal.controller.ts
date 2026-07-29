@@ -130,6 +130,23 @@ export class ClientPortalController {
     );
   }
 
+  @Get('debt')
+  @ApiOperation({ summary: 'Client debt summary, history and monthly dynamics' })
+  debt(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.getDebt(
+      req.user,
+      this.companyId(headers, companyId),
+      from,
+      to,
+    );
+  }
+
   @Get('promotions')
   @ApiOperation({ summary: 'Active promotions for client app' })
   promotions() {

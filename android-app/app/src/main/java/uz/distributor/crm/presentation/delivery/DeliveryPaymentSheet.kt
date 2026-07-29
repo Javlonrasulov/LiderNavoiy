@@ -486,6 +486,7 @@ fun DeliveryDueAtSheet(
     isDark: Boolean,
     lang: AppLanguage,
     isSubmitting: Boolean,
+    initialDueAt: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (dueAt: String) -> Unit,
 ) {
@@ -494,8 +495,9 @@ fun DeliveryDueAtSheet(
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
     val subColor = Color(0xFF9CA3AF)
     val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
-    var dueDate by remember { mutableStateOf(LocalDate.now()) }
-    var dueTime by remember { mutableStateOf("18:00") }
+    val initialParts = remember(visible, initialDueAt) { parseDueAtParts(initialDueAt) }
+    var dueDate by remember(visible, initialDueAt) { mutableStateOf(initialParts.first) }
+    var dueTime by remember(visible, initialDueAt) { mutableStateOf(initialParts.second) }
     var showCalendar by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -900,6 +902,20 @@ internal fun buildDueAtIso(date: String, time: String): String? {
     } catch (_: Exception) {
         null
     }
+}
+
+/** Mavjud dueAt ISO dan sana + vaqt (HH:mm). */
+internal fun parseDueAtParts(iso: String?): Pair<LocalDate, String> {
+    val fallback = LocalDate.now() to "18:00"
+    if (iso.isNullOrBlank()) return fallback
+    return runCatching {
+        val zdt = java.time.OffsetDateTime.parse(iso).atZoneSameInstant(java.time.ZoneId.systemDefault())
+        zdt.toLocalDate() to zdt.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+    }.recoverCatching {
+        val instant = java.time.Instant.parse(iso)
+        val zdt = instant.atZone(java.time.ZoneId.systemDefault())
+        zdt.toLocalDate() to zdt.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
+    }.getOrElse { fallback }
 }
 
 private fun createDeliveryCameraUri(context: android.content.Context): Uri {

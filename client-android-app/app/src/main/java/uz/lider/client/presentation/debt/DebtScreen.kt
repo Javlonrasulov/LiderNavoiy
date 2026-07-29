@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
+import uz.lider.client.presentation.components.PaymentPhotoReminderBanner
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
@@ -51,8 +52,6 @@ import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.liquidGlassThemed
-
-private val debtChart = listOf(4.2f, 3.8f, 5.1f, 2.9f, 3.2f, 2.5f)
 
 private val debtHeroGradient = Brush.linearGradient(
     listOf(
@@ -69,7 +68,13 @@ fun DebtScreen(
     viewModel: DebtViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val usedPct = (state.currentDebt / state.creditLimit).toFloat().coerceIn(0f, 1f)
+    val showPayPhotoBanner by viewModel.showPayPhotoBanner.collectAsState()
+    val creditLimit = state.creditLimit
+    val usedPct = if (creditLimit != null && creditLimit > 0) {
+        (state.currentDebt / creditLimit).toFloat().coerceIn(0f, 1f)
+    } else {
+        0f
+    }
     var showDatePicker by remember { mutableStateOf(false) }
     val periodLabel = DashboardDateFilter.formatRange(state.dateRange)
 
@@ -78,10 +83,10 @@ fun DebtScreen(
         onDismiss = { showDatePicker = false },
         onApply = { start, end -> viewModel.setDateRange(start, end) },
         onClear = { viewModel.resetToLastMonth() },
-        initialStartMillis = state.dateRange.takeIf { it.isCustom }
-            ?.let { DashboardDateFilter.toStartMillis(it.start) },
-        initialEndMillis = state.dateRange.takeIf { it.isCustom }
-            ?.let { DashboardDateFilter.toStartMillis(it.end) },
+        onSelectAll = { viewModel.selectAll() },
+        initialStartMillis = DashboardDateFilter.toStartMillis(state.dateRange.start),
+        initialEndMillis = DashboardDateFilter.toStartMillis(state.dateRange.end),
+        dayAmounts = state.dayDebtAmounts,
         title = localized("dash_select_dates"),
         applyLabel = localized("dash_apply_dates"),
         cancelLabel = localized("com_cancel"),
@@ -112,7 +117,15 @@ fun DebtScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (state.dateRange.isCustom) {
+                    if (showPayPhotoBanner) {
+                        item {
+                            PaymentPhotoReminderBanner(
+                                text = localized("pay_photo_alert_body"),
+                            )
+                        }
+                    }
+
+                    if (state.dateRange.isCustom || state.filteredPayments.isNotEmpty()) {
                         item {
                             Box(
                                 Modifier
@@ -131,7 +144,6 @@ fun DebtScreen(
                         }
                     }
 
-                    // Gradient hero debt card (red/rose)
                     item {
                         Box(
                             Modifier
@@ -173,37 +185,39 @@ fun DebtScreen(
                                         )
                                     }
                                 }
-                                Spacer(Modifier.height(20.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        "${localized("debt_credit_limit")}: ${formatMoney(state.creditLimit)}",
-                                        color = Color.White.copy(alpha = 0.75f),
-                                        fontSize = 11.sp,
-                                    )
-                                    Text(
-                                        "${(usedPct * 100).toInt()}% ${localized("debt_used")}",
-                                        color = Color.White.copy(alpha = 0.75f),
-                                        fontSize = 11.sp,
-                                    )
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .height(7.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.White.copy(alpha = 0.25f)),
-                                ) {
+                                if (creditLimit != null && creditLimit > 0) {
+                                    Spacer(Modifier.height(20.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "${localized("debt_credit_limit")}: ${formatMoney(creditLimit)}",
+                                            color = Color.White.copy(alpha = 0.75f),
+                                            fontSize = 11.sp,
+                                        )
+                                        Text(
+                                            "${(usedPct * 100).toInt()}% ${localized("debt_used")}",
+                                            color = Color.White.copy(alpha = 0.75f),
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
                                     Box(
                                         Modifier
-                                            .fillMaxWidth(usedPct)
-                                            .fillMaxHeight()
+                                            .fillMaxWidth()
+                                            .height(7.dp)
                                             .clip(RoundedCornerShape(4.dp))
-                                            .background(Color.White),
-                                    )
+                                            .background(Color.White.copy(alpha = 0.25f)),
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth(usedPct)
+                                                .fillMaxHeight()
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color.White),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -240,30 +254,47 @@ fun DebtScreen(
                         }
                     }
 
-                    item {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .liquidGlassThemed()
-                                .padding(16.dp),
-                        ) {
-                            Text(
-                                localized("debt_dynamics"),
-                                color = LiquidTheme.text,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                localized("debt_last_months"),
-                                color = LiquidTheme.textMuted,
-                                fontSize = 12.sp,
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            SimpleAreaChart(
-                                values = debtChart,
-                                strokeColor = LiquidGlass.Rose,
-                                fillColor = LiquidGlass.Rose.copy(alpha = 0.30f),
-                                heightDp = 120,
-                            )
+                    if (state.chartValues.size >= 2) {
+                        item {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(16.dp),
+                            ) {
+                                Text(
+                                    localized("debt_dynamics"),
+                                    color = LiquidTheme.text,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    periodLabel,
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 12.sp,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                val chartStroke = if (LiquidTheme.isDark) Color(0xFFFF4D6D) else LiquidGlass.Rose
+                                val chartFill = if (LiquidTheme.isDark) {
+                                    Color(0xFFFF4D6D).copy(alpha = 0.35f)
+                                } else {
+                                    LiquidGlass.Rose.copy(alpha = 0.28f)
+                                }
+                                SimpleAreaChart(
+                                    values = state.chartValues,
+                                    strokeColor = chartStroke,
+                                    fillColor = chartFill,
+                                    heightDp = 130,
+                                    labels = state.chartLabels,
+                                    valueLabels = state.chartValueLabels.takeIf { it.isNotEmpty() },
+                                    labelColor = if (LiquidTheme.isDark) {
+                                        Color.White.copy(alpha = 0.65f)
+                                    } else {
+                                        LiquidTheme.textMuted
+                                    },
+                                    valueColor = chartStroke,
+                                    showPoints = true,
+                                )
+                            }
                         }
                     }
 
@@ -276,70 +307,70 @@ fun DebtScreen(
                         )
                     }
 
-                    items(state.filteredPayments) { payment ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .liquidGlassThemed()
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                    if (state.filteredPayments.isEmpty()) {
+                        item {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    localized("debt_empty"),
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 14.sp,
+                                )
+                            }
+                        }
+                    } else {
+                        items(state.filteredPayments) { payment ->
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                Modifier
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Box(
-                                    Modifier
-                                        .size(42.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(
-                                            if (payment.isPayment)
-                                                LiquidGlass.Emerald.copy(alpha = 0.2f)
-                                            else
-                                                LiquidGlass.Rose.copy(alpha = 0.2f),
-                                        ),
-                                    contentAlignment = Alignment.Center,
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Icon(
-                                        if (payment.isPayment) Icons.Default.CheckCircle else Icons.Default.CreditCard,
-                                        null,
-                                        tint = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
-                                        modifier = Modifier.size(20.dp),
-                                    )
+                                    Box(
+                                        Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (payment.isPayment)
+                                                    LiquidGlass.Emerald.copy(alpha = 0.2f)
+                                                else
+                                                    LiquidGlass.Rose.copy(alpha = 0.2f),
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(
+                                            if (payment.isPayment) Icons.Default.CheckCircle else Icons.Default.CreditCard,
+                                            null,
+                                            tint = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                    Column {
+                                        Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
+                                        Text(
+                                            localized(payment.typeKey),
+                                            color = LiquidTheme.text,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
                                 }
-                                Column {
-                                    Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                    Text(
-                                        localized(payment.typeKey),
-                                        color = LiquidTheme.text,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                }
+                                Text(
+                                    "${if (payment.isPayment) "-" else "+"}${payment.amount} ${localized("com_som")}",
+                                    color = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
+                                    fontWeight = FontWeight.Bold,
+                                )
                             }
-                            Text(
-                                "${if (payment.isPayment) "-" else "+"}${payment.amount} ${localized("com_som")}",
-                                color = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-
-                    item {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                .background(LiquidGlass.GradientPrimary)
-                                .padding(vertical = 16.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                localized("debt_pay_btn"),
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                            )
                         }
                     }
                 }

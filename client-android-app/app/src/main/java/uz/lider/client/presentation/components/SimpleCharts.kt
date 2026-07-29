@@ -104,6 +104,7 @@ fun SimpleAreaChart(
     valueLabels: List<String>? = null,
     labelColor: Color = Color.Gray,
     valueColor: Color = labelColor,
+    showPoints: Boolean = false,
 ) {
     if (values.size < 2) return
     val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble()) }
@@ -115,12 +116,22 @@ fun SimpleAreaChart(
         ) {
             val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
             val stepX = size.width / (values.size - 1)
+            val topPad = 8f
+            val bottomPad = 4f
+            val usableH = (size.height - topPad - bottomPad).coerceAtLeast(1f)
             val points = values.mapIndexed { index, value ->
                 Offset(
                     x = index * stepX,
-                    y = size.height - (value / max) * size.height,
+                    y = topPad + usableH - (value / max) * usableH,
                 )
             }
+            // Dark theme: subtle guide line
+            drawLine(
+                color = Color.White.copy(alpha = 0.08f),
+                start = Offset(0f, size.height),
+                end = Offset(size.width, size.height),
+                strokeWidth = 1f,
+            )
             val path = buildSmoothPath(points)
             val fillPath = Path().apply {
                 addPath(path)
@@ -128,8 +139,19 @@ fun SimpleAreaChart(
                 lineTo(0f, size.height)
                 close()
             }
-            drawPath(fillPath, Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
-            drawPath(path, strokeColor, style = Stroke(width = 3f))
+            drawPath(
+                fillPath,
+                Brush.verticalGradient(
+                    listOf(fillColor, fillColor.copy(alpha = 0.05f), Color.Transparent),
+                ),
+            )
+            drawPath(path, strokeColor, style = Stroke(width = 3.5f))
+            if (showPoints) {
+                points.forEach { point ->
+                    drawCircle(color = strokeColor, radius = 5f, center = point)
+                    drawCircle(color = Color.White, radius = 2.5f, center = point)
+                }
+            }
         }
         Spacer(Modifier.height(6.dp))
         Row(
@@ -141,7 +163,7 @@ fun SimpleAreaChart(
                     text = amount,
                     color = valueColor,
                     fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,

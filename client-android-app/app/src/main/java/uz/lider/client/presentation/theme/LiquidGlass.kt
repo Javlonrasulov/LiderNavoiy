@@ -668,13 +668,14 @@ fun liquidGlassMenuShape(radius: Dp = 18.dp) = RoundedCornerShape(radius)
 @Composable
 fun liquidGlassMenuColors(): Pair<Color, Brush> {
     val isDark = LiquidTheme.isDark
-    val fill = if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.90f)
+    // Dark: qattiq fon — blur/fon orqali oq matn yo‘qolmasin
+    val fill = if (isDark) Color(0xF21A1B2E) else Color.White.copy(alpha = 0.96f)
     val border = Brush.linearGradient(
         colors = listOf(
-            Color.White.copy(alpha = if (isDark) 0.50f else 0.95f),
-            LiquidGlass.Indigo.copy(alpha = 0.22f),
-            LiquidGlass.Cyan.copy(alpha = 0.12f),
-            Color.White.copy(alpha = if (isDark) 0.18f else 0.45f),
+            Color.White.copy(alpha = if (isDark) 0.22f else 0.95f),
+            LiquidGlass.Indigo.copy(alpha = if (isDark) 0.35f else 0.22f),
+            LiquidGlass.Cyan.copy(alpha = if (isDark) 0.18f else 0.12f),
+            Color.White.copy(alpha = if (isDark) 0.10f else 0.45f),
         ),
     )
     return fill to border
@@ -689,6 +690,7 @@ fun LiquidGlassDropdownMenu(
 ) {
     val shape = liquidGlassMenuShape()
     val (fill, borderBrush) = liquidGlassMenuColors()
+    val isDark = LiquidTheme.isDark
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
@@ -698,7 +700,7 @@ fun LiquidGlassDropdownMenu(
             .background(fill)
             .border(1.dp, borderBrush, shape),
         shape = shape,
-        containerColor = Color.Transparent,
+        containerColor = if (isDark) Color(0xFF1A1B2E) else Color.Transparent,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -715,22 +717,32 @@ fun LiquidGlassDropdownItem(
     onClick: () -> Unit,
 ) {
     val itemShape = RoundedCornerShape(12.dp)
+    val isDark = LiquidTheme.isDark
+    val labelColor = when {
+        selected && isDark -> Color.White
+        selected -> LiquidGlass.Indigo
+        else -> LiquidTheme.text
+    }
     DropdownMenuItem(
         text = {
             Text(
                 text,
-                color = if (selected) LiquidGlass.Indigo else LiquidTheme.text,
+                color = labelColor,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 fontSize = 14.sp,
             )
         },
         onClick = onClick,
+        colors = androidx.compose.material3.MenuDefaults.itemColors(
+            textColor = labelColor,
+        ),
         modifier = Modifier
             .padding(horizontal = 4.dp, vertical = 1.dp)
             .clip(itemShape)
             .background(
                 if (selected) {
-                    LiquidGlass.Indigo.copy(alpha = if (LiquidTheme.isDark) 0.22f else 0.12f)
+                    if (isDark) LiquidGlass.Indigo.copy(alpha = 0.55f)
+                    else LiquidGlass.Indigo.copy(alpha = 0.12f)
                 } else {
                     Color.Transparent
                 },

@@ -1,6 +1,7 @@
 package uz.lider.client.presentation
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +19,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.AuthRepository
+import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.PushRepository
 import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.localization.AppLanguage
@@ -40,6 +42,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var pushRepository: PushRepository
 
+    @Inject
+    lateinit var paymentPhotoAlertStore: PaymentPhotoAlertStore
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -50,6 +55,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationPermission()
+        handlePushIntent(intent)
         setContent {
             val themeMode by appSettingsRepository.themeMode.collectAsState(initial = ThemeMode.DARK)
             val language  by appSettingsRepository.language.collectAsState(initial = AppLanguage.DEFAULT)
@@ -65,6 +71,29 @@ class MainActivity : ComponentActivity() {
                     ClientNavHost()
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePushIntent(intent)
+    }
+
+    private fun handlePushIntent(intent: Intent?) {
+        if (intent == null) return
+        val type = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
+            ?: intent.getStringExtra("type")
+        val orderId = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
+            ?: intent.getStringExtra("orderId")
+        if (type == PaymentPhotoAlertStore.TYPE_PAYMENT) {
+            lifecycleScope.launch {
+                paymentPhotoAlertStore.recordPaymentReceived(orderId)
+            }
+            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
+            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
+            intent.removeExtra("type")
+            intent.removeExtra("orderId")
         }
     }
 

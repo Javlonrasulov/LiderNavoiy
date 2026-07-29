@@ -70,6 +70,8 @@ fun DashboardDateRangeDialog(
     initialStartMillis: Long?,
     initialEndMillis: Long?,
     salesDays: Set<LocalDate> = emptySet(),
+    /** Kun ostida qizil summa (masalan qarzdorlik). */
+    dayAmounts: Map<LocalDate, Double> = emptyMap(),
     title: String,
     applyLabel: String,
     cancelLabel: String,
@@ -81,6 +83,7 @@ fun DashboardDateRangeDialog(
     val today = remember { LocalDate.now() }
     val glassShape = RoundedCornerShape(LiquidGlass.RadiusSheet)
     val (glassFill, glassBorder) = liquidGlassMenuColors()
+    val isDark = LiquidTheme.isDark
 
     var displayMonth by remember(visible) {
         mutableStateOf(
@@ -128,7 +131,7 @@ fun DashboardDateRangeDialog(
         SideEffect {
             val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
             window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
-            window.setDimAmount(0.42f)
+            window.setDimAmount(if (isDark) 0.72f else 0.42f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 window.setBackgroundBlurRadius(80)
             }
@@ -144,8 +147,8 @@ fun DashboardDateRangeDialog(
                     .background(
                         Brush.radialGradient(
                             colors = listOf(
-                                LiquidGlass.Indigo.copy(alpha = 0.10f),
-                                Color.Black.copy(alpha = 0.28f),
+                                LiquidGlass.Indigo.copy(alpha = if (isDark) 0.18f else 0.10f),
+                                Color.Black.copy(alpha = if (isDark) 0.62f else 0.28f),
                             ),
                         ),
                     )
@@ -166,7 +169,9 @@ fun DashboardDateRangeDialog(
                         spotColor = LiquidGlass.Violet.copy(alpha = 0.35f),
                     )
                     .clip(glassShape)
-                    .background(glassFill)
+                    .background(
+                        if (isDark) Color(0xF21A1B2E) else glassFill,
+                    )
                     .border(width = 1.dp, brush = glassBorder, shape = glassShape)
                     .padding(16.dp)
                     .clickable(
@@ -232,6 +237,7 @@ fun DashboardDateRangeDialog(
                     rangeStart = rangeStart,
                     rangeEnd = rangeEnd,
                     salesDays = salesDays,
+                    dayAmounts = dayAmounts,
                     onDayClick = { date ->
                         if (date.isAfter(today)) return@CalendarGrid
                         selectedPreset = DatePreset.CUSTOM
@@ -416,21 +422,26 @@ private fun CalendarGrid(
     rangeStart: LocalDate?,
     rangeEnd: LocalDate?,
     salesDays: Set<LocalDate>,
+    dayAmounts: Map<LocalDate, Double>,
     onDayClick: (LocalDate) -> Unit,
 ) {
     val cells = remember(month) { DashboardDateFilter.monthGrid(month) }
     val normalized = if (rangeStart != null && rangeEnd != null) {
         DashboardDateFilter.normalizeRange(rangeStart, rangeEnd)
     } else null
+    val showAmounts = dayAmounts.isNotEmpty()
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (showAmounts) 2.dp else 4.dp)) {
         cells.chunked(7).forEach { week ->
-            Row(Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth()) {
                 week.forEach { date ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .aspectRatio(1f),
+                            .then(
+                                if (showAmounts) Modifier.padding(vertical = 2.dp)
+                                else Modifier.aspectRatio(1f),
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (date != null) {
@@ -445,7 +456,9 @@ private fun CalendarGrid(
                                         (rangeStart != null && rangeEnd == null && date == rangeStart)
                                     ),
                                 isEnd = enabled && date == normalized?.end,
-                                hasSales = enabled && salesDays.contains(date),
+                                hasSales = enabled && salesDays.contains(date) && !showAmounts,
+                                dayAmount = if (enabled) dayAmounts[date] else null,
+                                reserveAmountSpace = showAmounts,
                                 onClick = { if (enabled) onDayClick(date) },
                             )
                         }
@@ -465,19 +478,22 @@ private fun DayCell(
     isStart: Boolean,
     isEnd: Boolean,
     hasSales: Boolean,
+    dayAmount: Double?,
+    reserveAmountSpace: Boolean,
     onClick: () -> Unit,
 ) {
     val isEdge = isStart || isEnd
-    Box(
+    val amount = dayAmount?.takeIf { it > 0 }
+    Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(1.dp)
+            .fillMaxWidth()
+            .padding(horizontal = 1.dp)
             .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
+                .size(if (reserveAmountSpace) 28.dp else 34.dp)
                 .clip(CircleShape)
                 .then(
                     when {
@@ -500,7 +516,7 @@ private fun DayCell(
                     else -> LiquidTheme.text
                 },
                 style = TextStyle(
-                    fontSize = 13.sp,
+                    fontSize = if (reserveAmountSpace) 12.sp else 13.sp,
                     fontWeight = if (isEdge || isToday || inRange) FontWeight.SemiBold else FontWeight.Normal,
                     textAlign = TextAlign.Center,
                     platformStyle = PlatformTextStyle(includeFontPadding = false),
@@ -512,15 +528,32 @@ private fun DayCell(
             )
         }
 
-        if (hasSales && enabled) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 2.dp)
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(if (isEdge) Color.White else LiquidGlass.Indigo),
-            )
+        when {
+            amount != null -> {
+                Text(
+                    text = uz.lider.client.presentation.components.formatCompactMoney(amount),
+                    color = if (isEdge) Color(0xFFFF8A9A) else LiquidGlass.Rose,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    style = TextStyle(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                )
+            }
+            hasSales && enabled -> {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(if (isEdge) Color.White else LiquidGlass.Indigo),
+                )
+            }
+            reserveAmountSpace -> {
+                Spacer(modifier = Modifier.height(10.dp))
+            }
         }
     }
 }

@@ -49,9 +49,9 @@ data class LiveFleetUi(
     val distanceLabel: String
         get() = when {
             vehicles.isEmpty() -> "—"
-            orderCount == 1 -> vehicles.first().orders.first().distanceLabel
+            // Ko‘p buyurtmada eng to‘liq (manzillar orqali) masofani olish — to‘g‘ri chiziq emas
             else -> vehicles.flatMap { it.orders }.mapNotNull { parseDistanceKm(it.distanceLabel) }
-                .minOrNull()
+                .maxOrNull()
                 ?.let { formatDistance(it) }
                 ?: "—"
         }

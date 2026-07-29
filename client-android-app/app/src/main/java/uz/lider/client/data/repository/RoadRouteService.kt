@@ -29,14 +29,14 @@ data class RoadRoute(
 
 /**
  * Driving route along roads via public OSRM (OpenStreetMap).
- * Used so tracking draws roads like Yandex Taxi — not a straight “flight” line.
+ * Supports multi-stop: courier → stop1 → stop2 → … → client.
  */
 @Singleton
 class RoadRouteService @Inject constructor() {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
     private val mutex = Mutex()
@@ -47,20 +47,41 @@ class RoadRouteService @Inject constructor() {
         fromLng: Double,
         toLat: Double,
         toLng: Double,
-    ): RoadRoute? = withContext(Dispatchers.IO) {
-        if (!isValid(fromLat, fromLng) || !isValid(toLat, toLng)) return@withContext null
+    ): RoadRoute? = fetchDrivingRoute(
+        fromLat = fromLat,
+        fromLng = fromLng,
+        waypoints = listOf(LatLngPoint(toLat, toLng)),
+    )
 
-        val straightKm = haversineM(fromLat, fromLng, toLat, toLng) / 1000.0
+    /**
+     * @param waypoints ketma-ket manzillar (1-chi mijoz … oxirgi = siz).
+     * Marshrut: courier → waypoints[0] → … → waypoints.last
+     */
+    suspend fun fetchDrivingRoute(
+        fromLat: Double,
+        fromLng: Double,
+        waypoints: List<LatLngPoint>,
+    ): RoadRoute? = withContext(Dispatchers.IO) {
+        if (!isValid(fromLat, fromLng)) return@withContext null
+        val stops = waypoints.filter { isValid(it.latitude, it.longitude) }
+        if (stops.isEmpty()) return@withContext null
+
         // Emulator / noto‘g‘ri GPS — okean bo‘ylab marshrut so‘ramaslik
+        val dest = stops.last()
+        val straightKm = haversineM(fromLat, fromLng, dest.latitude, dest.longitude) / 1000.0
         if (straightKm > 120.0) return@withContext null
 
         mutex.withLock {
-            cached?.takeIf { it.matches(fromLat, fromLng, toLat, toLng) }?.route?.let { return@withContext it }
+            cached?.takeIf { it.matches(fromLat, fromLng, stops) }?.route?.let { return@withContext it }
         }
 
+        val coords = buildString {
+            append("$fromLng,$fromLat")
+            stops.forEach { append(";${it.longitude},${it.latitude}") }
+        }
+        // OSRM public: ko‘p waypoint — overview full
         val url =
-            "https://router.project-osrm.org/route/v1/driving/" +
-                "$fromLng,$fromLat;$toLng,$toLat" +
+            "https://router.project-osrm.org/route/v1/driving/$coords" +
                 "?overview=full&geometries=geojson&steps=false"
 
         val request = Request.Builder().url(url).get().build()
@@ -74,12 +95,42 @@ class RoadRouteService @Inject constructor() {
             null
         }
 
-        if (route != null) {
+        // Fallback: agar multi-stop rad etilsa — to‘g‘ridan oxirgisiga
+        val resolved = route ?: if (stops.size > 1) {
+            fetchDrivingRouteOsrm(fromLat, fromLng, listOf(stops.last()))
+        } else {
+            null
+        }
+
+        if (resolved != null) {
             mutex.withLock {
-                cached = CachedRoute(fromLat, fromLng, toLat, toLng, route)
+                cached = CachedRoute(fromLat, fromLng, stops, resolved)
             }
         }
-        route
+        resolved
+    }
+
+    private fun fetchDrivingRouteOsrm(
+        fromLat: Double,
+        fromLng: Double,
+        stops: List<LatLngPoint>,
+    ): RoadRoute? {
+        val coords = buildString {
+            append("$fromLng,$fromLat")
+            stops.forEach { append(";${it.longitude},${it.latitude}") }
+        }
+        val url =
+            "https://router.project-osrm.org/route/v1/driving/$coords" +
+                "?overview=full&geometries=geojson&steps=false"
+        return try {
+            client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string() ?: return@use null
+                parseOsrm(body)
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun parseOsrm(json: String): RoadRoute? {
@@ -105,7 +156,7 @@ class RoadRouteService @Inject constructor() {
             points = points,
             distanceKm = distanceM / 1000.0,
             durationMinutes = (durationS / 60.0).toInt().coerceAtLeast(1),
-        ).takeIf { it.distanceKm <= 120.0 }
+        ).takeIf { it.distanceKm <= 250.0 }
     }
 
     private fun isValid(lat: Double, lng: Double): Boolean =
@@ -114,14 +165,18 @@ class RoadRouteService @Inject constructor() {
     private data class CachedRoute(
         val fromLat: Double,
         val fromLng: Double,
-        val toLat: Double,
-        val toLng: Double,
+        val waypoints: List<LatLngPoint>,
         val route: RoadRoute,
     ) {
-        fun matches(fLat: Double, fLng: Double, tLat: Double, tLng: Double): Boolean {
-            // Refresh when courier moved ~25m+ (orqaga / boshqa yo‘l)
-            return haversineM(fromLat, fromLng, fLat, fLng) < 25.0 &&
-                haversineM(toLat, toLng, tLat, tLng) < 25.0
+        fun matches(fLat: Double, fLng: Double, stops: List<LatLngPoint>): Boolean {
+            if (haversineM(fromLat, fromLng, fLat, fLng) >= 25.0) return false
+            if (waypoints.size != stops.size) return false
+            return waypoints.indices.all { i ->
+                haversineM(
+                    waypoints[i].latitude, waypoints[i].longitude,
+                    stops[i].latitude, stops[i].longitude,
+                ) < 25.0
+            }
         }
     }
 
@@ -137,5 +192,58 @@ class RoadRouteService @Inject constructor() {
         }
 
         fun approxEqual(a: Double, b: Double, eps: Double = 1e-4): Boolean = abs(a - b) < eps
+
+        /**
+         * Sizgacha (va siz) bo‘lgan manzillar — marshrut ketma-ketligi.
+         * Agar stop coords yo‘q bo‘lsa, oxiriga delivery nuqtasi qo‘yiladi.
+         */
+        fun waypointsUntilYou(
+            routeStops: List<uz.lider.client.domain.model.RouteStopInfo>,
+            deliveryLat: Double,
+            deliveryLng: Double,
+        ): List<LatLngPoint> {
+            val sorted = routeStops.sortedBy { it.sequence }
+            if (sorted.isEmpty()) {
+                return listOf(LatLngPoint(deliveryLat, deliveryLng))
+            }
+            val youIdx = sorted.indexOfFirst { it.isYou }.let { if (it < 0) sorted.lastIndex else it }
+            val untilYou = sorted.take(youIdx + 1)
+            val points = untilYou.mapNotNull { stop ->
+                val lat = stop.latitude
+                val lng = stop.longitude
+                if (lat == null || lng == null) return@mapNotNull null
+                if (lat == 0.0 && lng == 0.0) return@mapNotNull null
+                LatLngPoint(lat, lng)
+            }.toMutableList()
+            if (points.isEmpty()) {
+                points.add(LatLngPoint(deliveryLat, deliveryLng))
+            } else {
+                val last = points.last()
+                if (haversineM(last.latitude, last.longitude, deliveryLat, deliveryLng) > 40.0) {
+                    // «Siz» stop coords yetishmasa — delivery ni oxiriga qo‘sh
+                    if (untilYou.lastOrNull()?.isYou == true) {
+                        points[points.lastIndex] = LatLngPoint(deliveryLat, deliveryLng)
+                    } else {
+                        points.add(LatLngPoint(deliveryLat, deliveryLng))
+                    }
+                }
+            }
+            // Juda yaqin ketma-ket nuqtalarni siqish (OSRM limit)
+            return dedupeClose(points, minGapM = 30.0)
+        }
+
+        private fun dedupeClose(points: List<LatLngPoint>, minGapM: Double): List<LatLngPoint> {
+            if (points.size <= 1) return points
+            val out = mutableListOf(points.first())
+            for (i in 1 until points.size) {
+                val prev = out.last()
+                val cur = points[i]
+                val isLast = i == points.lastIndex
+                if (isLast || haversineM(prev.latitude, prev.longitude, cur.latitude, cur.longitude) >= minGapM) {
+                    out.add(cur)
+                }
+            }
+            return out
+        }
     }
 }

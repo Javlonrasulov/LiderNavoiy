@@ -72,14 +72,9 @@ fun bottomNavSelectedTab(route: String?): NavTab? = when {
 }
 
 fun NavHostController.navigateBottomTab(tab: NavTab) {
-    if (tab == NavTab.HOME) {
-        if (!popBackStack(NavTab.HOME.route, inclusive = false)) {
-            navigate(NavTab.HOME.route) {
-                launchSingleTop = true
-            }
-        }
-        return
-    }
+    // Agar stackda shu tab allaqachon bor (masalan location → delivery/{id}),
+    // restoreState o‘rniga shu tabgacha pop qilamiz — aks holda detail qayta ochiladi.
+    if (popBackStack(tab.route, inclusive = false)) return
     navigate(tab.route) {
         popUpTo(NavTab.HOME.route) { saveState = true }
         launchSingleTop = true

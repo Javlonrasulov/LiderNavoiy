@@ -156,7 +156,18 @@ fun formatMoney(value: Double): String {
 }
 
 fun formatChartAmount(value: Double, currency: String = "so'm"): String {
-    return "${formatMoney(value)} $currency"
+    return "${formatCompactMoney(value)} $currency"
+}
+
+/** Kalendar / grafik uchun qisqa summa: 1.5M, 250K, 900 */
+fun formatCompactMoney(value: Double): String {
+    val v = kotlin.math.abs(value)
+    return when {
+        v >= 1_000_000_000 -> String.format(Locale.US, "%.1fB", v / 1_000_000_000.0)
+        v >= 1_000_000 -> String.format(Locale.US, "%.1fM", v / 1_000_000.0)
+        v >= 1_000 -> String.format(Locale.US, "%.0fK", v / 1_000.0)
+        else -> formatMoney(v)
+    }.let { if (value < 0) "-$it" else it }
 }
 
 fun formatOrderId(id: String): String =

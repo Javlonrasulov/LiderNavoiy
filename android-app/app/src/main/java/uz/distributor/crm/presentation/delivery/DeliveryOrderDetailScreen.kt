@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -140,6 +141,7 @@ fun DeliveryOrderDetailScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -299,10 +301,24 @@ fun DeliveryOrderDetailScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Text(
                                     "${AppStrings.deliveryRemaining(lang)}: ${formatter.format(remaining)} ${AppStrings.sumCurrency(lang)}",
-                                    color = textMuted,
+                                    color = if (remaining > 0.01) Color(0xFFDC2626) else textMuted,
                                     fontSize = 13.sp,
+                                    fontWeight = if (remaining > 0.01) FontWeight.SemiBold else FontWeight.Normal,
                                 )
                             }
+                            order.dueAt
+                                ?.takeIf { it.isNotBlank() && remaining > 0.01 }
+                                ?.let { due ->
+                                    formatDueAtDisplay(due)?.let { formatted ->
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
+                                            color = Color(0xFFD97706),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                        )
+                                    }
+                                }
                         }
                     }
 
@@ -482,6 +498,7 @@ fun DeliveryOrderDetailScreen(
                     isDark = isDark,
                     lang = lang,
                     isSubmitting = state.isSubmitting,
+                    initialDueAt = order.dueAt,
                     onDismiss = { showDueSheet = false },
                     onSubmit = { viewModel.updateDueAt(it) },
                 )

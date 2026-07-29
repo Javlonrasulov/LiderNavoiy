@@ -78,6 +78,13 @@ interface ApiService {
         @Header("X-Company-Id") companyId: String? = null,
     ): ClientAnalyticsDto
 
+    @GET("client-portal/debt")
+    suspend fun getDebt(
+        @Header("X-Company-Id") companyId: String? = null,
+        @Query("from") from: String? = null,
+        @Query("to") to: String? = null,
+    ): uz.lider.client.data.remote.dto.ClientDebtDto
+
     @GET("client-portal/promotions")
     suspend fun getPromotions(): List<PromotionDto>
     @POST("messages/conversations")

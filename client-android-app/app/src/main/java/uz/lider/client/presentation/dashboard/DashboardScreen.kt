@@ -88,15 +88,18 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.map.MapTileSources
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.OrgSwitcherChips
+import uz.lider.client.presentation.components.PaymentPhotoReminderBanner
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
+import uz.lider.client.presentation.map.MapLayerPicker
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.notifications.MockNotificationIds
@@ -130,6 +133,7 @@ fun DashboardScreen(
     notificationsViewModel: NotificationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val showMapRoutePayHint by viewModel.showMapRoutePayHint.collectAsState()
     val readNotificationIds by notificationsViewModel.readIds.collectAsState()
     val hasUnreadNotifications = MockNotificationIds.all.any { it !in readNotificationIds }
     val lang = LocalAppLanguage.current
@@ -199,6 +203,9 @@ fun DashboardScreen(
         DashboardLiveMapFullscreen(
             fleet = live,
             title = if (live.orderCount > 1) t("dash_live_orders") else t("dash_live_delivery"),
+            payPhotoHint = t("track_pay_photo_hint"),
+            showPayPhotoHint = showMapRoutePayHint,
+            onDismissPayPhotoHint = { viewModel.dismissMapRoutePayHint() },
             onDismiss = { showLiveMapFullscreen = false },
             onOpenTracking = { orderId ->
                 showLiveMapFullscreen = false
@@ -1000,6 +1007,7 @@ private fun LiveDeliveryMapCard(
                 vehicles = fleet.vehicles,
                 interactive = true,
                 compactMarkers = true,
+                showRouteStops = false,
                 onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1122,11 +1130,19 @@ private fun VehicleOrdersPopup(
 private fun DashboardLiveMapFullscreen(
     fleet: LiveFleetUi,
     title: String,
+    payPhotoHint: String,
+    showPayPhotoHint: Boolean,
+    onDismissPayPhotoHint: () -> Unit,
     onDismiss: () -> Unit,
     onOpenTracking: (String) -> Unit,
 ) {
     val overlayBg = Color(0xF00B1220)
     var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
+    var mapLayer by remember { mutableStateOf(MapTileSources.defaultLayer) }
+    val navBottom = WindowInsets.navigationBars
+        .asPaddingValues()
+        .calculateBottomPadding()
+        .coerceAtLeast(48.dp)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1144,49 +1160,69 @@ private fun DashboardLiveMapFullscreen(
             OrderTrackingMapView(
                 vehicles = fleet.vehicles,
                 interactive = true,
+                showRouteStops = true,
+                mapLayer = mapLayer,
                 onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
+                    .align(Alignment.TopCenter)
                     .statusBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(overlayBg),
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Close, null, tint = Color.White)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(overlayBg),
+                    ) {
+                        Icon(Icons.Default.Close, null, tint = Color.White)
+                    }
+                    Text(
+                        title,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .shadow(8.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(overlayBg)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(overlayBg),
+                    ) {
+                        Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
+                    }
                 }
-                Text(
-                    title,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    modifier = Modifier
-                        .shadow(8.dp, RoundedCornerShape(14.dp))
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(overlayBg)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                )
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(overlayBg),
-                ) {
-                    Icon(Icons.Default.FullscreenExit, null, tint = Color.White)
+                Spacer(Modifier.height(10.dp))
+                if (showPayPhotoHint) {
+                    PaymentPhotoReminderBanner(
+                        text = payPhotoHint,
+                        onDismiss = onDismissPayPhotoHint,
+                    )
                 }
             }
+            MapLayerPicker(
+                activeLayer = mapLayer,
+                onLayerChange = { mapLayer = it },
+                modifier = Modifier.align(Alignment.BottomStart),
+                bottomPadding = navBottom + 72.dp,
+            )
             Text(
                 fleet.distanceLabel,
                 color = Color.White,
@@ -1195,10 +1231,7 @@ private fun DashboardLiveMapFullscreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(
-                        bottom = WindowInsets.navigationBars
-                            .asPaddingValues()
-                            .calculateBottomPadding()
-                            .coerceAtLeast(48.dp) + 16.dp,
+                        bottom = navBottom + 16.dp,
                         start = 16.dp,
                         end = 16.dp,
                     )

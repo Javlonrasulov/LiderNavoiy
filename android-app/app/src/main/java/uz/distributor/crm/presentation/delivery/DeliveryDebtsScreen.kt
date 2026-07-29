@@ -30,6 +30,14 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -137,34 +145,51 @@ fun DeliveryDebtsScreen(
                     var displayMonth by remember(state.selectedDate) {
                         mutableStateOf(YearMonth.from(state.selectedDate))
                     }
+                    var calendarExpanded by remember { mutableStateOf(false) }
                     val selectedCount = state.countsByDate[state.selectedDate] ?: 0
+                    val dateLabel = remember(state.selectedDate, lang) {
+                        state.selectedDate.format(
+                            java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+                        )
+                    }
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item {
-                            DebtsMonthCalendar(
-                                month = displayMonth,
-                                selected = state.selectedDate,
-                                counts = state.countsByDate,
+                            DebtsDateChip(
+                                dateLabel = dateLabel,
+                                countLabel = AppStrings.deliveryDebtsCount(lang, selectedCount),
+                                expanded = calendarExpanded,
                                 isDark = isDark,
                                 textPrimary = textPrimary,
                                 textMuted = textMuted,
-                                lang = lang,
-                                onPrev = { displayMonth = displayMonth.minusMonths(1) },
-                                onNext = { displayMonth = displayMonth.plusMonths(1) },
-                                onSelect = viewModel::selectDate,
+                                onClick = { calendarExpanded = !calendarExpanded },
                             )
                         }
                         item {
-                            Text(
-                                AppStrings.deliveryDebtsCount(lang, selectedCount),
-                                color = textMuted,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(top = 4.dp),
-                            )
+                            AnimatedVisibility(
+                                visible = calendarExpanded,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically(),
+                            ) {
+                                DebtsMonthCalendar(
+                                    month = displayMonth,
+                                    selected = state.selectedDate,
+                                    counts = state.countsByDate,
+                                    isDark = isDark,
+                                    textPrimary = textPrimary,
+                                    textMuted = textMuted,
+                                    lang = lang,
+                                    onPrev = { displayMonth = displayMonth.minusMonths(1) },
+                                    onNext = { displayMonth = displayMonth.plusMonths(1) },
+                                    onSelect = { date ->
+                                        viewModel.selectDate(date)
+                                        calendarExpanded = false
+                                    },
+                                )
+                            }
                         }
                         if (state.selectedDebts.isEmpty()) {
                             item {
@@ -232,6 +257,41 @@ internal fun DeliverySectionTabs(
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onDebts)
                 .padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun DebtsDateChip(
+    dateLabel: String,
+    countLabel: String,
+    expanded: Boolean,
+    isDark: Boolean,
+    textPrimary: Color,
+    textMuted: Color,
+    onClick: () -> Unit,
+) {
+    val border = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, border, RoundedCornerShape(14.dp))
+            .background(if (isDark) Color(0xFF111827) else Color.White)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.CalendarMonth, null, tint = Accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(dateLabel, color = textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(countLabel, color = textMuted, fontSize = 12.sp)
+        }
+        Icon(
+            if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            null,
+            tint = textMuted,
         )
     }
 }
@@ -393,11 +453,22 @@ private fun DebtOrderCard(
             Text(name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(6.dp))
             Text(
-                "${AppStrings.deliveryRemaining(lang)}: ${formatter.format(order.remainingBalance)} so'm",
-                color = Color(0xFFD97706),
+                "${AppStrings.deliveryRemaining(lang)}: ${formatter.format(order.remainingBalance)} ${AppStrings.sumCurrency(lang)}",
+                color = Color(0xFFDC2626),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
+            order.dueAt?.takeIf { it.isNotBlank() }?.let { due ->
+                formatDueAtDisplay(due)?.let { formatted ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
+                        color = Color(0xFFD97706),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             if (address != null) {
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.Top) {

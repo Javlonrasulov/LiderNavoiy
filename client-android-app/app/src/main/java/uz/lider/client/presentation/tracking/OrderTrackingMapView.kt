@@ -33,7 +33,9 @@ import uz.lider.client.map.MapDefaults
 import uz.lider.client.map.MapLayerId
 import uz.lider.client.map.MapTileSources
 import uz.lider.client.map.RouteTrim
+import uz.lider.client.presentation.dashboard.LiveMapOrder
 import uz.lider.client.presentation.dashboard.LiveMapVehicle
+
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -69,48 +71,60 @@ private fun buildRouteLine(
     }
 }
 
+/** Bitta mashina = bitta asosiy marshrut (eski buyurtma chiziqlari «ghost» qolmasin). */
+private fun primaryRouteOrder(vehicle: LiveMapVehicle): LiveMapOrder? {
+    val sig = RouteTrim.stopsSignature(vehicle.routeStops)
+    return vehicle.orders.firstOrNull {
+        RouteTrim.stopsSignature(it.tracking.routeStops) == sig && it.routePoints.size >= 2
+    } ?: vehicle.orders.maxByOrNull { it.routePoints.size }
+}
+
 private fun replaceRoutePolylines(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     courierOverride: GeoPoint? = null,
+    showRouteStops: Boolean = true,
 ) {
     val overlays = map.overlays
     overlays.removeAll { it is Polyline }
     vehicles.forEach { vehicle ->
+        val order = primaryRouteOrder(vehicle) ?: return@forEach
         val courier = courierOverride
             ?: if (
                 !vehicle.id.startsWith("dest-only") &&
                 GeoCoords.isUsableCourier(
                     vehicle.courierLat,
                     vehicle.courierLng,
-                    vehicle.orders.firstOrNull()?.deliveryLat,
-                    vehicle.orders.firstOrNull()?.deliveryLng,
+                    order.deliveryLat,
+                    order.deliveryLng,
                 )
             ) {
                 GeoPoint(vehicle.courierLat, vehicle.courierLng)
             } else {
                 null
             }
-        vehicle.orders.forEach { order ->
-            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
-                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
-            } else {
-                null
-            }
-            val linePoints = buildRouteLine(courier, delivery, order.routePoints)
-            if (linePoints.size >= 2) {
-                Polyline().apply {
-                    setPoints(linePoints)
-                    outlinePaint.color = ROUTE_COLOR
-                    outlinePaint.strokeWidth = if (order.routePoints.size >= 2) 10f else 6f
-                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
-                    outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
-                    outlinePaint.isAntiAlias = true
-                }.also { overlays.add(0, it) }
-            }
+        val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
+            GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
+        } else {
+            null
+        }
+        val pts = if (showRouteStops) order.routePoints else emptyList()
+        val linePoints = buildRouteLine(courier, delivery, pts)
+        if (linePoints.size >= 2) {
+            Polyline().apply {
+                setPoints(linePoints)
+                outlinePaint.color = ROUTE_COLOR
+                outlinePaint.strokeWidth = if (pts.size >= 2) 10f else 6f
+                outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                outlinePaint.isAntiAlias = true
+            }.also { overlays.add(0, it) }
         }
     }
 }
+
+private fun showRouteStopsFromTag(map: MapView): Boolean =
+    (map.tag as? MapViewFleetTag)?.showRouteStops ?: true
 
 private fun applyCamera(map: MapView, points: List<GeoPoint>) {
     val controller = map.controller
@@ -163,11 +177,25 @@ private fun disableMarkerBubble(marker: Marker) {
     runCatching { marker.infoWindow = null }
 }
 
+private data class MapViewFleetTag(
+    val showRouteStops: Boolean,
+    val stopsSignature: String,
+    val routeSignature: String,
+)
+
+private fun fleetRouteSignature(vehicles: List<LiveMapVehicle>): String =
+    vehicles.joinToString("#") { v ->
+        val order = primaryRouteOrder(v)
+        val pts = order?.routePoints.orEmpty()
+        if (pts.isEmpty()) "0" else "${pts.size}:${"%.4f".format(pts.first().latitude)}:${"%.4f".format(pts.last().latitude)}:${"%.4f".format(pts.last().longitude)}"
+    }
+
 private fun updateFleetMap(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     interactive: Boolean,
     compactMarkers: Boolean,
+    showRouteStops: Boolean,
     selectedStoreOrderId: String?,
     onVehicleClick: (LiveMapVehicle) -> Unit,
     onStoreClick: (StoreCallout) -> Unit,
@@ -176,6 +204,12 @@ private fun updateFleetMap(
     map.setMultiTouchControls(interactive)
     map.isClickable = interactive
     map.isFocusable = interactive
+    val stopsSig = vehicles.joinToString("#") { RouteTrim.stopsSignature(it.routeStops) }
+    val routeSig = fleetRouteSignature(vehicles)
+    val prevTag = map.tag as? MapViewFleetTag
+    val stopsChanged = prevTag?.stopsSignature != stopsSig
+    val routeChanged = prevTag?.routeSignature != routeSig
+    map.tag = MapViewFleetTag(showRouteStops, stopsSig, routeSig)
 
     val overlays = map.overlays
     val existingTruck = overlays
@@ -191,17 +225,19 @@ private fun updateFleetMap(
             truckTarget.orders.firstOrNull()?.deliveryLng,
         )
 
-    // Yandex Taxi: faqat kuryer siljisa — marker ni siljitish, xaritani qayta qurmaslik
-    if (canSlideTruck && !fitCamera) {
+    // Manzillar o‘zgarsa (yetkazildi) — to‘liq qayta chizish (12/13 markerlar o‘chsin)
+    if (canSlideTruck && !fitCamera && !stopsChanged) {
         val dest = GeoPoint(truckTarget!!.courierLat, truckTarget.courierLng)
         val from = existingTruck!!.position
         existingTruck.relatedObject = truckTarget
         if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
+            if (routeChanged) {
+                replaceRoutePolylines(map, vehicles, courierOverride = dest, showRouteStops = showRouteStops)
+            }
             map.invalidate()
             return
         }
-        // Marshrut har doim qolgan qismga kesiladi (ortida chiziq qolmasin)
-        replaceRoutePolylines(map, vehicles, courierOverride = dest)
+        replaceRoutePolylines(map, vehicles, courierOverride = dest, showRouteStops = showRouteStops)
         animateMarker(map, existingTruck, dest)
         map.invalidate()
         return
@@ -229,40 +265,48 @@ private fun updateFleetMap(
     )
 
     vehicles.forEach { vehicle ->
-        vehicle.orders.forEach { order ->
-            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
-                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
+        // Bitta poliliniya — bir nechta buyurtma eski yo‘llarni «ghost» qilib qoldirmasin
+        val primaryOrder = primaryRouteOrder(vehicle)
+        if (primaryOrder != null) {
+            val delivery = if (isValidCoord(primaryOrder.deliveryLat, primaryOrder.deliveryLng)) {
+                GeoPoint(primaryOrder.deliveryLat!!, primaryOrder.deliveryLng!!)
             } else {
                 null
             }
             val courierOk = GeoCoords.isUsableCourier(
                 vehicle.courierLat,
                 vehicle.courierLng,
-                order.deliveryLat,
-                order.deliveryLng,
+                primaryOrder.deliveryLat,
+                primaryOrder.deliveryLng,
             )
             val courier = if (courierOk) {
                 GeoPoint(vehicle.courierLat, vehicle.courierLng)
             } else {
                 null
             }
-
-            val linePoints = buildRouteLine(courier, delivery, order.routePoints)
+            val displayRoutePoints = if (showRouteStops) primaryOrder.routePoints else emptyList()
+            val linePoints = buildRouteLine(courier, delivery, displayRoutePoints)
             if (linePoints.size >= 2) {
                 Polyline().apply {
                     setPoints(linePoints)
                     outlinePaint.color = ROUTE_COLOR
-                    outlinePaint.strokeWidth = if (order.routePoints.size >= 2) 10f else 6f
+                    outlinePaint.strokeWidth = if (displayRoutePoints.size >= 2) 10f else 6f
                     outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                     outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
                     outlinePaint.isAntiAlias = true
                 }.also { overlays.add(it) }
                 cameraPoints.addAll(linePoints)
             }
+        }
 
+        vehicle.orders.forEach { order ->
+            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
+                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
+            } else {
+                null
+            }
             delivery?.let { point ->
-                // Agar to‘liq yo‘nalish routeStops bor — do‘kon pinini faqat «Siz» uchun chizamiz
-                val hasRouteStops = vehicle.routeStops.any {
+                val hasRouteStops = showRouteStops && vehicle.routeStops.any {
                     it.latitude != null && it.longitude != null
                 }
                 if (!hasRouteStops) {
@@ -290,38 +334,40 @@ private fun updateFleetMap(
             }
         }
 
-        // Raqamli manzillar (1…N) — kuryer yo‘nalishi
-        vehicle.routeStops.forEach { stop ->
-            val lat = stop.latitude
-            val lng = stop.longitude
-            if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
-            val point = GeoPoint(lat, lng)
-            Marker(map).apply {
-                position = point
-                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                icon = createNumberedStopDrawable(
-                    context = ctx,
-                    sequence = stop.sequence,
-                    isYou = stop.isYou,
-                    sizeDp = if (compactMarkers) 32 else 36,
-                )
-                relatedObject = if (stop.isYou) {
-                    StoreCallout(name = "Siz", orderId = vehicle.orders.firstOrNull()?.orderId.orEmpty())
-                } else {
-                    null
-                }
-                disableMarkerBubble(this)
-                if (stop.isYou) {
-                    setOnMarkerClickListener { marker, mapView ->
-                        val payload = marker.relatedObject as? StoreCallout
-                        if (payload != null) onStoreClick(payload)
-                        runCatching { mapView.controller.animateTo(marker.position) }
-                        mapView.invalidate()
-                        true
+        // Raqamli manzillar (1…N) — faqat to‘liq yo‘nalish rejimida
+        if (showRouteStops) {
+            vehicle.routeStops.forEach { stop ->
+                val lat = stop.latitude
+                val lng = stop.longitude
+                if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
+                val point = GeoPoint(lat, lng)
+                Marker(map).apply {
+                    position = point
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    icon = createNumberedStopDrawable(
+                        context = ctx,
+                        sequence = stop.sequence,
+                        isYou = stop.isYou,
+                        sizeDp = if (compactMarkers) 32 else 36,
+                    )
+                    relatedObject = if (stop.isYou) {
+                        StoreCallout(name = "Siz", orderId = vehicle.orders.firstOrNull()?.orderId.orEmpty())
+                    } else {
+                        null
                     }
-                }
-            }.also { overlays.add(it) }
-            cameraPoints.add(point)
+                    disableMarkerBubble(this)
+                    if (stop.isYou) {
+                        setOnMarkerClickListener { marker, mapView ->
+                            val payload = marker.relatedObject as? StoreCallout
+                            if (payload != null) onStoreClick(payload)
+                            runCatching { mapView.controller.animateTo(marker.position) }
+                            mapView.invalidate()
+                            true
+                        }
+                    }
+                }.also { overlays.add(it) }
+                cameraPoints.add(point)
+            }
         }
 
         val truckIcon = createTruckMarkerDrawable(
@@ -383,7 +429,12 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
     if (distM < 1.5) {
         marker.position = to
         val vehicle = marker.relatedObject as? LiveMapVehicle
-        if (vehicle != null) replaceRoutePolylines(map, listOf(vehicle), courierOverride = to)
+        if (vehicle != null) {
+            replaceRoutePolylines(
+                map, listOf(vehicle), courierOverride = to,
+                showRouteStops = showRouteStopsFromTag(map),
+            )
+        }
         map.invalidate()
         return
     }
@@ -409,7 +460,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
                 lastRoutePaint = now
                 val vehicle = marker.relatedObject as? LiveMapVehicle
                 if (vehicle != null) {
-                    replaceRoutePolylines(map, listOf(vehicle), courierOverride = marker.position)
+                    replaceRoutePolylines(
+                        map, listOf(vehicle), courierOverride = marker.position,
+                        showRouteStops = showRouteStopsFromTag(map),
+                    )
                 }
             }
             map.invalidate()
@@ -420,7 +474,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
                 marker.position = to
                 val vehicle = marker.relatedObject as? LiveMapVehicle
                 if (vehicle != null) {
-                    replaceRoutePolylines(map, listOf(vehicle), courierOverride = to)
+                    replaceRoutePolylines(
+                        map, listOf(vehicle), courierOverride = to,
+                        showRouteStops = showRouteStopsFromTag(map),
+                    )
                 }
                 map.invalidate()
             }
@@ -440,6 +497,9 @@ fun OrderTrackingMapView(
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
     compactMarkers: Boolean = false,
+    /** false — default tozalangan: faqat mashina + siz; true — 1…N manzillar. */
+    showRouteStops: Boolean = true,
+    mapLayer: MapLayerId = MapTileSources.defaultLayer,
     onVehicleClick: (LiveMapVehicle) -> Unit = {},
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -498,7 +558,7 @@ fun OrderTrackingMapView(
                     }
                     minZoomLevel = 5.0
                     maxZoomLevel = 19.0
-                    setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
+                    setTileSource(MapTileSources.source(MapTileSources.defaultLayer, dark = false))
                     controller.setZoom(NAVOIY_ZOOM)
                     controller.setCenter(NAVOIY)
                     mapRef.value = this
@@ -518,12 +578,18 @@ fun OrderTrackingMapView(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                 }
+                val desired = MapTileSources.source(mapLayer, dark = false)
+                if (map.tileProvider.tileSource.name() != desired.name()) {
+                    map.setTileSource(desired)
+                    map.invalidate()
+                }
                 val shouldFit = prevSignature.value == null || !cameraFitted
                 updateFleetMap(
                     map = map,
                     vehicles = vehicles,
                     interactive = interactive,
                     compactMarkers = compactMarkers,
+                    showRouteStops = showRouteStops,
                     selectedStoreOrderId = selectedStore?.orderId,
                     onVehicleClick = {
                         selectedStore = null
@@ -572,6 +638,7 @@ fun OrderTrackingMapView(
     routeStops: List<uz.lider.client.domain.model.RouteStopInfo> = emptyList(),
     stopsBeforeYou: Int = 0,
     totalStops: Int = 0,
+    mapLayer: MapLayerId = MapTileSources.defaultLayer,
 ) {
     val vehicles = remember(
         deliveryLat, deliveryLng, courierLat, courierLng, routePoints, storeName,
@@ -634,5 +701,7 @@ fun OrderTrackingMapView(
         vehicles = vehicles,
         modifier = modifier,
         interactive = interactive,
+        showRouteStops = true,
+        mapLayer = mapLayer,
     )
 }

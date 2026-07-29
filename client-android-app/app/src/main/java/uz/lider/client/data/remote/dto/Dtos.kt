@@ -287,6 +287,36 @@ data class ClientAnalyticsDto(
     val topProducts: List<AnalyticsTopProductDto> = emptyList(),
 )
 
+data class DebtHistoryItemDto(
+    val id: String? = null,
+    val date: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val amount: Double = 0.0,
+    val type: String = "payment",
+    val method: String? = null,
+    val orderId: String? = null,
+)
+
+data class DebtMonthlyPointDto(
+    val year: Int = 0,
+    val month: Int = 0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val amount: Double = 0.0,
+)
+
+data class ClientDebtDto(
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val currentDebt: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val balance: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val creditLimit: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val totalPaid: Double = 0.0,
+    val history: List<DebtHistoryItemDto> = emptyList(),
+    val monthlyDebt: List<DebtMonthlyPointDto> = emptyList(),
+)
+
 data class PromotionDto(
     val id: String,
     val title: String,

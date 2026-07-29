@@ -6,14 +6,17 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.data.repository.OrderRepository
+import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
@@ -42,14 +45,24 @@ class OrderTrackingViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val roadRouteService: RoadRouteService,
     private val trackingSocket: TrackingSocketManager,
+    private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OrderTrackingUiState())
     val uiState: StateFlow<OrderTrackingUiState> = _uiState.asStateFlow()
+
+    val showMapRoutePayHint: StateFlow<Boolean> = paymentPhotoAlertStore.showMapRoutePayHint
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun dismissMapRoutePayHint() {
+        viewModelScope.launch { paymentPhotoAlertStore.dismissMapRoutePayHint() }
+    }
+
     private var pollJob: Job? = null
     private var routeJob: Job? = null
     private var socketJob: Job? = null
     private var lastRouteAt = 0L
+    private var lastStopsSignature: String = ""
     /** Oxirgi WS/jonli GPS vaqti — eski HTTP nuqta buni yozib yubormasin */
     private var liveCourierAtMs = 0L
 
@@ -111,8 +124,11 @@ class OrderTrackingViewModel @Inject constructor(
         val order = orderRepository.getOrder(orderId) ?: _uiState.value.order
         val tracking = orderRepository.getOrderTracking(orderId)
         val merged = mergePreserveLiveCoords(tracking)
+        val stopsSig = RouteTrim.stopsSignature(merged?.routeStops.orEmpty())
+        val stopsChanged = stopsSig != lastStopsSignature
+        lastStopsSignature = stopsSig
         applyTracking(order, merged)
-        refreshRoadRoute(merged, force = false)
+        refreshRoadRoute(merged, force = stopsChanged)
     }
 
     override fun onCleared() {
@@ -135,7 +151,12 @@ class OrderTrackingViewModel @Inject constructor(
             return
         }
         liveCourierAtMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
-        val distKm = distanceKmOrNull(lat, lng, current.deliveryLatitude, current.deliveryLongitude)
+        val pathKm = RouteTrim.pathLengthKm(
+            RouteTrim.remaining(lat, lng, _uiState.value.routePoints),
+        ).takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+        val distKm = pathKm
+            ?: approxStopsDistanceKm(lat, lng, current)
+            ?: distanceKmOrNull(lat, lng, current.deliveryLatitude, current.deliveryLongitude)
         val updated = current.copy(
             distanceKm = distKm ?: current.distanceKm,
             etaMinutes = distKm?.let { etaFromKm(it) } ?: current.etaMinutes,
@@ -169,9 +190,14 @@ class OrderTrackingViewModel @Inject constructor(
             return incoming
         }
 
-        val distKm = distanceKmOrNull(
-            curLat, curLng, incoming.deliveryLatitude, incoming.deliveryLongitude,
-        )
+        val pathKm = RouteTrim.pathLengthKm(
+            RouteTrim.remaining(curLat, curLng, _uiState.value.routePoints),
+        ).takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+        val distKm = pathKm
+            ?: approxStopsDistanceKm(curLat, curLng, incoming)
+            ?: distanceKmOrNull(
+                curLat, curLng, incoming.deliveryLatitude, incoming.deliveryLongitude,
+            )
         return incoming.copy(
             distanceKm = distKm ?: incoming.distanceKm,
             etaMinutes = distKm?.let { etaFromKm(it) } ?: incoming.etaMinutes,
@@ -239,13 +265,14 @@ class OrderTrackingViewModel @Inject constructor(
         val now = System.currentTimeMillis()
         // Marshrutni har 5s da yangilash — marker esa har WS/HTTP da siljiydi
         if (!force && now - lastRouteAt < 5_000 && _uiState.value.routePoints.isNotEmpty()) {
-            val km = RoadRouteService.haversineM(
-                courierLat!!, courierLng!!, deliveryLat!!, deliveryLng!!,
-            ) / 1000.0
-            if (GeoCoords.isPlausibleRouteDistanceKm(km)) {
-                val trimmed = RouteTrim.remaining(
-                    courierLat, courierLng, _uiState.value.routePoints,
-                )
+            val trimmed = RouteTrim.remaining(
+                courierLat!!, courierLng!!, _uiState.value.routePoints,
+            )
+            val pathKm = RouteTrim.pathLengthKm(trimmed)
+                .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+            val approx = approxStopsDistanceKm(courierLat, courierLng, tracking)
+            val km = pathKm ?: approx
+            if (km != null) {
                 _uiState.update {
                     it.copy(
                         routePoints = trimmed.ifEmpty { it.routePoints },
@@ -278,9 +305,41 @@ class OrderTrackingViewModel @Inject constructor(
                     )
                 }
             } else {
-                _uiState.update { it.copy(routePoints = emptyList()) }
+                val approx = approxStopsDistanceKm(courierLat, courierLng, tracking)
+                _uiState.update {
+                    it.copy(
+                        routePoints = emptyList(),
+                        distance = approx?.let { km -> formatDistance(km) } ?: it.distance,
+                        etaLabel = approx?.let { km -> "${etaFromKm(km)} min" } ?: it.etaLabel,
+                    )
+                }
             }
         }
+    }
+
+    private fun approxStopsDistanceKm(
+        fromLat: Double,
+        fromLng: Double,
+        tracking: OrderTrackingDetails?,
+    ): Double? {
+        val deliveryLat = tracking?.deliveryLatitude ?: return null
+        val deliveryLng = tracking?.deliveryLongitude ?: return null
+        val waypoints = RoadRouteService.waypointsUntilYou(
+            routeStops = tracking.routeStops,
+            deliveryLat = deliveryLat,
+            deliveryLng = deliveryLng,
+        )
+        if (waypoints.isEmpty()) return null
+        var sum = 0.0
+        var prevLat = fromLat
+        var prevLng = fromLng
+        for (p in waypoints) {
+            sum += RoadRouteService.haversineM(prevLat, prevLng, p.latitude, p.longitude)
+            prevLat = p.latitude
+            prevLng = p.longitude
+        }
+        val km = sum / 1000.0
+        return km.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
     }
 
     private fun distanceKmOrNull(

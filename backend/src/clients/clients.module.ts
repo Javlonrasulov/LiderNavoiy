@@ -14,6 +14,7 @@ import { Client } from './entities/client.entity';
 import { ClientRequest } from './entities/client-request.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
 import { Order } from '../orders/entities/order.entity';
+import { OrderPayment } from '../payments/entities/order-payment.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { Company } from '../companies/entities/company.entity';
@@ -30,6 +31,7 @@ import { GpsModule } from '../gps/gps.module';
       Client,
       ClientRequest,
       Order,
+      OrderPayment,
       DistributorProfile,
       User,
       Company,

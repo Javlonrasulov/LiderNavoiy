@@ -9,9 +9,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -19,6 +21,7 @@ import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.OrderRepository
+import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.AuthUser
@@ -55,10 +58,19 @@ class DashboardViewModel @Inject constructor(
     private val roadRouteService: RoadRouteService,
     private val trackingSocket: TrackingSocketManager,
     private val promotionsRepository: uz.lider.client.data.repository.PromotionsRepository,
+    private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    val showMapRoutePayHint: StateFlow<Boolean> = paymentPhotoAlertStore.showMapRoutePayHint
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun dismissMapRoutePayHint() {
+        viewModelScope.launch { paymentPhotoAlertStore.dismissMapRoutePayHint() }
+    }
+
     private var livePollJob: Job? = null
     private var socketJob: Job? = null
     /** orderId → oxirgi jonli GPS ms */
@@ -342,6 +354,8 @@ class DashboardViewModel @Inject constructor(
                     val gpsOk = GeoCoords.isUsableCourier(
                         courierLat, courierLng, deliveryLat, deliveryLng,
                     )
+                    val stopsChanged = RouteTrim.stopsSignature(tracking.routeStops) !=
+                        RouteTrim.stopsSignature(prev?.tracking?.routeStops.orEmpty())
                     if (!gpsOk) {
                         routePoints = emptyList()
                         distanceLabel = "—"
@@ -353,7 +367,7 @@ class DashboardViewModel @Inject constructor(
                         } else {
                             Double.MAX_VALUE
                         }
-                        val oldRoute = prev?.routePoints.orEmpty()
+                        val oldRoute = if (stopsChanged) emptyList() else prev?.routePoints.orEmpty()
                         val nearestNow = if (oldRoute.isNotEmpty()) {
                             RouteTrim.nearestIndex(courierLat!!, courierLng!!, oldRoute)
                         } else {
@@ -373,6 +387,7 @@ class DashboardViewModel @Inject constructor(
                         ) > 80.0
 
                         val movedEnough = prev == null ||
+                            stopsChanged ||
                             prevLat == null ||
                             movedM > 18.0 ||
                             oldRoute.isEmpty() ||
@@ -395,14 +410,27 @@ class DashboardViewModel @Inject constructor(
                                 distanceLabel = formatDistance(route.distanceKm)
                             } else {
                                 routePoints = emptyList()
-                                if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
-                                    distanceLabel = formatDistance(rawKm)
+                                // Fallback: to‘g‘ri chiziqlar yig‘indisi (manzillar orqali)
+                                val approx = approxStopsDistanceKm(
+                                    courierLat, courierLng, waypoints,
+                                )
+                                distanceLabel = if (approx != null) {
+                                    formatDistance(approx)
+                                } else if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
+                                    formatDistance(rawKm)
+                                } else {
+                                    "—"
                                 }
                             }
                         } else {
                             routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
-                            if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
-                                distanceLabel = formatDistance(rawKm)
+                            val pathKm = RouteTrim.pathLengthKm(routePoints)
+                                .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                            distanceLabel = when {
+                                pathKm != null -> formatDistance(pathKm)
+                                rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
+                                    formatDistance(rawKm)
+                                else -> distanceLabel
                             }
                         }
                     }
@@ -550,16 +578,20 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     order.routePoints
                 }
+                val pathKm = RouteTrim.pathLengthKm(trimmedRoute)
+                    .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                 order.copy(
-                    distanceLabel = distKm
-                        ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
-                        ?.let { formatDistance(it) }
+                    distanceLabel = pathKm?.let { formatDistance(it) }
+                        ?: distKm
+                            ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                            ?.let { formatDistance(it) }
                         ?: order.distanceLabel,
                     routePoints = trimmedRoute,
                     tracking = order.tracking.copy(
-                        distanceKm = distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                        distanceKm = pathKm
+                            ?: distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                             ?: order.tracking.distanceKm,
-                        etaMinutes = distKm
+                        etaMinutes = (pathKm ?: distKm)
                             ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                             ?.let { maxOf(5, Math.round((it / 30.0) * 60).toInt()) }
                             ?: order.tracking.etaMinutes,
@@ -593,6 +625,24 @@ class DashboardViewModel @Inject constructor(
 
     private fun haversineMoved(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double =
         RoadRouteService.haversineM(lat1, lng1, lat2, lng2)
+
+    private fun approxStopsDistanceKm(
+        fromLat: Double,
+        fromLng: Double,
+        waypoints: List<uz.lider.client.data.repository.LatLngPoint>,
+    ): Double? {
+        if (waypoints.isEmpty()) return null
+        var sum = 0.0
+        var prevLat = fromLat
+        var prevLng = fromLng
+        for (p in waypoints) {
+            sum += RoadRouteService.haversineM(prevLat, prevLng, p.latitude, p.longitude)
+            prevLat = p.latitude
+            prevLng = p.longitude
+        }
+        val km = sum / 1000.0
+        return km.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+    }
 
     private fun parseIsoMs(value: String?): Long? {
         if (value.isNullOrBlank()) return null

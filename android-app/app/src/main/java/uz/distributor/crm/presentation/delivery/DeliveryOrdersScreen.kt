@@ -348,11 +348,24 @@ private fun DeliveryOrderCard(
             if (order.needsPaymentFollowUp) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${AppStrings.deliveryCollectPayment(lang)} · ${AppStrings.deliveryRemaining(lang)}",
-                    color = Color(0xFFD97706),
+                    "${AppStrings.deliveryCollectPayment(lang)} · ${AppStrings.deliveryRemaining(lang)}: ${
+                        java.text.DecimalFormat("#,###").format(order.remainingBalance)
+                    }",
+                    color = Color(0xFFDC2626),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
+                order.dueAt?.takeIf { it.isNotBlank() }?.let { due ->
+                    formatDueAtDisplay(due)?.let { formatted ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
+                            color = Color(0xFFD97706),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
             }
 
             Column(Modifier.clickable(enabled = !isDragging, onClick = onCardClick)) {
