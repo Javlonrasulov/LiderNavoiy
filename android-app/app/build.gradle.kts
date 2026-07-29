@@ -17,8 +17,8 @@ android {
         applicationId = "uz.distributor.crm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
 
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")
@@ -114,6 +114,9 @@ dependencies {
 
     // Images
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Drag-and-drop reorder (LazyColumn)
+    implementation("sh.calvin.reorderable:reorderable:3.1.0")
 
     // Firebase Cloud Messaging (Push)
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))

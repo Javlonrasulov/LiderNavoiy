@@ -229,6 +229,7 @@ data class OrderDto(
     val clientLongitude: Double? = null,
     val deliveryDistributorId: String? = null,
     val deliverySequence: Int? = null,
+    val dueAt: String? = null,
     val updatedAt: String? = null,
     val isUrgent: Boolean = false,
 ) {

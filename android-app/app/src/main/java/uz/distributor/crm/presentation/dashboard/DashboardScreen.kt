@@ -40,6 +40,7 @@ import kotlinx.coroutines.delay
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.AppLanguageDropdownMenu
+import uz.distributor.crm.presentation.components.NavGlassInfoToast
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
@@ -328,92 +329,6 @@ private data class StatItem(
     val cartBadge: String? = null,
     val onClick: () -> Unit = {},
 )
-
-/** NavGlass desktop toast uslubi — glass card + info accent */
-@Composable
-private fun NavGlassInfoToast(
-    title: String,
-    detail: String,
-    isDark: Boolean,
-) {
-    val accent = Color(0xFF2563EB)
-    // Light/Dark: glass — biroz shaffof, lekin matn o‘qiladi
-    val bg = if (isDark) {
-        Color(0xFF1E3A8A).copy(alpha = 0.38f)
-    } else {
-        Color(0xFFF8FAFC).copy(alpha = 0.78f)
-    }
-    val border = if (isDark) {
-        Color(0xFF3B82F6).copy(alpha = 0.40f)
-    } else {
-        Color.White.copy(alpha = 0.55f)
-    }
-    val titleColor = if (isDark) Color(0xFFBFDBFE) else Color(0xFF1E3A8A)
-    val detailColor = if (isDark) Color(0xFFE2E8F0).copy(alpha = 0.88f) else Color(0xFF334155).copy(alpha = 0.90f)
-    val iconBg = if (isDark) {
-        Color(0xFF3B82F6).copy(alpha = 0.20f)
-    } else {
-        Color(0xFFDBEAFE).copy(alpha = 0.70f)
-    }
-    val iconBorder = if (isDark) {
-        Color(0xFF3B82F6).copy(alpha = 0.28f)
-    } else {
-        Color(0xFF93C5FD).copy(alpha = 0.55f)
-    }
-    val iconTint = if (isDark) Color(0xFF93C5FD) else accent
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .shadow(
-                elevation = 10.dp,
-                shape = RoundedCornerShape(16.dp),
-                ambientColor = Color.Black.copy(0.10f),
-                spotColor = Color.Black.copy(0.14f),
-            )
-            .clip(RoundedCornerShape(16.dp))
-            .background(bg)
-            .border(1.dp, border, RoundedCornerShape(16.dp)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconBg)
-                    .border(1.dp, iconBorder, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    title,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    letterSpacing = 0.3.sp,
-                    color = titleColor,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    detail,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    color = detailColor,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun SherinRefreshAction(

@@ -3,6 +3,8 @@ package uz.distributor.crm.presentation.delivery
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,17 +22,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -51,14 +53,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -70,6 +79,7 @@ private val Accent = Color(0xFF6366F1)
 @Composable
 fun DeliveryOrdersScreen(
     onOrderClick: (String) -> Unit,
+    onDebtsClick: () -> Unit = {},
     viewModel: DeliveryOrdersViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
@@ -79,21 +89,27 @@ fun DeliveryOrdersScreen(
     val cardBg = if (isDark) Color(0xFF17212B) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
+    val haptic = LocalHapticFeedback.current
 
+    // Parent Column allaqachon BottomNav + system bars uchun joy ajratgan —
+    // Scaffold navigationBars inseti bo‘shliq / kesilish hosil qilmasin.
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        AppStrings.deliveryOrdersTitle(lang),
-                        fontWeight = FontWeight.SemiBold,
-                        color = textPrimary,
+                    DeliverySectionTabs(
+                        selectedDebts = false,
+                        lang = lang,
+                        onDelivery = {},
+                        onDebts = onDebtsClick,
                     )
                 },
                 actions = {
-                    if (state.orders.isNotEmpty()) {
+                    val onWayCount = state.orders.count { it.status == "on_way" }
+                    if (onWayCount > 0) {
                         Text(
-                            "${state.orders.size}",
+                            "$onWayCount",
                             color = Accent,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -146,29 +162,97 @@ fun DeliveryOrdersScreen(
                     }
                 }
                 else -> {
-                    val onWayIds = state.orders.filter { it.status == "on_way" }.map { it.id }
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(state.orders, key = { it.id }) { order ->
-                            val onWayIndex = onWayIds.indexOf(order.id)
-                            val stopNumber = if (onWayIndex >= 0) onWayIndex + 1 else null
-                            DeliveryOrderCard(
-                                order = order,
-                                stopNumber = stopNumber,
-                                canMoveUp = onWayIndex > 0,
-                                canMoveDown = onWayIndex >= 0 && onWayIndex < onWayIds.lastIndex,
-                                cardBg = cardBg,
-                                textPrimary = textPrimary,
-                                textMuted = textMuted,
-                                lang = lang,
-                                onCardClick = { onOrderClick(order.id) },
-                                onMoveUp = { viewModel.moveOnWayUp(order.id) },
-                                onMoveDown = { viewModel.moveOnWayDown(order.id) },
+                    val onWayOrders = state.orders.filter { it.status == "on_way" }
+                    if (onWayOrders.isEmpty()) {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.LocalShipping,
+                                null,
+                                tint = textMuted,
+                                modifier = Modifier.size(56.dp),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                AppStrings.noDeliveryOrders(lang),
+                                color = textMuted,
+                                fontSize = 15.sp,
                             )
                         }
+                    } else {
+                    val onWayIds = onWayOrders.map { it.id }
+                    val lazyListState = rememberLazyListState()
+                    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+                        viewModel.onWayDragMove(from.index, to.index)
+                    }
+
+                    LazyColumn(
+                        state = lazyListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 16.dp,
+                            bottom = 20.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(onWayOrders, key = { it.id }) { order ->
+                            val onWayIndex = onWayIds.indexOf(order.id)
+                            val stopNumber = if (onWayIndex >= 0) onWayIndex + 1 else null
+                            val canReorder = true
+
+                            ReorderableItem(
+                                reorderableState,
+                                key = order.id,
+                                enabled = canReorder,
+                            ) { isDragging ->
+                                val elevation by animateDpAsState(
+                                    targetValue = if (isDragging) 14.dp else 1.dp,
+                                    label = "cardElev",
+                                )
+                                val scale by animateFloatAsState(
+                                    targetValue = if (isDragging) 1.04f else 1f,
+                                    label = "cardScale",
+                                )
+                                DeliveryOrderCard(
+                                    order = order,
+                                    stopNumber = stopNumber,
+                                    canReorder = canReorder,
+                                    isDragging = isDragging,
+                                    cardBg = cardBg,
+                                    textPrimary = textPrimary,
+                                    textMuted = textMuted,
+                                    lang = lang,
+                                    modifier = Modifier
+                                        .zIndex(if (isDragging) 1f else 0f)
+                                        .graphicsLayer {
+                                            scaleX = scale
+                                            scaleY = scale
+                                        }
+                                        .shadow(elevation, RoundedCornerShape(16.dp))
+                                        .then(
+                                            Modifier.longPressDraggableHandle(
+                                                onDragStarted = {
+                                                    haptic.performHapticFeedback(
+                                                        HapticFeedbackType.LongPress,
+                                                    )
+                                                },
+                                                onDragStopped = {
+                                                    viewModel.persistCurrentOnWayOrder()
+                                                },
+                                            ),
+                                        ),
+                                    onCardClick = { onOrderClick(order.id) },
+                                )
+                            }
+                        }
+                    }
                     }
                 }
             }
@@ -195,15 +279,14 @@ fun DeliveryOrdersScreen(
 private fun DeliveryOrderCard(
     order: OrderDto,
     stopNumber: Int?,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
+    canReorder: Boolean,
+    isDragging: Boolean,
     cardBg: Color,
     textPrimary: Color,
     textMuted: Color,
     lang: AppLanguage,
+    modifier: Modifier = Modifier,
     onCardClick: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
 ) {
     val context = LocalContext.current
     val name = order.clientName ?: AppStrings.clientFallback(lang)
@@ -213,15 +296,15 @@ private fun DeliveryOrderCard(
         !order.clientAddress.isNullOrBlank()
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (stopNumber != null) {
                     Box(
@@ -249,39 +332,17 @@ private fun DeliveryOrderCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = onCardClick),
+                        .clickable(enabled = !isDragging, onClick = onCardClick),
                 )
-                if (stopNumber != null) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.DragHandle,
-                            contentDescription = null,
-                            tint = textMuted,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        IconButton(
-                            onClick = onMoveUp,
-                            enabled = canMoveUp,
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.KeyboardArrowUp,
-                                contentDescription = null,
-                                tint = if (canMoveUp) Accent else textMuted.copy(alpha = 0.35f),
-                            )
-                        }
-                        IconButton(
-                            onClick = onMoveDown,
-                            enabled = canMoveDown,
-                            modifier = Modifier.size(32.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                tint = if (canMoveDown) Accent else textMuted.copy(alpha = 0.35f),
-                            )
-                        }
-                    }
+                if (canReorder) {
+                    Icon(
+                        Icons.Default.DragHandle,
+                        contentDescription = null,
+                        tint = if (isDragging) Accent else textMuted,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .padding(start = 4.dp),
+                    )
                 }
             }
             if (order.needsPaymentFollowUp) {
@@ -294,7 +355,7 @@ private fun DeliveryOrderCard(
                 )
             }
 
-            Column(Modifier.clickable(onClick = onCardClick)) {
+            Column(Modifier.clickable(enabled = !isDragging, onClick = onCardClick)) {
                 if (address != null) {
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.Top) {
@@ -334,7 +395,7 @@ private fun DeliveryOrderCard(
                                 .size(42.dp)
                                 .clip(CircleShape)
                                 .background(Accent.copy(alpha = 0.12f))
-                                .clickable {
+                                .clickable(enabled = !isDragging) {
                                     context.startActivity(
                                         Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
                                     )
@@ -356,6 +417,7 @@ private fun DeliveryOrderCard(
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = { openNavigation(context, order) },
+                    enabled = !isDragging,
                     colors = ButtonDefaults.buttonColors(containerColor = Accent),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),

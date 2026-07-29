@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -61,6 +62,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -343,24 +345,31 @@ fun DeliveryPaymentSheet(
                             fontSize = 13.sp,
                         )
                         Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             DueDateField(
                                 label = formatDisplayDate(dueDate, lang),
-                                modifier = Modifier.weight(1.2f),
+                                modifier = Modifier.weight(1.15f),
                                 isDark = isDark,
                                 borderColor = borderColor,
                                 titleColor = titleColor,
                                 subColor = subColor,
                                 onClick = { showCalendar = true },
                             )
-                            OutlinedTextField(
+                            DueTimeField(
                                 value = dueTime,
                                 onValueChange = { raw ->
                                     dueTime = raw.filter { it.isDigit() || it == ':' }.take(5)
                                 },
-                                label = { Text(AppStrings.deliveryTimeLabel(lang)) },
+                                hint = AppStrings.deliveryTimeLabel(lang),
                                 modifier = Modifier.weight(0.85f),
-                                singleLine = true,
+                                isDark = isDark,
+                                borderColor = borderColor,
+                                titleColor = titleColor,
+                                subColor = subColor,
                             )
                         }
                     }
@@ -517,24 +526,31 @@ fun DeliveryDueAtSheet(
                 color = titleColor,
             )
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 DueDateField(
                     label = formatDisplayDate(dueDate, lang),
-                    modifier = Modifier.weight(1.2f),
+                    modifier = Modifier.weight(1.15f),
                     isDark = isDark,
                     borderColor = borderColor,
                     titleColor = titleColor,
                     subColor = subColor,
                     onClick = { showCalendar = true },
                 )
-                OutlinedTextField(
+                DueTimeField(
                     value = dueTime,
                     onValueChange = { raw ->
                         dueTime = raw.filter { it.isDigit() || it == ':' }.take(5)
                     },
-                    label = { Text(AppStrings.deliveryTimeLabel(lang)) },
+                    hint = AppStrings.deliveryTimeLabel(lang),
                     modifier = Modifier.weight(0.85f),
-                    singleLine = true,
+                    isDark = isDark,
+                    borderColor = borderColor,
+                    titleColor = titleColor,
+                    subColor = subColor,
                 )
             }
             localError?.let {
@@ -583,10 +599,65 @@ private fun DueDateField(
     ) {
         Icon(Icons.Outlined.CalendarMonth, null, tint = PayAccent, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(label, color = titleColor, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-        }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = subColor, modifier = Modifier.size(18.dp))
+        Text(
+            label,
+            color = titleColor,
+            fontWeight = FontWeight.Medium,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            null,
+            tint = subColor,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun DueTimeField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    hint: String,
+    modifier: Modifier = Modifier,
+    isDark: Boolean,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+) {
+    Row(
+        modifier
+            .height(56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .background(if (isDark) Color(0xFF1F2937) else Color.White)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Schedule, null, tint = PayAccent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            textStyle = TextStyle(
+                color = titleColor,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+            ),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isBlank()) {
+                        Text(hint, color = subColor, fontSize = 14.sp)
+                    }
+                    inner()
+                }
+            },
+        )
     }
 }
 
@@ -599,11 +670,13 @@ internal fun DeliveryDueDateCalendarDialog(
     onSelect: (LocalDate) -> Unit,
 ) {
     val today = LocalDate.now()
-    var displayMonth by remember(selected) { mutableStateOf(YearMonth.from(selected)) }
-    var tempSelected by remember(selected) { mutableStateOf(selected) }
+    val initial = if (selected.isBefore(today)) today else selected
+    var displayMonth by remember(initial) { mutableStateOf(YearMonth.from(initial)) }
+    var tempSelected by remember(initial) { mutableStateOf(initial) }
     val sheetBg = if (isDark) Color(0xFF1C1C1E) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF111827)
     val mutedColor = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
+    val currentMonth = YearMonth.from(today)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -631,8 +704,16 @@ internal fun DeliveryDueDateCalendarDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = { displayMonth = displayMonth.minusMonths(1) }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = mutedColor)
+                IconButton(
+                    onClick = { displayMonth = displayMonth.minusMonths(1) },
+                    enabled = displayMonth > currentMonth,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        null,
+                        tint = if (displayMonth > currentMonth) mutedColor else mutedColor.copy(alpha = 0.35f),
+                    )
                 }
                 Text(
                     formatMonthYear(lang, displayMonth),
@@ -640,7 +721,10 @@ internal fun DeliveryDueDateCalendarDialog(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                 )
-                IconButton(onClick = { displayMonth = displayMonth.plusMonths(1) }, modifier = Modifier.size(32.dp)) {
+                IconButton(
+                    onClick = { displayMonth = displayMonth.plusMonths(1) },
+                    modifier = Modifier.size(32.dp),
+                ) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = mutedColor)
                 }
             }
@@ -672,6 +756,7 @@ internal fun DeliveryDueDateCalendarDialog(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (date != null) {
+                                    val isPast = date.isBefore(today)
                                     val isSelected = date == tempSelected
                                     val isToday = date == today
                                     Box(
@@ -680,17 +765,21 @@ internal fun DeliveryDueDateCalendarDialog(
                                             .clip(CircleShape)
                                             .background(
                                                 when {
-                                                    isSelected -> PayAccent
-                                                    isToday -> PayAccent.copy(alpha = 0.12f)
+                                                    isSelected && !isPast -> PayAccent
+                                                    isToday && !isPast -> PayAccent.copy(alpha = 0.12f)
                                                     else -> Color.Transparent
                                                 },
                                             )
-                                            .clickable { tempSelected = date },
+                                            .then(
+                                                if (isPast) Modifier
+                                                else Modifier.clickable { tempSelected = date },
+                                            ),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         Text(
                                             date.dayOfMonth.toString(),
                                             color = when {
+                                                isPast -> mutedColor.copy(alpha = 0.35f)
                                                 isSelected -> Color.White
                                                 else -> textColor
                                             },
@@ -717,7 +806,10 @@ internal fun DeliveryDueDateCalendarDialog(
                     Text(AppStrings.msgCancel(lang), color = mutedColor)
                 }
                 Button(
-                    onClick = { onSelect(tempSelected) },
+                    onClick = {
+                        if (!tempSelected.isBefore(today)) onSelect(tempSelected)
+                    },
+                    enabled = !tempSelected.isBefore(today),
                     colors = ButtonDefaults.buttonColors(containerColor = PayAccent),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f),

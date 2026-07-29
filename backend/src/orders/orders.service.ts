@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
-import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus } from '../common/enums';
+import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus, PaymentStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
@@ -16,6 +16,7 @@ import { Promotion } from '../promotions/entities/promotion.entity';
 import { Product } from '../products/entities/product.entity';
 import { Visit } from '../visits/entities/visit.entity';
 import { TrackingGateway } from '../tracking/tracking.gateway';
+import { OrderPayment } from '../payments/entities/order-payment.entity';
 
 @Injectable()
 export class OrdersService {
@@ -28,6 +29,8 @@ export class OrdersService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(OrderPayment)
+    private readonly paymentRepo: Repository<OrderPayment>,
     private readonly notifications: NotificationsService,
     private readonly visitsService: VisitsService,
     private readonly promotionsService: PromotionsService,
@@ -180,6 +183,22 @@ export class OrdersService {
 
     if (onWay.length === 0 && unpaidDelivered.length === 0) return [];
 
+    const unpaidIds = unpaidDelivered.map((o) => o.id);
+    const openPayments = unpaidIds.length
+      ? await this.paymentRepo.find({
+          where: {
+            orderId: In(unpaidIds),
+            status: In([PaymentStatus.PENDING, PaymentStatus.PARTIAL]),
+          },
+          order: { createdAt: 'DESC' },
+        })
+      : [];
+    const dueAtByOrder = new Map<string, Date>();
+    for (const p of openPayments) {
+      if (!p.dueAt) continue;
+      if (!dueAtByOrder.has(p.orderId)) dueAtByOrder.set(p.orderId, p.dueAt);
+    }
+
     const clientIds = [
       ...new Set([...onWay, ...unpaidDelivered].map((o) => o.clientId)),
     ];
@@ -212,6 +231,7 @@ export class OrdersService {
 
     const mapOrder = (order: Order) => {
       const client = clientMap.get(order.clientId)!;
+      const due = dueAtByOrder.get(order.id);
       return {
         id: order.id,
         clientId: order.clientId,
@@ -225,6 +245,7 @@ export class OrdersService {
         paidAmount: Number(order.paidAmount || 0),
         returnedAmount: Number(order.returnedAmount || 0),
         paymentStatus: order.paymentStatus ?? OrderPaymentStatus.UNPAID,
+        dueAt: due ? due.toISOString() : null,
         items: order.items,
         isUrgent: !!order.isUrgent,
         createdAt: order.createdAt,

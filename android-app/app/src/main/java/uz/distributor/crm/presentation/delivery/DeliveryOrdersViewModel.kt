@@ -46,29 +46,29 @@ class DeliveryOrdersViewModel @Inject constructor(
         }
     }
 
-    /** Local swap then persist on_way sequence. */
-    fun moveOnWay(fromIndex: Int, toIndex: Int) {
-        val current = _uiState.value.orders
-        val onWay = current.filter { it.status == "on_way" }.toMutableList()
+    /** Drag paytida LazyColumn indekslari bo‘yicha lokal tartib. */
+    fun onWayDragMove(fromListIndex: Int, toListIndex: Int) {
+        if (fromListIndex == toListIndex) return
+        val current = _uiState.value.orders.toMutableList()
+        if (fromListIndex !in current.indices || toListIndex !in current.indices) return
+        val moving = current[fromListIndex]
+        val target = current[toListIndex]
+        if (moving.status != "on_way" || target.status != "on_way") return
+
+        current.removeAt(fromListIndex)
+        current.add(toListIndex, moving)
+
+        val onWay = current.filter { it.status == "on_way" }
+            .mapIndexed { i, o -> o.copy(deliverySequence = i + 1) }
         val rest = current.filter { it.status != "on_way" }
-        if (fromIndex !in onWay.indices || toIndex !in onWay.indices || fromIndex == toIndex) return
-        val item = onWay.removeAt(fromIndex)
-        onWay.add(toIndex, item)
-        val optimistic = onWay.mapIndexed { i, o -> o.copy(deliverySequence = i + 1) } + rest
-        _uiState.update { it.copy(orders = optimistic) }
-        persistOrder(onWay.map { it.id })
+        _uiState.update { it.copy(orders = onWay + rest) }
     }
 
-    fun moveOnWayUp(orderId: String) {
-        val onWay = _uiState.value.orders.filter { it.status == "on_way" }
-        val idx = onWay.indexOfFirst { it.id == orderId }
-        if (idx > 0) moveOnWay(idx, idx - 1)
-    }
-
-    fun moveOnWayDown(orderId: String) {
-        val onWay = _uiState.value.orders.filter { it.status == "on_way" }
-        val idx = onWay.indexOfFirst { it.id == orderId }
-        if (idx >= 0 && idx < onWay.lastIndex) moveOnWay(idx, idx + 1)
+    /** Drag tugagach API ga saqlash. */
+    fun persistCurrentOnWayOrder() {
+        val ids = _uiState.value.orders.filter { it.status == "on_way" }.map { it.id }
+        if (ids.isEmpty()) return
+        persistOrder(ids)
     }
 
     private fun persistOrder(orderIds: List<String>) {

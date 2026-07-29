@@ -2,6 +2,12 @@ package uz.distributor.crm.presentation.delivery
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,9 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -56,11 +60,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.components.NavGlassInfoToast
 import java.text.DecimalFormat
-
 private val Accent = Color(0xFF6366F1)
 private val StatusOnWay = Color(0xFFF59E0B)
 private val StatusDone = Color(0xFF22C55E)
@@ -86,6 +92,7 @@ fun DeliveryOrderDetailScreen(
     var showDueSheet by remember { mutableStateOf(false) }
     var showReturnSheet by remember { mutableStateOf(false) }
     var snack by remember { mutableStateOf<String?>(null) }
+    var snackVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.doneAndLeave) {
         if (state.doneAndLeave) onBack()
@@ -95,17 +102,20 @@ fun DeliveryOrderDetailScreen(
         when (state.successMessage) {
             "ok" -> {
                 snack = AppStrings.deliveryPaymentOk(lang)
+                snackVisible = true
                 showDeliverSheet = false
                 showCollectSheet = false
                 viewModel.clearMessages()
             }
             "due" -> {
                 snack = AppStrings.deliveryDueUpdated(lang)
+                snackVisible = true
                 showDueSheet = false
                 viewModel.clearMessages()
             }
             "return" -> {
                 snack = AppStrings.deliveryReturnRequested(lang)
+                snackVisible = true
                 showReturnSheet = false
                 viewModel.clearMessages()
             }
@@ -114,9 +124,19 @@ fun DeliveryOrderDetailScreen(
 
     LaunchedEffect(state.error) {
         state.error?.let {
-            snack = it
+            snack = AppStrings.apiError(lang, it)
+            snackVisible = true
             viewModel.clearMessages()
         }
+    }
+
+    LaunchedEffect(snack) {
+        if (snack == null) return@LaunchedEffect
+        snackVisible = true
+        delay(2800)
+        snackVisible = false
+        delay(400)
+        snack = null
     }
 
     Scaffold(
@@ -144,41 +164,30 @@ fun DeliveryOrderDetailScreen(
             )
         },
         containerColor = bg,
-        snackbarHost = {
-            snack?.let { msg ->
-                Snackbar(
-                    modifier = Modifier.padding(16.dp),
-                    action = {
-                        TextButton(onClick = { snack = null }) {
-                            Text("OK")
-                        }
-                    },
-                ) { Text(msg) }
-            }
-        },
     ) { padding ->
-        when {
-            state.isLoading -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Accent)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when {
+                state.isLoading -> {
+                    Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Accent)
+                    }
                 }
-            }
-            state.order == null -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(AppStrings.noDeliveryOrders(lang), color = textMuted)
+                state.order == null -> {
+                    Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(AppStrings.noDeliveryOrders(lang), color = textMuted)
+                    }
                 }
-            }
-            else -> {
+                else -> {
                 val order = state.order!!
                 val isOnWay = order.status == "on_way"
                 val statusColor = if (isOnWay) StatusOnWay else StatusDone
@@ -193,7 +202,6 @@ fun DeliveryOrderDetailScreen(
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .padding(padding)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
                         .padding(top = 16.dp)
@@ -486,6 +494,23 @@ fun DeliveryOrderDetailScreen(
                     isSubmitting = state.isSubmitting,
                     onDismiss = { showReturnSheet = false },
                     onSubmit = { items, note -> viewModel.createReturn(items, note) },
+                )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = snackVisible && snack != null,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .zIndex(20f),
+                enter = fadeIn(tween(320)) + slideInVertically(tween(320)) { -it },
+                exit = fadeOut(tween(380)) + slideOutVertically(tween(380)) { -it },
+            ) {
+                NavGlassInfoToast(
+                    title = snack.orEmpty(),
+                    isDark = isDark,
                 )
             }
         }

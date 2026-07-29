@@ -133,11 +133,30 @@ object AppStrings {
     fun clientOrders(lang: AppLanguage) = tr(lang, "Klient buyurtmalari", "Клиент буюртмалари", "Заказы клиентов")
     fun clientOrdersTitle(lang: AppLanguage) = clientOrders(lang)
     fun deliveryOrdersTitle(lang: AppLanguage) = tr(lang, "Dostavka", "Доставка", "Доставка")
+    fun deliveryDebtsTitle(lang: AppLanguage) = tr(lang, "Qarzlar", "Қарзлар", "Долги")
+    fun noDeliveryDebts(lang: AppLanguage) = tr(
+        lang,
+        "Bu kunda qarz yo'q",
+        "Бу кунда қарз йўқ",
+        "На этот день долгов нет",
+    )
+    fun deliveryDebtsCount(lang: AppLanguage, n: Int) = tr(
+        lang,
+        "$n ta qarz",
+        "$n та қарз",
+        "$n долг.",
+    )
     fun noDeliveryOrders(lang: AppLanguage) = tr(
         lang,
         "Yuklangan buyurtma yo'q",
         "Юкланган буюртма йўқ",
         "Нет загруженных заказов",
+    )
+    fun loadedOrdersTitle(lang: AppLanguage) = tr(
+        lang,
+        "Yuklangan zakazlar",
+        "Юкланган заказлар",
+        "Загруженные заказы",
     )
     fun deliveryStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
     fun deliveryStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")

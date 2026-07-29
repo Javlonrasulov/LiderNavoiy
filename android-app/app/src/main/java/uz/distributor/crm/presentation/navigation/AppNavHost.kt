@@ -34,6 +34,7 @@ import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
 import uz.distributor.crm.presentation.dashboard.DashboardScreen
+import uz.distributor.crm.presentation.delivery.DeliveryDebtsScreen
 import uz.distributor.crm.presentation.delivery.DeliveryOrderDetailScreen
 import uz.distributor.crm.presentation.delivery.DeliveryOrdersScreen
 import uz.distributor.crm.presentation.location.LocationScreen
@@ -216,6 +217,20 @@ fun AppNavHost(
             if (isDeliveryPerson) {
                 DeliveryOrdersScreen(
                     onOrderClick = { id -> navController.navigate("delivery/$id") },
+                    onDebtsClick = { navController.navigate("delivery/debts") },
+                )
+            }
+        }
+        composable("delivery/debts") {
+            if (isDeliveryPerson) {
+                DeliveryDebtsScreen(
+                    onBackToDelivery = {
+                        navController.navigate("delivery") {
+                            popUpTo("delivery") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onOrderClick = { id -> navController.navigate("delivery/$id") },
                 )
             }
         }
@@ -290,7 +305,10 @@ fun AppNavHost(
             )
         }
         composable("location") {
-            LocationScreen(onNavigate = { tab -> navController.navigateBottomTab(tab) })
+            LocationScreen(
+                onNavigate = { tab -> navController.navigateBottomTab(tab) },
+                onOrderClick = { id -> navController.navigate("delivery/$id") },
+            )
         }
         composable("plan") {
             PlanScreen(onNavigate = { tab -> navController.navigateBottomTab(tab) })

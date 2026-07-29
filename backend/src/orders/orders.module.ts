@@ -10,10 +10,11 @@ import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { TrackingModule } from '../tracking/tracking.module';
+import { OrderPayment } from '../payments/entities/order-payment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, DistributorProfile, Client, User]),
+    TypeOrmModule.forFeature([Order, DistributorProfile, Client, User, OrderPayment]),
     NotificationsModule,
     VisitsModule,
     PromotionsModule,
