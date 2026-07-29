@@ -30,6 +30,10 @@ export class Order {
   @Column({ type: 'uuid', nullable: true })
   deliveryDistributorId: string | null;
 
+  /** Dostavkachi yo‘nalishidagi tartib (1…N). Faqat on_way uchun. */
+  @Column({ type: 'int', nullable: true })
+  deliverySequence: number | null;
+
   @Column({ type: 'uuid', nullable: true })
   visitId: string | null;
 

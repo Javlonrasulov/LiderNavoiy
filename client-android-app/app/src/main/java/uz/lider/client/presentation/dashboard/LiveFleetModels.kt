@@ -3,6 +3,7 @@ package uz.lider.client.presentation.dashboard
 import uz.lider.client.data.repository.LatLngPoint
 import uz.lider.client.domain.model.DeliveryPersonTracking
 import uz.lider.client.domain.model.OrderTrackingDetails
+import uz.lider.client.domain.model.RouteStopInfo
 
 /** One on-the-way order shown on the live map. */
 data class LiveMapOrder(
@@ -27,6 +28,10 @@ data class LiveMapVehicle(
     val orders: List<LiveMapOrder>,
     val companyId: String? = null,
     val companyShortName: String? = null,
+    /** Full courier route stops (numbered 1…N), including other clients. */
+    val routeStops: List<RouteStopInfo> = emptyList(),
+    val stopsBeforeYou: Int = 0,
+    val totalStops: Int = 0,
 ) {
     val orderCount: Int get() = orders.size
 }
@@ -37,6 +42,10 @@ data class LiveFleetUi(
 ) {
     val orderCount: Int get() = vehicles.sumOf { it.orders.size }
     val primaryOrderId: String? get() = vehicles.firstOrNull()?.orders?.firstOrNull()?.orderId
+    val stopsBeforeYou: Int
+        get() = vehicles.minOfOrNull { it.stopsBeforeYou } ?: 0
+    val totalStops: Int
+        get() = vehicles.maxOfOrNull { it.totalStops } ?: 0
     val distanceLabel: String
         get() = when {
             vehicles.isEmpty() -> "—"
@@ -59,28 +68,10 @@ data class LiveFleetUi(
                 .trim()
                 .toDoubleOrNull()
                 ?.div(1000.0)
-            else -> null
+            else -> normalized.toDoubleOrNull()
         }
     }
 
-    private fun formatDistance(km: Double): String {
-        return if (km < 1.0) "${(km * 1000).toInt()} m" else String.format("%.1f km", km)
-    }
-}
-
-fun vehicleKeyFor(person: DeliveryPersonTracking?, companyId: String?): String {
-    val org = companyId?.trim()?.takeIf { it.isNotEmpty() } ?: "org"
-    val courier = run {
-        person?.userId?.trim()?.takeIf { it.isNotEmpty() }?.let { return@run "u:$it" }
-        val lat = person?.latitude
-        val lng = person?.longitude
-        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-            return@run "p:${(lat * 10_000).toInt()}_${(lng * 10_000).toInt()}"
-        }
-        val name = person?.name?.trim().orEmpty()
-        val phone = person?.phone?.trim().orEmpty()
-        if (name.isNotEmpty() || phone.isNotEmpty()) return@run "c:$name|$phone"
-        "unknown"
-    }
-    return "$org|$courier"
+    private fun formatDistance(km: Double): String =
+        if (km < 1.0) "${(km * 1000).toInt()} m" else String.format("%.1f km", km)
 }

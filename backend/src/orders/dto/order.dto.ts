@@ -81,6 +81,13 @@ export class UpdateOrderDto {
   deliveryDistributorId?: string | null;
 }
 
+export class ReorderDeliveryDto {
+  @ApiProperty({ type: [String], description: 'on_way order IDs in desired stop order' })
+  @IsArray()
+  @IsUUID('4', { each: true })
+  orderIds: string[];
+}
+
 export class SendToWarehouseDto {
   @ApiPropertyOptional({ description: 'Shoshilinch (urgent) flag for warehouse / admin / tarozi' })
   @IsOptional()

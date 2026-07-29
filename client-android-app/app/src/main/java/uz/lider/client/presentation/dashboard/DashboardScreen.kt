@@ -324,10 +324,24 @@ fun DashboardScreen(
                                         t("dash_live_delivery")
                                     },
                                     watchLabel = t("dash_live_watch"),
-                                    distanceLabel = if (fleet.orderCount > 1) {
-                                        "${fleet.orderCount} ${t("dash_live_orders_unit")} · ${t("track_distance")}: ${fleet.distanceLabel}"
-                                    } else {
-                                        "${t("track_distance")}: ${fleet.distanceLabel}"
+                                    distanceLabel = buildString {
+                                        if (fleet.totalStops > 1) {
+                                            append(
+                                                if (fleet.stopsBeforeYou > 0) {
+                                                    t("track_stops_before").replace(
+                                                        "%d",
+                                                        fleet.stopsBeforeYou.toString(),
+                                                    )
+                                                } else {
+                                                    t("track_stops_next")
+                                                },
+                                            )
+                                            append(" · ")
+                                        }
+                                        if (fleet.orderCount > 1) {
+                                            append("${fleet.orderCount} ${t("dash_live_orders_unit")} · ")
+                                        }
+                                        append("${t("track_distance")}: ${fleet.distanceLabel}")
                                     },
                                     onOpenFullscreen = { showLiveMapFullscreen = true },
                                     onOpenTracking = { orderId ->

@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto, UpdateOrderItemsDto } from './dto/order.dto';
+import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto, UpdateOrderItemsDto, ReorderDeliveryDto } from './dto/order.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole, OrderStatus } from '../common/enums';
@@ -42,6 +42,18 @@ export class OrdersController {
   @ApiOperation({ summary: 'List orders assigned to delivery person (Tovar yuklash)' })
   findDeliveryOrders(@Request() req: { user: User }) {
     return this.service.findForDelivery(req.user.distributorProfile!.id);
+  }
+
+  @Put('delivery/reorder')
+  @ApiOperation({ summary: 'Reorder on_way delivery stops (1…N)' })
+  reorderDelivery(
+    @Request() req: { user: User },
+    @Body() dto: ReorderDeliveryDto,
+  ) {
+    return this.service.reorderDelivery(
+      req.user.distributorProfile!.id,
+      dto.orderIds,
+    );
   }
 
   @Get()

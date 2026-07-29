@@ -24,6 +24,7 @@ import uz.lider.client.domain.model.AuthUser
 import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.ClientProfile
 import uz.lider.client.domain.model.DashboardData
+import uz.lider.client.domain.model.DeliveryPersonTracking
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
 import uz.lider.client.map.GeoCoords
@@ -431,6 +432,7 @@ class DashboardViewModel @Inject constructor(
                     ?: group.firstOrNull()?.tracking?.companyName
                 if (withGps != null) {
                     val person = withGps.tracking.deliveryPerson!!
+                    val routeSource = group.maxByOrNull { it.tracking.routeStops.size }?.tracking
                     LiveMapVehicle(
                         id = key,
                         courierLat = person.latitude!!,
@@ -440,6 +442,9 @@ class DashboardViewModel @Inject constructor(
                         orders = group,
                         companyId = companyId,
                         companyShortName = companyShortName,
+                        routeStops = routeSource?.routeStops.orEmpty(),
+                        stopsBeforeYou = routeSource?.stopsBeforeYou ?: 0,
+                        totalStops = routeSource?.totalStops ?: 0,
                     )
                 } else {
                     // GPS yo‘q / emulator — faqat magazin (manzil) ni ko‘rsatamiz
@@ -452,6 +457,7 @@ class DashboardViewModel @Inject constructor(
                     val lat = dest?.deliveryLat ?: MapDefaults.NAVOIY_LAT
                     val lng = dest?.deliveryLng ?: MapDefaults.NAVOIY_LNG
                     val person = group.firstOrNull()?.tracking?.deliveryPerson
+                    val routeSource = group.maxByOrNull { it.tracking.routeStops.size }?.tracking
                     LiveMapVehicle(
                         id = "dest-only:$key",
                         courierLat = lat,
@@ -461,6 +467,9 @@ class DashboardViewModel @Inject constructor(
                         orders = group.map { it.copy(routePoints = emptyList(), distanceLabel = "—") },
                         companyId = companyId,
                         companyShortName = companyShortName,
+                        routeStops = routeSource?.routeStops.orEmpty(),
+                        stopsBeforeYou = routeSource?.stopsBeforeYou ?: 0,
+                        totalStops = routeSource?.totalStops ?: 0,
                     )
                 }
             }
@@ -549,6 +558,19 @@ class DashboardViewModel @Inject constructor(
         if (changed) {
             _uiState.update { it.copy(liveFleet = LiveFleetUi(vehicles)) }
         }
+    }
+
+    private fun vehicleKeyFor(
+        person: DeliveryPersonTracking?,
+        companyId: String?,
+    ): String {
+        val company = companyId?.takeIf { it.isNotBlank() } ?: "none"
+        val distributorId = person?.distributorId?.takeIf { it.isNotBlank() }
+        if (distributorId != null) return "courier:$distributorId:$company"
+        val userId = person?.userId?.takeIf { it.isNotBlank() }
+        if (userId != null) return "user:$userId:$company"
+        val name = person?.name?.trim().orEmpty()
+        return "anon:$company:${name.ifBlank { "unknown" }}"
     }
 
     private fun haversineMoved(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double =

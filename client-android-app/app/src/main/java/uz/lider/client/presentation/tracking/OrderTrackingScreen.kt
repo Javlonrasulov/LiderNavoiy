@@ -108,6 +108,9 @@ fun OrderTrackingScreen(
             routePoints = state.routePoints,
             storeName = tracking?.deliveryAddress.orEmpty(),
             distance = state.distance,
+            routeStops = tracking?.routeStops.orEmpty(),
+            stopsBeforeYou = tracking?.stopsBeforeYou ?: 0,
+            totalStops = tracking?.totalStops ?: 0,
             onDismiss = { showFullScreenMap = false },
         )
     }
@@ -140,6 +143,9 @@ fun OrderTrackingScreen(
                                         courierLng = deliveryPerson?.longitude,
                                         routePoints = state.routePoints,
                                         storeName = tracking?.deliveryAddress.orEmpty(),
+                                        routeStops = tracking?.routeStops.orEmpty(),
+                                        stopsBeforeYou = tracking?.stopsBeforeYou ?: 0,
+                                        totalStops = tracking?.totalStops ?: 0,
                                         isDark = false,
                                         modifier = Modifier.fillMaxSize(),
                                     )
@@ -162,6 +168,8 @@ fun OrderTrackingScreen(
                                     }
                                     TrackingMapInfoOverlay(
                                         distance = state.distance,
+                                        stopsBeforeYou = tracking?.stopsBeforeYou ?: 0,
+                                        totalStops = tracking?.totalStops ?: 0,
                                         modifier = Modifier.align(Alignment.BottomCenter),
                                     )
                                 }
@@ -591,6 +599,8 @@ private fun TimelineStepDot(
 @Composable
 private fun TrackingMapInfoOverlay(
     distance: String,
+    stopsBeforeYou: Int = 0,
+    totalStops: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -603,6 +613,19 @@ private fun TrackingMapInfoOverlay(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        if (totalStops > 1) {
+            Text(
+                if (stopsBeforeYou > 0) {
+                    localized("track_stops_before").replace("%d", stopsBeforeYou.toString())
+                } else {
+                    localized("track_stops_next")
+                },
+                color = Color(0xFFA5B4FC),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         Text(
             "${localized("track_distance")}: $distance",
             color = Color.White,
@@ -621,6 +644,9 @@ private fun FullScreenOrderTrackingMapDialog(
     routePoints: List<uz.lider.client.data.repository.LatLngPoint>,
     storeName: String,
     distance: String,
+    routeStops: List<uz.lider.client.domain.model.RouteStopInfo> = emptyList(),
+    stopsBeforeYou: Int = 0,
+    totalStops: Int = 0,
     onDismiss: () -> Unit,
 ) {
     val overlayBg = Color(0xF00B1220)
@@ -655,6 +681,9 @@ private fun FullScreenOrderTrackingMapDialog(
                 courierLng = courierLng,
                 routePoints = routePoints,
                 storeName = storeName,
+                routeStops = routeStops,
+                stopsBeforeYou = stopsBeforeYou,
+                totalStops = totalStops,
                 isDark = false,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -709,6 +738,8 @@ private fun FullScreenOrderTrackingMapDialog(
             }
             TrackingMapInfoOverlay(
                 distance = distance,
+                stopsBeforeYou = stopsBeforeYou,
+                totalStops = totalStops,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(

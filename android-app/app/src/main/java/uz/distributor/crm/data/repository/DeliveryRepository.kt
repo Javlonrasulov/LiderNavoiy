@@ -16,6 +16,7 @@ import uz.distributor.crm.data.remote.dto.DeliverOrderRequest
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.data.remote.dto.OrderItemDto
 import uz.distributor.crm.data.remote.dto.PaymentTerminalDto
+import uz.distributor.crm.data.remote.dto.ReorderDeliveryRequest
 import uz.distributor.crm.data.remote.dto.UpdateDueAtRequest
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
@@ -31,6 +32,12 @@ class DeliveryRepository @Inject constructor(
 
     suspend fun getAssignedOrders(): List<OrderDto> {
         val orders = api.getDeliveryOrders()
+        cached = orders
+        return orders
+    }
+
+    suspend fun reorderOnWay(orderIds: List<String>): List<OrderDto> {
+        val orders = api.reorderDeliveryOrders(ReorderDeliveryRequest(orderIds))
         cached = orders
         return orders
     }

@@ -261,27 +261,67 @@ private fun updateFleetMap(
             }
 
             delivery?.let { point ->
-                val storeLabel = order.storeName.trim().ifBlank {
-                    order.tracking.deliveryAddress?.trim().orEmpty()
-                }.ifBlank { "Magazin" }
-                val callout = StoreCallout(name = storeLabel, orderId = order.orderId)
-                val isSelected = selectedStoreOrderId != null && selectedStoreOrderId == order.orderId
-                Marker(map).apply {
-                    position = point
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    icon = if (isSelected) selectedStoreIcon else idleStoreIcon
-                    relatedObject = callout
-                    disableMarkerBubble(this)
+                // Agar to‘liq yo‘nalish routeStops bor — do‘kon pinini faqat «Siz» uchun chizamiz
+                val hasRouteStops = vehicle.routeStops.any {
+                    it.latitude != null && it.longitude != null
+                }
+                if (!hasRouteStops) {
+                    val storeLabel = order.storeName.trim().ifBlank {
+                        order.tracking.deliveryAddress?.trim().orEmpty()
+                    }.ifBlank { "Magazin" }
+                    val callout = StoreCallout(name = storeLabel, orderId = order.orderId)
+                    val isSelected = selectedStoreOrderId != null && selectedStoreOrderId == order.orderId
+                    Marker(map).apply {
+                        position = point
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = if (isSelected) selectedStoreIcon else idleStoreIcon
+                        relatedObject = callout
+                        disableMarkerBubble(this)
+                        setOnMarkerClickListener { marker, mapView ->
+                            val payload = marker.relatedObject as? StoreCallout ?: callout
+                            onStoreClick(payload)
+                            runCatching { mapView.controller.animateTo(marker.position) }
+                            mapView.invalidate()
+                            true
+                        }
+                    }.also { overlays.add(it) }
+                    cameraPoints.add(point)
+                }
+            }
+        }
+
+        // Raqamli manzillar (1…N) — kuryer yo‘nalishi
+        vehicle.routeStops.forEach { stop ->
+            val lat = stop.latitude
+            val lng = stop.longitude
+            if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
+            val point = GeoPoint(lat, lng)
+            Marker(map).apply {
+                position = point
+                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                icon = createNumberedStopDrawable(
+                    context = ctx,
+                    sequence = stop.sequence,
+                    isYou = stop.isYou,
+                    sizeDp = if (compactMarkers) 32 else 36,
+                )
+                relatedObject = if (stop.isYou) {
+                    StoreCallout(name = "Siz", orderId = vehicle.orders.firstOrNull()?.orderId.orEmpty())
+                } else {
+                    null
+                }
+                disableMarkerBubble(this)
+                if (stop.isYou) {
                     setOnMarkerClickListener { marker, mapView ->
-                        val payload = marker.relatedObject as? StoreCallout ?: callout
-                        onStoreClick(payload)
+                        val payload = marker.relatedObject as? StoreCallout
+                        if (payload != null) onStoreClick(payload)
                         runCatching { mapView.controller.animateTo(marker.position) }
                         mapView.invalidate()
                         true
                     }
-                }.also { overlays.add(it) }
-                cameraPoints.add(point)
-            }
+                }
+            }.also { overlays.add(it) }
+            cameraPoints.add(point)
         }
 
         val truckIcon = createTruckMarkerDrawable(
@@ -529,8 +569,14 @@ fun OrderTrackingMapView(
     routePoints: List<LatLngPoint> = emptyList(),
     interactive: Boolean = true,
     storeName: String = "",
+    routeStops: List<uz.lider.client.domain.model.RouteStopInfo> = emptyList(),
+    stopsBeforeYou: Int = 0,
+    totalStops: Int = 0,
 ) {
-    val vehicles = remember(deliveryLat, deliveryLng, courierLat, courierLng, routePoints, storeName) {
+    val vehicles = remember(
+        deliveryLat, deliveryLng, courierLat, courierLng, routePoints, storeName,
+        routeStops, stopsBeforeYou, totalStops,
+    ) {
         val label = storeName.trim().ifBlank { "Magazin" }
         val order = uz.lider.client.presentation.dashboard.LiveMapOrder(
             orderId = "single",
@@ -549,6 +595,9 @@ fun OrderTrackingMapView(
                 deliveryLongitude = deliveryLng,
                 distanceKm = null,
                 etaMinutes = null,
+                routeStops = routeStops,
+                stopsBeforeYou = stopsBeforeYou,
+                totalStops = totalStops,
             ),
         )
         when {
@@ -560,6 +609,9 @@ fun OrderTrackingMapView(
                     courierName = "",
                     courierPhone = null,
                     orders = listOf(order),
+                    routeStops = routeStops,
+                    stopsBeforeYou = stopsBeforeYou,
+                    totalStops = totalStops,
                 ),
             )
             isValidCoord(deliveryLat, deliveryLng) -> listOf(
@@ -570,6 +622,9 @@ fun OrderTrackingMapView(
                     courierName = "",
                     courierPhone = null,
                     orders = listOf(order),
+                    routeStops = routeStops,
+                    stopsBeforeYou = stopsBeforeYou,
+                    totalStops = totalStops,
                 ),
             )
             else -> emptyList()

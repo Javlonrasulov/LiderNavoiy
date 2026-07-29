@@ -22,11 +22,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -60,7 +63,6 @@ import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
 
 private val Accent = Color(0xFF6366F1)
 
@@ -77,7 +79,6 @@ fun DeliveryOrdersScreen(
     val cardBg = if (isDark) Color(0xFF17212B) else Color.White
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
-    val bottomPad = bottomNavHeight()
 
     Scaffold(
         topBar = {
@@ -113,8 +114,7 @@ fun DeliveryOrdersScreen(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(bottom = bottomPad),
+                .padding(padding),
         ) {
             when {
                 state.isLoading -> {
@@ -146,19 +146,27 @@ fun DeliveryOrdersScreen(
                     }
                 }
                 else -> {
+                    val onWayIds = state.orders.filter { it.status == "on_way" }.map { it.id }
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(state.orders, key = { it.id }) { order ->
+                            val onWayIndex = onWayIds.indexOf(order.id)
+                            val stopNumber = if (onWayIndex >= 0) onWayIndex + 1 else null
                             DeliveryOrderCard(
                                 order = order,
+                                stopNumber = stopNumber,
+                                canMoveUp = onWayIndex > 0,
+                                canMoveDown = onWayIndex >= 0 && onWayIndex < onWayIds.lastIndex,
                                 cardBg = cardBg,
                                 textPrimary = textPrimary,
                                 textMuted = textMuted,
                                 lang = lang,
                                 onCardClick = { onOrderClick(order.id) },
+                                onMoveUp = { viewModel.moveOnWayUp(order.id) },
+                                onMoveDown = { viewModel.moveOnWayDown(order.id) },
                             )
                         }
                     }
@@ -186,11 +194,16 @@ fun DeliveryOrdersScreen(
 @Composable
 private fun DeliveryOrderCard(
     order: OrderDto,
+    stopNumber: Int?,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     cardBg: Color,
     textPrimary: Color,
     textMuted: Color,
     lang: AppLanguage,
     onCardClick: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
 ) {
     val context = LocalContext.current
     val name = order.clientName ?: AppStrings.clientFallback(lang)
@@ -200,22 +213,77 @@ private fun DeliveryOrderCard(
         !order.clientAddress.isNullOrBlank()
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onCardClick),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = cardBg),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(
-                name,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 17.sp,
-                color = textPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                if (stopNumber != null) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Accent),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "$stopNumber",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(
+                    name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 17.sp,
+                    color = textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = onCardClick),
+                )
+                if (stopNumber != null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.DragHandle,
+                            contentDescription = null,
+                            tint = textMuted,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        IconButton(
+                            onClick = onMoveUp,
+                            enabled = canMoveUp,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowUp,
+                                contentDescription = null,
+                                tint = if (canMoveUp) Accent else textMuted.copy(alpha = 0.35f),
+                            )
+                        }
+                        IconButton(
+                            onClick = onMoveDown,
+                            enabled = canMoveDown,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = if (canMoveDown) Accent else textMuted.copy(alpha = 0.35f),
+                            )
+                        }
+                    }
+                }
+            }
             if (order.needsPaymentFollowUp) {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -226,58 +294,60 @@ private fun DeliveryOrderCard(
                 )
             }
 
-            if (address != null) {
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.Top) {
-                    Icon(
-                        Icons.Default.Place,
-                        null,
-                        tint = textMuted,
-                        modifier = Modifier
-                            .size(16.dp)
-                            .padding(top = 2.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        address,
-                        color = textMuted,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-
-            if (phone != null) {
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        phone,
-                        color = textPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Accent.copy(alpha = 0.12f))
-                            .clickable {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
-                                )
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
+            Column(Modifier.clickable(onClick = onCardClick)) {
+                if (address != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.Top) {
                         Icon(
-                            Icons.Default.Phone,
-                            contentDescription = AppStrings.deliveryCallClient(lang),
-                            tint = Accent,
-                            modifier = Modifier.size(20.dp),
+                            Icons.Default.Place,
+                            null,
+                            tint = textMuted,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(top = 2.dp),
                         )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            address,
+                            color = textMuted,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                if (phone != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            phone,
+                            color = textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Accent.copy(alpha = 0.12f))
+                                .clickable {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Phone,
+                                contentDescription = AppStrings.deliveryCallClient(lang),
+                                tint = Accent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }

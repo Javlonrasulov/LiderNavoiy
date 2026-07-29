@@ -133,6 +133,19 @@ data class OrderTrackingDto(
     val companyId: String? = null,
     val companyName: String? = null,
     val companyShortName: String? = null,
+    val routeStops: List<RouteStopDto> = emptyList(),
+    val stopsBeforeYou: Int = 0,
+    val yourSequence: Int? = null,
+    val totalStops: Int = 0,
+)
+
+data class RouteStopDto(
+    val sequence: Int = 0,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val latitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val longitude: Double? = null,
+    val isYou: Boolean = false,
 )
 
 data class CreateOrderRequest(

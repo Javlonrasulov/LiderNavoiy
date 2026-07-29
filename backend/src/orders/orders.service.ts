@@ -215,6 +215,7 @@ export class OrdersService {
         clientId: order.clientId,
         distributorId: order.distributorId,
         deliveryDistributorId: order.deliveryDistributorId ?? deliveryDistributorId,
+        deliverySequence: order.deliverySequence ?? null,
         visitId: order.visitId,
         status: order.status,
         source: order.source,
@@ -237,7 +238,15 @@ export class OrdersService {
 
     const onWayMine = onWay
       .filter((order) => myClientIds.has(order.clientId))
-      .map(mapOrder);
+      .map(mapOrder)
+      .sort((a, b) => {
+        const sa = a.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+        const sb = b.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+        if (sa !== sb) return sa - sb;
+        const ta = new Date(a.updatedAt).getTime();
+        const tb = new Date(b.updatedAt).getTime();
+        return tb - ta;
+      });
 
     const unpaidMine = unpaidDelivered
       .filter((o) => clientMap.has(o.clientId))
@@ -251,6 +260,68 @@ export class OrdersService {
       merged.push(o);
     }
     return merged;
+  }
+
+  /** Dostavkachi: on_way buyurtmalar tartibini yangilash (1…N). */
+  async reorderDelivery(deliveryDistributorId: string, orderIds: string[]) {
+    if (!orderIds?.length) {
+      throw new BadRequestException('orderIds required');
+    }
+    const unique = [...new Set(orderIds)];
+    if (unique.length !== orderIds.length) {
+      throw new BadRequestException('Duplicate orderIds');
+    }
+
+    const orders = await this.repo.find({
+      where: { id: In(unique), status: OrderStatus.ON_WAY },
+    });
+    if (orders.length !== unique.length) {
+      throw new BadRequestException('Some orders not found or not on_way');
+    }
+
+    const courierCache = new Map<string, string | null>();
+    const clientIds = [...new Set(orders.map((o) => o.clientId))];
+    const clients = await this.clientRepo.find({ where: { id: In(clientIds) } });
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+    for (const order of orders) {
+      const client = clientMap.get(order.clientId);
+      if (!client) throw new ForbiddenException('Client missing');
+      let ok = order.deliveryDistributorId === deliveryDistributorId;
+      if (!ok) {
+        const resolved = await this.resolveDeliveryDistributorId(
+          order.deliveryDistributorId,
+          client,
+          courierCache,
+        );
+        ok = resolved === deliveryDistributorId;
+      }
+      if (!ok) throw new ForbiddenException('Not your delivery order');
+      // Biriktirishni mustahkamlash
+      if (order.deliveryDistributorId !== deliveryDistributorId) {
+        order.deliveryDistributorId = deliveryDistributorId;
+      }
+    }
+
+    const byId = new Map(orders.map((o) => [o.id, o]));
+    for (let i = 0; i < unique.length; i++) {
+      const order = byId.get(unique[i])!;
+      order.deliverySequence = i + 1;
+      await this.repo.save(order);
+    }
+
+    return this.findForDelivery(deliveryDistributorId);
+  }
+
+  private async nextDeliverySequence(deliveryDistributorId: string): Promise<number> {
+    const row = await this.repo
+      .createQueryBuilder('o')
+      .select('MAX(o.deliverySequence)', 'max')
+      .where('o.deliveryDistributorId = :id', { id: deliveryDistributorId })
+      .andWhere('o.status = :st', { st: OrderStatus.ON_WAY })
+      .getRawOne<{ max: string | null }>();
+    const max = row?.max != null ? Number(row.max) : 0;
+    return (Number.isFinite(max) ? max : 0) + 1;
   }
 
   /** Klient portalidagi resolveDeliveryDistributor bilan bir xil qoida */
@@ -700,10 +771,43 @@ export class OrdersService {
     const order = await this.repo.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
     const prevStatus = order.status;
+    const prevDriver = order.deliveryDistributorId;
+
     if (dto.status !== undefined) order.status = dto.status;
     if (dto.deliveryDistributorId !== undefined) {
       order.deliveryDistributorId = dto.deliveryDistributorId;
     }
+
+    const becomingOnWay =
+      order.status === OrderStatus.ON_WAY &&
+      (dto.status === OrderStatus.ON_WAY ||
+        prevStatus === OrderStatus.ON_WAY ||
+        dto.deliveryDistributorId !== undefined);
+    const leavingOnWay =
+      dto.status !== undefined &&
+      dto.status !== OrderStatus.ON_WAY &&
+      prevStatus === OrderStatus.ON_WAY;
+
+    if (leavingOnWay) {
+      order.deliverySequence = null;
+    }
+
+    const assignedDriverPreview = order.deliveryDistributorId;
+    const driverChanged =
+      dto.deliveryDistributorId !== undefined &&
+      dto.deliveryDistributorId !== prevDriver;
+
+    if (
+      order.status === OrderStatus.ON_WAY &&
+      assignedDriverPreview &&
+      !leavingOnWay &&
+      (order.deliverySequence == null || driverChanged || dto.status === OrderStatus.ON_WAY)
+    ) {
+      if (order.deliverySequence == null || driverChanged) {
+        order.deliverySequence = await this.nextDeliverySequence(assignedDriverPreview);
+      }
+    }
+
     const saved = await this.repo.save(order);
 
     // Tovar yuklash: shu klientning boshqa on_way buyurtmalariga ham shu haydovchini biriktir
@@ -712,18 +816,29 @@ export class OrdersService {
         ? dto.deliveryDistributorId
         : saved.deliveryDistributorId;
     if (assignedDriver && saved.status === OrderStatus.ON_WAY) {
-      await this.repo
-        .createQueryBuilder()
-        .update(Order)
-        .set({ deliveryDistributorId: assignedDriver })
-        .where('clientId = :clientId', { clientId: saved.clientId })
-        .andWhere('id != :id', { id: saved.id })
-        .andWhere('status = :onWay', { onWay: OrderStatus.ON_WAY })
-        .andWhere(
-          '(deliveryDistributorId IS NULL OR deliveryDistributorId = :agentId)',
-          { agentId: saved.distributorId },
-        )
-        .execute();
+      const siblings = await this.repo.find({
+        where: {
+          clientId: saved.clientId,
+          status: OrderStatus.ON_WAY,
+        },
+      });
+      for (const sib of siblings) {
+        if (sib.id === saved.id) continue;
+        const orphan =
+          !sib.deliveryDistributorId ||
+          sib.deliveryDistributorId === saved.distributorId;
+        if (!orphan && sib.deliveryDistributorId !== assignedDriver) continue;
+        let changed = false;
+        if (sib.deliveryDistributorId !== assignedDriver) {
+          sib.deliveryDistributorId = assignedDriver;
+          changed = true;
+        }
+        if (sib.deliverySequence == null) {
+          sib.deliverySequence = await this.nextDeliverySequence(assignedDriver);
+          changed = true;
+        }
+        if (changed) await this.repo.save(sib);
+      }
     }
 
     if (dto.status !== undefined && dto.status !== prevStatus) {

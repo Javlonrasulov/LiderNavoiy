@@ -412,3 +412,58 @@ private fun drawStrokeStoreIcon(
         },
     )
 }
+
+/** Numbered route stop disc — 1…N (isYou = green). */
+fun createNumberedStopDrawable(
+    context: Context,
+    sequence: Int,
+    isYou: Boolean,
+    sizeDp: Int = 36,
+): Drawable {
+    val dens = context.resources.displayMetrics.density
+    val size = (sizeDp * dens).toInt().coerceIn(32, 72)
+    val pad = (4f * dens).toInt()
+    val out = size + pad * 2
+    val bmp = Bitmap.createBitmap(out, out, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = out / 2f
+    val cy = out / 2f
+    val r = size / 2f
+    val fill = if (isYou) 0xFF22C55E.toInt() else 0xFF6366F1.toInt()
+
+    canvas.drawCircle(
+        cx,
+        cy + 2f * dens,
+        r * 0.92f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33000000 },
+    )
+    canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fill })
+    canvas.drawCircle(
+        cx,
+        cy,
+        r,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * dens
+        },
+    )
+    val label = sequence.toString()
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        textAlign = Paint.Align.CENTER
+        typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+        textSize = when {
+            label.length >= 3 -> r * 0.85f
+            label.length == 2 -> r * 1.05f
+            else -> r * 1.2f
+        }
+    }
+    canvas.drawText(
+        label,
+        cx,
+        cy - (textPaint.descent() + textPaint.ascent()) / 2f,
+        textPaint,
+    )
+    return bmp.asMarkerDrawable(context)
+}

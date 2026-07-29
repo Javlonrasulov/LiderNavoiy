@@ -243,4 +243,15 @@ data class OrderTrackingDetails(
     val companyId: String? = null,
     val companyName: String? = null,
     val companyShortName: String? = null,
+    val routeStops: List<RouteStopInfo> = emptyList(),
+    val stopsBeforeYou: Int = 0,
+    val yourSequence: Int? = null,
+    val totalStops: Int = 0,
+)
+
+data class RouteStopInfo(
+    val sequence: Int,
+    val latitude: Double?,
+    val longitude: Double?,
+    val isYou: Boolean,
 )

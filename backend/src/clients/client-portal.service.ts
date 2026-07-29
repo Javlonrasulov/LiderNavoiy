@@ -550,6 +550,102 @@ export class ClientPortalService {
       companyId: companyId ?? null,
       companyName: orgMeta.companyName,
       companyShortName: orgMeta.companyShortName,
+      ...(await this.buildRouteStops(
+        order,
+        deliveryPerson?.distributorId ?? order.deliveryDistributorId,
+      )),
+    };
+  }
+
+  /** Kuryerning on_way manzillari — tartib + «sizgacha N». */
+  private async buildRouteStops(
+    currentOrder: Order,
+    courierId: string | null | undefined,
+  ): Promise<{
+    routeStops: Array<{
+      sequence: number;
+      latitude: number | null;
+      longitude: number | null;
+      isYou: boolean;
+    }>;
+    stopsBeforeYou: number;
+    yourSequence: number | null;
+    totalStops: number;
+  }> {
+    const empty = {
+      routeStops: [] as Array<{
+        sequence: number;
+        latitude: number | null;
+        longitude: number | null;
+        isYou: boolean;
+      }>,
+      stopsBeforeYou: 0,
+      yourSequence: null as number | null,
+      totalStops: 0,
+    };
+    if (!courierId) return empty;
+
+    const onWay = await this.orderRepo.find({
+      where: {
+        status: OrderStatus.ON_WAY,
+        deliveryDistributorId: courierId,
+      },
+      order: { deliverySequence: 'ASC', updatedAt: 'ASC' },
+      take: 100,
+    });
+
+    // Agar joriy buyurtma listga tushmasa (fallback courier) — qo‘shamiz
+    if (
+      currentOrder.status === OrderStatus.ON_WAY &&
+      !onWay.some((o) => o.id === currentOrder.id)
+    ) {
+      onWay.push(currentOrder);
+    }
+
+    onWay.sort((a, b) => {
+      const sa = a.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return a.updatedAt.getTime() - b.updatedAt.getTime();
+    });
+
+    const clientIds = [...new Set(onWay.map((o) => o.clientId))];
+    const clients = clientIds.length
+      ? await this.clientRepo.find({ where: { id: In(clientIds) } })
+      : [];
+    const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+    // Bir klient = bitta stop (eng erta sequence)
+    const firstByClient = new Map<string, Order>();
+    for (const o of onWay) {
+      if (!firstByClient.has(o.clientId)) firstByClient.set(o.clientId, o);
+    }
+    const uniqueOrders = [...firstByClient.values()].sort((a, b) => {
+      const sa = a.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.deliverySequence ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return a.updatedAt.getTime() - b.updatedAt.getTime();
+    });
+
+    const routeStops = uniqueOrders.map((o, idx) => {
+      const c = clientMap.get(o.clientId);
+      return {
+        sequence: idx + 1,
+        latitude: c?.latitude ?? null,
+        longitude: c?.longitude ?? null,
+        isYou: o.clientId === currentOrder.clientId,
+      };
+    });
+
+    const youIdx = routeStops.findIndex((s) => s.isYou);
+    const yourSequence = youIdx >= 0 ? routeStops[youIdx].sequence : null;
+    const stopsBeforeYou = youIdx >= 0 ? youIdx : 0;
+
+    return {
+      routeStops,
+      stopsBeforeYou,
+      yourSequence,
+      totalStops: routeStops.length,
     };
   }
 

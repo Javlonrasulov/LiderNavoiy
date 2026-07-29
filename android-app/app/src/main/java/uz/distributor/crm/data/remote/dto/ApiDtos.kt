@@ -228,6 +228,7 @@ data class OrderDto(
     val clientLatitude: Double? = null,
     val clientLongitude: Double? = null,
     val deliveryDistributorId: String? = null,
+    val deliverySequence: Int? = null,
     val updatedAt: String? = null,
     val isUrgent: Boolean = false,
 ) {
@@ -360,6 +361,10 @@ data class CollectPaymentRequest(
 
 data class UpdateDueAtRequest(
     val dueAt: String,
+)
+
+data class ReorderDeliveryRequest(
+    val orderIds: List<String>,
 )
 
 data class CreateReturnRequest(

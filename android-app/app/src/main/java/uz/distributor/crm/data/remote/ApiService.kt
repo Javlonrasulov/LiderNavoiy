@@ -83,6 +83,9 @@ interface ApiService {
     @GET("orders/delivery")
     suspend fun getDeliveryOrders(): List<OrderDto>
 
+    @PUT("orders/delivery/reorder")
+    suspend fun reorderDeliveryOrders(@Body body: ReorderDeliveryRequest): List<OrderDto>
+
     @GET("terminals/my")
     suspend fun getMyTerminals(): List<PaymentTerminalDto>
 
@@ -143,6 +146,9 @@ interface ApiService {
 
     @GET("messages/contacts")
     suspend fun getChatContacts(@Query("companyId") companyId: String? = null): List<ChatContactDto>
+
+    @GET("messages/client-contacts")
+    suspend fun getClientChatContacts(): List<ChatContactDto>
 
     @GET("messages/conversations")
     suspend fun getConversations(): List<ConversationDto>

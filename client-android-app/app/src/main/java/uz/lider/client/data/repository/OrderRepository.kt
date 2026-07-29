@@ -12,6 +12,7 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.DeliveryPersonTracking
 import uz.lider.client.domain.model.OrderItem
 import uz.lider.client.domain.model.OrderTrackingDetails
+import uz.lider.client.domain.model.RouteStopInfo
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -93,6 +94,17 @@ class OrderRepository @Inject constructor(
         companyId = companyId,
         companyName = companyName,
         companyShortName = companyShortName,
+        routeStops = routeStops.map {
+            RouteStopInfo(
+                sequence = it.sequence,
+                latitude = it.latitude,
+                longitude = it.longitude,
+                isYou = it.isYou,
+            )
+        },
+        stopsBeforeYou = stopsBeforeYou,
+        yourSequence = yourSequence,
+        totalStops = totalStops,
     )
 
     private fun ClientOrderDto.toDomain() = ClientOrder(

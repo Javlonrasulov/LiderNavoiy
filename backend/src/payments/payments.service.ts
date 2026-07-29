@@ -106,6 +106,7 @@ export class PaymentsService {
     await this.paymentRepo.save(payment);
 
     order.status = OrderStatus.DELIVERED;
+    order.deliverySequence = null;
     order.paidAmount = newPaid;
     order.paymentStatus = orderPayStatus;
     if (dto.photoUrl) order.lastPaymentPhotoUrl = dto.photoUrl;
