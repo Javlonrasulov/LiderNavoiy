@@ -1,7 +1,6 @@
 package uz.lider.client.data.local
 
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,5 +12,8 @@ class TokenHolder @Inject constructor() {
         tokenFlow.value = token
     }
 
-    suspend fun getToken(): String? = tokenFlow.first { true }
+    /** Interceptor uchun — runBlocking/DataStore kutmasin */
+    fun peekToken(): String? = tokenFlow.value
+
+    suspend fun getToken(): String? = tokenFlow.value
 }

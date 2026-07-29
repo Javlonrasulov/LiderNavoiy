@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.presentation.analytics.AnalyticsScreen
@@ -54,6 +55,23 @@ class SplashViewModel @Inject constructor(
 ) : ViewModel() {
     fun checkAuth(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
+            // Render cold start — splash paytida uyg‘otish (natijani kutmaymiz)
+            launch {
+                runCatching {
+                    withTimeout(8_000) {
+                        okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                            .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                            .newCall(
+                                okhttp3.Request.Builder()
+                                    .url("${uz.lider.client.BuildConfig.API_BASE_URL.trimEnd('/')}/health")
+                                    .get()
+                                    .build(),
+                            ).execute().close()
+                    }
+                }
+            }
             onResult(authRepository.restoreSession())
         }
     }

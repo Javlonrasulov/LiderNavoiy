@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.data.repository.FavoritesRepository
@@ -78,9 +79,16 @@ class CatalogViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            ensureOrgs()
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            try {
+                withTimeout(22_000) {
+                    ensureOrgs()
+                    reloadQuiet()
+                }
+            } catch (_: Exception) {
+                // timeout / network
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
@@ -95,8 +103,12 @@ class CatalogViewModel @Inject constructor(
         cartRepository.clear()
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true, activeCategoryIndex = INDEX_ALL) }
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            try {
+                withTimeout(22_000) { reloadQuiet() }
+            } catch (_: Exception) {
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 

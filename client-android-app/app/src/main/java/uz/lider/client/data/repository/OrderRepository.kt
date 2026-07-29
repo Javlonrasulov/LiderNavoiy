@@ -82,7 +82,7 @@ class OrderRepository @Inject constructor(
             DeliveryPersonTracking(
                 userId = it.userId,
                 distributorId = it.distributorId,
-                name = it.name,
+                name = it.name.orEmpty().ifBlank { "—" },
                 position = it.position,
                 phone = it.phone,
                 isOnline = it.isOnline,
@@ -114,11 +114,11 @@ class OrderRepository @Inject constructor(
         items = items.map { item ->
             OrderItem(
                 productId = item.productId,
-                productCode = item.productCode,
-                productName = item.productName,
+                productCode = item.productCode.orEmpty(),
+                productName = item.productName.orEmpty(),
                 quantity = item.quantity,
                 price = item.price,
-                unit = item.unit,
+                unit = item.unit.orEmpty().ifBlank { "dona" },
             )
         },
         createdAt = createdAt,

@@ -44,7 +44,7 @@ object AppModule {
             }
         }
         val authInterceptor = Interceptor { chain ->
-            val token = kotlinx.coroutines.runBlocking { tokenHolder.getToken() }
+            val token = tokenHolder.peekToken()
             val request = if (token != null) {
                 chain.request().newBuilder()
                     .addHeader("Authorization", "Bearer $token")
@@ -58,11 +58,11 @@ object AppModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
-            // Render free-tier cold start 30–60s+ bo‘lishi mumkin
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(120, TimeUnit.SECONDS)
+            // Render cold start uchun yetarli, UI o‘zi 20–25s timeout qiladi
+            .connectTimeout(35, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(50, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
     }

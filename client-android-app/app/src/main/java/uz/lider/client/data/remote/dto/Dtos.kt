@@ -80,13 +80,13 @@ data class CategoryRowDto(
 
 data class OrderItemDto(
     val productId: String,
-    val productCode: String,
-    val productName: String,
+    val productCode: String? = null,
+    val productName: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val quantity: Double = 0.0,
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val price: Double = 0.0,
-    val unit: String,
+    val unit: String? = null,
 )
 
 data class ClientOrderDto(
@@ -105,7 +105,7 @@ data class ClientOrderDto(
 data class DeliveryPersonTrackingDto(
     val userId: String? = null,
     val distributorId: String? = null,
-    val name: String,
+    val name: String? = null,
     val position: String? = null,
     val phone: String? = null,
     val isOnline: Boolean = false,

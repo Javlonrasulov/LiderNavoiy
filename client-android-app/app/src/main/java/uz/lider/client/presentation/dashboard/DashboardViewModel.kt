@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.OrderRepository
@@ -81,8 +82,15 @@ class DashboardViewModel @Inject constructor(
                     loading = true,
                 )
             }
-            reloadQuiet(authUser)
-            _uiState.update { it.copy(loading = false) }
+            try {
+                withTimeout(22_000) {
+                    reloadQuiet(authUser)
+                }
+            } catch (_: Exception) {
+                // Timeout / network — bo‘sh dashboard ko‘rsatiladi, loading yopiladi
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
             ensureLiveDeliveryPolling(reuseOrdersOnce = true)
         }
     }
