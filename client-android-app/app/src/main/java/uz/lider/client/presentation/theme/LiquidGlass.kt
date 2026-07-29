@@ -15,12 +15,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -574,7 +577,13 @@ fun PremiumHeaderButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isDark) Color.White else tint,
-            modifier = Modifier.size(iconSize),
+            // CalendarMonth glyph viewport biroz pastga/o‘ngga og‘ishadi
+            modifier = Modifier
+                .size(iconSize)
+                .offset(
+                    x = if (isCalendarIcon(icon)) (-0.5).dp else 0.dp,
+                    y = if (isCalendarIcon(icon)) (-1).dp else 0.dp,
+                ),
         )
     }
 }
@@ -606,7 +615,7 @@ fun PremiumHeaderActionPill(
                 if (isDark) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.65f),
                 shape,
             )
-            .padding(start = 8.dp, end = 10.dp, top = 8.dp, bottom = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         content = content,
@@ -640,10 +649,18 @@ fun PremiumHeaderPillIcon(
                 isDark -> Color.White
                 else -> tint
             },
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier
+                .size(20.dp)
+                .offset(
+                    x = if (isCalendarIcon(icon)) (-0.5).dp else 0.dp,
+                    y = if (isCalendarIcon(icon)) (-1).dp else 0.dp,
+                ),
         )
     }
 }
+
+private fun isCalendarIcon(icon: ImageVector): Boolean =
+    icon == Icons.Default.CalendarMonth || icon.name.contains("CalendarMonth")
 
 @Composable
 fun liquidGlassMenuShape(radius: Dp = 18.dp) = RoundedCornerShape(radius)

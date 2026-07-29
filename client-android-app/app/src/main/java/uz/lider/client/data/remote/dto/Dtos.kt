@@ -97,6 +97,9 @@ data class ClientOrderDto(
     val items: List<OrderItemDto> = emptyList(),
     val createdAt: String = "",
     val updatedAt: String = "",
+    val companyId: String? = null,
+    val companyName: String? = null,
+    val companyShortName: String? = null,
 )
 
 data class DeliveryPersonTrackingDto(
@@ -127,6 +130,9 @@ data class OrderTrackingDto(
     val distanceKm: Double? = null,
     val etaMinutes: Int? = null,
     val deliveryPerson: DeliveryPersonTrackingDto? = null,
+    val companyId: String? = null,
+    val companyName: String? = null,
+    val companyShortName: String? = null,
 )
 
 data class CreateOrderRequest(
@@ -138,6 +144,24 @@ data class ContactPersonDto(
     val name: String? = null,
     val position: String? = null,
     val phone: String? = null,
+)
+
+data class ClientOrganizationDto(
+    val companyId: String,
+    val name: String,
+    val shortName: String? = null,
+    val color: String? = null,
+    val icon: String? = null,
+    val clientId: String,
+)
+
+data class OrgPurchaseShareDto(
+    val companyId: String,
+    val shortName: String? = null,
+    val name: String? = null,
+    val color: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val total: Double = 0.0,
 )
 
 data class ClientProfileDto(
@@ -169,6 +193,8 @@ data class ClientProfileDto(
     val agentUserId: String? = null,
     val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPersonDto? = null,
+    val organizations: List<ClientOrganizationDto> = emptyList(),
+    val activeOrganization: ClientOrganizationDto? = null,
 )
 
 data class ClientDashboardDto(
@@ -185,6 +211,9 @@ data class ClientDashboardDto(
     @JsonAdapter(FlexibleDoubleAdapter::class)
     val totalPurchases: Double = 0.0,
     val orderCount: Int = 0,
+    val organizations: List<ClientOrganizationDto> = emptyList(),
+    val purchasesByOrg: List<OrgPurchaseShareDto> = emptyList(),
+    val onWayOrderIds: List<String> = emptyList(),
 )
 
 data class ApiErrorDto(

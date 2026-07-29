@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductsService } from '../products/products.service';
@@ -48,10 +48,19 @@ export class PromotionsService {
 
   async create(dto: CreatePromotionDto) {
     const product = await this.resolveProductName(dto.productId);
+
+    // Buy X get Y free qoidasi uchun mantiqiy tekshiruv:
+    // freeQuantity > 0 bo'lsa buyQuantity ham bo'lishi shart.
+    if ((dto.freeQuantity ?? null) !== null && (dto.freeQuantity ?? 0) > 0 && (dto.buyQuantity ?? null) == null) {
+      throw new BadRequestException('buyQuantity required when freeQuantity > 0');
+    }
+
     const promo = this.repo.create({
       title: dto.title.trim(),
       subtitle: dto.subtitle?.trim() || null,
       discountPercent: dto.discountPercent ?? 0,
+      buyQuantity: dto.buyQuantity ?? null,
+      freeQuantity: dto.freeQuantity ?? null,
       productId: product.productId,
       productName: product.productName,
       colorStart: dto.colorStart?.trim() || '#4F46E5',
@@ -77,6 +86,8 @@ export class PromotionsService {
     if (dto.title !== undefined) promo.title = dto.title.trim();
     if (dto.subtitle !== undefined) promo.subtitle = dto.subtitle?.trim() || null;
     if (dto.discountPercent !== undefined) promo.discountPercent = dto.discountPercent;
+    if (dto.buyQuantity !== undefined) promo.buyQuantity = dto.buyQuantity ?? null;
+    if (dto.freeQuantity !== undefined) promo.freeQuantity = dto.freeQuantity ?? null;
     if (dto.colorStart !== undefined) promo.colorStart = dto.colorStart.trim() || promo.colorStart;
     if (dto.colorEnd !== undefined) promo.colorEnd = dto.colorEnd.trim() || promo.colorEnd;
     if (dto.emoji !== undefined) promo.emoji = dto.emoji?.trim() || null;

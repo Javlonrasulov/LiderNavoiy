@@ -2,15 +2,20 @@ package uz.lider.client.data.repository
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ClientDashboardDto
+import uz.lider.client.data.remote.dto.ClientOrganizationDto
 import uz.lider.client.data.remote.dto.ClientProfileDto
 import uz.lider.client.data.remote.dto.ContactPersonDto
+import uz.lider.client.data.remote.dto.OrgPurchaseShareDto
 import uz.lider.client.domain.model.ClientOrder
+import uz.lider.client.domain.model.ClientOrganization
 import uz.lider.client.domain.model.ClientProfile
 import uz.lider.client.domain.model.ContactPerson
 import uz.lider.client.domain.model.DashboardData
 import uz.lider.client.domain.model.OrderStatus
+import uz.lider.client.domain.model.OrgPurchaseShare
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -20,20 +25,23 @@ import kotlin.math.floor
 class ProfileRepository @Inject constructor(
     private val api: ApiService,
     private val orderRepository: OrderRepository,
+    private val selectedOrgHolder: SelectedOrgHolder,
 ) {
     suspend fun getProfile(): ClientProfile? {
         return try {
-            api.getProfile().toDomain()
+            api.getProfile().toDomain().also { rememberOrgs(it.organizations) }
         } catch (_: Exception) {
             null
         }
     }
 
-    suspend fun getAllOrders() = orderRepository.getOrders()
+    suspend fun getAllOrders() = orderRepository.getOrders(companyId = null)
 
     /** Faqat `/client-portal/dashboard` — null agar xato. */
     suspend fun fetchDashboardSummary(): DashboardData? =
-        runCatching { api.getClientDashboard().toDomain() }.getOrNull()
+        runCatching {
+            api.getClientDashboard().toDomain().also { rememberOrgs(it.organizations) }
+        }.getOrNull()
 
     suspend fun getDashboardData(): DashboardData {
         fetchDashboardSummary()?.let { return it }
@@ -79,10 +87,34 @@ class ProfileRepository @Inject constructor(
             activeOrderCount = active,
             discountLevel = effective.discountTitle(),
             discountSubtitle = effective.discountSubtitle(),
+            organizations = effective.organizations,
+            purchasesByOrg = purchasesByOrgFromOrders(orders),
         )
     }
 
+    private fun rememberOrgs(orgs: List<ClientOrganization>) {
+        if (orgs.isNotEmpty()) selectedOrgHolder.setOrganizations(orgs)
+    }
+
+    private fun purchasesByOrgFromOrders(orders: List<ClientOrder>): List<OrgPurchaseShare> {
+        return orders
+            .filter { OrderStatus.fromKey(it.status) != OrderStatus.CANCELLED }
+            .groupBy { it.companyId.orEmpty() }
+            .filterKeys { it.isNotEmpty() }
+            .map { (companyId, list) ->
+                OrgPurchaseShare(
+                    companyId = companyId,
+                    shortName = list.firstOrNull()?.companyShortName
+                        ?: list.firstOrNull()?.companyName
+                        ?: companyId,
+                    name = list.firstOrNull()?.companyName.orEmpty(),
+                    total = list.sumOf { it.totalAmount },
+                )
+            }
+    }
+
     private fun ClientDashboardDto.toDomain(): DashboardData {
+        val orgs = organizations.map { it.toDomain() }
         val profile = this.profile?.toDomain()
             ?: ClientProfile(
                 id = "",
@@ -94,10 +126,11 @@ class ProfileRepository @Inject constructor(
                 debt = debt,
                 bonusPoints = bonusPoints,
                 category = discountLevel,
+                organizations = orgs,
             )
         return DashboardData(
             profile = profile,
-            recentOrders = emptyList(), // orders alohida yuklanadi
+            recentOrders = emptyList(),
             totalPurchases = totalPurchases.takeIf { it > 0 } ?: profile.totalPurchases,
             orderCount = orderCount.takeIf { it > 0 } ?: profile.orderCount,
             balance = balance,
@@ -108,6 +141,8 @@ class ProfileRepository @Inject constructor(
                 ?: profile.discountTitle(),
             discountSubtitle = discountSubtitle?.trim()?.takeIf { it.isNotEmpty() }
                 ?: profile.discountSubtitle(),
+            organizations = orgs.ifEmpty { profile.organizations },
+            purchasesByOrg = purchasesByOrg.map { it.toDomain() },
         )
     }
 
@@ -122,9 +157,29 @@ class ProfileRepository @Inject constructor(
         )
     }
 
+    private fun ClientOrganizationDto.toDomain() = ClientOrganization(
+        companyId = companyId,
+        name = name,
+        shortName = shortName?.trim()?.takeIf { it.isNotEmpty() } ?: name,
+        color = color,
+        icon = icon,
+        clientId = clientId,
+    )
+
+    private fun OrgPurchaseShareDto.toDomain() = OrgPurchaseShare(
+        companyId = companyId,
+        shortName = shortName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: companyId,
+        name = name.orEmpty(),
+        color = color,
+        total = total,
+    )
+
     private fun ClientProfileDto.toDomain(): ClientProfile {
         val purchases = totalPurchases
         val bal = balance
+        val orgs = organizations.map { it.toDomain() }
         return ClientProfile(
             id = id,
             code = code,
@@ -150,6 +205,8 @@ class ProfileRepository @Inject constructor(
             agentUserId = agentUserId,
             hasAssignedAgent = hasAssignedAgent,
             deliveryPerson = deliveryPerson?.toDomain(),
+            organizations = orgs,
+            activeOrganization = activeOrganization?.toDomain(),
         )
     }
 }

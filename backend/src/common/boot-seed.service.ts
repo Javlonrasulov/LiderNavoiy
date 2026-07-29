@@ -47,6 +47,15 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`companies.warehouseName migrate: ${(err as Error).message}`);
     }
 
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS "companyId" varchar(64) NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`orders.companyId migrate: ${(err as Error).message}`);
+    }
+
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
     // Eski postgres enum -> varchar (on_way / packing uchun)
@@ -250,6 +259,7 @@ export class BootSeedService implements OnModuleInit {
           code: '29072',
           name: 'Demo Mijoz',
           fullName: 'Demo Mijoz',
+          phone: '+998901112233',
           address: 'Navoiy',
           balance: 0,
           latitude: 40.0921,
@@ -268,6 +278,10 @@ export class BootSeedService implements OnModuleInit {
         demoClient.distributorId = profile.id;
         dirty = true;
       }
+      if (!demoClient.phone) {
+        demoClient.phone = '+998901112233';
+        dirty = true;
+      }
       if (
         demoClient.latitude == null ||
         demoClient.longitude == null ||
@@ -280,7 +294,35 @@ export class BootSeedService implements OnModuleInit {
       if (dirty) await this.clients.save(demoClient);
     }
 
-    await this.ensureUser({
+    // Zarafshon dagi bog‘langan klient (bir xil telefon — multi-org)
+    let demoClientZar = await this.clients.findOne({
+      where: { code: '29072-Z', companyId: 'zarafshon' },
+    });
+    if (!demoClientZar) {
+      demoClientZar = await this.clients.save(
+        this.clients.create({
+          code: '29072-Z',
+          name: 'Demo Mijoz',
+          fullName: 'Demo Mijoz',
+          phone: demoClient.phone || '+998901112233',
+          address: 'Navoiy',
+          balance: 0,
+          latitude: 40.0921,
+          longitude: 65.3612,
+          companyId: 'zarafshon',
+          lineCode: '01',
+          category: 'Standard',
+          distributorId: profile.id,
+          isActive: true,
+        }),
+      );
+      this.logger.log('Boot seed: demo klient (zarafshon) yaratildi');
+    } else if (!demoClientZar.phone) {
+      demoClientZar.phone = demoClient.phone || '+998901112233';
+      await this.clients.save(demoClientZar);
+    }
+
+    const mijozUser = await this.ensureUser({
       username: 'mijoz',
       passwordHash,
       fullName: demoClient.fullName ?? demoClient.name,
@@ -289,6 +331,53 @@ export class BootSeedService implements OnModuleInit {
       permissions: null,
       clientId: demoClient.id,
     });
+
+    // Membership: boran + zarafshon
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS user_client_memberships (
+        id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+        "userId" uuid NOT NULL,
+        "clientId" uuid NOT NULL,
+        "companyId" varchar(64) NOT NULL,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+        UNIQUE ("userId", "companyId")
+      )
+    `).catch((err: Error) => {
+      this.logger.warn(`user_client_memberships create: ${err.message}`);
+    });
+
+    for (const link of [
+      { clientId: demoClient.id, companyId: 'boran' },
+      { clientId: demoClientZar.id, companyId: 'zarafshon' },
+    ]) {
+      try {
+        await this.dataSource.query(
+          `
+          INSERT INTO user_client_memberships (id, "userId", "clientId", "companyId", "createdAt")
+          VALUES (uuid_generate_v4(), $1, $2, $3, now())
+          ON CONFLICT ("userId", "companyId")
+          DO UPDATE SET "clientId" = EXCLUDED."clientId"
+          `,
+          [mijozUser.id, link.clientId, link.companyId],
+        );
+      } catch (err) {
+        this.logger.warn(`membership seed: ${(err as Error).message}`);
+      }
+    }
+
+    // Eski buyurtmalarga companyId backfill
+    try {
+      await this.dataSource.query(`
+        UPDATE orders o
+        SET "companyId" = c."companyId"
+        FROM clients c
+        WHERE o."clientId" = c.id
+          AND (o."companyId" IS NULL OR o."companyId" = '')
+          AND c."companyId" IS NOT NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`orders companyId backfill: ${(err as Error).message}`);
+    }
 
     this.logger.log('Boot seed: admin/agent/dostavkachi/dostavkachi2/mijoz — parol 123456');
   }

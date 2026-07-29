@@ -9,6 +9,23 @@ data class AuthUser(
     val clientName: String? = null,
 )
 
+data class ClientOrganization(
+    val companyId: String,
+    val name: String,
+    val shortName: String,
+    val color: String? = null,
+    val icon: String? = null,
+    val clientId: String,
+)
+
+data class OrgPurchaseShare(
+    val companyId: String,
+    val shortName: String,
+    val name: String = "",
+    val color: String? = null,
+    val total: Double,
+)
+
 data class AuthTokens(
     val accessToken: String,
     val refreshToken: String,
@@ -55,6 +72,9 @@ data class ClientOrder(
     val items: List<OrderItem>,
     val createdAt: String,
     val updatedAt: String,
+    val companyId: String? = null,
+    val companyName: String? = null,
+    val companyShortName: String? = null,
 )
 
 data class ContactPerson(
@@ -90,6 +110,8 @@ data class ClientProfile(
     /** null = server hali bu maydonni yubormagan */
     val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPerson? = null,
+    val organizations: List<ClientOrganization> = emptyList(),
+    val activeOrganization: ClientOrganization? = null,
 ) {
     /** Klient qo'shilganda saqlangan manzil — joriy GPS emas. */
     fun registeredDeliveryAddress(): String {
@@ -130,6 +152,8 @@ data class DashboardData(
     val activeOrderCount: Int = 0,
     val discountLevel: String = "Standard",
     val discountSubtitle: String = "—",
+    val organizations: List<ClientOrganization> = emptyList(),
+    val purchasesByOrg: List<OrgPurchaseShare> = emptyList(),
 )
 
 data class AnalyticsMonthlyPoint(
@@ -216,4 +240,7 @@ data class OrderTrackingDetails(
     val distanceKm: Double?,
     val etaMinutes: Int?,
     val deliveryPerson: DeliveryPersonTracking? = null,
+    val companyId: String? = null,
+    val companyName: String? = null,
+    val companyShortName: String? = null,
 )

@@ -206,10 +206,9 @@ fun DashboardScreen(
         onDismiss = { showDatePicker = false },
         onApply = { start, end -> viewModel.setDateRange(start, end) },
         onClear = { viewModel.resetToLastMonth() },
-        initialStartMillis = state.dateRange.takeIf { it.isCustom }
-            ?.let { DashboardDateFilter.toStartMillis(it.start) },
-        initialEndMillis = state.dateRange.takeIf { it.isCustom }
-            ?.let { DashboardDateFilter.toStartMillis(it.end) },
+        onSelectAll = { viewModel.selectAllDates() },
+        initialStartMillis = DashboardDateFilter.toStartMillis(state.dateRange.start),
+        initialEndMillis = DashboardDateFilter.toStartMillis(state.dateRange.end),
         salesDays = salesDays,
         title = t("dash_select_dates"),
         applyLabel = t("dash_apply_dates"),
@@ -328,24 +327,23 @@ fun DashboardScreen(
                         }
                     }
 
-                    if (state.dateRange.isCustom) {
-                        item {
-                            Box(
-                                Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .padding(bottom = 12.dp)
-                                    .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
-                                    .background(LiquidGlass.GradientPrimary)
-                                    .clickable { showDatePicker = true }
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Text(
-                                    periodLabel,
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
+                    // Tanlangan sana oralig‘i — har doim ko‘rinsin
+                    item {
+                        Box(
+                            Modifier
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 12.dp)
+                                .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                .background(LiquidGlass.GradientPrimary)
+                                .clickable { showDatePicker = true }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                periodLabel,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
                         }
                     }
 
@@ -396,11 +394,28 @@ fun DashboardScreen(
                                     fontSize = 28.sp,
                                     lineHeight = 34.sp,
                                 )
+                                if (filtered.purchasesByOrg.size >= 2) {
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        filtered.purchasesByOrg.joinToString(" · ") { share ->
+                                            "${share.shortName} ${formatMoney(share.total)}"
+                                        },
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 SimpleAreaChart(
                                     filtered.chartValues,
                                     strokeColor = Color.White,
                                     fillColor = Color.White.copy(alpha = 0.35f),
+                                    labels = filtered.chartLabels,
+                                    labelColor = Color.White.copy(alpha = 0.75f),
+                                    valueColor = Color(0xFFFFE082),
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }

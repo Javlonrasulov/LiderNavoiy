@@ -6,11 +6,17 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.repository.OrderRepository
+import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.domain.model.ClientOrder
+import uz.lider.client.domain.model.ClientOrganization
 import uz.lider.client.domain.model.OrderStatus
+import uz.lider.client.presentation.dashboard.DashboardDateFilter
+import uz.lider.client.presentation.dashboard.DashboardDateRange
 import javax.inject.Inject
 
 data class OrdersUiState(
@@ -19,21 +25,54 @@ data class OrdersUiState(
     val visibleOrders: List<ClientOrder> = emptyList(),
     val search: String = "",
     val statusFilter: String = "all",
+    val dateRange: DashboardDateRange? = null,
+    val showCalendar: Boolean = false,
+    val organizations: List<ClientOrganization> = emptyList(),
+    val selectedCompanyId: String? = null,
 )
 
 @HiltViewModel
 class OrdersViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
+    private val selectedOrgHolder: SelectedOrgHolder,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OrdersUiState())
     val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            combine(
+                selectedOrgHolder.organizations,
+                selectedOrgHolder.selectedCompanyId,
+            ) { orgs, selected -> orgs to selected }
+                .collect { (orgs, selected) ->
+                    _uiState.update {
+                        it.copy(organizations = orgs, selectedCompanyId = selected)
+                    }
+                }
+        }
         load()
     }
 
     fun load() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(loading = true) }
+            ensureOrgs()
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
+        }
+    }
+
+    suspend fun refresh() {
+        ensureOrgs()
+        reloadQuiet()
+    }
+
+    fun selectOrganization(companyId: String) {
+        if (companyId == selectedOrgHolder.selectedCompanyId.value) return
+        selectedOrgHolder.select(companyId)
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
             reloadQuiet()
@@ -41,13 +80,21 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
-    suspend fun refresh() {
-        reloadQuiet()
+    private suspend fun ensureOrgs() {
+        if (selectedOrgHolder.organizations.value.isEmpty()) {
+            profileRepository.getProfile()
+        }
     }
 
     private suspend fun reloadQuiet() {
-        val orders = orderRepository.getOrders()
-        _uiState.update { it.copy(orders = orders).withVisibleOrders() }
+        val orders = orderRepository.getOrdersForSelectedOrg()
+        _uiState.update {
+            it.copy(
+                orders = orders,
+                organizations = selectedOrgHolder.organizations.value,
+                selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
+            ).withVisibleOrders()
+        }
     }
 
     fun onSearchChange(value: String) {
@@ -58,9 +105,33 @@ class OrdersViewModel @Inject constructor(
         _uiState.update { it.copy(statusFilter = filter).withVisibleOrders() }
     }
 
+    fun onShowCalendar() {
+        _uiState.update { it.copy(showCalendar = true) }
+    }
+
+    fun onDismissCalendar() {
+        _uiState.update { it.copy(showCalendar = false) }
+    }
+
+    fun onDateRangeApply(startMillis: Long, endMillis: Long) {
+        val start = DashboardDateFilter.fromMillis(startMillis)
+        val end = DashboardDateFilter.fromMillis(endMillis)
+        val range = DashboardDateFilter.normalizeRange(start, end)
+        _uiState.update { it.copy(dateRange = range, showCalendar = false).withVisibleOrders() }
+    }
+
+    fun onDateRangeClear() {
+        _uiState.update { it.copy(dateRange = null, showCalendar = false).withVisibleOrders() }
+    }
+
     private fun OrdersUiState.withVisibleOrders(): OrdersUiState {
         val query = search.trim().lowercase()
-        val visible = orders.filter { order ->
+        val rangeFiltered = if (dateRange != null) {
+            DashboardDateFilter.filterOrders(orders, dateRange)
+        } else {
+            orders
+        }
+        val visible = rangeFiltered.filter { order ->
             val matchStatus = OrderStatus.matchesFilter(order.status, statusFilter)
             if (!matchStatus) return@filter false
             if (query.isEmpty()) return@filter true

@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TrendingDown
@@ -54,6 +56,8 @@ import uz.lider.client.presentation.components.localized
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
+import uz.lider.client.presentation.dashboard.DashboardDateFilter
+import uz.lider.client.presentation.dashboard.DashboardDateRangeDialog
 import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.LiquidBackground
@@ -73,11 +77,35 @@ fun AnalyticsScreen(
     val lang = LocalAppLanguage.current
     val state by viewModel.uiState.collectAsState()
     val data = state.data
-    val periodLabel = when (state.period) {
-        "week" -> localized("an_week")
-        "year" -> localized("an_year")
+    val periodLabel = when {
+        state.customStartDate != null && state.customEndDate != null ->
+            "${state.customStartDate} – ${state.customEndDate}"
+        state.period == "week" -> localized("an_week")
+        state.period == "year" -> localized("an_year")
         else -> localized("an_month")
     }
+
+    // Kalendar dialog
+    DashboardDateRangeDialog(
+        visible = state.showCalendar,
+        onDismiss = { viewModel.closeCalendar() },
+        onApply = { startMs, endMs ->
+            val start = DashboardDateFilter.fromMillis(startMs)
+            val end = DashboardDateFilter.fromMillis(endMs)
+            viewModel.applyDateRange(start, end)
+        },
+        onClear = { viewModel.clearDateRange() },
+        initialStartMillis = state.customStartDate?.let {
+            it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        },
+        initialEndMillis = state.customEndDate?.let {
+            it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        },
+        salesDays = state.salesDays,
+        title = localized("an_title"),
+        applyLabel = localized("dash_apply_dates"),
+        cancelLabel = localized("com_cancel"),
+    )
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
         if (state.loading && data == null) {
@@ -114,8 +142,8 @@ fun AnalyticsScreen(
                                 )
                                 PremiumHeaderActionPill {
                                     PremiumHeaderPillIcon(
-                                        icon = Icons.Default.Refresh,
-                                        onClick = { viewModel.refresh() },
+                                        icon = Icons.Default.CalendarMonth,
+                                        onClick = { viewModel.openCalendar() },
                                     )
                                 }
                             }
@@ -129,6 +157,7 @@ fun AnalyticsScreen(
                             )
                             Text(
                                 periodLabel,
+                                modifier = Modifier.clickable { viewModel.openCalendar() },
                                 color = LiquidTheme.textMuted,
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
@@ -141,17 +170,48 @@ fun AnalyticsScreen(
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            listOf(
-                                "week" to localized("an_week"),
-                                "month" to localized("an_month"),
-                                "year" to localized("an_year"),
-                            ).forEach { (key, label) ->
-                                GlassFilterChip(
-                                    label = label,
-                                    selected = state.period == key,
-                                    onClick = { viewModel.setPeriod(key) },
-                                )
+                            if (state.customStartDate != null) {
+                                // Custom range chip — bosilsa tozalanadi
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(LiquidGlass.Indigo.copy(alpha = 0.18f))
+                                        .clickable { viewModel.clearDateRange() }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Text(
+                                            "${state.customStartDate} – ${state.customEndDate}",
+                                            color = LiquidGlass.Indigo,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Tozalash",
+                                            tint = LiquidGlass.Indigo,
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                    }
+                                }
+                            } else {
+                                listOf(
+                                    "week" to localized("an_week"),
+                                    "month" to localized("an_month"),
+                                    "year" to localized("an_year"),
+                                ).forEach { (key, label) ->
+                                    GlassFilterChip(
+                                        label = label,
+                                        selected = state.period == key,
+                                        onClick = { viewModel.setPeriod(key) },
+                                    )
+                                }
                             }
                         }
                     }
@@ -377,7 +437,7 @@ fun AnalyticsScreen(
                         }
                     }
 
-                    // Top products — glass card
+                    // Top products — Top 10 ochiq, qolgani yashirin
                     item {
                         Column(
                             Modifier
@@ -390,7 +450,7 @@ fun AnalyticsScreen(
                                 color = LiquidTheme.text,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
                             val topProducts = data?.topProducts.orEmpty()
                             val top10 = topProducts.take(10)
                             val rest = topProducts.drop(10)
@@ -403,112 +463,52 @@ fun AnalyticsScreen(
                                     fontSize = 13.sp,
                                 )
                             } else {
-                                val accentColors = listOf(
-                                    LiquidGlass.Cyan,
-                                    LiquidGlass.Indigo,
-                                    LiquidGlass.Violet,
-                                    LiquidGlass.Emerald,
-                                    LiquidGlass.Amber,
-                                    LiquidGlass.Rose,
-                                )
-
-                                // Top 10 — bold, ko'zga tashlanadigan ko'rinish
                                 top10.forEachIndexed { index, product ->
-                                    Column(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 6.dp),
-                                    ) {
-                                        Row(
-                                            Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(
-                                                product.name,
-                                                color = LiquidTheme.text,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Text(
-                                                "${product.share}%",
-                                                color = LiquidGlass.Cyan,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
-                                            )
-                                        }
-                                        Spacer(Modifier.height(4.dp))
-                                        HorizontalProgressBar(
-                                            progress = (product.share / 100.0).toFloat(),
-                                            color = accentColors[index % accentColors.size],
-                                            trackColor = Color.White.copy(alpha = 0.10f),
-                                            modifier = Modifier.fillMaxWidth(),
-                                        )
-                                        if (product.quantity > 0) {
-                                            Spacer(Modifier.height(2.dp))
-                                            Text(
-                                                "${formatMoney(product.quantity)} ${product.unit.ifBlank { "" }}".trim(),
-                                                color = LiquidTheme.textMuted,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Medium,
-                                            )
-                                        }
-                                    }
+                                    TopProductRow(
+                                        rank = index + 1,
+                                        name = product.name,
+                                        share = product.share,
+                                        quantityLabel = if (product.quantity > 0) {
+                                            "${formatMoney(product.quantity)} ${product.unit.ifBlank { "" }}".trim()
+                                        } else null,
+                                        emphasized = true,
+                                    )
                                 }
 
-                                // Qolganlari skrit — faqat "Ko'proq" bosilganda ochiladi
                                 if (rest.isNotEmpty()) {
                                     if (expanded) {
+                                        Spacer(Modifier.height(4.dp))
                                         rest.forEachIndexed { i, product ->
-                                            val index = i + 10
-                                            Column(
-                                                Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp),
-                                            ) {
-                                                Row(
-                                                    Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                ) {
-                                                    Text(
-                                                        product.name,
-                                                        color = LiquidTheme.text,
-                                                        fontSize = 12.sp,
-                                                        modifier = Modifier.weight(1f),
-                                                    )
-                                                    Text(
-                                                        "${product.share}%",
-                                                        color = LiquidGlass.Cyan.copy(alpha = 0.75f),
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        fontSize = 12.sp,
-                                                    )
-                                                }
-                                                Spacer(Modifier.height(3.dp))
-                                                HorizontalProgressBar(
-                                                    progress = (product.share / 100.0).toFloat(),
-                                                    color = accentColors[index % accentColors.size].copy(alpha = 0.65f),
-                                                    trackColor = Color.White.copy(alpha = 0.08f),
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                )
-                                            }
+                                            TopProductRow(
+                                                rank = i + 11,
+                                                name = product.name,
+                                                share = product.share,
+                                                quantityLabel = if (product.quantity > 0) {
+                                                    "${formatMoney(product.quantity)} ${product.unit.ifBlank { "" }}".trim()
+                                                } else null,
+                                                emphasized = false,
+                                            )
                                         }
                                     }
 
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(10.dp))
                                     Box(
                                         Modifier
                                             .fillMaxWidth()
-                                            .liquidGlassThemed()
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                            .clickable { expanded = !expanded },
+                                            .clip(RoundedCornerShape(LiquidGlass.RadiusChip))
+                                            .background(LiquidGlass.Indigo.copy(alpha = 0.10f))
+                                            .clickable { expanded = !expanded }
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         Text(
-                                            if (expanded) localized("an_show_less") else localized("an_show_more"),
-                                            color = LiquidTheme.textMuted,
-                                            fontSize = 12.sp,
+                                            if (expanded) {
+                                                localized("an_show_less")
+                                            } else {
+                                                "${localized("an_show_more")} (+${rest.size})"
+                                            },
+                                            color = LiquidGlass.Indigo,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold,
                                         )
                                     }
@@ -519,6 +519,66 @@ fun AnalyticsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TopProductRow(
+    rank: Int,
+    name: String,
+    share: Double,
+    quantityLabel: String?,
+    emphasized: Boolean,
+) {
+    val rankColor = when (rank) {
+        1 -> LiquidGlass.Amber
+        2 -> LiquidGlass.Cyan
+        3 -> LiquidGlass.Violet
+        else -> if (emphasized) LiquidGlass.Indigo else LiquidTheme.textMuted
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = if (emphasized) 7.dp else 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            Modifier
+                .size(if (emphasized) 28.dp else 24.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(rankColor.copy(alpha = if (emphasized) 0.18f else 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "$rank",
+                color = rankColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = if (emphasized) 12.sp else 11.sp,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                name,
+                color = LiquidTheme.text,
+                fontSize = if (emphasized) 14.sp else 12.sp,
+                fontWeight = if (emphasized) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 2,
+            )
+            if (quantityLabel != null) {
+                Text(
+                    quantityLabel,
+                    color = LiquidTheme.textMuted,
+                    fontSize = 11.sp,
+                )
+            }
+        }
+        Text(
+            "${share}%",
+            color = if (emphasized) LiquidGlass.Cyan else LiquidTheme.textMuted,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (emphasized) 13.sp else 12.sp,
+        )
     }
 }
 

@@ -43,6 +43,7 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PromotionRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const card = D ? '#1c1c1e' : '#ffffff';
   const brd = D ? '#2a2a2e' : '#e5e7eb';
@@ -101,10 +102,10 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t.aksiyaDeleteConfirm ?? 'Aksiyani o\'chirishni xohlaysizmi?')) return;
     setDeletingId(id);
     try {
       await api.deletePromotion(id);
+      setDeleteConfirmId(null);
       await load();
     } catch (e) {
       alert(e instanceof Error ? e.message : (t.aksiyaDeleteFail ?? 'O\'chirib bo\'lmadi'));
@@ -303,7 +304,10 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: muted }}>
-                    {t.aksiyaUntil ?? 'Amal qiladi'}: {fmtDate(row.validFrom)} → {fmtDate(row.validTo)}
+                    {t.aksiyaUntil ?? 'Amal qiladi'}:{' '}
+                    {row.validFrom || row.validTo
+                      ? `${fmtDate(row.validFrom)} → ${fmtDate(row.validTo)}`
+                      : (t.aksiyaUnlimited ?? 'Cheksiz (admin ochirmaguncha)')}
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
                     {COLOR_PRESETS.slice(0, 1).map(() => null)}
@@ -321,7 +325,7 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleDelete(row.id)}
+                      onClick={() => setDeleteConfirmId(row.id)}
                       disabled={deletingId === row.id}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -355,6 +359,60 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
           onClose={() => { setModalOpen(false); setEditing(null); }}
           onSaved={handleSaved}
         />
+      )}
+
+      {deleteConfirmId && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 90,
+            background: 'rgba(0,0,0,0.45)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+          onClick={() => { if (!deletingId) setDeleteConfirmId(null); }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 420, borderRadius: 18,
+              border: `1px solid ${brd}`, background: card,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.25)', padding: 20,
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: txt, marginBottom: 8 }}>
+              {t.aksiyaDeleteTitle ?? 'Aksiyani o\'chirish'}
+            </div>
+            <div style={{ fontSize: 13, color: muted, lineHeight: 1.5, marginBottom: 18 }}>
+              {t.aksiyaDeleteConfirm ?? 'Aksiyani o\'chirishni xohlaysizmi?'}
+              <br />
+              {t.aksiyaDeleteWarn ?? 'O\'chirilgach klient va agentda ko\'rinmaydi.'}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                disabled={!!deletingId}
+                onClick={() => setDeleteConfirmId(null)}
+                style={{
+                  padding: '9px 14px', borderRadius: 10, border: `1px solid ${brd}`,
+                  background: soft, color: txt, fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                {t.taroziCancel ?? 'Bekor qilish'}
+              </button>
+              <button
+                type="button"
+                disabled={!!deletingId}
+                onClick={() => void handleDelete(deleteConfirmId)}
+                style={{
+                  padding: '9px 16px', borderRadius: 10, border: 'none',
+                  background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 600,
+                  cursor: deletingId ? 'wait' : 'pointer', opacity: deletingId ? 0.7 : 1,
+                }}
+              >
+                {deletingId ? (t.aksiyaDeleting ?? 'O\'chirilmoqda...') : (t.aksiyaDelete ?? 'O\'chirish')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

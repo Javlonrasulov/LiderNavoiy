@@ -94,6 +94,8 @@ data class CartItem(
     val quantity: Double,
     val unit: String,
     val category: String?,
+    val isFree: Boolean = false,
+    val promotionId: String? = null,
 )
 
 /** Admindan kelgan mahsulot aksiyasi (masalan: 10+1, 20% chegirma) */

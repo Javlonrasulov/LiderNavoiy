@@ -27,6 +27,24 @@ export class CreatePromotionDto {
   @Max(100)
   discountPercent?: number;
 
+  @ApiPropertyOptional({
+    description: 'Buy X miqdor (10 kg yoki 10 dona). Promo free qoidasi uchun',
+    example: 10,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  buyQuantity?: number;
+
+  @ApiPropertyOptional({
+    description: 'Get Y miqdor (1 kg yoki 1 dona). Promo free qoidasi uchun',
+    example: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  freeQuantity?: number;
+
   @ApiPropertyOptional({ description: 'Mahsulot ID (ixtiyoriy)' })
   @IsOptional()
   @IsUUID()

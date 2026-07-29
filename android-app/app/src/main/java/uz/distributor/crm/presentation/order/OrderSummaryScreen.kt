@@ -970,6 +970,7 @@ private fun SentOrderItemRow(
     showDivider: Boolean,
     borderColor: Color,
 ) {
+    val isFree = item.isFree || item.price == 0.0
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1014,13 +1015,13 @@ private fun SentOrderItemRow(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    fmt.format((item.price * item.quantity).toLong()),
+                    if (isFree) "Bepul" else fmt.format((item.price * item.quantity).toLong()),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     color = PrimaryBlue,
                 )
                 Text(
-                    "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}",
+                    if (isFree) "Aksiya ketgani" else "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}",
                     color = SubText,
                     fontSize = 11.sp,
                 )

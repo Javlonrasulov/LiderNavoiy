@@ -294,13 +294,13 @@ fun ProfileScreen(
                                 Modifier.weight(1f),
                             )
                             GlassStatCard(
-                                "4,850",
+                                "${profile?.bonusPoints ?: 0}",
                                 "Bonus",
                                 Brush.linearGradient(listOf(LiquidGlass.Violet, LiquidGlass.Pink)),
                                 Modifier.weight(1f),
                             )
                             GlassStatCard(
-                                "12%",
+                                profile?.discountTitle() ?: "Standard",
                                 localized("promo_discount_label"),
                                 Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
                                 Modifier.weight(1f),

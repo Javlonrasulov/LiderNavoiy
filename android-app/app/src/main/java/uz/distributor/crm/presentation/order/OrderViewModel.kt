@@ -227,6 +227,8 @@ class OrderViewModel @Inject constructor(
                 quantity = it.quantity,
                 unit = it.unit,
                 category = null,
+                isFree = it.isFree,
+                promotionId = it.promotionId,
             )
         }
         val brands = cartItems.associate { item ->

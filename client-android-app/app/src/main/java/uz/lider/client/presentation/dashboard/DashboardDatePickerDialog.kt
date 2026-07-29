@@ -39,7 +39,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +57,7 @@ import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassMenuColors
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
+import java.time.format.TextStyle as MonthTextStyle
 import java.util.Locale
 
 @Composable
@@ -63,6 +66,7 @@ fun DashboardDateRangeDialog(
     onDismiss: () -> Unit,
     onApply: (startMillis: Long, endMillis: Long) -> Unit,
     onClear: () -> Unit,
+    onSelectAll: () -> Unit = onClear,
     initialStartMillis: Long?,
     initialEndMillis: Long?,
     salesDays: Set<LocalDate> = emptySet(),
@@ -106,8 +110,10 @@ fun DashboardDateRangeDialog(
 
     fun applyCurrentSelection() {
         val start = rangeStart ?: return
-        val end = rangeEnd ?: start
-        val range = DashboardDateFilter.normalizeRange(start, end)
+        val rawEnd = rangeEnd ?: start
+        val clampedStart = if (start.isAfter(today)) today else start
+        val clampedEnd = if (rawEnd.isAfter(today)) today else rawEnd
+        val range = DashboardDateFilter.normalizeRange(clampedStart, clampedEnd)
         applyRange(range, DatePreset.CUSTOM)
     }
 
@@ -192,7 +198,7 @@ fun DashboardDateRangeDialog(
                             DatePreset.WEEK -> applyRange(DashboardDateFilter.thisWeekRange(), preset)
                             DatePreset.MONTH -> applyRange(DashboardDateFilter.thisMonthRange(), preset)
                             DatePreset.ALL -> {
-                                onClear()
+                                onSelectAll()
                                 onDismiss()
                             }
                             DatePreset.CUSTOM -> Unit
@@ -204,8 +210,14 @@ fun DashboardDateRangeDialog(
 
                 MonthHeader(
                     label = formatMonthYear(lang, displayMonth),
+                    canGoNext = displayMonth < YearMonth.from(today),
                     onPrev = { displayMonth = displayMonth.minusMonths(1) },
-                    onNext = { displayMonth = displayMonth.plusMonths(1) },
+                    onNext = {
+                        val next = displayMonth.plusMonths(1)
+                        if (!next.isAfter(YearMonth.from(today))) {
+                            displayMonth = next
+                        }
+                    },
                 )
 
                 Spacer(Modifier.height(8.dp))
@@ -221,6 +233,7 @@ fun DashboardDateRangeDialog(
                     rangeEnd = rangeEnd,
                     salesDays = salesDays,
                     onDayClick = { date ->
+                        if (date.isAfter(today)) return@CalendarGrid
                         selectedPreset = DatePreset.CUSTOM
                         when {
                             rangeStart == null || rangeEnd != null -> {
@@ -347,7 +360,12 @@ private fun PresetChip(
 }
 
 @Composable
-private fun MonthHeader(label: String, onPrev: () -> Unit, onNext: () -> Unit) {
+private fun MonthHeader(
+    label: String,
+    canGoNext: Boolean,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -361,11 +379,15 @@ private fun MonthHeader(label: String, onPrev: () -> Unit, onNext: () -> Unit) {
             )
         }
         Text(label, color = LiquidTheme.text, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        IconButton(onClick = onNext, modifier = Modifier.size(32.dp)) {
+        IconButton(
+            onClick = onNext,
+            enabled = canGoNext,
+            modifier = Modifier.size(32.dp),
+        ) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = LiquidTheme.textMuted,
+                tint = if (canGoNext) LiquidTheme.textMuted else LiquidTheme.textMuted.copy(alpha = 0.28f),
             )
         }
     }
@@ -412,14 +434,19 @@ private fun CalendarGrid(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (date != null) {
+                            val enabled = !date.isAfter(today)
                             DayCell(
                                 date = date,
                                 isToday = date == today,
-                                inRange = normalized?.let { date >= it.start && date <= it.end } == true,
-                                isStart = date == normalized?.start || (rangeStart != null && rangeEnd == null && date == rangeStart),
-                                isEnd = date == normalized?.end,
-                                hasSales = salesDays.contains(date),
-                                onClick = { onDayClick(date) },
+                                enabled = enabled,
+                                inRange = enabled && normalized?.let { date >= it.start && date <= it.end } == true,
+                                isStart = enabled && (
+                                    date == normalized?.start ||
+                                        (rangeStart != null && rangeEnd == null && date == rangeStart)
+                                    ),
+                                isEnd = enabled && date == normalized?.end,
+                                hasSales = enabled && salesDays.contains(date),
+                                onClick = { if (enabled) onDayClick(date) },
                             )
                         }
                     }
@@ -433,6 +460,7 @@ private fun CalendarGrid(
 private fun DayCell(
     date: LocalDate,
     isToday: Boolean,
+    enabled: Boolean,
     inRange: Boolean,
     isStart: Boolean,
     isEnd: Boolean,
@@ -443,67 +471,55 @@ private fun DayCell(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(1.dp),
+            .padding(1.dp)
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        if (inRange && !isEdge) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(LiquidGlass.Indigo.copy(alpha = 0.14f)),
-            )
-        }
-        if (isStart && inRange) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxSize(0.5f)
-                    .background(LiquidGlass.Indigo.copy(alpha = 0.14f)),
-            )
-        }
-        if (isEnd && inRange) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterEnd)
-                    .fillMaxSize(0.5f)
-                    .background(LiquidGlass.Indigo.copy(alpha = 0.14f)),
-            )
-        }
         Box(
             modifier = Modifier
                 .size(34.dp)
                 .clip(CircleShape)
                 .then(
                     when {
+                        !enabled -> Modifier
                         isEdge -> Modifier.background(LiquidGlass.Indigo)
+                        inRange -> Modifier.background(LiquidGlass.Indigo.copy(alpha = 0.18f))
                         isToday -> Modifier.border(1.5.dp, LiquidGlass.Indigo, CircleShape)
                         else -> Modifier
                     },
-                )
-                .clickable(onClick = onClick),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "${date.dayOfMonth}",
+                text = "${date.dayOfMonth}",
                 color = when {
+                    !enabled -> LiquidTheme.textMuted.copy(alpha = 0.28f)
                     isEdge -> Color.White
                     isToday -> LiquidGlass.Indigo
+                    inRange -> LiquidGlass.Indigo
                     else -> LiquidTheme.text
                 },
-                fontSize = 13.sp,
-                fontWeight = if (isEdge || isToday) FontWeight.SemiBold else FontWeight.Normal,
+                style = TextStyle(
+                    fontSize = 13.sp,
+                    fontWeight = if (isEdge || isToday || inRange) FontWeight.SemiBold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.Both,
+                    ),
+                ),
             )
         }
 
-        // Savdo bo‘lgan kunda kichik nuqta ko‘rinadi
-        if (hasSales) {
+        if (hasSales && enabled) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
-                    .size(6.dp)
+                    .padding(bottom = 2.dp)
+                    .size(5.dp)
                     .clip(CircleShape)
-                    .background(LiquidGlass.Cyan),
+                    .background(if (isEdge) Color.White else LiquidGlass.Indigo),
             )
         }
     }
@@ -523,7 +539,7 @@ private fun formatMonthYear(lang: AppLanguage, month: YearMonth): String {
         AppLanguage.UZ_KRIL -> Locale("uz")
         else -> Locale("uz")
     }
-    val monthName = month.month.getDisplayName(TextStyle.FULL_STANDALONE, locale)
+    val monthName = month.month.getDisplayName(MonthTextStyle.FULL_STANDALONE, locale)
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(locale) else it.toString() }
     return "$monthName ${month.year}"
 }

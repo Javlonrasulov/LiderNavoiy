@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
@@ -36,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -56,12 +58,15 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderDisplayLabel
 import uz.lider.client.presentation.components.orderStatusColor
 import uz.lider.client.presentation.components.orderStatusLabel
 import uz.lider.client.presentation.components.rememberClientPalette
+import uz.lider.client.presentation.dashboard.DashboardDateFilter
+import uz.lider.client.presentation.dashboard.DashboardDateRangeDialog
 import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.navigation.ClientRoutes
 import uz.lider.client.presentation.theme.GlassFilterChip
@@ -69,9 +74,7 @@ import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
-import uz.lider.client.presentation.theme.PremiumHeaderActionPill
 import uz.lider.client.presentation.theme.PremiumHeaderButton
-import uz.lider.client.presentation.theme.PremiumHeaderPillIcon
 import uz.lider.client.presentation.theme.liquidGlassThemed
 
 @Composable
@@ -85,6 +88,7 @@ fun OrdersScreen(
     val palette = rememberClientPalette()
     val orders = state.visibleOrders
     val allOrders = state.orders
+    val salesDays = remember(allOrders) { DashboardDateFilter.saleDays(allOrders) }
     val activeCount = allOrders.count {
         val s = OrderStatus.fromKey(it.status)
         s != OrderStatus.DELIVERED && s != OrderStatus.CANCELLED
@@ -108,6 +112,18 @@ fun OrdersScreen(
     }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
+        DashboardDateRangeDialog(
+            visible = state.showCalendar,
+            onDismiss = viewModel::onDismissCalendar,
+            onApply = viewModel::onDateRangeApply,
+            onClear = viewModel::onDateRangeClear,
+            initialStartMillis = state.dateRange?.let { DashboardDateFilter.toStartMillis(it.start) },
+            initialEndMillis = state.dateRange?.let { DashboardDateFilter.toEndMillis(it.end) },
+            salesDays = salesDays,
+            title = localized("ord_title"),
+            applyLabel = localized("dash_apply_dates"),
+            cancelLabel = localized("com_cancel"),
+        )
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
@@ -140,12 +156,11 @@ fun OrdersScreen(
                                     onClick = onOpenDrawer,
                                     contentDescription = "Menu",
                                 )
-                                PremiumHeaderActionPill {
-                                    PremiumHeaderPillIcon(
-                                        icon = Icons.Default.Refresh,
-                                        onClick = viewModel::load,
-                                    )
-                                }
+                                PremiumHeaderButton(
+                                    icon = Icons.Default.CalendarMonth,
+                                    onClick = viewModel::onShowCalendar,
+                                    contentDescription = localized("dash_select_dates"),
+                                )
                             }
                             Spacer(Modifier.height(16.dp))
                             Text(
@@ -161,6 +176,25 @@ fun OrdersScreen(
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
                             )
+                            val dateRange = state.dateRange
+                            if (dateRange != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    DashboardDateFilter.formatRange(dateRange),
+                                    color = LiquidGlass.Indigo,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (state.organizations.size >= 2) {
+                                Spacer(Modifier.height(12.dp))
+                                OrgSwitcherChips(
+                                    organizations = state.organizations,
+                                    selectedCompanyId = state.selectedCompanyId,
+                                    onSelect = viewModel::selectOrganization,
+                                )
+                            }
                             Spacer(Modifier.height(12.dp))
                         }
                     }
@@ -352,8 +386,16 @@ private fun OrderCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val orgLabel = order.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+                        ?: order.companyName?.trim()?.takeIf { it.isNotEmpty() }
                     Text(
-                        order.createdAt.take(10),
+                        buildString {
+                            append(order.createdAt.take(10))
+                            if (orgLabel != null) {
+                                append(" · ")
+                                append(orgLabel)
+                            }
+                        },
                         color = LiquidTheme.textMuted,
                         fontSize = 12.sp,
                     )
@@ -424,7 +466,7 @@ private fun OrderCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Icon(
-                        Icons.Default.Refresh,
+                        Icons.Filled.Refresh,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(16.dp),

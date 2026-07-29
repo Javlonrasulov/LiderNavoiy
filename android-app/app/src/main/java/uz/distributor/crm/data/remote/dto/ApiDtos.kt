@@ -183,6 +183,8 @@ data class OrderItemDto(
     val quantity: Double,
     val price: Double,
     val unit: String,
+    val isFree: Boolean = false,
+    val promotionId: String? = null,
 )
 
 data class CreateOrderRequest(
@@ -220,6 +222,8 @@ data class OrderDto(
     val clientCode: String? = null,
     val clientAddress: String? = null,
     val clientPhone: String? = null,
+    val clientLatitude: Double? = null,
+    val clientLongitude: Double? = null,
     val deliveryDistributorId: String? = null,
     val updatedAt: String? = null,
     val isUrgent: Boolean = false,

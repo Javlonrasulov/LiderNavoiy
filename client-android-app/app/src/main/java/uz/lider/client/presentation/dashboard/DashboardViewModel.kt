@@ -108,6 +108,8 @@ class DashboardViewModel @Inject constructor(
                 discountSubtitle = apiDash.discountSubtitle.ifBlank { local.discountSubtitle },
                 balance = apiDash.balance,
                 totalPurchases = apiDash.totalPurchases.takeIf { it > 0 } ?: local.totalPurchases,
+                organizations = apiDash.organizations.ifEmpty { local.organizations },
+                purchasesByOrg = apiDash.purchasesByOrg.ifEmpty { local.purchasesByOrg },
             )
         } else {
             local
@@ -146,6 +148,10 @@ class DashboardViewModel @Inject constructor(
         applyRange(DashboardDateFilter.lastMonthRange())
     }
 
+    fun selectAllDates() {
+        applyRange(DashboardDateFilter.allOrdersRange(_uiState.value.allOrders))
+    }
+
     private fun applyRange(range: DashboardDateRange) {
         _uiState.update { state ->
             state.copy(
@@ -178,7 +184,12 @@ class DashboardViewModel @Inject constructor(
             _uiState.value.allOrders
         } else {
             runCatching { orderRepository.getOrders() }.getOrNull()?.also { fetched ->
-                _uiState.update { it.copy(allOrders = fetched) }
+                _uiState.update { state ->
+                    state.copy(
+                        allOrders = fetched,
+                        filtered = DashboardDateFilter.computeFiltered(fetched, state.dateRange),
+                    )
+                }
             }
         }
         val orders = latest ?: _uiState.value.allOrders
@@ -368,7 +379,7 @@ class DashboardViewModel @Inject constructor(
         }
 
         val vehicles = liveOrders
-            .groupBy { vehicleKeyFor(it.tracking.deliveryPerson) }
+            .groupBy { vehicleKeyFor(it.tracking.deliveryPerson, it.tracking.companyId) }
             .mapNotNull { (key, group) ->
                 val withGps = group.firstOrNull {
                     val p = it.tracking.deliveryPerson
@@ -379,6 +390,9 @@ class DashboardViewModel @Inject constructor(
                         it.deliveryLng,
                     )
                 }
+                val companyId = group.firstOrNull()?.tracking?.companyId
+                val companyShortName = group.firstOrNull()?.tracking?.companyShortName
+                    ?: group.firstOrNull()?.tracking?.companyName
                 if (withGps != null) {
                     val person = withGps.tracking.deliveryPerson!!
                     LiveMapVehicle(
@@ -388,6 +402,8 @@ class DashboardViewModel @Inject constructor(
                         courierName = person.name.ifBlank { "—" },
                         courierPhone = person.phone,
                         orders = group,
+                        companyId = companyId,
+                        companyShortName = companyShortName,
                     )
                 } else {
                     // GPS yo‘q / emulator — faqat magazin (manzil) ni ko‘rsatamiz
@@ -407,6 +423,8 @@ class DashboardViewModel @Inject constructor(
                         courierName = person?.name?.ifBlank { "—" } ?: "—",
                         courierPhone = person?.phone,
                         orders = group.map { it.copy(routePoints = emptyList(), distanceLabel = "—") },
+                        companyId = companyId,
+                        companyShortName = companyShortName,
                     )
                 }
             }

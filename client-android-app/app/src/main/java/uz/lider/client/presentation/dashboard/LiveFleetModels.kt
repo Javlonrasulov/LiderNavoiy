@@ -25,6 +25,8 @@ data class LiveMapVehicle(
     val courierName: String,
     val courierPhone: String?,
     val orders: List<LiveMapOrder>,
+    val companyId: String? = null,
+    val companyShortName: String? = null,
 ) {
     val orderCount: Int get() = orders.size
 }
@@ -66,15 +68,19 @@ data class LiveFleetUi(
     }
 }
 
-fun vehicleKeyFor(person: DeliveryPersonTracking?): String {
-    person?.userId?.trim()?.takeIf { it.isNotEmpty() }?.let { return "u:$it" }
-    val lat = person?.latitude
-    val lng = person?.longitude
-    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
-        return "p:${(lat * 10_000).toInt()}_${(lng * 10_000).toInt()}"
+fun vehicleKeyFor(person: DeliveryPersonTracking?, companyId: String?): String {
+    val org = companyId?.trim()?.takeIf { it.isNotEmpty() } ?: "org"
+    val courier = run {
+        person?.userId?.trim()?.takeIf { it.isNotEmpty() }?.let { return@run "u:$it" }
+        val lat = person?.latitude
+        val lng = person?.longitude
+        if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+            return@run "p:${(lat * 10_000).toInt()}_${(lng * 10_000).toInt()}"
+        }
+        val name = person?.name?.trim().orEmpty()
+        val phone = person?.phone?.trim().orEmpty()
+        if (name.isNotEmpty() || phone.isNotEmpty()) return@run "c:$name|$phone"
+        "unknown"
     }
-    val name = person?.name?.trim().orEmpty()
-    val phone = person?.phone?.trim().orEmpty()
-    if (name.isNotEmpty() || phone.isNotEmpty()) return "c:$name|$phone"
-    return "unknown"
+    return "$org|$courier"
 }

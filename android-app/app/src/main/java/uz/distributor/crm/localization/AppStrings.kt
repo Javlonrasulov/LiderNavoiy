@@ -141,6 +141,7 @@ object AppStrings {
     )
     fun deliveryStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
     fun deliveryStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
+    fun deliveryNavigate(lang: AppLanguage) = tr(lang, "Navigatorda ochish", "Навигаторда очиш", "Открыть навигатор")
     fun noClientOrders(lang: AppLanguage) = tr(
         lang,
         "Yangi klient buyurtmasi yo'q",

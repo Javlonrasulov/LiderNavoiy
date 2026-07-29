@@ -801,6 +801,8 @@ export const api = {
       title: string;
       subtitle: string | null;
       discountPercent: number | string;
+      buyQuantity: number | string | null;
+      freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
       colorStart: string;
@@ -818,6 +820,8 @@ export const api = {
     title: string;
     subtitle?: string;
     discountPercent?: number;
+    buyQuantity?: number | null;
+    freeQuantity?: number | null;
     productId?: string | null;
     colorStart?: string;
     colorEnd?: string;
@@ -832,6 +836,8 @@ export const api = {
       title: string;
       subtitle: string | null;
       discountPercent: number | string;
+      buyQuantity: number | string | null;
+      freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
       colorStart: string;
@@ -850,6 +856,8 @@ export const api = {
     title?: string;
     subtitle?: string;
     discountPercent?: number;
+    buyQuantity?: number | null;
+    freeQuantity?: number | null;
     productId?: string | null;
     colorStart?: string;
     colorEnd?: string;
@@ -864,6 +872,8 @@ export const api = {
       title: string;
       subtitle: string | null;
       discountPercent: number | string;
+      buyQuantity: number | string | null;
+      freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
       colorStart: string;

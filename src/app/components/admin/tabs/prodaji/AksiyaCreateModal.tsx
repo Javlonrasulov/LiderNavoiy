@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Search, Check } from 'lucide-react';
 import { api } from '../../../../api/client';
+import { PromoDateCalendar } from './PromoDateCalendar';
 
 export type PromotionRow = {
   id: string;
   title: string;
   subtitle: string | null;
   discountPercent: number;
+  buyQuantity?: number | null;
+  freeQuantity?: number | null;
   productId: string | null;
   productName: string | null;
   colorStart: string;
@@ -22,6 +25,7 @@ type ProductOpt = {
   id: string;
   code: string;
   name: string;
+  unit: string;
 };
 
 const COLOR_PRESETS: { start: string; end: string; label: string }[] = [
@@ -61,6 +65,12 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const [discountPercent, setDiscountPercent] = useState(
     initial ? String(initial.discountPercent || '') : '20',
   );
+  const [buyQuantity, setBuyQuantity] = useState(
+    initial?.buyQuantity != null ? String(initial.buyQuantity) : '',
+  );
+  const [freeQuantity, setFreeQuantity] = useState(
+    initial?.freeQuantity != null ? String(initial.freeQuantity) : '',
+  );
   const [colorStart, setColorStart] = useState(initial?.colorStart ?? '#4F46E5');
   const [colorEnd, setColorEnd] = useState(initial?.colorEnd ?? '#9333EA');
   const [emoji, setEmoji] = useState(initial?.emoji ?? '🎁');
@@ -89,7 +99,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       try {
         const list = await api.getProducts();
         if (cancelled) return;
-        setProducts(list.map((p) => ({ id: p.id, code: p.code, name: p.name })));
+        setProducts(list.map((p) => ({ id: p.id, code: p.code, name: p.name, unit: p.unit })));
       } catch {
         if (!cancelled) setProducts([]);
       } finally {
@@ -109,7 +119,19 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       .slice(0, 40);
   }, [products, productSearch]);
 
+  const selectedUnit = products.find((p) => p.id === productId)?.unit ?? '';
+  const buyQ = buyQuantity === '' ? 0 : Number(buyQuantity);
+  const freeQ = freeQuantity === '' ? 0 : Number(freeQuantity);
+
+  const autoFreeSubtitle =
+    buyQ > 0 && freeQ > 0
+      ? (selectedUnit
+        ? `${buyQ}${selectedUnit} + ${freeQ}${selectedUnit}`
+        : `${buyQ} + ${freeQ}`)
+      : '';
+
   const previewSubtitle = subtitle.trim()
+    || autoFreeSubtitle
     || (productName
       ? `${productName}${Number(discountPercent) > 0 ? `ga ${discountPercent}% chegirma` : ''}`
       : (Number(discountPercent) > 0 ? `${discountPercent}% chegirma` : ''));
@@ -126,13 +148,31 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       return;
     }
 
+    const buyQ = buyQuantity === '' ? null : Number(buyQuantity);
+    const freeQ = freeQuantity === '' ? null : Number(freeQuantity);
+
+    if (buyQuantity !== '' && Number.isNaN(buyQ as number)) {
+      setError(t.aksiyaBuyInvalid ?? 'Buy qty noto‘g‘ri');
+      return;
+    }
+    if (freeQuantity !== '' && Number.isNaN(freeQ as number)) {
+      setError(t.aksiyaFreeInvalid ?? 'Free qty noto‘g‘ri');
+      return;
+    }
+    if (freeQ != null && freeQ > 0 && (buyQ == null || buyQ <= 0)) {
+      setError(t.aksiyaBuyRequiredForFree ?? 'Free uchun buy qty ham kiritilishi kerak');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     const body = {
       title: trimmedTitle,
       subtitle: subtitle.trim() || previewSubtitle || undefined,
-      discountPercent: Number.isFinite(pct) ? pct : 0,
+      discountPercent: freeQ != null && freeQ > 0 ? 0 : (Number.isFinite(pct) ? pct : 0),
       productId: productId || null,
+      buyQuantity: buyQ,
+      freeQuantity: freeQ,
       colorStart,
       colorEnd,
       emoji: emoji || '🎁',
@@ -237,6 +277,33 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
+                <label style={labelStyle}>{t.aksiyaBuyQty ?? 'Buy qty'}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={buyQuantity}
+                  onChange={(e) => setBuyQuantity(e.target.value)}
+                  placeholder="10"
+                  style={fieldStyle}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>{t.aksiyaFreeQty ?? 'Free qty'}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={freeQuantity}
+                  onChange={(e) => setFreeQuantity(e.target.value)}
+                  placeholder="1"
+                  style={fieldStyle}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
                 <label style={labelStyle}>{t.aksiyaDiscount ?? 'Chegirma %'}</label>
                 <input
                   type="number"
@@ -303,15 +370,18 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{t.aksiyaValidFrom ?? 'Boshlanish sanasi'}</label>
-                <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} style={fieldStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>{t.aksiyaValidTo ?? 'Tugash sanasi'}</label>
-                <input type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} style={fieldStyle} />
-              </div>
+            <div>
+              <label style={labelStyle}>{t.aksiyaPeriod ?? 'Aksiya muddati'}</label>
+              <PromoDateCalendar
+                D={D}
+                t={t}
+                validFrom={validFrom}
+                validTo={validTo}
+                onChange={(from, to) => {
+                  setValidFrom(from);
+                  setValidTo(to);
+                }}
+              />
             </div>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: txt, cursor: 'pointer' }}>
@@ -434,17 +504,24 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   </div>
                   <span style={{ fontSize: 28, lineHeight: 1 }}>{emoji || '🎁'}</span>
                 </div>
-                {Number(discountPercent) > 0 && (
-                  <div
-                    style={{
-                      display: 'inline-block', marginTop: 12,
-                      padding: '4px 10px', borderRadius: 999,
-                      background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
-                    }}
-                  >
-                    {discountPercent}%
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
+                  {Number(discountPercent) > 0 ? (
+                    <div
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 10px', borderRadius: 999,
+                        background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
+                      }}
+                    >
+                      {discountPercent}%
+                    </div>
+                  ) : <span />}
+                  <div style={{ fontSize: 11, opacity: 0.85, textAlign: 'right' }}>
+                    {validFrom && validTo
+                      ? `${validFrom.split('-').reverse().join('.')} — ${validTo.split('-').reverse().join('.')}`
+                      : (t.aksiyaUnlimited ?? 'Cheksiz')}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>

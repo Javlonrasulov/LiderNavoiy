@@ -38,23 +38,42 @@ private fun Bitmap.asMarkerDrawable(context: Context): Drawable =
 /**
  * Admin «Xodimlar joylashuvi» dostavkachi markeriga mos:
  * yashil doira + 🚚 + online badge (pastda o‘ngda).
+ * Ixtiyoriy `orgLabel` — doira ostida org shortName.
  */
 fun createTruckMarkerDrawable(
     context: Context,
     orderCount: Int,
     sizeDp: Int = 36,
     online: Boolean = true,
+    orgLabel: String? = null,
 ): Drawable {
     val d = context.resources.displayMetrics.density
     val disc = (sizeDp * d).toInt().coerceIn(36, 96)
     val badgeExtra = if (orderCount > 1) (12 * d).toInt() else 0
     val pad = (4 * d).toInt()
-    val outW = disc + pad * 2 + badgeExtra
-    val outH = disc + pad * 2
+    val label = orgLabel?.trim()?.takeIf { it.isNotEmpty() }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF111827.toInt()
+        textAlign = Paint.Align.CENTER
+        textSize = 10f * d
+        typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+        isFakeBoldText = true
+    }
+    val labelH = if (label != null) {
+        (labelPaint.descent() - labelPaint.ascent() + 4f * d).toInt()
+    } else {
+        0
+    }
+    val outW = maxOf(disc + pad * 2 + badgeExtra, if (label != null) {
+        (labelPaint.measureText(label) + 10f * d).toInt()
+    } else {
+        0
+    })
+    val outH = disc + pad * 2 + labelH
     val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
 
-    val cx = pad + disc / 2f
+    val cx = outW / 2f
     val cy = pad + disc / 2f
     val r = disc / 2f
 
@@ -128,8 +147,42 @@ fun createTruckMarkerDrawable(
             textSize = 10.5f * d
             typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
         }
-        val label = if (orderCount > 9) "9+" else orderCount.toString()
-        canvas.drawText(label, bx, by - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint)
+        val countLabel = if (orderCount > 9) "9+" else orderCount.toString()
+        canvas.drawText(countLabel, bx, by - (textPaint.descent() + textPaint.ascent()) / 2f, textPaint)
+    }
+
+    if (label != null) {
+        val pillPadX = 5f * d
+        val pillPadY = 2f * d
+        val tw = labelPaint.measureText(label)
+        val textH = labelPaint.descent() - labelPaint.ascent()
+        val pillW = tw + pillPadX * 2
+        val pillH = textH + pillPadY * 2
+        val pillLeft = cx - pillW / 2f
+        val pillTop = pad + disc + 1f * d
+        val pillRect = RectF(pillLeft, pillTop, pillLeft + pillW, pillTop + pillH)
+        canvas.drawRoundRect(
+            pillRect,
+            pillH / 2f,
+            pillH / 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xF0FFFFFF.toInt() },
+        )
+        canvas.drawRoundRect(
+            pillRect,
+            pillH / 2f,
+            pillH / 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1f * d
+                color = 0x33000000
+            },
+        )
+        canvas.drawText(
+            label,
+            cx,
+            pillTop + pillPadY - labelPaint.ascent(),
+            labelPaint,
+        )
     }
 
     return bmp.asMarkerDrawable(context)

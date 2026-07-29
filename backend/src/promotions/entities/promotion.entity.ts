@@ -21,6 +21,16 @@ export class Promotion {
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   discountPercent: number;
 
+  /**
+   * Buy X get Y free (bepul miqdor qoidasi).
+   * Biz unitni mahsulotdan olamiz (`products.unit`), shuning uchun bu qiymatlar aynan o‘sha unitda kiritiladi.
+   */
+  @Column({ type: 'decimal', precision: 15, scale: 3, nullable: true })
+  buyQuantity: number | null;
+
+  @Column({ type: 'decimal', precision: 15, scale: 3, nullable: true })
+  freeQuantity: number | null;
+
   @Column({ type: 'uuid', nullable: true })
   productId: string | null;
 

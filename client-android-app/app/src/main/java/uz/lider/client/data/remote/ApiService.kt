@@ -3,6 +3,7 @@ package uz.lider.client.data.remote
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -43,22 +44,35 @@ interface ApiService {
     suspend fun getClientDashboard(): uz.lider.client.data.remote.dto.ClientDashboardDto
 
     @GET("client-portal/orders")
-    suspend fun getOrders(): List<ClientOrderDto>
+    suspend fun getOrders(
+        @Header("X-Company-Id") companyId: String? = null,
+    ): List<ClientOrderDto>
 
     @GET("client-portal/orders/{orderId}/tracking")
     suspend fun getOrderTracking(@Path("orderId") orderId: String): OrderTrackingDto
 
     @POST("client-portal/orders")
-    suspend fun createOrder(@Body body: CreateOrderRequest): ClientOrderDto
+    suspend fun createOrder(
+        @Body body: CreateOrderRequest,
+        @Header("X-Company-Id") companyId: String? = null,
+    ): ClientOrderDto
 
     @GET("client-portal/products")
-    suspend fun getProducts(@Query("category") category: String? = null): List<ProductDto>
+    suspend fun getProducts(
+        @Query("category") category: String? = null,
+        @Header("X-Company-Id") companyId: String? = null,
+    ): List<ProductDto>
 
     @GET("client-portal/products/categories")
-    suspend fun getProductCategories(): List<CategoryRowDto>
+    suspend fun getProductCategories(
+        @Header("X-Company-Id") companyId: String? = null,
+    ): List<CategoryRowDto>
 
     @GET("client-portal/analytics")
-    suspend fun getAnalytics(@Query("period") period: String = "month"): ClientAnalyticsDto
+    suspend fun getAnalytics(
+        @Query("period") period: String = "month",
+        @Header("X-Company-Id") companyId: String? = null,
+    ): ClientAnalyticsDto
 
     @GET("client-portal/promotions")
     suspend fun getPromotions(): List<PromotionDto>

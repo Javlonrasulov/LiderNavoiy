@@ -8,12 +8,14 @@ import { VisitsModule } from '../visits/visits.module';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Order, DistributorProfile, Client, User]),
     NotificationsModule,
     VisitsModule,
+    PromotionsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

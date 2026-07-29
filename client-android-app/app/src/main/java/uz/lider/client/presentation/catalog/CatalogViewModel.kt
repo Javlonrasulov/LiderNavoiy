@@ -6,11 +6,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.data.repository.FavoritesRepository
 import uz.lider.client.data.repository.ProductRepository
+import uz.lider.client.data.repository.ProfileRepository
+import uz.lider.client.domain.model.ClientOrganization
 import uz.lider.client.domain.model.Product
 import javax.inject.Inject
 
@@ -29,6 +33,8 @@ data class CatalogUiState(
     val viewMode: CatalogViewMode = CatalogViewMode.GRID,
     val favorites: Set<String> = emptySet(),
     val addToCartProduct: Product? = null,
+    val organizations: List<ClientOrganization> = emptyList(),
+    val selectedCompanyId: String? = null,
 )
 
 @HiltViewModel
@@ -36,6 +42,8 @@ class CatalogViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val cartRepository: CartRepository,
     private val favoritesRepository: FavoritesRepository,
+    private val selectedOrgHolder: SelectedOrgHolder,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CatalogUiState())
@@ -48,6 +56,17 @@ class CatalogViewModel @Inject constructor(
     }
 
     init {
+        viewModelScope.launch {
+            combine(
+                selectedOrgHolder.organizations,
+                selectedOrgHolder.selectedCompanyId,
+            ) { orgs, selected -> orgs to selected }
+                .collect { (orgs, selected) ->
+                    _uiState.update {
+                        it.copy(organizations = orgs, selectedCompanyId = selected)
+                    }
+                }
+        }
         load()
         viewModelScope.launch {
             favoritesRepository.favoriteIds.collect { ids ->
@@ -59,20 +78,44 @@ class CatalogViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
+            ensureOrgs()
             reloadQuiet()
             _uiState.update { it.copy(loading = false) }
         }
     }
 
     suspend fun refresh() {
+        ensureOrgs()
         reloadQuiet()
+    }
+
+    fun selectOrganization(companyId: String) {
+        if (companyId == selectedOrgHolder.selectedCompanyId.value) return
+        selectedOrgHolder.select(companyId)
+        cartRepository.clear()
+        viewModelScope.launch {
+            _uiState.update { it.copy(loading = true, activeCategoryIndex = INDEX_ALL) }
+            reloadQuiet()
+            _uiState.update { it.copy(loading = false) }
+        }
+    }
+
+    private suspend fun ensureOrgs() {
+        if (selectedOrgHolder.organizations.value.isEmpty()) {
+            profileRepository.getProfile()
+        }
     }
 
     private suspend fun reloadQuiet() {
         val allProducts = productRepository.getProducts(null)
         val categories = productRepository.getCategories()
         _uiState.update {
-            it.copy(allProducts = allProducts, categories = categories)
+            it.copy(
+                allProducts = allProducts,
+                categories = categories,
+                organizations = selectedOrgHolder.organizations.value,
+                selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
+            )
         }
     }
 

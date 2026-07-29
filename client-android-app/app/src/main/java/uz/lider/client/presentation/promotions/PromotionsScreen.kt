@@ -173,7 +173,7 @@ fun PromotionsScreen(
                                         discount = if (promo.discountPercent > 0) {
                                             "${uz.lider.client.localization.AppStrings.t(lang, "promo_discount_label")} ${promo.discountPercent.toInt()}%"
                                         } else "",
-                                        until = formatPromoDate(promo.validTo),
+                                        until = formatPromoRange(promo.validFrom, promo.validTo),
                                         colorStart = parseHexColor(promo.colorStart, Color(0xFF4F46E5)),
                                         colorEnd = parseHexColor(promo.colorEnd, Color(0xFF9333EA)),
                                     )
@@ -281,7 +281,7 @@ private fun PromoGradientCard(
                 }
                 if (until.isNotBlank()) {
                     Text(
-                        "${localized("promo_until")} $until",
+                        until,
                         color = Color.White.copy(alpha = 0.70f),
                         fontSize = 12.sp,
                     )
@@ -550,6 +550,18 @@ private fun formatPromoDate(iso: String?): String {
             val parts = raw.split("-")
             if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else raw
         }
+    }
+}
+
+/** Clientda kunlar ko‘rinsin: from — to (yoki faqat to / from) */
+private fun formatPromoRange(fromIso: String?, toIso: String?): String {
+    val from = formatPromoDate(fromIso)
+    val to = formatPromoDate(toIso)
+    return when {
+        from.isNotBlank() && to.isNotBlank() -> "$from — $to"
+        to.isNotBlank() -> to
+        from.isNotBlank() -> from
+        else -> ""
     }
 }
 

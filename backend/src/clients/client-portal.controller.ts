@@ -1,5 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query, Request, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../auth/entities/user.entity';
 import { ClientGuard } from '../common/guards/client.guard';
@@ -8,27 +18,55 @@ import { ClientPortalService } from './client-portal.service';
 
 @ApiTags('Client Portal')
 @ApiBearerAuth()
+@ApiHeader({ name: 'X-Company-Id', required: false })
 @UseGuards(JwtAuthGuard, ClientGuard)
 @Controller('client-portal')
 export class ClientPortalController {
   constructor(private readonly service: ClientPortalService) {}
 
+  private companyId(headers: Record<string, string | undefined>, query?: string): string | null {
+    return (
+      query?.trim() ||
+      headers['x-company-id']?.trim() ||
+      headers['X-Company-Id']?.trim() ||
+      null
+    );
+  }
+
   @Get('me')
-  @ApiOperation({ summary: 'Current client profile' })
-  me(@Request() req: { user: User }) {
-    return this.service.getProfile(req.user);
+  @ApiOperation({ summary: 'Current client profile (+ organizations)' })
+  me(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getProfile(req.user, this.companyId(headers, companyId));
+  }
+
+  @Get('organizations')
+  @ApiOperation({ summary: 'Linked organizations for this login' })
+  organizations(@Request() req: { user: User }) {
+    return this.service.listOrganizations(req.user);
   }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Client dashboard summary' })
-  dashboard(@Request() req: { user: User }) {
-    return this.service.getDashboard(req.user);
+  dashboard(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getDashboard(req.user, this.companyId(headers, companyId));
   }
 
   @Get('orders')
-  @ApiOperation({ summary: 'Client order history' })
-  orders(@Request() req: { user: User }) {
-    return this.service.getOrders(req.user);
+  @ApiOperation({ summary: 'Client order history (scoped by org)' })
+  orders(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getOrders(req.user, this.companyId(headers, companyId));
   }
 
   @Get('orders/:orderId/tracking')
@@ -38,12 +76,18 @@ export class ClientPortalController {
   }
 
   @Post('orders')
-  @ApiOperation({ summary: 'Create order from client app' })
-  createOrder(@Request() req: { user: User }, @Body() dto: ClientCreateOrderDto) {
-    return this.service.createOrder(req.user, {
-      ...dto,
-      clientId: req.user.clientId!,
-    });
+  @ApiOperation({ summary: 'Create order from client app (active org)' })
+  createOrder(
+    @Request() req: { user: User },
+    @Body() dto: ClientCreateOrderDto,
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.createOrder(
+      req.user,
+      { ...dto, clientId: req.user.clientId! },
+      this.companyId(headers, companyId),
+    );
   }
 
   @Get('products')
@@ -62,9 +106,15 @@ export class ClientPortalController {
   @ApiOperation({ summary: 'Purchase analytics for client app' })
   analytics(
     @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
     @Query('period') period?: 'week' | 'month' | 'year',
+    @Query('companyId') companyId?: string,
   ) {
-    return this.service.getAnalytics(req.user, period ?? 'month');
+    return this.service.getAnalytics(
+      req.user,
+      period ?? 'month',
+      this.companyId(headers, companyId),
+    );
   }
 
   @Get('promotions')

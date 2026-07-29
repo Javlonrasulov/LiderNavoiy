@@ -353,6 +353,24 @@ fun OrderTrackingScreen(
                         }
 
                         item {
+                            // Bitta umumiy oqim offseti — barcha chiziqlarda sinxron
+                            val totalFlowingLines = if (state.isCancelled) 0
+                                else (state.activeStep - 1).coerceIn(0, stepKeys.lastIndex)
+                            val infinite = rememberInfiniteTransition(label = "timeline-flow")
+                            // Oqim barcha chiziqlar bo'ylab ~3s da bir o'tadi
+                            val globalFlowOffset by infinite.animateFloat(
+                                initialValue = 0f,
+                                targetValue = totalFlowingLines.toFloat().coerceAtLeast(1f),
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(
+                                        durationMillis = (totalFlowingLines * 900).coerceAtLeast(1800),
+                                        easing = LinearEasing,
+                                    ),
+                                    repeatMode = RepeatMode.Restart,
+                                ),
+                                label = "global-flow-offset",
+                            )
+
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -364,9 +382,7 @@ fun OrderTrackingScreen(
                                     val done = !state.isCancelled && stepNum < state.activeStep
                                     val active = !state.isCancelled && stepNum == state.activeStep
                                     val cancelledHere = state.isCancelled && stepNum == 1
-                                    // Oqim 1-bosqichdan joriy bosqichgacha uzluksiz oqadi.
                                     val lineFlowing = !state.isCancelled && stepNum < state.activeStep
-                                    val lineFilled = false
 
                                     Row(verticalAlignment = Alignment.Top) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -378,10 +394,16 @@ fun OrderTrackingScreen(
                                                 textMuted = textMuted,
                                             )
                                             if (index < stepKeys.lastIndex) {
+                                                // localOffset: bu chiziq uchun 0..1 qiymati
+                                                // Chiziq index'iga mos qism globaldan ajratiladi
+                                                val localOffset = if (lineFlowing) {
+                                                    val shifted = globalFlowOffset - index.toFloat()
+                                                    (shifted % 1f + 1f) % 1f
+                                                } else 0f
                                                 TimelineConnector(
-                                                    filled = lineFilled && !lineFlowing,
                                                     flowing = lineFlowing,
                                                     cancelled = cancelledHere,
+                                                    flowOffset = localOffset,
                                                 )
                                             }
                                         }
@@ -418,29 +440,17 @@ fun OrderTrackingScreen(
 
 @Composable
 private fun TimelineConnector(
-    filled: Boolean,
     flowing: Boolean,
     cancelled: Boolean,
+    flowOffset: Float = 0f,
 ) {
     val trackColor = when {
         cancelled -> LiquidGlass.Rose.copy(alpha = 0.45f)
-        filled || flowing -> LiquidGlass.Indigo.copy(alpha = 0.25f)
+        flowing -> LiquidGlass.Indigo.copy(alpha = 0.25f)
         else -> Color.White.copy(alpha = 0.15f)
     }
     val flowColor = LiquidGlass.Cyan
     val fillColor = LiquidGlass.Indigo.copy(alpha = 0.85f)
-
-    val infinite = rememberInfiniteTransition(label = "flow-line")
-    val flowOffset by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            // Tezroq animatsiya — ko'zga ravshanroq ko'rinadi
-            animation = tween(900, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "flow-offset",
-    )
 
     Box(
         Modifier
@@ -451,29 +461,25 @@ private fun TimelineConnector(
                 if (flowing) {
                     Modifier.drawBehind {
                         val h = size.height
-                        val band = h * 0.65f
+                        // Asosiy to'ldirilgan qism — "suv to'lgan" effekti
+                        drawRect(color = fillColor.copy(alpha = 0.65f))
+                        // Oqim chizig'i — tepadan pastga
+                        val band = h * 0.55f
                         val y = -band + (h + band) * flowOffset
                         drawRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
                                     Color.Transparent,
-                                    flowColor.copy(alpha = 0.30f),
+                                    flowColor.copy(alpha = 0.20f),
                                     flowColor.copy(alpha = 1.0f),
-                                    flowColor.copy(alpha = 0.30f),
+                                    flowColor.copy(alpha = 0.20f),
                                     Color.Transparent,
                                 ),
                                 startY = y,
                                 endY = y + band,
                             ),
                         )
-                        // Pastki qism doim to'ldirilgan — suv oqib kelayotgandek
-                        drawRect(
-                            color = fillColor.copy(alpha = 0.55f),
-                            size = androidx.compose.ui.geometry.Size(size.width, h * 0.72f),
-                        )
                     }
-                } else if (filled) {
-                    Modifier.background(fillColor)
                 } else {
                     Modifier
                 },

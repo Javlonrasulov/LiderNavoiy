@@ -1,6 +1,7 @@
 package uz.lider.client.data.repository
 
 import uz.lider.client.BuildConfig
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ProductDto
 import uz.lider.client.domain.model.Product
@@ -10,10 +11,12 @@ import javax.inject.Singleton
 @Singleton
 class ProductRepository @Inject constructor(
     private val api: ApiService,
+    private val selectedOrgHolder: SelectedOrgHolder,
 ) {
     suspend fun getProducts(category: String? = null): List<Product> {
         return try {
-            api.getProducts(category).map { it.toDomain() }
+            val companyId = selectedOrgHolder.getSelectedCompanyId()
+            api.getProducts(category = category, companyId = companyId).map { it.toDomain() }
         } catch (_: Exception) {
             emptyList()
         }
@@ -21,7 +24,8 @@ class ProductRepository @Inject constructor(
 
     suspend fun getCategories(): List<String> {
         return try {
-            api.getProductCategories()
+            val companyId = selectedOrgHolder.getSelectedCompanyId()
+            api.getProductCategories(companyId = companyId)
                 .mapNotNull { row -> row.category.takeIf { it.isNotBlank() } }
         } catch (_: Exception) {
             emptyList()

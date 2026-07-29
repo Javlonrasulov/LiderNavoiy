@@ -12,6 +12,7 @@ import uz.lider.client.data.repository.AnalyticsRepository
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.domain.model.ClientAnalytics
 import uz.lider.client.presentation.components.ChartVisualStyle
+import java.time.LocalDate
 import javax.inject.Inject
 
 data class AnalyticsUiState(
@@ -20,6 +21,10 @@ data class AnalyticsUiState(
     val chartStyle: ChartVisualStyle = ChartVisualStyle.BAR,
     val data: ClientAnalytics? = null,
     val loadFailed: Boolean = false,
+    val salesDays: Set<LocalDate> = emptySet(),
+    val customStartDate: LocalDate? = null,
+    val customEndDate: LocalDate? = null,
+    val showCalendar: Boolean = false,
 )
 
 @HiltViewModel
@@ -38,12 +43,47 @@ class AnalyticsViewModel @Inject constructor(
                 _uiState.update { it.copy(chartStyle = style) }
             }
         }
+        viewModelScope.launch {
+            val days = analyticsRepository.getSalesDays()
+            _uiState.update { it.copy(salesDays = days) }
+        }
     }
 
     fun setPeriod(period: String) {
         if (_uiState.value.period == period) return
-        _uiState.update { it.copy(period = period) }
+        _uiState.update { it.copy(period = period, customStartDate = null, customEndDate = null) }
         load(period)
+    }
+
+    fun openCalendar() {
+        _uiState.update { it.copy(showCalendar = true) }
+    }
+
+    fun closeCalendar() {
+        _uiState.update { it.copy(showCalendar = false) }
+    }
+
+    fun applyDateRange(start: LocalDate, end: LocalDate) {
+        _uiState.update {
+            it.copy(
+                showCalendar = false,
+                customStartDate = start,
+                customEndDate = end,
+                loading = true,
+                loadFailed = false,
+            )
+        }
+        viewModelScope.launch {
+            val data = analyticsRepository.getAnalyticsByRange(start, end)
+            _uiState.update {
+                it.copy(loading = false, data = data, loadFailed = data == null)
+            }
+        }
+    }
+
+    fun clearDateRange() {
+        _uiState.update { it.copy(customStartDate = null, customEndDate = null) }
+        load(_uiState.value.period)
     }
 
     fun setChartStyle(style: ChartVisualStyle) {
@@ -53,17 +93,22 @@ class AnalyticsViewModel @Inject constructor(
     }
 
     fun refresh() {
-        load(_uiState.value.period, showLoading = false)
+        val s = _uiState.value
+        if (s.customStartDate != null && s.customEndDate != null) {
+            applyDateRange(s.customStartDate, s.customEndDate)
+        } else {
+            load(s.period, showLoading = false)
+        }
     }
 
     suspend fun refreshSuspend() {
-        val period = _uiState.value.period
-        val data = analyticsRepository.getAnalytics(period)
-        _uiState.update {
-            it.copy(
-                data = data,
-                loadFailed = data == null,
-            )
+        val s = _uiState.value
+        if (s.customStartDate != null && s.customEndDate != null) {
+            val data = analyticsRepository.getAnalyticsByRange(s.customStartDate, s.customEndDate)
+            _uiState.update { it.copy(data = data, loadFailed = data == null) }
+        } else {
+            val data = analyticsRepository.getAnalytics(s.period)
+            _uiState.update { it.copy(data = data, loadFailed = data == null) }
         }
     }
 

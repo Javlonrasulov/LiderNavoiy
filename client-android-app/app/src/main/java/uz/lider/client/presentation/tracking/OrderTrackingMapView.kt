@@ -289,6 +289,7 @@ private fun updateFleetMap(
             orderCount = vehicle.orderCount,
             sizeDp = truckSizeDp,
             online = true,
+            orgLabel = vehicle.companyShortName,
         )
         if (!vehicle.id.startsWith("dest-only") &&
             GeoCoords.isUsableCourier(

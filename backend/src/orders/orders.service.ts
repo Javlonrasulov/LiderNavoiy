@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
-import { OrderStatus, OrderSource } from '../common/enums';
+import { OrderStatus, OrderSource, VisitStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
@@ -11,6 +11,10 @@ import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
 import { VisitsService } from '../visits/visits.service';
 import { OrderItem } from './entities/order.entity';
+import { PromotionsService } from '../promotions/promotions.service';
+import { Promotion } from '../promotions/entities/promotion.entity';
+import { Product } from '../products/entities/product.entity';
+import { Visit } from '../visits/entities/visit.entity';
 
 @Injectable()
 export class OrdersService {
@@ -25,6 +29,7 @@ export class OrdersService {
     private readonly userRepo: Repository<User>,
     private readonly notifications: NotificationsService,
     private readonly visitsService: VisitsService,
+    private readonly promotionsService: PromotionsService,
   ) {}
 
   async create(
@@ -34,9 +39,11 @@ export class OrdersService {
     source: OrderSource = OrderSource.AGENT,
   ) {
     const totalAmount = dto.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
+    const client = await this.clientRepo.findOne({ where: { id: dto.clientId } });
     const order = this.repo.create({
       distributorId,
       clientId: dto.clientId,
+      companyId: client?.companyId ?? null,
       visitId: dto.visitId ?? null,
       items: dto.items,
       totalAmount,
@@ -175,6 +182,8 @@ export class OrdersService {
         clientCode: client?.code ?? '',
         clientAddress: client?.address ?? null,
         clientPhone: client?.phone ?? null,
+        clientLatitude: client?.latitude ?? null,
+        clientLongitude: client?.longitude ?? null,
       };
     });
   }
@@ -256,6 +265,8 @@ export class OrdersService {
       quantity: Number(it.quantity),
       price: Number(it.price),
       unit: it.unit,
+      isFree: it.isFree === true,
+      promotionId: it.promotionId,
     }));
 
     for (const it of normalized) {
@@ -286,23 +297,139 @@ export class OrdersService {
       throw new BadRequestException('Order is not pending');
     }
 
-    const visit = await this.visitsService.create(distributorId, {
-      clientId: order.clientId,
-      visitedAt: new Date().toISOString(),
-      orderTotal: Number(order.totalAmount),
-      notes: `client_order:${order.id}`,
-    });
+    // 1) Buy X get Y free qoidalarini hisoblab order items'ga bepul line qo‘shamiz
+    const originalItems: OrderItem[] = Array.isArray(order.items) ? order.items : [];
 
-    order.status = OrderStatus.CONFIRMED;
-    order.visitId = visit.id;
-    order.isUrgent = isUrgent;
-    const saved = await this.repo.save(order);
+    const activePromos = await this.promotionsService.findActiveForClient();
+    const promoByProductId = new Map<string, Promotion>();
+    for (const p of activePromos) {
+      if (!p.productId) continue;
+      if (p.buyQuantity == null || p.freeQuantity == null) continue;
+      const buyQ = Number(p.buyQuantity);
+      const freeQ = Number(p.freeQuantity);
+      if (!(buyQ > 0 && freeQ > 0)) continue;
+      // sortOrder ASC bo‘yicha keladi, shuning uchun birinchisini olamiz
+      if (!promoByProductId.has(p.productId)) promoByProductId.set(p.productId, p);
+    }
+
+    // mahsulot bo‘yicha paid quantity'ni yig‘ib olamiz (free line'lar bo‘lsa — ignor qilamiz)
+    const paidByProductId = new Map<
+      string,
+      { item: OrderItem; totalPaidQty: number }
+    >();
+    for (const it of originalItems) {
+      if (!it.productId) continue;
+      if (it.isFree === true) continue;
+      const prev = paidByProductId.get(it.productId);
+      if (prev) {
+        prev.totalPaidQty += Number(it.quantity);
+      } else {
+        paidByProductId.set(it.productId, {
+          item: it,
+          totalPaidQty: Number(it.quantity),
+        });
+      }
+    }
+
+    const expandedItems: OrderItem[] = originalItems.map((it) => ({
+      ...it,
+      isFree: it.isFree === true,
+      promotionId: it.promotionId,
+    }));
+
+    for (const [productId, group] of paidByProductId.entries()) {
+      const promo = promoByProductId.get(productId);
+      if (!promo) continue;
+      const buyQ = Number(promo.buyQuantity ?? 0);
+      const freeQ = Number(promo.freeQuantity ?? 0);
+      if (!(buyQ > 0 && freeQ > 0)) continue;
+
+      const bundleCount = Math.floor(group.totalPaidQty / buyQ);
+      const freeQty = bundleCount * freeQ;
+      if (freeQty <= 0) continue;
+
+      expandedItems.push({
+        productId,
+        productCode: group.item.productCode,
+        productName: group.item.productName,
+        quantity: freeQty,
+        price: 0,
+        unit: group.item.unit,
+        isFree: true,
+        promotionId: promo.id,
+      });
+    }
+
+    order.items = expandedItems;
+    order.totalAmount = expandedItems.reduce(
+      (sum, it) => sum + Number(it.price) * Number(it.quantity),
+      0,
+    );
+
+    // 2) Ombor(stock)ni ham bepul miqdor bo‘yicha kamaytiramiz + visit/order’ni saqlaymiz
+    const queryRunner = this.repo.manager.connection.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    let saved: Order;
+    try {
+      // stock decrement: product stockBalance -= sum(quantity) (paid + free)
+      const qtyByProductId = new Map<string, number>();
+      for (const it of expandedItems) {
+        if (!it.productId) continue;
+        qtyByProductId.set(
+          it.productId,
+          (qtyByProductId.get(it.productId) ?? 0) + Number(it.quantity),
+        );
+      }
+
+      for (const [productId, qty] of qtyByProductId.entries()) {
+        if (!(qty > 0)) continue;
+        const result = await queryRunner.manager
+          .createQueryBuilder()
+          .update(Product)
+          .set({ stockBalance: () => '"stockBalance" - :qty' })
+          .where('id = :id', { id: productId })
+          .andWhere('"stockBalance" >= :qty', { qty })
+          .execute();
+
+        if (!result.affected || result.affected === 0) {
+          throw new BadRequestException(`Not enough stock for product ${productId}`);
+        }
+      }
+
+      const visitRepo = queryRunner.manager.getRepository(Visit);
+      const visit = visitRepo.create({
+        distributorId,
+        clientId: order.clientId,
+        visitedAt: new Date(),
+        status: VisitStatus.COMPLETED,
+        orderTotal: Number(order.totalAmount),
+        notes: `client_order:${order.id}`,
+        isOfflineCreated: false,
+      });
+      await queryRunner.manager.save(visit);
+
+      order.status = OrderStatus.CONFIRMED;
+      order.visitId = visit.id;
+      order.isUrgent = isUrgent;
+      saved = await queryRunner.manager.save(order);
+
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      await queryRunner.rollbackTransaction();
+      throw e;
+    } finally {
+      await queryRunner.release();
+    }
+
     this.notifyClientOrderStatus(
       order.clientId,
       'Buyurtma qabul qilindi',
       'Agent buyurtmangizni qabul qildi',
       order.id,
     ).catch(() => {});
+
     return saved;
   }
 

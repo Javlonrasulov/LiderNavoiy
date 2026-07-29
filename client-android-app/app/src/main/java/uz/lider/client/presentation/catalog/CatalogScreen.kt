@@ -62,6 +62,7 @@ import uz.lider.client.domain.model.Product
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.PulsingCountBadge
 import uz.lider.client.presentation.components.formatMoney
@@ -203,6 +204,14 @@ fun CatalogScreen(
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
                         )
+                        if (state.organizations.size >= 2) {
+                            Spacer(Modifier.height(12.dp))
+                            OrgSwitcherChips(
+                                organizations = state.organizations,
+                                selectedCompanyId = state.selectedCompanyId,
+                                onSelect = viewModel::selectOrganization,
+                            )
+                        }
                         Spacer(Modifier.height(12.dp))
                     }
                 }

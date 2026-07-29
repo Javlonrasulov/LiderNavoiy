@@ -27,6 +27,16 @@ export class OrderItemDto {
   @ApiProperty()
   @IsString()
   unit: string;
+
+  @ApiPropertyOptional({ description: 'Aksiya (bepul) bo‘lsa true' })
+  @IsOptional()
+  @IsBoolean()
+  isFree?: boolean;
+
+  @ApiPropertyOptional({ description: 'Qaysi promo qoidasidan kelgani' })
+  @IsOptional()
+  @IsString()
+  promotionId?: string;
 }
 
 export class CreateOrderDto {

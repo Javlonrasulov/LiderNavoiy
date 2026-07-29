@@ -1,5 +1,6 @@
 package uz.lider.client.data.repository
 
+import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ClientAnalyticsDto
 import uz.lider.client.domain.model.AnalyticsCategoryShare
@@ -11,6 +12,7 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.Product
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,18 +23,122 @@ class AnalyticsRepository @Inject constructor(
     private val api: ApiService,
     private val orderRepository: OrderRepository,
     private val productRepository: ProductRepository,
+    private val selectedOrgHolder: SelectedOrgHolder,
 ) {
     suspend fun getAnalytics(period: String): ClientAnalytics? {
         return try {
-            api.getAnalytics(period).toDomain()
+            val companyId = selectedOrgHolder.getSelectedCompanyId()
+            api.getAnalytics(period = period, companyId = companyId).toDomain()
         } catch (_: Exception) {
             buildLocalAnalytics(period)
         }
     }
 
+    /** Barcha bekor qilinmagan buyurtmalar sanasi — kalendarda nuqta uchun */
+    suspend fun getSalesDays(): Set<LocalDate> {
+        return try {
+            orderRepository.getOrdersForSelectedOrg()
+                .filter { it.status != "cancelled" }
+                .mapNotNull { order ->
+                    try {
+                        parseOrderDate(order.createdAt, ZoneId.systemDefault())
+                    } catch (_: Exception) { null }
+                }
+                .toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    /** Custom range bo'yicha ma'lumotlarni local hisoblab qaytaradi */
+    suspend fun getAnalyticsByRange(startDate: LocalDate, endDate: LocalDate): ClientAnalytics? {
+        return try {
+            val orders = orderRepository.getOrdersForSelectedOrg().filter { it.status != "cancelled" }
+            val products = productRepository.getProducts()
+            computeAnalyticsByRange(startDate, endDate, orders, products)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun computeAnalyticsByRange(
+        startDate: LocalDate,
+        endDate: LocalDate,
+        orders: List<ClientOrder>,
+        products: List<Product>,
+    ): ClientAnalytics {
+        val zone = ZoneId.systemDefault()
+        val prevDays = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1
+        val prevStart = startDate.minusDays(prevDays)
+
+        val productsById = products.associateBy { it.id }
+        val productsByCode = products.associateBy { it.code }
+
+        fun orderDate(o: ClientOrder) = parseOrderDate(o.createdAt, zone)
+        fun inRange(d: LocalDate, s: LocalDate, e: LocalDate) = !d.isBefore(s) && !d.isAfter(e)
+
+        val currentOrders = orders.filter { inRange(orderDate(it), startDate, endDate) }
+        val previousOrders = orders.filter { inRange(orderDate(it), prevStart, startDate.minusDays(1)) }
+
+        val currentTotal = currentOrders.sumOf { it.totalAmount }
+        val previousTotal = previousOrders.sumOf { it.totalAmount }
+        val currentCount = currentOrders.size
+        val previousCount = previousOrders.size
+        val currentQty = totalQuantity(currentOrders)
+        val previousQty = totalQuantity(previousOrders)
+        val avgCheck = if (currentCount > 0) currentTotal / currentCount else 0.0
+        val prevAvgCheck = if (previousCount > 0) previousTotal / previousCount else 0.0
+
+        // Haftalik dinamika: startDate..endDate arasi
+        val days = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate).toInt() + 1
+        val weeklyDynamics = (0 until minOf(days, 14)).map { offset ->
+            val d = startDate.plusDays(offset.toLong())
+            val dayOrders = currentOrders.filter { orderDate(it) == d }
+            AnalyticsWeeklyPoint(d.toString(), dayOrders.sumOf { it.totalAmount })
+        }
+
+        // Oylik: startDate ayidan endDate ayiga qadar
+        val startMonth = java.time.YearMonth.from(startDate)
+        val endMonth = java.time.YearMonth.from(endDate)
+        val monthlyPurchases = mutableListOf<AnalyticsMonthlyPoint>()
+        var m = startMonth
+        while (!m.isAfter(endMonth)) {
+            val ms = maxOf(m.atDay(1), startDate)
+            val me = minOf(m.atEndOfMonth(), endDate)
+            val amt = currentOrders.filter {
+                val d = orderDate(it); !d.isBefore(ms) && !d.isAfter(me)
+            }.sumOf { it.totalAmount }
+            monthlyPurchases.add(AnalyticsMonthlyPoint(m.year, m.monthValue, round(amt).toDouble()))
+            m = m.plusMonths(1)
+        }
+
+        val categories = buildCategoryBreakdown(
+            currentOrders, productsById, productsByCode, startDate, endDate.plusDays(1), zone,
+        )
+        val topProducts = buildTopProducts(
+            currentOrders, productsById, productsByCode, startDate, endDate.plusDays(1), zone, 50,
+        )
+
+        return ClientAnalytics(
+            period = "custom",
+            totalPurchases = currentTotal,
+            totalPurchasesTrend = percentChange(currentTotal, previousTotal),
+            orderCount = currentCount,
+            orderCountTrend = percentChange(currentCount.toDouble(), previousCount.toDouble()),
+            avgCheck = avgCheck,
+            avgCheckTrend = percentChange(avgCheck, prevAvgCheck),
+            totalQuantity = currentQty.toDouble(),
+            totalQuantityTrend = percentChange(currentQty.toDouble(), previousQty.toDouble()),
+            monthlyPurchases = monthlyPurchases,
+            weeklyDynamics = weeklyDynamics,
+            categories = categories,
+            topProducts = topProducts,
+        )
+    }
+
     private suspend fun buildLocalAnalytics(period: String): ClientAnalytics? {
         return try {
-            val orders = orderRepository.getOrders().filter { it.status != "cancelled" }
+            val orders = orderRepository.getOrdersForSelectedOrg().filter { it.status != "cancelled" }
             val products = productRepository.getProducts()
             computeAnalytics(period, orders, products)
         } catch (_: Exception) {
@@ -77,7 +183,7 @@ class AnalyticsRepository @Inject constructor(
             orders, productsById, productsByCode, periodStart, now.plusDays(1), zone,
         )
         val topProducts = buildTopProducts(
-            orders, productsById, productsByCode, periodStart, now.plusDays(1), zone, 10,
+            orders, productsById, productsByCode, periodStart, now.plusDays(1), zone, 50,
         )
 
         return ClientAnalytics(

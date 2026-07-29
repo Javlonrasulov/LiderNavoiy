@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { OrderStatus, OrderSource, UserRole } from '../common/enums';
+import { Company } from '../companies/entities/company.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
 import { CreateOrderDto } from '../orders/dto/order.dto';
@@ -11,7 +12,17 @@ import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
 import { PromotionsService } from '../promotions/promotions.service';
 import { Client } from './entities/client.entity';
+import { UserClientMembership } from './entities/user-client-membership.entity';
 import { GpsService } from '../gps/gps.service';
+
+export type ClientOrgDto = {
+  companyId: string;
+  name: string;
+  shortName: string;
+  color: string | null;
+  icon: string | null;
+  clientId: string;
+};
 
 @Injectable()
 export class ClientPortalService {
@@ -22,15 +33,133 @@ export class ClientPortalService {
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(DistributorProfile)
     private readonly distributorRepo: Repository<DistributorProfile>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(UserClientMembership)
+    private readonly membershipRepo: Repository<UserClientMembership>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
     private readonly promotionsService: PromotionsService,
     private readonly gpsService: GpsService,
   ) {}
 
-  private clientId(user: User): string {
+  private primaryClientId(user: User): string {
     if (!user.clientId) throw new BadRequestException('No client linked to user');
     return user.clientId;
+  }
+
+  /** Phone/INN bo‘yicha boshqa orgdagi klientlarni membershipga bog‘lash. */
+  async ensureMemberships(user: User): Promise<UserClientMembership[]> {
+    const primaryId = this.primaryClientId(user);
+    const primary = await this.clientRepo.findOne({ where: { id: primaryId } });
+    if (!primary) throw new NotFoundException('Client not found');
+
+    const links: Array<{ clientId: string; companyId: string }> = [];
+    if (primary.companyId) {
+      links.push({ clientId: primary.id, companyId: primary.companyId });
+    }
+
+    const phone = primary.phone?.trim();
+    const inn = primary.inn?.trim();
+    if (phone || inn) {
+      const qb = this.clientRepo
+        .createQueryBuilder('c')
+        .where('c.isActive = true')
+        .andWhere('c.id != :id', { id: primary.id })
+        .andWhere('c.companyId IS NOT NULL');
+      if (phone && inn) {
+        qb.andWhere('(c.phone = :phone OR c.inn = :inn)', { phone, inn });
+      } else if (phone) {
+        qb.andWhere('c.phone = :phone', { phone });
+      } else {
+        qb.andWhere('c.inn = :inn', { inn });
+      }
+      const peers = await qb.getMany();
+      for (const peer of peers) {
+        if (peer.companyId) {
+          links.push({ clientId: peer.id, companyId: peer.companyId });
+        }
+      }
+    }
+
+    for (const link of links) {
+      const existing = await this.membershipRepo.findOne({
+        where: { userId: user.id, companyId: link.companyId },
+      });
+      if (!existing) {
+        await this.membershipRepo.save(
+          this.membershipRepo.create({
+            userId: user.id,
+            clientId: link.clientId,
+            companyId: link.companyId,
+          }),
+        );
+      } else if (existing.clientId !== link.clientId) {
+        existing.clientId = link.clientId;
+        await this.membershipRepo.save(existing);
+      }
+    }
+
+    return this.membershipRepo.find({ where: { userId: user.id } });
+  }
+
+  async listOrganizations(user: User): Promise<ClientOrgDto[]> {
+    const memberships = await this.ensureMemberships(user);
+    if (memberships.length === 0) return [];
+    const companyIds = memberships.map((m) => m.companyId);
+    const companies = await this.companyRepo.find({
+      where: { id: In(companyIds), isActive: true },
+    });
+    const byId = new Map(companies.map((c) => [c.id, c]));
+    return memberships
+      .map((m) => {
+        const c = byId.get(m.companyId);
+        if (!c) return null;
+        return {
+          companyId: c.id,
+          name: c.name,
+          shortName: c.shortName?.trim() || c.name,
+          color: c.color,
+          icon: c.icon,
+          clientId: m.clientId,
+        } satisfies ClientOrgDto;
+      })
+      .filter((x): x is ClientOrgDto => !!x);
+  }
+
+  /** Tanlangan org → shu orgdagi klient yozuvi. */
+  async resolveActiveClient(user: User, companyId?: string | null): Promise<Client> {
+    const orgs = await this.listOrganizations(user);
+    if (orgs.length === 0) {
+      const client = await this.clientRepo.findOne({
+        where: { id: this.primaryClientId(user) },
+        relations: ['distributor', 'distributor.user'],
+      });
+      if (!client) throw new NotFoundException('Client not found');
+      return client;
+    }
+    const selected =
+      (companyId && orgs.find((o) => o.companyId === companyId)) || orgs[0];
+    const client = await this.clientRepo.findOne({
+      where: { id: selected.clientId },
+      relations: ['distributor', 'distributor.user'],
+    });
+    if (!client) throw new NotFoundException('Client not found');
+    return client;
+  }
+
+  private async companyMap(companyIds: string[]): Promise<Map<string, Company>> {
+    if (companyIds.length === 0) return new Map();
+    const rows = await this.companyRepo.find({ where: { id: In(companyIds) } });
+    return new Map(rows.map((c) => [c.id, c]));
+  }
+
+  private orgLabel(company: Company | undefined): { companyName: string | null; companyShortName: string | null } {
+    if (!company) return { companyName: null, companyShortName: null };
+    return {
+      companyName: company.name,
+      companyShortName: company.shortName?.trim() || company.name,
+    };
   }
 
   private roleToPosition(role?: UserRole, customPosition?: string | null): string | null {
@@ -135,18 +264,21 @@ export class ClientPortalService {
     return linked;
   }
 
-  async getProfile(user: User) {
-    const client = await this.clientRepo.findOne({
-      where: { id: this.clientId(user) },
-      relations: ['distributor', 'distributor.user'],
-    });
-    if (!client) throw new NotFoundException('Client not found');
+  async getProfile(user: User, companyId?: string | null) {
+    const organizations = await this.listOrganizations(user);
+    const client = await this.resolveActiveClient(user, companyId);
+    const membershipClientIds =
+      organizations.length > 0
+        ? organizations.map((o) => o.clientId)
+        : [client.id];
 
-    const orderCount = await this.orderRepo.count({ where: { clientId: client.id } });
+    const orderCount = await this.orderRepo.count({
+      where: { clientId: In(membershipClientIds) },
+    });
     const totalPurchases = await this.orderRepo
       .createQueryBuilder('o')
       .select('COALESCE(SUM(o.totalAmount), 0)', 'total')
-      .where('o.clientId = :clientId', { clientId: client.id })
+      .where('o.clientId IN (:...ids)', { ids: membershipClientIds })
       .andWhere('o.status != :cancelled', { cancelled: OrderStatus.CANCELLED })
       .getRawOne();
 
@@ -168,9 +300,15 @@ export class ClientPortalService {
       phone: string | null;
     } | null = null;
     if (loadedOrder?.deliveryDistributorId || client.distributorId) {
-      const deliveryDistributor = await this.resolveDeliveryDistributor(loadedOrder ?? { deliveryDistributorId: null }, client);
+      const deliveryDistributor = await this.resolveDeliveryDistributor(
+        loadedOrder ?? { deliveryDistributorId: null },
+        client,
+      );
       deliveryPerson = this.contactFromDistributor(deliveryDistributor, 'Dostavkachi');
     }
+
+    const activeOrg =
+      organizations.find((o) => o.clientId === client.id) || organizations[0] || null;
 
     return {
       id: client.id,
@@ -187,6 +325,7 @@ export class ClientPortalService {
       category: client.category,
       clientClass: client.clientClass,
       priceCategory: client.priceCategory,
+      companyId: client.companyId,
       agentName: agent?.name ?? null,
       agentPosition: agent?.position ?? null,
       agentPhone: agent?.phone ?? null,
@@ -197,35 +336,75 @@ export class ClientPortalService {
       totalPurchases: Number(totalPurchases?.total ?? 0),
       bonusPoints: Math.max(0, Math.floor(Number(totalPurchases?.total ?? 0) / 1000)),
       debt: Number(client.balance) < 0 ? Math.abs(Number(client.balance)) : 0,
+      organizations,
+      activeOrganization: activeOrg,
     };
   }
 
-  async getOrders(user: User) {
+  async getOrders(user: User, companyId?: string | null) {
+    const orgs = await this.listOrganizations(user);
+    let clientIds: string[];
+    if (companyId) {
+      const org = orgs.find((o) => o.companyId === companyId);
+      clientIds = org ? [org.clientId] : [this.primaryClientId(user)];
+    } else if (orgs.length > 0) {
+      // Header yo‘q = barcha org (dashboard xarita / jami)
+      clientIds = orgs.map((o) => o.clientId);
+    } else {
+      clientIds = [this.primaryClientId(user)];
+    }
+
     const orders = await this.orderRepo.find({
-      where: { clientId: this.clientId(user) },
+      where: { clientId: In(clientIds) },
       order: { createdAt: 'DESC' },
       take: 100,
     });
-    return orders.map((o) => ({
-      id: o.id,
-      status: o.status,
-      totalAmount: Number(o.totalAmount),
-      items: o.items,
-      createdAt: o.createdAt,
-      updatedAt: o.updatedAt,
-    }));
+    const cmap = await this.companyMap(
+      [
+        ...orders.map((o) => o.companyId).filter((id): id is string => !!id),
+        ...orgs.map((o) => o.companyId),
+      ],
+    );
+    const clientToOrg = new Map(orgs.map((o) => [o.clientId, o]));
+
+    return orders.map((o) => {
+      const fromOrder = o.companyId ? cmap.get(o.companyId) : undefined;
+      const fromMem = clientToOrg.get(o.clientId);
+      const label = this.orgLabel(fromOrder) ;
+      return {
+        id: o.id,
+        status: o.status,
+        totalAmount: Number(o.totalAmount),
+        items: o.items,
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
+        companyId: o.companyId || fromMem?.companyId || null,
+        companyName: label.companyName || fromMem?.name || null,
+        companyShortName: label.companyShortName || fromMem?.shortName || null,
+      };
+    });
   }
 
   async getOrderTracking(user: User, orderId: string) {
-    const clientId = this.clientId(user);
-    const order = await this.orderRepo.findOne({ where: { id: orderId, clientId } });
+    const orgs = await this.listOrganizations(user);
+    const clientIds =
+      orgs.length > 0 ? orgs.map((o) => o.clientId) : [this.primaryClientId(user)];
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, clientId: In(clientIds) },
+    });
     if (!order) throw new NotFoundException('Order not found');
 
     const client = await this.clientRepo.findOne({
-      where: { id: clientId },
+      where: { id: order.clientId },
       relations: ['distributor', 'distributor.user'],
     });
     if (!client) throw new NotFoundException('Client not found');
+
+    const companyId = order.companyId || client.companyId;
+    const company = companyId
+      ? await this.companyRepo.findOne({ where: { id: companyId } })
+      : null;
+    const orgMeta = this.orgLabel(company ?? undefined);
 
     const deliveryLat = client.latitude;
     const deliveryLng = client.longitude;
@@ -368,6 +547,9 @@ export class ClientPortalService {
       distanceKm,
       etaMinutes,
       deliveryPerson,
+      companyId: companyId ?? null,
+      companyName: orgMeta.companyName,
+      companyShortName: orgMeta.companyShortName,
     };
   }
 
@@ -409,36 +591,69 @@ export class ClientPortalService {
     return Math.round(c * 6371 * 10) / 10;
   }
 
-  async createOrder(user: User, dto: CreateOrderDto) {
-    const clientId = this.clientId(user);
-    if (!clientId) {
-      throw new BadRequestException('Client account is not linked');
-    }
-    if (dto.clientId !== clientId) {
-      throw new BadRequestException('Invalid client');
+  async createOrder(user: User, dto: CreateOrderDto, companyId?: string | null) {
+    const client = await this.resolveActiveClient(user, companyId);
+    if (!client.distributorId) {
+      throw new BadRequestException('Client has no assigned agent');
     }
     if (!dto.items?.length) {
       throw new BadRequestException('Order items are required');
     }
-    const client = await this.clientRepo.findOne({ where: { id: clientId } });
-    if (!client?.distributorId) {
-      throw new BadRequestException('Client has no assigned agent');
-    }
-    return this.ordersService.create(client.distributorId, dto, false, OrderSource.CLIENT);
+    return this.ordersService.create(
+      client.distributorId,
+      { ...dto, clientId: client.id },
+      false,
+      OrderSource.CLIENT,
+    );
   }
 
-  async getDashboard(user: User) {
-    const profile = await this.getProfile(user);
-    const orders = await this.getOrders(user);
+  async getDashboard(user: User, companyId?: string | null) {
+    const profile = await this.getProfile(user, companyId);
+    const organizations = profile.organizations as ClientOrgDto[];
+    const orders = await this.getOrders(user, companyId);
     const recentOrders = orders.slice(0, 5);
     const activeOrders = orders.filter(
       (o) => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.CANCELLED,
     ).length;
     const balance = Number(profile.balance ?? 0);
-    // Agent CRM: manfiy balans = qarzdorlik
     const debt = balance < 0 ? Math.abs(balance) : 0;
-    const totalPurchases = Number(profile.totalPurchases ?? 0);
+
+    // Barcha membership bo‘yicha savdo (dashboard Jami xaridlar + org split)
+    const allClientIds =
+      organizations.length > 0
+        ? organizations.map((o) => o.clientId)
+        : [profile.id];
+    const allOrders = await this.orderRepo.find({
+      where: { clientId: In(allClientIds) },
+      order: { createdAt: 'DESC' },
+      take: 500,
+    });
+    const validAll = allOrders.filter((o) => o.status !== OrderStatus.CANCELLED);
+    const totalPurchases = validAll.reduce((s, o) => s + Number(o.totalAmount), 0);
     const bonusPoints = Math.max(0, Math.floor(totalPurchases / 1000));
+
+    const purchasesByOrg = organizations.map((org) => {
+      const sum = validAll
+        .filter((o) => {
+          const oid = o.companyId || org.companyId;
+          return (
+            o.clientId === org.clientId ||
+            oid === org.companyId
+          );
+        })
+        .reduce((s, o) => s + Number(o.totalAmount), 0);
+      return {
+        companyId: org.companyId,
+        shortName: org.shortName,
+        name: org.name,
+        color: org.color,
+        total: sum,
+      };
+    });
+
+    // Yo‘ldagi — barcha org (xarita)
+    const onWayOrders = allOrders.filter((o) => o.status === OrderStatus.ON_WAY);
+
     const category = (profile.category || profile.priceCategory || 'Standard').trim();
     const discountSubtitle =
       profile.clientClass?.trim() ||
@@ -458,7 +673,10 @@ export class ClientPortalService {
       discountLevel: category,
       discountSubtitle,
       totalPurchases,
-      orderCount: Number(profile.orderCount ?? orders.length),
+      orderCount: Number(profile.orderCount ?? allOrders.length),
+      organizations,
+      purchasesByOrg,
+      onWayOrderIds: onWayOrders.map((o) => o.id),
     };
   }
 
@@ -474,8 +692,9 @@ export class ClientPortalService {
     return this.promotionsService.findActiveForClient();
   }
 
-  async getAnalytics(user: User, period: 'week' | 'month' | 'year' = 'month') {
-    const clientId = this.clientId(user);
+  async getAnalytics(user: User, period: 'week' | 'month' | 'year' = 'month', companyId?: string | null) {
+    const client = await this.resolveActiveClient(user, companyId);
+    const clientId = client.id;
     const orders = await this.orderRepo.find({
       where: { clientId },
       order: { createdAt: 'ASC' },
@@ -524,7 +743,7 @@ export class ClientPortalService {
       productsByCode,
       periodStart,
       now,
-      10,
+      50,
     );
 
     return {

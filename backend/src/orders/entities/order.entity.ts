@@ -12,6 +12,7 @@ import { OrderStatus, OrderSource } from '../../common/enums';
 @Index(['distributorId', 'createdAt'])
 @Index(['clientId'])
 @Index(['distributorId', 'source', 'status'])
+@Index(['companyId'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,6 +22,10 @@ export class Order {
 
   @Column('uuid')
   clientId: string;
+
+  /** Organizatsiya — multi-org klient uchun */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  companyId: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   deliveryDistributorId: string | null;
@@ -65,4 +70,10 @@ export interface OrderItem {
   quantity: number;
   price: number;
   unit: string;
+
+  /** Free (aksiya) bo'lsa true */
+  isFree?: boolean;
+
+  /** Promo referensi (ixtiyoriy) */
+  promotionId?: string;
 }
