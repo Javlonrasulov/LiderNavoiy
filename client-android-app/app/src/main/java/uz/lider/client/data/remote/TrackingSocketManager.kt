@@ -26,6 +26,13 @@ data class CourierLocationEvent(
     val recordedAt: String? = null,
 )
 
+/** Dostavkachi yo‘nalish tartibi o‘zgardi — tracking qayta yuklansin. */
+data class CourierRouteEvent(
+    val distributorId: String,
+    val orderIds: List<String> = emptyList(),
+    val updatedAt: String? = null,
+)
+
 @Singleton
 class TrackingSocketManager @Inject constructor(
     private val tokenHolder: TokenHolder,
@@ -36,6 +43,9 @@ class TrackingSocketManager @Inject constructor(
 
     private val _locations = MutableSharedFlow<CourierLocationEvent>(extraBufferCapacity = 64)
     val locations: SharedFlow<CourierLocationEvent> = _locations.asSharedFlow()
+
+    private val _routeChanges = MutableSharedFlow<CourierRouteEvent>(extraBufferCapacity = 16)
+    val routeChanges: SharedFlow<CourierRouteEvent> = _routeChanges.asSharedFlow()
 
     fun watchCourier(distributorId: String) {
         if (distributorId.isBlank()) return
@@ -119,6 +129,14 @@ class TrackingSocketManager @Inject constructor(
                             }
                         }
                     }
+                    on("courier:route") { args ->
+                        parseRoute(args)?.let { event ->
+                            val watching = snapshotWatching()
+                            if (watching.isEmpty() || event.distributorId in watching) {
+                                scope.launch { _routeChanges.emit(event) }
+                            }
+                        }
+                    }
                 }
                 socket?.connect()
             } catch (e: Exception) {
@@ -149,6 +167,28 @@ class TrackingSocketManager @Inject constructor(
                 bearing = root.optDouble("bearing").takeIf { root.has("bearing") && !it.isNaN() },
                 accuracy = root.optDouble("accuracy").takeIf { root.has("accuracy") && !it.isNaN() },
                 recordedAt = root.optString("recordedAt").ifBlank { null },
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun parseRoute(args: Array<out Any>): CourierRouteEvent? {
+        if (args.isEmpty()) return null
+        return try {
+            val root = args[0] as? JSONObject ?: return null
+            val id = root.optString("distributorId").ifBlank { return null }
+            val ids = mutableListOf<String>()
+            val arr = root.optJSONArray("orderIds")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    arr.optString(i).takeIf { it.isNotBlank() }?.let { ids.add(it) }
+                }
+            }
+            CourierRouteEvent(
+                distributorId = id,
+                orderIds = ids,
+                updatedAt = root.optString("updatedAt").ifBlank { null },
             )
         } catch (_: Exception) {
             null

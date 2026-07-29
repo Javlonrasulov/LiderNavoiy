@@ -9,6 +9,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
 import { PromotionsModule } from '../promotions/promotions.module';
+import { TrackingModule } from '../tracking/tracking.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PromotionsModule } from '../promotions/promotions.module';
     NotificationsModule,
     VisitsModule,
     PromotionsModule,
+    TrackingModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

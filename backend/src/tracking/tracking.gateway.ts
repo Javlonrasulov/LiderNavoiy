@@ -130,6 +130,17 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(`watch:${distributorId}`).emit('courier:location', payload);
   }
 
+  /** Dostavkachi yo‘nalish tartibi o‘zgarganda — mijoz xaritasi darhol yangilansin. */
+  broadcastRouteReorder(distributorId: string, orderIds: string[]) {
+    const payload = {
+      distributorId,
+      orderIds,
+      updatedAt: new Date().toISOString(),
+    };
+    this.server.to(`watch:${distributorId}`).emit('courier:route', payload);
+    this.server.to('admins').emit('courier:route', payload);
+  }
+
   broadcastStatusUpdate(distributorId: string, status: string) {
     this.server.to('admins').emit('distributor:status', {
       distributorId,

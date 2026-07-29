@@ -71,15 +71,24 @@ class OrderTrackingViewModel @Inject constructor(
             }
         }
         socketJob = viewModelScope.launch {
-            trackingSocket.locations.collect { event ->
-                val watched = _uiState.value.tracking?.deliveryPerson?.distributorId
-                if (!watched.isNullOrBlank() && event.distributorId != watched) return@collect
-                applyLiveCourier(
-                    lat = event.latitude,
-                    lng = event.longitude,
-                    online = true,
-                    recordedAt = event.recordedAt,
-                )
+            launch {
+                trackingSocket.locations.collect { event ->
+                    val watched = _uiState.value.tracking?.deliveryPerson?.distributorId
+                    if (!watched.isNullOrBlank() && event.distributorId != watched) return@collect
+                    applyLiveCourier(
+                        lat = event.latitude,
+                        lng = event.longitude,
+                        online = true,
+                        recordedAt = event.recordedAt,
+                    )
+                }
+            }
+            launch {
+                trackingSocket.routeChanges.collect { event ->
+                    val watched = _uiState.value.tracking?.deliveryPerson?.distributorId
+                    if (!watched.isNullOrBlank() && event.distributorId != watched) return@collect
+                    reloadQuiet(orderId)
+                }
             }
         }
     }
@@ -250,11 +259,15 @@ class OrderTrackingViewModel @Inject constructor(
         lastRouteAt = now
         routeJob?.cancel()
         routeJob = viewModelScope.launch {
+            val waypoints = RoadRouteService.waypointsUntilYou(
+                routeStops = tracking?.routeStops.orEmpty(),
+                deliveryLat = deliveryLat!!,
+                deliveryLng = deliveryLng!!,
+            )
             val route = roadRouteService.fetchDrivingRoute(
                 fromLat = courierLat!!,
                 fromLng = courierLng!!,
-                toLat = deliveryLat!!,
-                toLng = deliveryLng!!,
+                waypoints = waypoints,
             )
             if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                 _uiState.update {

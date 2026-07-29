@@ -71,6 +71,12 @@ class DashboardViewModel @Inject constructor(
                 applyLiveCourierToFleet(event.distributorId, event.latitude, event.longitude, event.recordedAt)
             }
         }
+        viewModelScope.launch {
+            trackingSocket.routeChanges.collect {
+                // Tartib o‘zgardi — trackingni darhol qayta yuklash
+                syncLiveDeliveryOnce(reuseOrders = true)
+            }
+        }
     }
 
     fun load() {
@@ -374,11 +380,15 @@ class DashboardViewModel @Inject constructor(
                             offRoute
 
                         if (movedEnough) {
+                            val waypoints = RoadRouteService.waypointsUntilYou(
+                                routeStops = tracking.routeStops,
+                                deliveryLat = deliveryLat,
+                                deliveryLng = deliveryLng,
+                            )
                             val route = roadRouteService.fetchDrivingRoute(
                                 fromLat = courierLat!!,
                                 fromLng = courierLng!!,
-                                toLat = deliveryLat,
-                                toLng = deliveryLng,
+                                waypoints = waypoints,
                             )
                             if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                                 routePoints = route.points

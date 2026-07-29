@@ -15,6 +15,7 @@ import { PromotionsService } from '../promotions/promotions.service';
 import { Promotion } from '../promotions/entities/promotion.entity';
 import { Product } from '../products/entities/product.entity';
 import { Visit } from '../visits/entities/visit.entity';
+import { TrackingGateway } from '../tracking/tracking.gateway';
 
 @Injectable()
 export class OrdersService {
@@ -30,6 +31,7 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
     private readonly visitsService: VisitsService,
     private readonly promotionsService: PromotionsService,
+    private readonly trackingGateway: TrackingGateway,
   ) {}
 
   async create(
@@ -308,6 +310,12 @@ export class OrdersService {
       const order = byId.get(unique[i])!;
       order.deliverySequence = i + 1;
       await this.repo.save(order);
+    }
+
+    try {
+      this.trackingGateway.broadcastRouteReorder(deliveryDistributorId, unique);
+    } catch {
+      // WS xatosi reorder natijasini buzmasin
     }
 
     return this.findForDelivery(deliveryDistributorId);
