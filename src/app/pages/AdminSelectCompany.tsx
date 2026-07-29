@@ -34,8 +34,10 @@ const T: Record<Lang, Record<string, string>> = {
     connect: 'Ulash', agents: 'agent', clients: 'mijoz',
     selectHint: 'Organizatsiyani tanlang', archive: 'Arxiv', current: 'Joriy', logout: 'Chiqish',
     addTitle: 'Yangi organizatsiya', editTitle: 'Organizatsiyani tahrirlash',
-    name: 'Nomi', desc: 'Izoh', save: 'Saqlash', cancel: 'Bekor qilish',
+    name: 'Nomi', shortName: 'Qisqa nom (Client APK)', desc: 'Izoh', save: 'Saqlash', cancel: 'Bekor qilish',
     iconTab: 'Icon', imageTab: 'Rasm', uploadImg: 'Rasm yuklash', namePlaceholder: "Organizatsiya nomi",
+    shortNamePlaceholder: 'Masalan: Boran',
+    shortNameHint: 'Klient ilovasida chip, xarita va xaridlar yonida ko‘rinadi',
     descPlaceholder: 'Qisqa izoh...', chooseColor: 'Rang',
     productType: 'Mahsulot turi',
     productTypeKgDona: 'kg + dona',
@@ -50,8 +52,10 @@ const T: Record<Lang, Record<string, string>> = {
     connect: 'Улаш', agents: 'агент', clients: 'мижоз',
     selectHint: 'Организацияни танланг', archive: 'Архив', current: 'Жорий', logout: 'Чиқиш',
     addTitle: 'Янги организация', editTitle: 'Организацияни таҳрирлаш',
-    name: 'Номи', desc: 'Изоҳ', save: 'Сақлаш', cancel: 'Бекор қилиш',
+    name: 'Номи', shortName: 'Қисқа ном (Client APK)', desc: 'Изоҳ', save: 'Сақлаш', cancel: 'Бекор қилиш',
     iconTab: 'Иконка', imageTab: 'Расм', uploadImg: 'Расм юклаш', namePlaceholder: 'Организация номи',
+    shortNamePlaceholder: 'Масалан: Boran',
+    shortNameHint: 'Клиент иловасида chip, харита ва харидлар ёнида кўринади',
     descPlaceholder: 'Қисқа изоҳ...', chooseColor: 'Ранг',
     productType: 'Маҳсулот тури',
     productTypeKgDona: 'кг + дона',
@@ -66,8 +70,10 @@ const T: Record<Lang, Record<string, string>> = {
     connect: 'Подключить', agents: 'агент', clients: 'клиент',
     selectHint: 'Выберите организацию', archive: 'Архив', current: 'Текущий', logout: 'Выйти',
     addTitle: 'Новая организация', editTitle: 'Редактировать организацию',
-    name: 'Название', desc: 'Описание', save: 'Сохранить', cancel: 'Отмена',
+    name: 'Название', shortName: 'Краткое имя (Client APK)', desc: 'Описание', save: 'Сохранить', cancel: 'Отмена',
     iconTab: 'Иконка', imageTab: 'Фото', uploadImg: 'Загрузить фото', namePlaceholder: 'Название организации',
+    shortNamePlaceholder: 'Например: Boran',
+    shortNameHint: 'В клиентском приложении: чипы, карта и суммы покупок',
     descPlaceholder: 'Краткое описание...', chooseColor: 'Цвет',
     productType: 'Тип продукции',
     productTypeKgDona: 'кг + шт',
@@ -115,7 +121,7 @@ const YEARS = [2026, 2025, 2024, 2023];
 
 /* ─── Blank form ─────────────────────────────────────────── */
 const blankForm = () => ({
-  name: '', description: '', icon: '🏢',
+  name: '', shortName: '', description: '', icon: '🏢',
   color: 'from-indigo-500 to-blue-600', imageUrl: '',
   productType: 'kg_dona' as ProductType,
 });
@@ -171,7 +177,9 @@ export default function AdminSelectCompany() {
   const openEdit = (e: React.MouseEvent, company: LocalCompany) => {
     e.stopPropagation();
     setForm({
-      name: company.name, description: company.description,
+      name: company.name,
+      shortName: company.shortName || company.name.trim().split(/\s+/)[0] || '',
+      description: company.description,
       icon: company.icon, color: company.color,
       imageUrl: company.imageUrl ?? '',
       productType: company.productType ?? 'kg_dona',
@@ -190,7 +198,7 @@ export default function AdminSelectCompany() {
     setSaveError(null);
     const payload = {
       name: form.name.trim(),
-      shortName: form.name.trim().split(' ')[0],
+      shortName: form.shortName.trim() || form.name.trim().split(/\s+/)[0] || form.name.trim(),
       description: form.description.trim(),
       icon: form.icon,
       color: form.color,
@@ -490,6 +498,9 @@ export default function AdminSelectCompany() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`font-semibold truncate ${D ? 'text-white' : 'text-gray-900'}`}>{form.name || t.namePlaceholder}</p>
+                  <p className={`text-xs mt-0.5 truncate ${D ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                    {form.shortName.trim() || t.shortNamePlaceholder}
+                  </p>
                   <p className={`text-xs mt-0.5 truncate ${D ? 'text-gray-500' : 'text-gray-400'}`}>{form.description || t.descPlaceholder}</p>
                 </div>
               </div>
@@ -500,6 +511,19 @@ export default function AdminSelectCompany() {
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder={t.namePlaceholder}
                   className={`w-full px-4 py-3 rounded-2xl border text-sm outline-none transition-colors ${inputCls}`} />
+              </div>
+
+              {/* Short name — Client APK chips / map / purchases */}
+              <div>
+                <label className={`text-xs font-semibold mb-1.5 block ${D ? 'text-gray-400' : 'text-gray-500'}`}>{t.shortName}</label>
+                <input
+                  value={form.shortName}
+                  onChange={e => setForm(f => ({ ...f, shortName: e.target.value }))}
+                  placeholder={t.shortNamePlaceholder}
+                  maxLength={32}
+                  className={`w-full px-4 py-3 rounded-2xl border text-sm outline-none transition-colors ${inputCls}`}
+                />
+                <p className={`text-[11px] mt-1.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>{t.shortNameHint}</p>
               </div>
 
               {/* Description */}
