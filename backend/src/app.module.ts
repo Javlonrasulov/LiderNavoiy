@@ -19,6 +19,7 @@ import { LinesModule } from './lines/lines.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { RedisModule } from './common/redis/redis.module';
 import { User } from './auth/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
@@ -81,6 +82,7 @@ import { BootSeedService } from './common/boot-seed.service';
     ExchangeRatesModule,
     CompaniesModule,
     PlansModule,
+    PromotionsModule,
   ],
   providers: [BootSeedService],
 })

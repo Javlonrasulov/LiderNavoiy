@@ -65,6 +65,7 @@ fun DashboardDateRangeDialog(
     onClear: () -> Unit,
     initialStartMillis: Long?,
     initialEndMillis: Long?,
+    salesDays: Set<LocalDate> = emptySet(),
     title: String,
     applyLabel: String,
     cancelLabel: String,
@@ -218,6 +219,7 @@ fun DashboardDateRangeDialog(
                     today = today,
                     rangeStart = rangeStart,
                     rangeEnd = rangeEnd,
+                    salesDays = salesDays,
                     onDayClick = { date ->
                         selectedPreset = DatePreset.CUSTOM
                         when {
@@ -391,6 +393,7 @@ private fun CalendarGrid(
     today: LocalDate,
     rangeStart: LocalDate?,
     rangeEnd: LocalDate?,
+    salesDays: Set<LocalDate>,
     onDayClick: (LocalDate) -> Unit,
 ) {
     val cells = remember(month) { DashboardDateFilter.monthGrid(month) }
@@ -415,6 +418,7 @@ private fun CalendarGrid(
                                 inRange = normalized?.let { date >= it.start && date <= it.end } == true,
                                 isStart = date == normalized?.start || (rangeStart != null && rangeEnd == null && date == rangeStart),
                                 isEnd = date == normalized?.end,
+                                hasSales = salesDays.contains(date),
                                 onClick = { onDayClick(date) },
                             )
                         }
@@ -432,6 +436,7 @@ private fun DayCell(
     inRange: Boolean,
     isStart: Boolean,
     isEnd: Boolean,
+    hasSales: Boolean,
     onClick: () -> Unit,
 ) {
     val isEdge = isStart || isEnd
@@ -487,6 +492,18 @@ private fun DayCell(
                 },
                 fontSize = 13.sp,
                 fontWeight = if (isEdge || isToday) FontWeight.SemiBold else FontWeight.Normal,
+            )
+        }
+
+        // Savdo bo‘lgan kunda kichik nuqta ko‘rinadi
+        if (hasSales) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp)
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(LiquidGlass.Cyan),
             )
         }
     }

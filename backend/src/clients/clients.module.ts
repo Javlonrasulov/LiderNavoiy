@@ -19,6 +19,7 @@ import { LinesModule } from '../lines/lines.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrdersModule } from '../orders/orders.module';
 import { ProductsModule } from '../products/products.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 import { GpsModule } from '../gps/gps.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { GpsModule } from '../gps/gps.module';
     AuthModule,
     OrdersModule,
     ProductsModule,
+    PromotionsModule,
     GpsModule,
   ],
   controllers: [ClientsController, ClientRequestsController, ClientPortalController],

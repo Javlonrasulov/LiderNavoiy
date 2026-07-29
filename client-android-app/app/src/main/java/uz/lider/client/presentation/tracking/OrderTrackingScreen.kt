@@ -2,7 +2,10 @@ package uz.lider.client.presentation.tracking
 
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -22,7 +25,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,16 +53,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.ClientPullToRefresh
@@ -101,7 +108,6 @@ fun OrderTrackingScreen(
             routePoints = state.routePoints,
             storeName = tracking?.deliveryAddress.orEmpty(),
             distance = state.distance,
-            isDark = isDark,
             onDismiss = { showFullScreenMap = false },
         )
     }
@@ -114,78 +120,166 @@ fun OrderTrackingScreen(
                 }
             } else {
                 ClientPullToRefresh(onRefresh = { viewModel.refresh(orderId) }) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    // Xarita — faqat Yo'lda / Yetkazildi
-                    item {
-                        if (state.showLiveMap) {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(280.dp)
-                                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard)),
-                            ) {
-                                OrderTrackingMapView(
-                                    deliveryLat = tracking?.deliveryLatitude,
-                                    deliveryLng = tracking?.deliveryLongitude,
-                                    courierLat = deliveryPerson?.latitude,
-                                    courierLng = deliveryPerson?.longitude,
-                                    routePoints = state.routePoints,
-                                    storeName = tracking?.deliveryAddress.orEmpty(),
-                                    isDark = false,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                IconButton(
-                                    onClick = { showFullScreenMap = true },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(8.dp)
-                                        .size(40.dp)
-                                        .liquidGlassThemed(radius = 12.dp),
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        item {
+                            if (state.showLiveMap) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(280.dp)
+                                        .clip(RoundedCornerShape(LiquidGlass.RadiusCard)),
                                 ) {
-                                    Icon(
-                                        Icons.Default.Fullscreen,
-                                        contentDescription = localized("track_map_fullscreen"),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp),
+                                    OrderTrackingMapView(
+                                        deliveryLat = tracking?.deliveryLatitude,
+                                        deliveryLng = tracking?.deliveryLongitude,
+                                        courierLat = deliveryPerson?.latitude,
+                                        courierLng = deliveryPerson?.longitude,
+                                        routePoints = state.routePoints,
+                                        storeName = tracking?.deliveryAddress.orEmpty(),
+                                        isDark = false,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    IconButton(
+                                        onClick = { showFullScreenMap = true },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .size(44.dp)
+                                            .shadow(6.dp, CircleShape)
+                                            .clip(CircleShape)
+                                            .background(Color(0xE00B1220)),
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Fullscreen,
+                                            contentDescription = localized("track_map_fullscreen"),
+                                            tint = Color.White,
+                                            modifier = Modifier.size(22.dp),
+                                        )
+                                    }
+                                    TrackingMapInfoOverlay(
+                                        distance = state.distance,
+                                        modifier = Modifier.align(Alignment.BottomCenter),
                                     )
                                 }
-                                TrackingMapInfoOverlay(
-                                    distance = state.distance,
-                                    modifier = Modifier.align(Alignment.BottomCenter),
-                                )
-                            }
-                        } else {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .liquidGlassThemed()
-                                    .padding(20.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    localized("track_map_locked_title"),
-                                    color = text,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp,
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    localized("track_map_locked_hint"),
-                                    color = textMuted,
-                                    fontSize = 12.sp,
-                                )
+                            } else {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .liquidGlassThemed()
+                                        .padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        localized("track_map_locked_title"),
+                                        color = text,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        localized("track_map_locked_hint"),
+                                        color = textMuted,
+                                        fontSize = 12.sp,
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    if (state.showLiveMap) {
-                    deliveryPerson?.let { person ->
+                        if (state.showLiveMap) {
+                            deliveryPerson?.let { person ->
+                                item {
+                                    val phone = person.phone?.takeIf { it.isNotBlank() }
+                                    Column(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .liquidGlassThemed()
+                                            .padding(16.dp),
+                                    ) {
+                                        Text(
+                                            localized("track_courier").uppercase(),
+                                            color = textMuted,
+                                            fontSize = 11.sp,
+                                            letterSpacing = 1.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Box(
+                                                Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .background(LiquidGlass.GradientPrimary),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(28.dp),
+                                                )
+                                            }
+                                            Column(Modifier.weight(1f)) {
+                                                Text(person.name, color = text, fontWeight = FontWeight.SemiBold)
+                                                person.position?.takeIf { it.isNotBlank() }?.let {
+                                                    Text(it, color = textMuted, fontSize = 12.sp)
+                                                }
+                                                Text(
+                                                    phone ?: "—",
+                                                    color = if (phone != null) LiquidGlass.Cyan else textMuted,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (phone != null) FontWeight.Medium else FontWeight.Normal,
+                                                )
+                                                val onlineLabel = if (person.isOnline) {
+                                                    localized("track_online")
+                                                } else {
+                                                    "Offline"
+                                                }
+                                                Text(
+                                                    onlineLabel,
+                                                    color = if (person.isOnline) LiquidGlass.Emerald else textMuted,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
+                                            if (phone != null) {
+                                                Box(
+                                                    Modifier
+                                                        .size(42.dp)
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            Brush.linearGradient(
+                                                                listOf(LiquidGlass.Emerald, LiquidGlass.Cyan),
+                                                            ),
+                                                        )
+                                                        .clickable {
+                                                            context.startActivity(
+                                                                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
+                                                            )
+                                                        },
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Phone,
+                                                        contentDescription = phone,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         item {
-                            val phone = person.phone?.takeIf { it.isNotBlank() }
                             Column(
                                 Modifier
                                     .fillMaxWidth()
@@ -193,231 +287,198 @@ fun OrderTrackingScreen(
                                     .padding(16.dp),
                             ) {
                                 Text(
-                                    localized("track_courier").uppercase(),
+                                    localized("track_delivery_addr"),
                                     color = textMuted,
-                                    fontSize = 11.sp,
-                                    letterSpacing = 1.sp,
+                                    fontSize = 12.sp,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    tracking?.deliveryAddress ?: "—",
+                                    color = text,
                                     fontWeight = FontWeight.SemiBold,
                                 )
-                                Spacer(Modifier.height(12.dp))
+                            }
+                        }
+
+                        item {
+                            state.order?.let { order ->
+                                Text(
+                                    "${orderDisplayLabel(lang, order.id)} • ${formatMoney(order.totalAmount)} ${localized("com_som")}",
+                                    color = text,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+
+                        if (state.isCancelled) {
+                            item {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
+                                        .background(LiquidGlass.Rose.copy(alpha = if (isDark) 0.18f else 0.12f))
+                                        .padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
                                     Box(
                                         Modifier
-                                            .size(52.dp)
+                                            .size(36.dp)
                                             .clip(CircleShape)
-                                            .background(LiquidGlass.GradientPrimary),
+                                            .background(LiquidGlass.Rose.copy(alpha = 0.25f)),
                                         contentAlignment = Alignment.Center,
                                     ) {
                                         Icon(
-                                            Icons.Default.Person,
-                                            null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(28.dp),
+                                            Icons.Default.Close,
+                                            contentDescription = null,
+                                            tint = LiquidGlass.Rose,
+                                            modifier = Modifier.size(18.dp),
                                         )
                                     }
-                                    Column(Modifier.weight(1f)) {
-                                        Text(person.name, color = text, fontWeight = FontWeight.SemiBold)
-                                        person.position?.takeIf { it.isNotBlank() }?.let {
-                                            Text(it, color = textMuted, fontSize = 12.sp)
-                                        }
+                                    Column {
                                         Text(
-                                            phone ?: "—",
-                                            color = if (phone != null) LiquidGlass.Cyan else textMuted,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (phone != null) FontWeight.Medium else FontWeight.Normal,
+                                            localized("ord_status_cancelled"),
+                                            color = LiquidGlass.Rose,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
                                         )
-                                        val onlineLabel = if (person.isOnline) {
-                                            localized("track_online")
-                                        } else {
-                                            "Offline"
-                                        }
                                         Text(
-                                            onlineLabel,
-                                            color = if (person.isOnline) LiquidGlass.Emerald else textMuted,
+                                            localized("track_cancelled_hint"),
+                                            color = textMuted,
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
                                         )
-                                    }
-                                    if (phone != null) {
-                                        Box(
-                                            Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(
-                                                    Brush.linearGradient(
-                                                        listOf(LiquidGlass.Emerald, LiquidGlass.Cyan),
-                                                    ),
-                                                )
-                                                .clickable {
-                                                    context.startActivity(
-                                                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
-                                                    )
-                                                },
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Phone,
-                                                contentDescription = phone,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    }
 
-                    // Delivery address glass card
-                    item {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .liquidGlassThemed()
-                                .padding(16.dp),
-                        ) {
-                            Text(
-                                localized("track_delivery_addr"),
-                                color = textMuted,
-                                fontSize = 12.sp,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                tracking?.deliveryAddress ?: "—",
-                                color = text,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
-
-                    // Order summary label
-                    item {
-                        state.order?.let { order ->
-                            Text(
-                                "${orderDisplayLabel(lang, order.id)} • ${formatMoney(order.totalAmount)} ${localized("com_som")}",
-                                color = text,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-
-                    if (state.isCancelled) {
                         item {
-                            Row(
+                            Column(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
-                                    .background(LiquidGlass.Rose.copy(alpha = if (isDark) 0.18f else 0.12f))
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    .liquidGlassThemed()
+                                    .padding(16.dp),
                             ) {
-                                Box(
-                                    Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(LiquidGlass.Rose.copy(alpha = 0.25f)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = null,
-                                        tint = LiquidGlass.Rose,
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        localized("ord_status_cancelled"),
-                                        color = LiquidGlass.Rose,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                    )
-                                    Text(
-                                        localized("track_cancelled_hint"),
-                                        color = textMuted,
-                                        fontSize = 12.sp,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                                stepKeys.forEachIndexed { index, key ->
+                                    val stepNum = index + 1
+                                    val done = !state.isCancelled && stepNum < state.activeStep
+                                    val active = !state.isCancelled && stepNum == state.activeStep
+                                    val cancelledHere = state.isCancelled && stepNum == 1
+                                    // Oqim 1-bosqichdan joriy bosqichgacha uzluksiz oqadi.
+                                    val lineFlowing = !state.isCancelled && stepNum < state.activeStep
+                                    val lineFilled = false
 
-                    // Timeline steps — active check pulses
-                    item {
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .liquidGlassThemed()
-                                .padding(16.dp),
-                        ) {
-                            stepKeys.forEachIndexed { index, key ->
-                                val stepNum = index + 1
-                                val done = !state.isCancelled && stepNum < state.activeStep
-                                val active = !state.isCancelled && stepNum == state.activeStep
-                                val cancelledHere = state.isCancelled && stepNum == 1
-
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        TimelineStepDot(
-                                            stepNum = stepNum,
-                                            done = done,
-                                            active = active,
-                                            cancelled = cancelledHere,
-                                            textMuted = textMuted,
-                                        )
-                                        if (index < stepKeys.lastIndex) {
-                                            Box(
-                                                Modifier
-                                                    .size(width = 2.dp, height = 32.dp)
-                                                    .background(
-                                                        when {
-                                                            cancelledHere -> LiquidGlass.Rose.copy(alpha = 0.45f)
-                                                            done || active -> LiquidGlass.Indigo.copy(alpha = 0.55f)
-                                                            else -> Color.White.copy(alpha = 0.15f)
-                                                        },
-                                                    ),
+                                    Row(verticalAlignment = Alignment.Top) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            TimelineStepDot(
+                                                stepNum = stepNum,
+                                                done = done,
+                                                active = active,
+                                                cancelled = cancelledHere,
+                                                textMuted = textMuted,
                                             )
+                                            if (index < stepKeys.lastIndex) {
+                                                TimelineConnector(
+                                                    filled = lineFilled && !lineFlowing,
+                                                    flowing = lineFlowing,
+                                                    cancelled = cancelledHere,
+                                                )
+                                            }
                                         }
-                                    }
-                                    Spacer(Modifier.size(14.dp))
-                                    Column(Modifier.padding(bottom = 16.dp)) {
-                                        Text(
-                                            localized(key),
-                                            color = when {
-                                                cancelledHere -> LiquidGlass.Rose
-                                                active -> LiquidGlass.Cyan
-                                                else -> text
-                                            },
-                                            fontWeight = if (active || cancelledHere) FontWeight.Bold else FontWeight.Normal,
-                                        )
-                                        when {
-                                            cancelledHere -> Text(
-                                                localized("ord_status_cancelled"),
-                                                color = LiquidGlass.Rose,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
+                                        Spacer(Modifier.size(14.dp))
+                                        Column(Modifier.padding(bottom = 16.dp)) {
+                                            Text(
+                                                localized(key),
+                                                color = when {
+                                                    cancelledHere -> LiquidGlass.Rose
+                                                    active -> LiquidGlass.Cyan
+                                                    else -> text
+                                                },
+                                                fontWeight = if (active || cancelledHere) FontWeight.Bold else FontWeight.Normal,
                                             )
-                                            active -> Text(
-                                                localized("track_active"),
-                                                color = LiquidGlass.Violet,
-                                                fontSize = 11.sp,
-                                            )
+                                            if (cancelledHere) {
+                                                Text(
+                                                    localized("ord_status_cancelled"),
+                                                    color = LiquidGlass.Rose,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TimelineConnector(
+    filled: Boolean,
+    flowing: Boolean,
+    cancelled: Boolean,
+) {
+    val trackColor = when {
+        cancelled -> LiquidGlass.Rose.copy(alpha = 0.45f)
+        filled || flowing -> LiquidGlass.Indigo.copy(alpha = 0.25f)
+        else -> Color.White.copy(alpha = 0.15f)
+    }
+    val flowColor = LiquidGlass.Cyan
+    val fillColor = LiquidGlass.Indigo.copy(alpha = 0.85f)
+
+    val infinite = rememberInfiniteTransition(label = "flow-line")
+    val flowOffset by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            // Tezroq animatsiya — ko'zga ravshanroq ko'rinadi
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "flow-offset",
+    )
+
+    Box(
+        Modifier
+            .size(width = 3.dp, height = 32.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(trackColor)
+            .then(
+                if (flowing) {
+                    Modifier.drawBehind {
+                        val h = size.height
+                        val band = h * 0.65f
+                        val y = -band + (h + band) * flowOffset
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    flowColor.copy(alpha = 0.30f),
+                                    flowColor.copy(alpha = 1.0f),
+                                    flowColor.copy(alpha = 0.30f),
+                                    Color.Transparent,
+                                ),
+                                startY = y,
+                                endY = y + band,
+                            ),
+                        )
+                        // Pastki qism doim to'ldirilgan — suv oqib kelayotgandek
+                        drawRect(
+                            color = fillColor.copy(alpha = 0.55f),
+                            size = androidx.compose.ui.geometry.Size(size.width, h * 0.72f),
+                        )
+                    }
+                } else if (filled) {
+                    Modifier.background(fillColor)
+                } else {
+                    Modifier
+                },
+            ),
+    )
 }
 
 @Composable
@@ -430,19 +491,20 @@ private fun TimelineStepDot(
 ) {
     val infinite = rememberInfiniteTransition(label = "track-step")
     val pulseAlpha by infinite.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.95f,
+        // Amplitudani oshiramiz — animatsiya aniqroq ko'rinadi
+        initialValue = 0.15f,
+        targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
+            animation = tween(650, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse-alpha",
     )
     val pulseScale by infinite.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.12f,
+        initialValue = 0.88f,
+        targetValue = 1.18f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
+            animation = tween(650, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse-scale",
@@ -456,10 +518,10 @@ private fun TimelineStepDot(
                     .graphicsLayer {
                         scaleX = pulseScale
                         scaleY = pulseScale
-                        alpha = pulseAlpha * 0.55f
+                        alpha = pulseAlpha * 0.90f
                     }
                     .clip(CircleShape)
-                    .background(LiquidGlass.Indigo.copy(alpha = 0.35f)),
+                    .background(LiquidGlass.Indigo.copy(alpha = 0.45f)),
             )
             Box(
                 Modifier
@@ -475,7 +537,7 @@ private fun TimelineStepDot(
                 Icon(
                     Icons.Default.Check,
                     contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.75f + pulseAlpha * 0.25f),
+                    tint = Color.White.copy(alpha = 0.55f + pulseAlpha * 0.45f),
                     modifier = Modifier.size(15.dp),
                 )
             }
@@ -536,15 +598,10 @@ private fun TrackingMapInfoOverlay(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            localized("track_active"),
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-        )
-        Text(
             "${localized("track_distance")}: $distance",
-            color = Color.White.copy(alpha = 0.80f),
-            fontSize = 13.sp,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
         )
     }
 }
@@ -558,7 +615,6 @@ private fun FullScreenOrderTrackingMapDialog(
     routePoints: List<uz.lider.client.data.repository.LatLngPoint>,
     storeName: String,
     distance: String,
-    isDark: Boolean,
     onDismiss: () -> Unit,
 ) {
     val overlayBg = Color(0xF00B1220)
@@ -571,6 +627,16 @@ private fun FullScreenOrderTrackingMapDialog(
             dismissOnClickOutside = false,
         ),
     ) {
+        val view = LocalView.current
+        SideEffect {
+            val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+            window.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            window.setBackgroundDrawableResource(android.R.color.transparent)
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -584,9 +650,7 @@ private fun FullScreenOrderTrackingMapDialog(
                 routePoints = routePoints,
                 storeName = storeName,
                 isDark = false,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .align(Alignment.Center),
+                modifier = Modifier.fillMaxSize(),
             )
             Row(
                 Modifier

@@ -28,6 +28,7 @@ import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
 import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
+import uz.lider.client.map.RouteTrim
 import java.time.Instant
 import javax.inject.Inject
 
@@ -36,6 +37,7 @@ data class DashboardUiState(
     val data: DashboardData? = null,
     val clientName: String = "",
     val allOrders: List<ClientOrder> = emptyList(),
+    val promotions: List<uz.lider.client.domain.model.Promotion> = emptyList(),
     val dateRange: DashboardDateRange = DashboardDateFilter.lastMonthRange(),
     val filtered: DashboardFiltered = DashboardFiltered(0.0, 0, emptyList(), listOf(0f, 0f)),
     val liveFleet: LiveFleetUi? = null,
@@ -48,6 +50,7 @@ class DashboardViewModel @Inject constructor(
     private val orderRepository: OrderRepository,
     private val roadRouteService: RoadRouteService,
     private val trackingSocket: TrackingSocketManager,
+    private val promotionsRepository: uz.lider.client.data.repository.PromotionsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -90,8 +93,10 @@ class DashboardViewModel @Inject constructor(
         val authUser = authUserHint ?: authRepository.getUserFlow().first()
         val profileDeferred = async { profileRepository.getProfile() }
         val ordersDeferred = async { profileRepository.getAllOrders() }
+        val promotionsDeferred = async { promotionsRepository.getPromotions() }
         val profile = profileDeferred.await()
         val allOrders = ordersDeferred.await()
+        val promotions = promotionsDeferred.await()
         val apiDash = runCatching { profileRepository.fetchDashboardSummary() }.getOrNull()
         val local = profileRepository.buildDashboardFromProfileOrders(profile, allOrders)
         val data = if (apiDash != null) {
@@ -114,6 +119,7 @@ class DashboardViewModel @Inject constructor(
                 data = data,
                 clientName = resolveClientName(profile, authUser),
                 allOrders = allOrders,
+                promotions = promotions,
                 dateRange = range,
                 filtered = filtered,
             )
@@ -278,15 +284,39 @@ class DashboardViewModel @Inject constructor(
                         routePoints = emptyList()
                         distanceLabel = "—"
                     } else if (deliveryLat != null && deliveryLng != null) {
+                        val prevLat = prev?.tracking?.deliveryPerson?.latitude
+                        val prevLng = prev?.tracking?.deliveryPerson?.longitude
+                        val movedM = if (prevLat != null && prevLng != null) {
+                            haversineMoved(prevLat, prevLng, courierLat!!, courierLng!!)
+                        } else {
+                            Double.MAX_VALUE
+                        }
+                        val oldRoute = prev?.routePoints.orEmpty()
+                        val nearestNow = if (oldRoute.isNotEmpty()) {
+                            RouteTrim.nearestIndex(courierLat!!, courierLng!!, oldRoute)
+                        } else {
+                            -1
+                        }
+                        val nearestPrev = if (oldRoute.isNotEmpty() && prevLat != null && prevLng != null) {
+                            RouteTrim.nearestIndex(prevLat, prevLng, oldRoute)
+                        } else {
+                            -1
+                        }
+                        val wentBack = nearestPrev >= 0 && nearestNow >= 0 && nearestNow + 2 < nearestPrev
+                        val offRoute = nearestNow >= 0 && RoadRouteService.haversineM(
+                            courierLat!!,
+                            courierLng!!,
+                            oldRoute[nearestNow].latitude,
+                            oldRoute[nearestNow].longitude,
+                        ) > 80.0
+
                         val movedEnough = prev == null ||
-                            prev.tracking.deliveryPerson?.latitude == null ||
-                            haversineMoved(
-                                prev.tracking.deliveryPerson!!.latitude!!,
-                                prev.tracking.deliveryPerson!!.longitude!!,
-                                courierLat!!,
-                                courierLng!!,
-                            ) > 40.0 ||
-                            prev.routePoints.isEmpty()
+                            prevLat == null ||
+                            movedM > 18.0 ||
+                            oldRoute.isEmpty() ||
+                            wentBack ||
+                            offRoute
+
                         if (movedEnough) {
                             val route = roadRouteService.fetchDrivingRoute(
                                 fromLat = courierLat!!,
@@ -303,8 +333,11 @@ class DashboardViewModel @Inject constructor(
                                     distanceLabel = formatDistance(rawKm)
                                 }
                             }
-                        } else if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
-                            distanceLabel = formatDistance(rawKm)
+                        } else {
+                            routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
+                            if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
+                                distanceLabel = formatDistance(rawKm)
+                            }
                         }
                     }
 
@@ -431,11 +464,17 @@ class DashboardViewModel @Inject constructor(
                     isOnline = true,
                     lastLocationAt = recordedAt ?: order.tracking.deliveryPerson?.lastLocationAt,
                 )
+                val trimmedRoute = if (order.routePoints.size >= 2) {
+                    RouteTrim.remaining(lat, lng, order.routePoints)
+                } else {
+                    order.routePoints
+                }
                 order.copy(
                     distanceLabel = distKm
                         ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                         ?.let { formatDistance(it) }
                         ?: order.distanceLabel,
+                    routePoints = trimmedRoute,
                     tracking = order.tracking.copy(
                         distanceKm = distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                             ?: order.tracking.distanceKm,

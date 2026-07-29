@@ -195,6 +195,12 @@ fun DashboardScreen(
         )
     }
 
+    // Kalendar oynasidagi kunlarda savdo bo'lgan bo'lsa, nuqta ko'rsatish uchun.
+    // CANCELLED bo'lmagan buyurtmalar bo'yicha kunlar seti.
+    val salesDays = remember(state.allOrders) {
+        DashboardDateFilter.saleDays(state.allOrders)
+    }
+
     DashboardDateRangeDialog(
         visible = showDatePicker,
         onDismiss = { showDatePicker = false },
@@ -204,6 +210,7 @@ fun DashboardScreen(
             ?.let { DashboardDateFilter.toStartMillis(it.start) },
         initialEndMillis = state.dateRange.takeIf { it.isCustom }
             ?.let { DashboardDateFilter.toStartMillis(it.end) },
+        salesDays = salesDays,
         title = t("dash_select_dates"),
         applyLabel = t("dash_apply_dates"),
         cancelLabel = t("com_cancel"),
@@ -480,24 +487,44 @@ fun DashboardScreen(
                             }
                         }
                         Spacer(Modifier.height(12.dp))
-                        Row(
-                            Modifier
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            PromoCard(
-                                promoTitle(lang, 0),
-                                promoDesc(lang, 0),
-                                "🎁",
-                                listOf(LiquidGlass.Indigo, LiquidGlass.Violet),
-                            )
-                            PromoCard(
-                                promoTitle(lang, 1),
-                                promoDesc(lang, 1),
-                                "💰",
-                                listOf(LiquidGlass.Cyan, LiquidGlass.Indigo),
-                            )
+                        val promos = state.promotions
+                        if (promos.isEmpty()) {
+                            Box(
+                                Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .fillMaxWidth()
+                                    .liquidGlassThemed()
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    t("promo_empty"),
+                                    color = LiquidTheme.textMuted,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        } else {
+                            Row(
+                                Modifier
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                promos.take(6).forEach { promo ->
+                                    PromoCard(
+                                        title = promo.title,
+                                        desc = promo.subtitle.ifBlank {
+                                            promo.productName.orEmpty()
+                                        },
+                                        emoji = promo.emoji.ifBlank { "🎁" },
+                                        colors = listOf(
+                                            parsePromoHex(promo.colorStart, LiquidGlass.Indigo),
+                                            parsePromoHex(promo.colorEnd, LiquidGlass.Violet),
+                                        ),
+                                    )
+                                }
+                            }
                         }
                         Spacer(Modifier.height(20.dp))
                     }
@@ -809,25 +836,16 @@ private fun RecentOrderRow(
     }
 }
 
-private fun promoTitle(lang: AppLanguage, index: Int) = when (index) {
-    0 -> when (lang) {
-        AppLanguage.RU -> "Летняя скидка"
-        AppLanguage.EN -> "Summer Sale"
-        else -> "Yozgi chegirma"
-    }
-    else -> "Cashback 5%"
-}
-
-private fun promoDesc(lang: AppLanguage, index: Int) = when (index) {
-    0 -> when (lang) {
-        AppLanguage.RU -> "Скидка 20% на Coca Cola"
-        AppLanguage.EN -> "20% off Coca Cola"
-        else -> "Coca Colaga 20% chegirma"
-    }
-    else -> when (lang) {
-        AppLanguage.RU -> "При покупке от 100 000 сум"
-        AppLanguage.EN -> "On orders over 100,000"
-        else -> "100,000 so'mdan yuqori xaridlarda"
+private fun parsePromoHex(hex: String, fallback: Color): Color {
+    val cleaned = hex.trim().removePrefix("#")
+    return try {
+        when (cleaned.length) {
+            6 -> Color(("FF$cleaned").toLong(16))
+            8 -> Color(cleaned.toLong(16))
+            else -> fallback
+        }
+    } catch (_: Exception) {
+        fallback
     }
 }
 

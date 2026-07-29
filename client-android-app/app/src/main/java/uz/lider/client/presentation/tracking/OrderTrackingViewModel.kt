@@ -19,6 +19,7 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.domain.model.OrderTrackingDetails
 import uz.lider.client.map.GeoCoords
+import uz.lider.client.map.RouteTrim
 import java.time.Instant
 import javax.inject.Inject
 
@@ -227,14 +228,18 @@ class OrderTrackingViewModel @Inject constructor(
             return
         }
         val now = System.currentTimeMillis()
-        // Marshrutni har 8s da yangilash — marker esa har WS/HTTP da siljiydi
-        if (!force && now - lastRouteAt < 8_000 && _uiState.value.routePoints.isNotEmpty()) {
+        // Marshrutni har 5s da yangilash — marker esa har WS/HTTP da siljiydi
+        if (!force && now - lastRouteAt < 5_000 && _uiState.value.routePoints.isNotEmpty()) {
             val km = RoadRouteService.haversineM(
                 courierLat!!, courierLng!!, deliveryLat!!, deliveryLng!!,
             ) / 1000.0
             if (GeoCoords.isPlausibleRouteDistanceKm(km)) {
+                val trimmed = RouteTrim.remaining(
+                    courierLat, courierLng, _uiState.value.routePoints,
+                )
                 _uiState.update {
                     it.copy(
+                        routePoints = trimmed.ifEmpty { it.routePoints },
                         distance = formatDistance(km),
                         etaLabel = "${etaFromKm(km)} min",
                     )

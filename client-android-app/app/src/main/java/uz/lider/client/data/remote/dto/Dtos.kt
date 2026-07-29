@@ -244,3 +244,20 @@ data class ClientAnalyticsDto(
     val categories: List<AnalyticsCategoryDto> = emptyList(),
     val topProducts: List<AnalyticsTopProductDto> = emptyList(),
 )
+
+data class PromotionDto(
+    val id: String,
+    val title: String,
+    val subtitle: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class)
+    val discountPercent: Double = 0.0,
+    val productId: String? = null,
+    val productName: String? = null,
+    val colorStart: String? = null,
+    val colorEnd: String? = null,
+    val emoji: String? = null,
+    val validFrom: String? = null,
+    val validTo: String? = null,
+    val isActive: Boolean = true,
+    val sortOrder: Int = 0,
+)

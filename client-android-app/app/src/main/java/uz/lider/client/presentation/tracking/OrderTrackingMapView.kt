@@ -27,10 +27,12 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import uz.lider.client.data.repository.LatLngPoint
+import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
 import uz.lider.client.map.MapLayerId
 import uz.lider.client.map.MapTileSources
+import uz.lider.client.map.RouteTrim
 import uz.lider.client.presentation.dashboard.LiveMapVehicle
 import kotlin.math.abs
 import kotlin.math.max
@@ -39,8 +41,76 @@ private val NAVOIY = GeoPoint(MapDefaults.NAVOIY_LAT, MapDefaults.NAVOIY_LNG)
 private const val NAVOIY_ZOOM = 13.5
 private const val SINGLE_POINT_ZOOM = 15.0
 private const val ROUTE_COLOR = 0xFF2563EB.toInt()
+/** GPS oralig‘iga yaqin — Yandex Taxi kabi uzluksiz siljish */
+private const val TRUCK_ANIM_MS = 2_800L
+
+private val truckAnimators = java.util.WeakHashMap<Marker, android.animation.ValueAnimator>()
 
 private fun isValidCoord(lat: Double?, lng: Double?): Boolean = GeoCoords.isValid(lat, lng)
+
+private fun buildRouteLine(
+    courier: GeoPoint?,
+    delivery: GeoPoint?,
+    routePoints: List<LatLngPoint>,
+): List<GeoPoint> {
+    val roadGeo = routePoints
+        .filter { isValidCoord(it.latitude, it.longitude) }
+        .filter { GeoCoords.isInServiceArea(it.latitude, it.longitude) }
+    val trimmed = if (courier != null && roadGeo.size >= 2) {
+        RouteTrim.remaining(courier.latitude, courier.longitude, roadGeo)
+    } else {
+        roadGeo
+    }
+    val geo = trimmed.map { GeoPoint(it.latitude, it.longitude) }
+    return when {
+        geo.size >= 2 -> geo
+        courier != null && delivery != null -> listOf(courier, delivery)
+        else -> emptyList()
+    }
+}
+
+private fun replaceRoutePolylines(
+    map: MapView,
+    vehicles: List<LiveMapVehicle>,
+    courierOverride: GeoPoint? = null,
+) {
+    val overlays = map.overlays
+    overlays.removeAll { it is Polyline }
+    vehicles.forEach { vehicle ->
+        val courier = courierOverride
+            ?: if (
+                !vehicle.id.startsWith("dest-only") &&
+                GeoCoords.isUsableCourier(
+                    vehicle.courierLat,
+                    vehicle.courierLng,
+                    vehicle.orders.firstOrNull()?.deliveryLat,
+                    vehicle.orders.firstOrNull()?.deliveryLng,
+                )
+            ) {
+                GeoPoint(vehicle.courierLat, vehicle.courierLng)
+            } else {
+                null
+            }
+        vehicle.orders.forEach { order ->
+            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
+                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
+            } else {
+                null
+            }
+            val linePoints = buildRouteLine(courier, delivery, order.routePoints)
+            if (linePoints.size >= 2) {
+                Polyline().apply {
+                    setPoints(linePoints)
+                    outlinePaint.color = ROUTE_COLOR
+                    outlinePaint.strokeWidth = if (order.routePoints.size >= 2) 10f else 6f
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                    outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
+                    outlinePaint.isAntiAlias = true
+                }.also { overlays.add(0, it) }
+            }
+        }
+    }
+}
 
 private fun applyCamera(map: MapView, points: List<GeoPoint>) {
     val controller = map.controller
@@ -103,7 +173,6 @@ private fun updateFleetMap(
     onStoreClick: (StoreCallout) -> Unit,
     fitCamera: Boolean,
 ) {
-    map.setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))
     map.setMultiTouchControls(interactive)
     map.isClickable = interactive
     map.isFocusable = interactive
@@ -126,41 +195,20 @@ private fun updateFleetMap(
     if (canSlideTruck && !fitCamera) {
         val dest = GeoPoint(truckTarget!!.courierLat, truckTarget.courierLng)
         val from = existingTruck!!.position
+        existingTruck.relatedObject = truckTarget
         if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
+            map.invalidate()
             return
         }
-        animateMarker(map, existingTruck, from, dest)
-        // Route chizigini yangilash
-        overlays.removeAll { it is Polyline }
-        truckTarget.orders.forEach { order ->
-            val roadGeo = order.routePoints
-                .filter { isValidCoord(it.latitude, it.longitude) }
-                .filter { GeoCoords.isInServiceArea(it.latitude, it.longitude) }
-                .map { GeoPoint(it.latitude, it.longitude) }
-            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
-                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
-            } else null
-            val linePoints = when {
-                roadGeo.size >= 2 -> roadGeo
-                delivery != null -> listOf(dest, delivery)
-                else -> emptyList()
-            }
-            if (linePoints.size >= 2) {
-                Polyline().apply {
-                    setPoints(linePoints)
-                    outlinePaint.color = ROUTE_COLOR
-                    outlinePaint.strokeWidth = if (roadGeo.size >= 2) 10f else 6f
-                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
-                    outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
-                    outlinePaint.isAntiAlias = true
-                }.also { overlays.add(0, it) }
-            }
-        }
-        existingTruck.relatedObject = truckTarget
+        // Marshrut har doim qolgan qismga kesiladi (ortida chiziq qolmasin)
+        replaceRoutePolylines(map, vehicles, courierOverride = dest)
+        animateMarker(map, existingTruck, dest)
         map.invalidate()
         return
     }
 
+    truckAnimators.values.forEach { it.cancel() }
+    truckAnimators.clear()
     overlays.removeAll { it is Marker || it is Polyline }
 
     val cameraPoints = ArrayList<GeoPoint>()
@@ -182,10 +230,6 @@ private fun updateFleetMap(
 
     vehicles.forEach { vehicle ->
         vehicle.orders.forEach { order ->
-            val roadGeo = order.routePoints
-                .filter { isValidCoord(it.latitude, it.longitude) }
-                .filter { GeoCoords.isInServiceArea(it.latitude, it.longitude) }
-                .map { GeoPoint(it.latitude, it.longitude) }
             val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
                 GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
             } else {
@@ -203,16 +247,12 @@ private fun updateFleetMap(
                 null
             }
 
-            val linePoints = when {
-                roadGeo.size >= 2 -> roadGeo
-                courier != null && delivery != null -> listOf(courier, delivery)
-                else -> emptyList()
-            }
+            val linePoints = buildRouteLine(courier, delivery, order.routePoints)
             if (linePoints.size >= 2) {
                 Polyline().apply {
                     setPoints(linePoints)
                     outlinePaint.color = ROUTE_COLOR
-                    outlinePaint.strokeWidth = if (roadGeo.size >= 2) 10f else 6f
+                    outlinePaint.strokeWidth = if (order.routePoints.size >= 2) 10f else 6f
                     outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                     outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
                     outlinePaint.isAntiAlias = true
@@ -288,9 +328,33 @@ private fun updateFleetMap(
     if (fitCamera) runCamera() else map.invalidate()
 }
 
-private fun animateMarker(map: MapView, marker: Marker, from: GeoPoint, to: GeoPoint) {
+/**
+ * Joriy (ekrandagi) pozitsiyadan yangi GPS nuqtaga ~2.8s linear siljish.
+ * Yangi nuqta kelganda eski animatsiya bekor — Yandex Taxi uslubi.
+ */
+private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
+    truckAnimators.remove(marker)?.cancel()
+    val from = marker.position
+    val distM = RoadRouteService.haversineM(
+        from.latitude, from.longitude, to.latitude, to.longitude,
+    )
+    // Juda kichik siljish — darhol
+    if (distM < 1.5) {
+        marker.position = to
+        val vehicle = marker.relatedObject as? LiveMapVehicle
+        if (vehicle != null) replaceRoutePolylines(map, listOf(vehicle), courierOverride = to)
+        map.invalidate()
+        return
+    }
+    // Masofaga mos duration, lekin GPS oralig‘idan qisqa bo‘lmasin
+    val duration = when {
+        distM < 8 -> 1_200L
+        distM < 40 -> 2_200L
+        else -> TRUCK_ANIM_MS
+    }
+    var lastRoutePaint = 0L
     val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 850
+        this.duration = duration
         interpolator = android.view.animation.LinearInterpolator()
         addUpdateListener { a ->
             val t = a.animatedValue as Float
@@ -298,9 +362,34 @@ private fun animateMarker(map: MapView, marker: Marker, from: GeoPoint, to: GeoP
                 from.latitude + (to.latitude - from.latitude) * t,
                 from.longitude + (to.longitude - from.longitude) * t,
             )
+            val now = android.os.SystemClock.uptimeMillis()
+            // Chiziqni ~200ms da bir yangilash (har kadr emas)
+            if (now - lastRoutePaint > 200L) {
+                lastRoutePaint = now
+                val vehicle = marker.relatedObject as? LiveMapVehicle
+                if (vehicle != null) {
+                    replaceRoutePolylines(map, listOf(vehicle), courierOverride = marker.position)
+                }
+            }
             map.invalidate()
         }
+        addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                truckAnimators.remove(marker)
+                marker.position = to
+                val vehicle = marker.relatedObject as? LiveMapVehicle
+                if (vehicle != null) {
+                    replaceRoutePolylines(map, listOf(vehicle), courierOverride = to)
+                }
+                map.invalidate()
+            }
+
+            override fun onAnimationCancel(animation: android.animation.Animator) {
+                truckAnimators.remove(marker)
+            }
+        })
     }
+    truckAnimators[marker] = anim
     anim.start()
 }
 
@@ -319,7 +408,11 @@ fun OrderTrackingMapView(
     var cameraFitted by remember { mutableStateOf(false) }
     val vehicleSignature = remember(vehicles) {
         vehicles.joinToString("|") { v ->
-            "${v.id}:${v.courierLat},${v.courierLng}:${v.orders.size}"
+            val routeSig = v.orders.joinToString(";") { o ->
+                "${o.routePoints.size}:${o.routePoints.firstOrNull()?.latitude}:" +
+                    "${o.routePoints.lastOrNull()?.longitude}"
+            }
+            "${v.id}:${v.courierLat},${v.courierLng}:${v.orders.size}:$routeSig"
         }
     }
     val prevSignature = remember { mutableStateOf<String?>(null) }
@@ -356,6 +449,12 @@ fun OrderTrackingMapView(
                     setHorizontalMapRepetitionEnabled(false)
                     setVerticalMapRepetitionEnabled(false)
                     setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                    // Osmdroid o'z zoom tugmalarini yashirish — bizning fullscreen tugmamiz ishlatiladi
+                    runCatching {
+                        zoomController.setVisibility(
+                            org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER,
+                        )
+                    }
                     minZoomLevel = 5.0
                     maxZoomLevel = 19.0
                     setTileSource(MapTileSources.source(MapLayerId.SHORTBREAD, dark = false))

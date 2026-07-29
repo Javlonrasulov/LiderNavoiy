@@ -9,6 +9,7 @@ import { CreateOrderDto } from '../orders/dto/order.dto';
 import { OrdersService } from '../orders/orders.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
+import { PromotionsService } from '../promotions/promotions.service';
 import { Client } from './entities/client.entity';
 import { GpsService } from '../gps/gps.service';
 
@@ -23,6 +24,7 @@ export class ClientPortalService {
     private readonly distributorRepo: Repository<DistributorProfile>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
+    private readonly promotionsService: PromotionsService,
     private readonly gpsService: GpsService,
   ) {}
 
@@ -466,6 +468,10 @@ export class ClientPortalService {
 
   productCategories() {
     return this.productsService.getCategories(true);
+  }
+
+  listPromotions() {
+    return this.promotionsService.findActiveForClient();
   }
 
   async getAnalytics(user: User, period: 'week' | 'month' | 'year' = 'month') {

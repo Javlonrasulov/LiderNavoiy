@@ -39,15 +39,30 @@ data class LiveFleetUi(
         get() = when {
             vehicles.isEmpty() -> "—"
             orderCount == 1 -> vehicles.first().orders.first().distanceLabel
-            else -> vehicles.flatMap { it.orders }.mapNotNull { labelKm(it.distanceLabel) }
+            else -> vehicles.flatMap { it.orders }.mapNotNull { parseDistanceKm(it.distanceLabel) }
                 .minOrNull()
-                ?.let { String.format("%.1f km", it) }
+                ?.let { formatDistance(it) }
                 ?: "—"
         }
 
-    private fun labelKm(label: String): Double? {
-        val cleaned = label.replace(',', '.').replace(" km", "", ignoreCase = true).trim()
-        return cleaned.toDoubleOrNull()
+    private fun parseDistanceKm(label: String): Double? {
+        val normalized = label.replace(',', '.').trim().lowercase()
+        return when {
+            normalized.endsWith("km") -> normalized
+                .removeSuffix("km")
+                .trim()
+                .toDoubleOrNull()
+            normalized.endsWith("m") -> normalized
+                .removeSuffix("m")
+                .trim()
+                .toDoubleOrNull()
+                ?.div(1000.0)
+            else -> null
+        }
+    }
+
+    private fun formatDistance(km: Double): String {
+        return if (km < 1.0) "${(km * 1000).toInt()} m" else String.format("%.1f km", km)
     }
 }
 

@@ -172,6 +172,20 @@ data class ClientAnalytics(
     val topProducts: List<AnalyticsTopProduct>,
 )
 
+data class Promotion(
+    val id: String,
+    val title: String,
+    val subtitle: String = "",
+    val discountPercent: Double = 0.0,
+    val productId: String? = null,
+    val productName: String? = null,
+    val colorStart: String = "#4F46E5",
+    val colorEnd: String = "#9333EA",
+    val emoji: String = "🎁",
+    val validFrom: String? = null,
+    val validTo: String? = null,
+)
+
 data class OrderTrackingInfo(
     val id: String,
     val product: String,

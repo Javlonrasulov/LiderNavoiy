@@ -119,9 +119,9 @@ class RoadRouteService @Inject constructor() {
         val route: RoadRoute,
     ) {
         fun matches(fLat: Double, fLng: Double, tLat: Double, tLng: Double): Boolean {
-            // Refresh only when courier/delivery moved ~80m+
-            return haversineM(fromLat, fromLng, fLat, fLng) < 80.0 &&
-                haversineM(toLat, toLng, tLat, tLng) < 80.0
+            // Refresh when courier moved ~25m+ (orqaga / boshqa yo‘l)
+            return haversineM(fromLat, fromLng, fLat, fLng) < 25.0 &&
+                haversineM(toLat, toLng, tLat, tLng) < 25.0
         }
     }
 

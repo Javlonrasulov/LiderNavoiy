@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ClipboardList, Package, ArrowLeft } from 'lucide-react';
+import { ClipboardList, Package, ArrowLeft, Zap } from 'lucide-react';
 import { ZayavkiPage }                              from './prodaji/ZayavkiPage';
 import { TovarYuklashPage }                         from './prodaji/TovarYuklashPage';
 import { TovarYuklashCreateModal, ConfirmedOrder }  from './prodaji/TovarYuklashCreateModal';
+import { AksiyalarPage }                            from './prodaji/AksiyalarPage';
 
-type ProdajiSub = 'zayavki' | 'tovarYuklash';
+type ProdajiSub = 'zayavki' | 'tovarYuklash' | 'aksiyalar';
 
 interface AdminProdajiTabProps {
   D: boolean;
@@ -39,6 +40,11 @@ export function AdminProdajiTab({ D, t, selectedCompanyIds }: AdminProdajiTabPro
       id: 'tovarYuklash',
       label: t.prodajiTovarYuklash ?? 'Tovar yuklash',
       icon: <Package size={15} strokeWidth={1.8} />,
+    },
+    {
+      id: 'aksiyalar',
+      label: t.prodajiAksiyalar ?? 'Aksiyalar',
+      icon: <Zap size={15} strokeWidth={1.8} />,
     },
   ];
 
@@ -144,6 +150,9 @@ export function AdminProdajiTab({ D, t, selectedCompanyIds }: AdminProdajiTabPro
               setShowCreate(true);
             }}
           />
+        )}
+        {!showCreate && active === 'aksiyalar' && (
+          <AksiyalarPage D={D} t={t} />
         )}
       </div>
     </div>

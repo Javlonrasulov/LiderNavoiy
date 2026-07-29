@@ -794,6 +794,93 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ dataUrl }) },
     ),
 
+  // ─── Promotions (Aksiyalar) ───
+  getPromotions: () =>
+    request<Array<{
+      id: string;
+      title: string;
+      subtitle: string | null;
+      discountPercent: number | string;
+      productId: string | null;
+      productName: string | null;
+      colorStart: string;
+      colorEnd: string;
+      emoji: string | null;
+      validFrom: string | null;
+      validTo: string | null;
+      isActive: boolean;
+      sortOrder: number;
+      createdAt: string;
+      updatedAt: string;
+    }>>('/promotions'),
+
+  createPromotion: (body: {
+    title: string;
+    subtitle?: string;
+    discountPercent?: number;
+    productId?: string | null;
+    colorStart?: string;
+    colorEnd?: string;
+    emoji?: string;
+    validFrom?: string | null;
+    validTo?: string | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }) =>
+    request<{
+      id: string;
+      title: string;
+      subtitle: string | null;
+      discountPercent: number | string;
+      productId: string | null;
+      productName: string | null;
+      colorStart: string;
+      colorEnd: string;
+      emoji: string | null;
+      validFrom: string | null;
+      validTo: string | null;
+      isActive: boolean;
+      sortOrder: number;
+    }>('/promotions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updatePromotion: (id: string, body: {
+    title?: string;
+    subtitle?: string;
+    discountPercent?: number;
+    productId?: string | null;
+    colorStart?: string;
+    colorEnd?: string;
+    emoji?: string;
+    validFrom?: string | null;
+    validTo?: string | null;
+    isActive?: boolean;
+    sortOrder?: number;
+  }) =>
+    request<{
+      id: string;
+      title: string;
+      subtitle: string | null;
+      discountPercent: number | string;
+      productId: string | null;
+      productName: string | null;
+      colorStart: string;
+      colorEnd: string;
+      emoji: string | null;
+      validFrom: string | null;
+      validTo: string | null;
+      isActive: boolean;
+      sortOrder: number;
+    }>(`/promotions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deletePromotion: (id: string) =>
+    request<{ ok: boolean }>(`/promotions/${id}`, { method: 'DELETE' }),
+
   // ─── Lines ───
   getLines: (companyId?: string) =>
     request<Array<{

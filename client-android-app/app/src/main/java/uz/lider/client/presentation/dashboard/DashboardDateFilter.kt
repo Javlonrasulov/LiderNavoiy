@@ -117,6 +117,17 @@ object DashboardDateFilter {
         )
     }
 
+    /**
+     * Kalender (oy) ichida nuqta ko'rinishi uchun:
+     * `createdAt` bo'yicha savdo bo'lgan kunlar (cancelled bo'lmagan).
+     */
+    fun saleDays(orders: List<ClientOrder>): Set<LocalDate> {
+        return orders
+            .filter { OrderStatus.fromKey(it.status) != OrderStatus.CANCELLED }
+            .mapNotNull { parseOrderDate(it.createdAt) }
+            .toSet()
+    }
+
     private fun buildChartValues(orders: List<ClientOrder>, range: DashboardDateRange): List<Float> {
         val totalDays = ChronoUnit.DAYS.between(range.start, range.end).toInt() + 1
         val pointCount = minOf(totalDays, 7).coerceAtLeast(2)

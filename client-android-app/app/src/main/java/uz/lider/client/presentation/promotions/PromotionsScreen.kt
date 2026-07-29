@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.domain.model.Promotion
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.localized
@@ -51,7 +53,9 @@ import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.liquidGlassThemed
-import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun PromotionsScreen(
@@ -72,7 +76,7 @@ fun PromotionsScreen(
     ClientStackScaffold(title = localized("promo_title"), onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
             ClientPullToRefresh(
-                onRefresh = { delay(450) },
+                onRefresh = { viewModel.refresh() },
                 modifier = Modifier.padding(padding),
             ) {
             Column(Modifier.fillMaxSize()) {
@@ -137,8 +141,44 @@ fun PromotionsScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     when (tab) {
-                        0 -> items(discountPromos(lang)) { promo ->
-                            PromoGradientCard(promo.title, promo.desc, promo.discount, promo.until)
+                        0 -> {
+                            val promos = promoState.promotions
+                            if (promos.isEmpty() && !promoState.loading) {
+                                item {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .liquidGlassThemed()
+                                            .padding(24.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            localized("promo_empty"),
+                                            color = textMuted,
+                                            fontSize = 14.sp,
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(promos, key = { it.id }) { promo ->
+                                    PromoGradientCard(
+                                        title = promo.title,
+                                        desc = promo.subtitle.ifBlank {
+                                            promo.productName?.let { name ->
+                                                if (promo.discountPercent > 0) {
+                                                    "$name — ${promo.discountPercent.toInt()}%"
+                                                } else name
+                                            }.orEmpty()
+                                        },
+                                        discount = if (promo.discountPercent > 0) {
+                                            "${uz.lider.client.localization.AppStrings.t(lang, "promo_discount_label")} ${promo.discountPercent.toInt()}%"
+                                        } else "",
+                                        until = formatPromoDate(promo.validTo),
+                                        colorStart = parseHexColor(promo.colorStart, Color(0xFF4F46E5)),
+                                        colorEnd = parseHexColor(promo.colorEnd, Color(0xFF9333EA)),
+                                    )
+                                }
+                            }
                         }
                         1 -> {
                             item { BonusPointsCard(promoState.bonusPointsLabel) }
@@ -193,14 +233,21 @@ fun PromotionsScreen(
 }
 
 @Composable
-private fun PromoGradientCard(title: String, desc: String, discount: String, until: String) {
+private fun PromoGradientCard(
+    title: String,
+    desc: String,
+    discount: String,
+    until: String,
+    colorStart: Color = Color(0xFF4F46E5),
+    colorEnd: Color = Color(0xFF9333EA),
+) {
     Box(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(LiquidGlass.RadiusCard))
             .background(
                 Brush.linearGradient(
-                    listOf(Color(0xFF4F46E5), LiquidGlass.Violet, Color(0xFF9333EA)),
+                    listOf(colorStart, colorEnd),
                     start = Offset(0f, 0f),
                     end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
                 )
@@ -209,28 +256,36 @@ private fun PromoGradientCard(title: String, desc: String, discount: String, unt
     ) {
         Column {
             Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Spacer(Modifier.height(4.dp))
-            Text(desc, color = Color.White.copy(alpha = 0.80f), fontSize = 14.sp)
+            if (desc.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(desc, color = Color.White.copy(alpha = 0.80f), fontSize = 14.sp)
+            }
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(50.dp))
-                        .background(Color.White.copy(alpha = 0.22f))
-                        .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(50.dp))
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                ) {
-                    Text(discount, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                if (discount.isNotBlank()) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(Color.White.copy(alpha = 0.22f))
+                            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(50.dp))
+                            .padding(horizontal = 12.dp, vertical = 5.dp),
+                    ) {
+                        Text(discount, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Spacer(Modifier.width(1.dp))
                 }
-                Text(
-                    "${localized("promo_until")} $until",
-                    color = Color.White.copy(alpha = 0.70f),
-                    fontSize = 12.sp,
-                )
+                if (until.isNotBlank()) {
+                    Text(
+                        "${localized("promo_until")} $until",
+                        color = Color.White.copy(alpha = 0.70f),
+                        fontSize = 12.sp,
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
             Box(
@@ -474,18 +529,7 @@ private fun CashbackRulesCard() {
     }
 }
 
-private data class PromoItem(val title: String, val desc: String, val discount: String, val until: String)
 private data class ProgramItem(val title: String, val desc: String, val active: Boolean)
-
-private fun discountPromos(lang: AppLanguage) = listOf(
-    PromoItem(
-        if (lang == AppLanguage.RU) "Летняя скидка" else if (lang == AppLanguage.EN) "Summer Sale" else "Yozgi chegirma",
-        if (lang == AppLanguage.RU) "20% на Coca Cola" else "20% Coca Cola",
-        uz.lider.client.localization.AppStrings.t(lang, "promo_discount_label") + " 20%",
-        "30.06.2026",
-    ),
-    PromoItem("VIP Gold", if (lang == AppLanguage.RU) "12% на все" else "12% all", "12%", "31.12.2026"),
-)
 
 private fun bonusPrograms(lang: AppLanguage) = listOf(
     ProgramItem("Gold", if (lang == AppLanguage.RU) "Накопление баллов" else "Points program", true),
@@ -493,6 +537,34 @@ private fun bonusPrograms(lang: AppLanguage) = listOf(
 )
 
 private fun cashbackHistory() = listOf("05.06.2026" to "+12,500", "28.05.2026" to "+8,200")
+
+private fun formatPromoDate(iso: String?): String {
+    if (iso.isNullOrBlank()) return ""
+    return try {
+        val instant = Instant.parse(iso)
+        DateTimeFormatter.ofPattern("dd.MM.yyyy")
+            .withZone(ZoneId.systemDefault())
+            .format(instant)
+    } catch (_: Exception) {
+        iso.take(10).let { raw ->
+            val parts = raw.split("-")
+            if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else raw
+        }
+    }
+}
+
+private fun parseHexColor(hex: String, fallback: Color): Color {
+    val cleaned = hex.trim().removePrefix("#")
+    return try {
+        when (cleaned.length) {
+            6 -> Color(("FF$cleaned").toLong(16))
+            8 -> Color(cleaned.toLong(16))
+            else -> fallback
+        }
+    } catch (_: Exception) {
+        fallback
+    }
+}
 
 private fun Modifier.clickableNoRipple(onClick: () -> Unit) =
     then(Modifier.clickable(onClick = onClick))

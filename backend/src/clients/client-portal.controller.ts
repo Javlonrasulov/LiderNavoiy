@@ -66,4 +66,10 @@ export class ClientPortalController {
   ) {
     return this.service.getAnalytics(req.user, period ?? 'month');
   }
+
+  @Get('promotions')
+  @ApiOperation({ summary: 'Active promotions for client app' })
+  promotions() {
+    return this.service.listPromotions();
+  }
 }

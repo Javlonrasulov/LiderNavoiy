@@ -18,6 +18,7 @@ import uz.lider.client.data.remote.dto.ClientProfileDto
 import uz.lider.client.data.remote.dto.CreateOrderRequest
 import uz.lider.client.data.remote.dto.LoginRequest
 import uz.lider.client.data.remote.dto.ProductDto
+import uz.lider.client.data.remote.dto.PromotionDto
 import uz.lider.client.data.remote.dto.RefreshRequest
 import uz.lider.client.data.remote.dto.ChatMessageDto
 import uz.lider.client.data.remote.dto.ConversationDto
@@ -59,6 +60,8 @@ interface ApiService {
     @GET("client-portal/analytics")
     suspend fun getAnalytics(@Query("period") period: String = "month"): ClientAnalyticsDto
 
+    @GET("client-portal/promotions")
+    suspend fun getPromotions(): List<PromotionDto>
     @POST("messages/conversations")
     suspend fun startConversation(@Body body: StartConversationRequest): ConversationDto
 

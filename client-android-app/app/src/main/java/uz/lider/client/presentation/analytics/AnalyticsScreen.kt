@@ -30,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -389,6 +392,10 @@ fun AnalyticsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             val topProducts = data?.topProducts.orEmpty()
+                            val top10 = topProducts.take(10)
+                            val rest = topProducts.drop(10)
+                            var expanded by remember { mutableStateOf(false) }
+
                             if (topProducts.isEmpty()) {
                                 Text(
                                     if (state.loadFailed) localized("an_load_error") else localized("an_no_data"),
@@ -404,7 +411,9 @@ fun AnalyticsScreen(
                                     LiquidGlass.Amber,
                                     LiquidGlass.Rose,
                                 )
-                                topProducts.forEachIndexed { index, product ->
+
+                                // Top 10 — bold, ko'zga tashlanadigan ko'rinish
+                                top10.forEachIndexed { index, product ->
                                     Column(
                                         Modifier
                                             .fillMaxWidth()
@@ -419,6 +428,7 @@ fun AnalyticsScreen(
                                                 product.name,
                                                 color = LiquidTheme.text,
                                                 fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.weight(1f),
                                             )
                                             Text(
@@ -441,8 +451,66 @@ fun AnalyticsScreen(
                                                 "${formatMoney(product.quantity)} ${product.unit.ifBlank { "" }}".trim(),
                                                 color = LiquidTheme.textMuted,
                                                 fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
                                             )
                                         }
+                                    }
+                                }
+
+                                // Qolganlari skrit — faqat "Ko'proq" bosilganda ochiladi
+                                if (rest.isNotEmpty()) {
+                                    if (expanded) {
+                                        rest.forEachIndexed { i, product ->
+                                            val index = i + 10
+                                            Column(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 4.dp),
+                                            ) {
+                                                Row(
+                                                    Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text(
+                                                        product.name,
+                                                        color = LiquidTheme.text,
+                                                        fontSize = 12.sp,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    Text(
+                                                        "${product.share}%",
+                                                        color = LiquidGlass.Cyan.copy(alpha = 0.75f),
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 12.sp,
+                                                    )
+                                                }
+                                                Spacer(Modifier.height(3.dp))
+                                                HorizontalProgressBar(
+                                                    progress = (product.share / 100.0).toFloat(),
+                                                    color = accentColors[index % accentColors.size].copy(alpha = 0.65f),
+                                                    trackColor = Color.White.copy(alpha = 0.08f),
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.height(8.dp))
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .liquidGlassThemed()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .clickable { expanded = !expanded },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            if (expanded) localized("an_show_less") else localized("an_show_more"),
+                                            color = LiquidTheme.textMuted,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                 }
                             }
