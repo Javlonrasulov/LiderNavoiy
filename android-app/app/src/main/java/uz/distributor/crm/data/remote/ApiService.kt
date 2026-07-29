@@ -59,6 +59,9 @@ interface ApiService {
     @GET("products/categories")
     suspend fun getProductCategories(): List<Map<String, String>>
 
+    @GET("promotions/active")
+    suspend fun getActivePromotions(): List<PromotionDto>
+
     @GET("visits")
     suspend fun getVisits(
         @Query("from") from: String? = null,

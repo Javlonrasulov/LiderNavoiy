@@ -11,8 +11,10 @@ import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.data.repository.ProductRepository
+import uz.distributor.crm.data.repository.PromotionsRepository
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
+import uz.distributor.crm.domain.model.ProductPromotion
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import javax.inject.Inject
@@ -48,6 +50,8 @@ data class VisitUiState(
     val detailCartJustSaved: Boolean = false,
     val focusDetailQuantity: Boolean = false,
     val showCartSheet: Boolean = false,
+    /** productId → aksiya (admindan kelgan, mahsulot yonida badge sifatida ko'rsatiladi) */
+    val promotionsByProductId: Map<String, ProductPromotion> = emptyMap(),
 ) {
     val filteredProducts: List<Product>
         get() = VisitViewModel.filterProducts(products, searchQuery, showAllProducts)
@@ -91,6 +95,7 @@ class VisitViewModel @Inject constructor(
     private val cartRepository: CartRepository,
     private val clientRepository: ClientRepository,
     private val appSettingsRepository: AppSettingsRepository,
+    private val promotionsRepository: PromotionsRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VisitUiState())
@@ -373,10 +378,12 @@ class VisitViewModel @Inject constructor(
             val clientDeferred = async {
                 if (clientId.isNotBlank()) clientRepository.getClientDetail(clientId) else null
             }
+            val promotionsDeferred = async { promotionsRepository.getProductPromotionMap() }
             val refreshed = productRepository.refreshFromApi()
             val allProducts = productRepository.getProducts()
             val cats = productRepository.getCategories()
             val client = clientDeferred.await()
+            val promotionsByProductId = promotionsDeferred.await()
             val categoryCounts = buildCategoryCounts(cats, allProducts)
             refreshCart()
             _uiState.update {
@@ -390,6 +397,7 @@ class VisitViewModel @Inject constructor(
                     searchQuery = "",
                     selectedProductId = null,
                     isLoading = false,
+                    promotionsByProductId = promotionsByProductId,
                     error = when {
                         categoryCounts.isEmpty() && !refreshed -> "products_load_failed"
                         categoryCounts.isEmpty() -> "products_not_found"

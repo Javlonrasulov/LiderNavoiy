@@ -54,8 +54,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.graphics.Brush
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
+import uz.distributor.crm.domain.model.ProductPromotion
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
@@ -325,6 +327,7 @@ fun VisitScreen(
                     titleColor = titleColor,
                     subColor = subColor,
                     lang = lang,
+                    promotionsByProductId = state.promotionsByProductId,
                     onToggleSelected = viewModel::toggleSelectedSection,
                     onToggleAll = viewModel::toggleAllSection,
                     onProductClick = viewModel::openProduct,
@@ -1301,6 +1304,7 @@ private fun VisitProductsListContent(
     titleColor: Color,
     subColor: Color,
     lang: AppLanguage,
+    promotionsByProductId: Map<String, ProductPromotion> = emptyMap(),
     onToggleSelected: () -> Unit,
     onToggleAll: () -> Unit,
     onProductClick: (Product) -> Unit,
@@ -1332,6 +1336,7 @@ private fun VisitProductsListContent(
                         priceFmt = priceFmt,
                         stockFmt = stockFmt,
                         lang = lang,
+                        promotion = promotionsByProductId[product.id],
                         onClick = { onProductClick(product) },
                         onRemove = { onRemoveFromCart(product.id) },
                     )
@@ -1361,6 +1366,7 @@ private fun VisitProductsListContent(
                         titleColor = titleColor,
                         subColor = subColor,
                         lang = lang,
+                        promotion = promotionsByProductId[product.id],
                         onClick = { onProductClick(product) },
                     )
                 }
@@ -1414,6 +1420,7 @@ private fun VisitSelectedProductCard(
     priceFmt: DecimalFormat,
     stockFmt: DecimalFormat,
     lang: AppLanguage,
+    promotion: ProductPromotion? = null,
     onClick: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -1448,11 +1455,17 @@ private fun VisitSelectedProductCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
-                        fontSize = 12.sp,
-                        color = subColor,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
+                            fontSize = 12.sp,
+                            color = subColor,
+                        )
+                        if (promotion != null) {
+                            Spacer(Modifier.width(6.dp))
+                            PromoBadge(promotion)
+                        }
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -2043,6 +2056,7 @@ private fun VisitProductCard(
     titleColor: Color,
     subColor: Color,
     lang: AppLanguage,
+    promotion: ProductPromotion? = null,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -2082,11 +2096,17 @@ private fun VisitProductCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
-                    fontSize = 12.sp,
-                    color = subColor,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
+                        fontSize = 12.sp,
+                        color = subColor,
+                    )
+                    if (promotion != null) {
+                        Spacer(Modifier.width(6.dp))
+                        PromoBadge(promotion)
+                    }
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
                 Icon(
@@ -2113,3 +2133,39 @@ private fun VisitProductCard(
 }
 
 private val subColor = Color(0xFF9CA3AF)
+
+/** Mahsulot yonida kichkina aksiya badge'i.
+ *  Admin tanlagan gradient rangda, kichik harflarda (masalan "10kg+1", "20%") */
+@Composable
+private fun PromoBadge(promotion: ProductPromotion) {
+    val startColor = remember(promotion.colorStart) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorStart))
+        }.getOrDefault(Color(0xFF6366F1))
+    }
+    val endColor = remember(promotion.colorEnd) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorEnd))
+        }.getOrDefault(Color(0xFF9333EA))
+    }
+    val label = when {
+        promotion.subtitle.isNotBlank() -> promotion.subtitle
+        promotion.discountPercent > 0 -> "-${promotion.discountPercent.toInt()}%"
+        else -> promotion.title
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Brush.horizontalGradient(listOf(startColor, endColor)))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            maxLines = 1,
+        )
+    }
+}

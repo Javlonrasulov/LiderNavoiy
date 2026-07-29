@@ -96,6 +96,19 @@ data class CartItem(
     val category: String?,
 )
 
+/** Admindan kelgan mahsulot aksiyasi (masalan: 10+1, 20% chegirma) */
+data class ProductPromotion(
+    val id: String,
+    val title: String,
+    val subtitle: String = "",
+    val discountPercent: Double = 0.0,
+    val productId: String? = null,
+    /** Admin tanlagan gradient boshlanish rangi, masalan "#4F46E5" */
+    val colorStart: String = "#6366F1",
+    val colorEnd: String = "#9333EA",
+    val emoji: String = "🎁",
+)
+
 data class Message(
     val id: String,
     val senderName: String,

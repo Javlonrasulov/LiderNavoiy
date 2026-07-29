@@ -160,6 +160,22 @@ data class ProductDto(
     val imageUrl: String? = null,
 )
 
+data class PromotionDto(
+    val id: String,
+    val title: String,
+    val subtitle: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val discountPercent: Double = 0.0,
+    val productId: String? = null,
+    val productName: String? = null,
+    val colorStart: String? = null,
+    val colorEnd: String? = null,
+    val emoji: String? = null,
+    val validFrom: String? = null,
+    val validTo: String? = null,
+    val isActive: Boolean = true,
+    val sortOrder: Int = 0,
+)
+
 data class OrderItemDto(
     val productId: String,
     val productCode: String,
