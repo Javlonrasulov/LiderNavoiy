@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { X, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import type { BackendOrderItem } from '../../../api/client';
-import { formatDisplayDate } from '../../../utils/dateFormat';
+import { formatDisplayDate } from '../../../../utils/dateFormat';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ZayavkaInfo {
