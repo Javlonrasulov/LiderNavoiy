@@ -165,6 +165,23 @@ export class ClientPortalService {
     };
   }
 
+  /** Yetkazilgan buyurtmalarning to'lanmagan qoldig'i. */
+  private async unpaidDebtForClient(clientId: string): Promise<number> {
+    const orders = await this.orderRepo.find({
+      where: { clientId, status: OrderStatus.DELIVERED },
+      take: 500,
+    });
+    return orders.reduce((sum, o) => {
+      const total = Number(o.totalAmount) - Number(o.returnedAmount || 0);
+      const paid = Number(o.paidAmount || 0);
+      return sum + Math.max(0, total - paid);
+    }, 0);
+  }
+
+  private debtFromBalance(balance: number): number {
+    return balance < 0 ? Math.abs(balance) : 0;
+  }
+
   private roleToPosition(role?: UserRole, customPosition?: string | null): string | null {
     if (customPosition?.trim()) return customPosition.trim();
     switch (role) {
@@ -313,6 +330,10 @@ export class ClientPortalService {
     const activeOrg =
       organizations.find((o) => o.clientId === client.id) || organizations[0] || null;
 
+    const balance = Number(client.balance);
+    const unpaid = await this.unpaidDebtForClient(client.id);
+    const debt = Math.max(this.debtFromBalance(balance), unpaid);
+
     return {
       id: client.id,
       code: client.code,
@@ -324,7 +345,7 @@ export class ClientPortalService {
       latitude: client.latitude,
       longitude: client.longitude,
       inn: client.inn,
-      balance: Number(client.balance),
+      balance,
       category: client.category,
       clientClass: client.clientClass,
       priceCategory: client.priceCategory,
@@ -338,7 +359,7 @@ export class ClientPortalService {
       orderCount,
       totalPurchases: Number(totalPurchases?.total ?? 0),
       bonusPoints: Math.max(0, Math.floor(Number(totalPurchases?.total ?? 0) / 1000)),
-      debt: Number(client.balance) < 0 ? Math.abs(Number(client.balance)) : 0,
+      debt,
       organizations,
       activeOrganization: activeOrg,
     };
@@ -715,7 +736,7 @@ export class ClientPortalService {
       (o) => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.CANCELLED,
     ).length;
     const balance = Number(profile.balance ?? 0);
-    const debt = balance < 0 ? Math.abs(balance) : 0;
+    const debt = Number(profile.debt ?? 0);
 
     // Barcha membership bo‘yicha savdo (dashboard Jami xaridlar + org split)
     const allClientIds =
@@ -806,7 +827,7 @@ export class ClientPortalService {
     const client = await this.resolveActiveClient(user, companyId);
     const clientId = client.id;
     const balance = Number(client.balance) || 0;
-    const currentDebt = balance < 0 ? Math.abs(balance) : 0;
+    const balanceDebt = this.debtFromBalance(balance);
 
     const [orders, payments] = await Promise.all([
       this.orderRepo.find({
@@ -822,6 +843,18 @@ export class ClientPortalService {
     ]);
 
     const validOrders = orders.filter((o) => o.status !== OrderStatus.CANCELLED);
+
+    // Haqiqiy qarzdorlik — yetkazilgan buyurtmalarning to'lanmagan qoldig'i
+    // (client.balance ko'pincha sync qilinmaydi / 0 bo'lib qoladi)
+    const unpaidFromOrders = validOrders
+      .filter((o) => o.status === OrderStatus.DELIVERED)
+      .reduce((sum, o) => {
+        const total = Number(o.totalAmount) - Number(o.returnedAmount || 0);
+        const paid = Number(o.paidAmount || 0);
+        return sum + Math.max(0, total - paid);
+      }, 0);
+
+    const currentDebt = Math.max(balanceDebt, unpaidFromOrders);
 
     type HistoryRow = {
       id: string;
@@ -851,7 +884,7 @@ export class ClientPortalService {
     }
 
     for (const order of validOrders) {
-      const amount = Number(order.totalAmount) || 0;
+      const amount = Number(order.totalAmount) - Number(order.returnedAmount || 0);
       if (amount <= 0) continue;
       // Faqat yetkazilgan buyurtmalar — real qarzdorlik yozuvi
       if (order.status !== OrderStatus.DELIVERED) continue;
@@ -893,7 +926,10 @@ export class ClientPortalService {
       balance: Math.round(balance),
       creditLimit: null as number | null,
       totalPaid: Math.round(totalPaid),
-      history: filtered.map(({ createdAt: _c, ...rest }) => rest),
+      history: filtered.map(({ createdAt, ...rest }) => ({
+        ...rest,
+        createdAt: createdAt.toISOString(),
+      })),
       monthlyDebt,
     };
   }

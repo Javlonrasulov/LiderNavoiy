@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { X, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import type { BackendOrderItem } from '../../../api/client';
+import { formatDisplayDate } from '../../../utils/dateFormat';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ZayavkaInfo {
@@ -148,8 +149,8 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
 
   /* ── info fields (right panel) ── */
   const INFO = [
-    { key: 'orderDate', label: t.zOrderDate ?? 'Дата заказа', val: zayavka.orderDate },
-    { key: 'shipDate',  label: t.zShipDate  ?? 'Дат. отгр.',  val: zayavka.shipDate  },
+    { key: 'orderDate', label: t.zOrderDate ?? 'Дата заказа', val: formatDisplayDate(zayavka.orderDate) },
+    { key: 'shipDate',  label: t.zShipDate  ?? 'Дат. отгр.',  val: formatDisplayDate(zayavka.shipDate)  },
     { key: 'code',      label: t.zCode      ?? 'Код',         val: zayavka.code      },
     { key: 'agent',     label: t.zAgent     ?? 'Агент',       val: zayavka.agent     },
     { key: 'org',       label: t.zOrg       ?? 'Орг.',        val: zayavka.org       },
@@ -354,7 +355,7 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
                   {t.zNum ?? '№'}{zayavka.num}
                 </span>
                 <span style={{ fontSize: 12, color: sub, whiteSpace: 'nowrap' }}>
-                  {zayavka.orderDate}
+                  {formatDisplayDate(zayavka.orderDate)}
                 </span>
                 <span style={{
                   display: 'inline-block', padding: '2px 9px', borderRadius: 5,

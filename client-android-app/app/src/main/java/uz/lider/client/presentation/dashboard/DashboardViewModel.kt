@@ -43,8 +43,8 @@ data class DashboardUiState(
     val clientName: String = "",
     val allOrders: List<ClientOrder> = emptyList(),
     val promotions: List<uz.lider.client.domain.model.Promotion> = emptyList(),
-    /** null = sana filtri yo‘q (tozalangan) — chip ko‘rinmaydi */
-    val dateRange: DashboardDateRange? = DashboardDateFilter.lastMonthRange(),
+    /** null = sana filtri yo‘q — chip ko‘rinmaydi, barcha savdolar */
+    val dateRange: DashboardDateRange? = null,
     val purchasesCompanyId: String? = null,
     val filtered: DashboardFiltered = DashboardFiltered(0.0, 0, emptyList(), listOf(0f, 0f)),
     val liveFleet: LiveFleetUi? = null,
@@ -75,6 +75,8 @@ class DashboardViewModel @Inject constructor(
     private var socketJob: Job? = null
     /** orderId → oxirgi jonli GPS ms */
     private val liveCourierAtByOrder = mutableMapOf<String, Long>()
+    private var trackedOnWayIds: Set<String> = emptySet()
+    private var onWayTrackReady = false
 
     init {
         load()
@@ -257,10 +259,27 @@ class DashboardViewModel @Inject constructor(
         }
         val orders = latest ?: _uiState.value.allOrders
 
-        var onWayIds = orders
+        val realOnWayIds = orders
             .filter { OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY }
             .map { it.id }
-            .toMutableSet()
+            .toSet()
+        // Pushsiz: yo‘ldagi buyurtma yetkazilganda modal
+        if (onWayTrackReady) {
+            val deliveredNow = trackedOnWayIds - realOnWayIds
+            for (orderId in deliveredNow) {
+                val status = orders.firstOrNull { it.id == orderId }
+                    ?.let { OrderStatus.fromKey(it.status) }
+                if (status == OrderStatus.DELIVERED) {
+                    paymentPhotoAlertStore.onOrderDelivered(orderId)
+                    break
+                }
+            }
+        } else {
+            onWayTrackReady = true
+        }
+        trackedOnWayIds = realOnWayIds
+
+        var onWayIds = realOnWayIds.toMutableSet()
 
         // Keep previous live orders briefly if list lags
         previous?.vehicles?.flatMap { it.orders }?.forEach { liveOrder ->

@@ -11,6 +11,7 @@ import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
 
 import { isGpsLiveOnline, isInServiceArea } from '../utils/gpsOnline';
+import { formatDisplayDateTime } from '../utils/dateFormat';
 import {
   AP, NAV_ITEMS_BASE, COMPANY_DATA, COMPANY_AGENTS,
   COMPANY_CATPIE, COMPANY_WEEKLY, ORG_CHART, ORG_CITIES,
@@ -64,7 +65,7 @@ function formatEmpLastSeen(iso?: string | null): string {
   if (mins < 60) return `${mins} daqiqa oldin`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours} soat oldin`;
-  return d.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return formatDisplayDateTime(iso);
 }
 
 function distributorToMarker(d: Distributor): EmployeeMarker | null {
@@ -610,7 +611,11 @@ export default function AdminPanel() {
                     : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-600 bg-gray-100 hover:bg-gray-200`
                 }`}
               >
-                <span className="hidden sm:inline">🌐</span> Umumiy ({selectedCompanyIds.size})
+                <span className="hidden sm:inline">🌐</span>{' '}
+                Umumiy
+                <span className="opacity-80 font-normal">
+                  {' '}({companies.filter(c => selectedCompanyIds.has(c.id)).map(c => c.shortName).join(', ')})
+                </span>
               </button>
               {companies.filter(c => selectedCompanyIds.has(c.id)).map(c => {
                 const isActive = viewOrg === c.id;

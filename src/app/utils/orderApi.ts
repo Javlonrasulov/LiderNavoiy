@@ -62,7 +62,9 @@ export interface TaroziProductRow {
 }
 
 function formatTashkentDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { timeZone: 'Asia/Tashkent' });
+  const ymd = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+  const [y, m, d] = ymd.split('-');
+  return `${d}-${m}-${y}`;
 }
 
 /** Buyurtma sanasi (Toshkent) — Date obyektiga */
@@ -282,7 +284,14 @@ export function backendOrderToOtgr(o: BackendOrder): OtgrApiRow | null {
   const orderDate = formatTashkentDate(o.createdAt);
   const timeOtgr = o.status === 'packing'
     ? '—'
-    : new Date(o.updatedAt).toLocaleString('ru-RU', { timeZone: 'Asia/Tashkent' });
+    : (() => {
+        const ymd = new Date(o.updatedAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+        const [y, m, d] = ymd.split('-');
+        const time = new Date(o.updatedAt).toLocaleTimeString('en-GB', {
+          timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        });
+        return `${d}-${m}-${y} ${time}`;
+      })();
   const status: OtgrUiStatus =
     o.status === 'cancelled' ? 'cancelled'
     : o.status === 'packing' ? 'process'

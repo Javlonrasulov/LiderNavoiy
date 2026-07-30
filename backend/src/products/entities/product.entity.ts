@@ -41,6 +41,13 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   imageUrl: string | null;
 
+  /**
+   * Render ephemeral disk uchun: rasm baytlari (base64).
+   * API list/detail javobiga kirmaydi (select: false).
+   */
+  @Column({ type: 'text', nullable: true, select: false })
+  imageData: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 

@@ -1,8 +1,10 @@
 package uz.lider.client.presentation.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,7 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
@@ -43,28 +46,53 @@ fun ProductImageBox(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
 ) {
-    val palette = rememberClientPalette()
     if (!imageUrl.isNullOrBlank()) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = contentScale,
-        )
-    } else {
-        Box(
-            modifier = modifier.background(palette.surface2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                localized("no_image"),
-                color = palette.textMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(8.dp),
-            )
+        val painter = rememberAsyncImagePainter(model = imageUrl)
+        val state = painter.state
+        Box(modifier = modifier) {
+            when (state) {
+                is AsyncImagePainter.State.Success -> {
+                    Image(
+                        painter = painter,
+                        contentDescription = contentDescription,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = contentScale,
+                    )
+                }
+                is AsyncImagePainter.State.Loading,
+                is AsyncImagePainter.State.Empty -> {
+                    val palette = rememberClientPalette()
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(palette.surface2),
+                    )
+                }
+                is AsyncImagePainter.State.Error -> {
+                    NoProductImagePlaceholder(modifier = Modifier.fillMaxSize())
+                }
+            }
         }
+    } else {
+        NoProductImagePlaceholder(modifier = modifier)
+    }
+}
+
+@Composable
+private fun NoProductImagePlaceholder(modifier: Modifier = Modifier) {
+    val palette = rememberClientPalette()
+    Box(
+        modifier = modifier.background(palette.surface2),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            localized("no_image"),
+            color = palette.textMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(8.dp),
+        )
     }
 }
 
@@ -155,19 +183,48 @@ fun formatMoney(value: Double): String {
     return DecimalFormat("#,##0", symbols).format(value)
 }
 
-fun formatChartAmount(value: Double, currency: String = "so'm"): String {
-    return "${formatCompactMoney(value)} $currency"
+fun formatChartAmount(value: Double, currency: String = "so'm", lang: AppLanguage = AppLanguage.DEFAULT): String {
+    return "${formatCompactMoney(value, lang)} $currency"
 }
 
-/** Kalendar / grafik uchun qisqa summa: 1.5M, 250K, 900 */
-fun formatCompactMoney(value: Double): String {
+/**
+ * Grafik / kalendar: K/M emas — «ming» / «million»
+ * (masalan: 860 ming, 1.5 million).
+ */
+fun formatCompactMoney(value: Double, lang: AppLanguage = AppLanguage.DEFAULT): String {
+    val sign = if (value < 0) "-" else ""
     val v = kotlin.math.abs(value)
-    return when {
-        v >= 1_000_000_000 -> String.format(Locale.US, "%.1fB", v / 1_000_000_000.0)
-        v >= 1_000_000 -> String.format(Locale.US, "%.1fM", v / 1_000_000.0)
-        v >= 1_000 -> String.format(Locale.US, "%.0fK", v / 1_000.0)
+    val body = when {
+        v >= 1_000_000_000 -> {
+            val n = v / 1_000_000_000.0
+            val num = if (n >= 10 || n == n.toLong().toDouble()) {
+                String.format(Locale.US, "%.0f", n)
+            } else {
+                String.format(Locale.US, "%.1f", n).trimEnd('0').trimEnd('.')
+            }
+            "$num ${AppStrings.t(lang, "com_billion")}"
+        }
+        v >= 1_000_000 -> {
+            val n = v / 1_000_000.0
+            val num = if (n >= 10 || n == n.toLong().toDouble()) {
+                String.format(Locale.US, "%.0f", n)
+            } else {
+                String.format(Locale.US, "%.1f", n).trimEnd('0').trimEnd('.')
+            }
+            "$num ${AppStrings.t(lang, "com_million")}"
+        }
+        v >= 1_000 -> {
+            val n = v / 1_000.0
+            val num = if (n == n.toLong().toDouble()) {
+                String.format(Locale.US, "%.0f", n)
+            } else {
+                String.format(Locale.US, "%.1f", n).trimEnd('0').trimEnd('.')
+            }
+            "$num ${AppStrings.t(lang, "com_thousand")}"
+        }
         else -> formatMoney(v)
-    }.let { if (value < 0) "-$it" else it }
+    }
+    return sign + body
 }
 
 fun formatOrderId(id: String): String =

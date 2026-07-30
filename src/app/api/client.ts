@@ -602,6 +602,23 @@ export const api = {
     return request<ClientStatsResponse>(`/clients/${clientId}/stats${qs ? `?${qs}` : ''}`);
   },
 
+  transferClients: (body: {
+    targetCompanyId: string;
+    sourceCompanyId?: string;
+    clientIds?: string[];
+    transferAll?: boolean;
+  }) =>
+    request<{
+      targetCompanyId: string;
+      transferredCount: number;
+      skippedCount: number;
+      transferred: { id: string; name: string; code: string }[];
+      skipped: { id: string; name: string; code: string; inn: string | null; reason: string }[];
+    }>('/clients/transfer', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   setClientAppCredentials: (clientId: string, body: { username: string; password: string }) =>
     request<{ userId: string; username: string; clientId: string; created: boolean }>(
       `/clients/${clientId}/app-credentials`,

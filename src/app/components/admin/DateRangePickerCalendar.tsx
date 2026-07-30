@@ -28,7 +28,7 @@ function toStr(d: Date): string {
 }
 
 function fmtDisplay(d: string) {
-  return d ? d.split('-').reverse().join('.') : '—';
+  return d ? d.split('-').reverse().join('-') : '—';
 }
 
 function weekStart(d: Date): Date {

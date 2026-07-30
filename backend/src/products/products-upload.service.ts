@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,12 +44,28 @@ export class ProductsUploadService {
 
     const url = `/uploads/products/${safeName}`;
     const baseUrl = this.config.get('PUBLIC_URL', 'http://localhost:3000');
+    const base64 = output.toString('base64');
     return {
       url,
       fullUrl: `${baseUrl}${url}`,
       mimeType: compressed.mimeType,
       fileSize: output.length,
+      base64,
     };
+  }
+
+  /** Diskdagi /uploads/products/... fayldan base64 o‘qiydi */
+  readBase64FromUrl(imageUrl: string | null | undefined): string | null {
+    if (!imageUrl) return null;
+    const pathMatch = imageUrl.match(/\/uploads\/products\/([^/?#]+)/);
+    if (!pathMatch) return null;
+    const filePath = join(this.uploadDir, pathMatch[1]);
+    if (!existsSync(filePath)) return null;
+    try {
+      return readFileSync(filePath).toString('base64');
+    } catch {
+      return null;
+    }
   }
 
   private async compressBuffer(

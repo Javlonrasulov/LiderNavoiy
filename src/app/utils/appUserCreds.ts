@@ -34,6 +34,7 @@ export function removeStoredAppPassword(username: string) {
 
 import type { AppUserRecord, Distributor } from '../api/client';
 import type { SotrudnikRow } from '../data/adminData';
+import { formatDisplayDateTime } from './dateFormat';
 
 export interface AppUserDeviceRow {
   label: string;
@@ -92,7 +93,7 @@ export function formatRelativeTime(iso: string, t?: Record<string, string>): str
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ${t?.userLastActDayAgo || 'kun oldin'}`;
 
-  return new Date(iso).toLocaleString();
+  return formatDisplayDateTime(iso);
 }
 
 export function formatLastDevice(
@@ -193,7 +194,7 @@ export function formatLastActive(
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days} ${t?.userLastActDayAgo || 'kun oldin'}`;
 
-  return new Date(at).toLocaleString();
+  return formatDisplayDateTime(at);
 }
 
 export function appUserToRow(

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SUP_DATA } from './tabs/AdminPostavchikTab';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 const ORGS = [
   'OOO "BORAN LEADERS"',
@@ -19,12 +20,12 @@ const MONTH_NAMES = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgus
 const DOW = ['Du','Se','Ch','Pa','Ju','Sh','Ya'];
 
 function parseDMY(s: string): Date | null {
-  const [d, m, y] = s.split('.').map(Number);
+  const [d, m, y] = s.split(/[.\-/]/).map(Number);
   if (!d || !m || !y || y < 2000) return null;
   return new Date(y, m - 1, d);
 }
 function fmtDMY(d: Date) {
-  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 }
 
 interface DPProps {
@@ -253,7 +254,7 @@ function genTxRows(sup: SupRow): TxRow[] {
       const dd  = mi === 0 ? '28' : mi === 1 ? '15' : '05';
       const mo  = months[mi] ?? months[2];
       saldo += amt;
-      rows.push({ date: `${dd}.${mo}`, op: `Поступили товары (${docNum++})`, debet: amt, kredit: 0, saldo, payer: org, note: `Сч1., ${docNum - sup.id}` });
+      rows.push({ date: `${dd}-${mo}`, op: `Поступили товары (${docNum++})`, debet: amt, kredit: 0, saldo, payer: org, note: `Сч1., ${docNum - sup.id}` });
     });
   }
 
@@ -265,14 +266,14 @@ function genTxRows(sup: SupRow): TxRow[] {
       const dd  = mi === 0 ? '20' : mi === 1 ? '05' : '25';
       const mo  = months[Math.min(mi + 1, 2)] ?? months[2];
       saldo -= amt;
-      rows.push({ date: `${dd}.${mo}`, op: `Оплата через банк (${docNum++})`, debet: 0, kredit: amt, saldo, payer: org, note: 'Шартнома асосан тўлов' });
+      rows.push({ date: `${dd}-${mo}`, op: `Оплата через банк (${docNum++})`, debet: 0, kredit: amt, saldo, payer: org, note: 'Шартнома асосан тўлов' });
     });
   }
 
   rows.sort((a, b) => {
-    const [da, ma, ya] = a.date.split('.').map(Number);
-    const [db, mb, yb] = b.date.split('.').map(Number);
-    return new Date(ya, ma - 1, da).getTime() - new Date(yb, mb - 1, db).getTime();
+    const [da, ma, ya] = a.date.split(/[.\-/]/).map(Number);
+    const [db, mb, yb] = b.date.split(/[.\-/]/).map(Number);
+    return new Date(ya || 2026, (ma || 1) - 1, da).getTime() - new Date(yb || 2026, (mb || 1) - 1, db).getTime();
   });
 
   return rows;
@@ -676,7 +677,7 @@ export function AktSverkiModal({ sup, D, divider, sub, text, onClose, t }: Props
                 {txRows.map((r, i) => (
                   <tr key={i}
                     className={`border-b ${bdCol} ${rowH} transition-colors cursor-default`}>
-                    <td className={`px-4 py-2.5 font-mono whitespace-nowrap ${sub}`}>{r.date}</td>
+                    <td className={`px-4 py-2.5 font-mono whitespace-nowrap ${sub}`}>{formatDisplayDate(r.date)}</td>
                     <td className={`px-4 py-2.5 ${text}`} style={{ maxWidth: 260, wordBreak: 'break-word' }}>{r.op}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">
                       {r.debet > 0
@@ -743,7 +744,7 @@ export function AktSverkiModal({ sup, D, divider, sub, text, onClose, t }: Props
             {txRows.map((r, i) => (
               <div key={i} className={`border-b ${bdCol} px-4 py-3 ${rowH} transition-colors`}>
                 <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <span className={`font-mono text-[11px] ${sub} flex-shrink-0`}>{r.date}</span>
+                  <span className={`font-mono text-[11px] ${sub} flex-shrink-0`}>{formatDisplayDate(r.date)}</span>
                   <div className="text-right flex-shrink-0">
                     {r.debet > 0 && (
                       <span className={`text-xs font-bold ${D ? 'text-sky-400' : 'text-sky-600'}`}>

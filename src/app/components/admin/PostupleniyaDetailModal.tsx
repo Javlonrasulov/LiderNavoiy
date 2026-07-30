@@ -3,6 +3,7 @@ import {
   X, Maximize2, Minimize2,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 /* ─────────────────────────────────────────────────────────────────── */
 /*  Types                                                              */
@@ -145,7 +146,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
     { label: t.detVidPost,    value:'Баланс' },
     { label: t.detTselPrih,   value:'Оптовая' },
     { label: t.detSchFak,     value: row.invoice || '—' },
-    { label: t.detDataDoc,    value: row.date.split(' ')[0] },
+    { label: t.detDataDoc,    value: formatDisplayDate(row.date.split(' ')[0]) },
     { label: t.detDataPog,    value:'—' },
     { label: t.postSupplier,  value: row.supplier },
     { label: t.detPoluchatel, value: row.org },
@@ -197,7 +198,7 @@ export function PostupleniyaDetailModal({ D, t, row, onClose, onPrev, onNext, ha
             <h2 className={`text-sm font-bold leading-tight ${text}`}>
               <span className="hidden sm:inline">{t.supTabPostup} </span>
               <span className="text-indigo-400">#{row.num}</span>
-              <span className={` ${sub} font-normal`}> от {row.date}</span>
+              <span className={` ${sub} font-normal`}> от {formatDisplayDate(row.date)}</span>
             </h2>
             <p className={`text-[10px] ${sub} mt-0.5 sm:hidden`}>{t.supTabPostup}</p>
           </div>

@@ -73,9 +73,9 @@ fun PaymentPhotoAlertModal(
     )
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { /* majburiy — faqat X */ },
         properties = DialogProperties(
-            dismissOnBackPress = true,
+            dismissOnBackPress = false,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
         ),

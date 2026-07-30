@@ -73,10 +73,10 @@ const HAYDOVCHI_LIST = demo([
 /* ─── Utils ──────────────────────────────────────────────── */
 function pad2(n:number){ return String(n).padStart(2,'0'); }
 function fmtDT(d:Date){
-  return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return `${pad2(d.getDate())}-${pad2(d.getMonth()+1)}-${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 function fmtDate(d:Date){
-  return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()}`;
+  return `${pad2(d.getDate())}-${pad2(d.getMonth()+1)}-${d.getFullYear()}`;
 }
 function fmtTime(d:Date){
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
@@ -292,9 +292,9 @@ function HeaderDatePicker({ start,end,onRange,D,brd,txt,muted,card,monthNames,da
 
   const label=()=>{
     if(!start) return '—';
-    const s=`${pad2(start.getDate())}.${pad2(start.getMonth()+1)}.${start.getFullYear()}`;
+    const s=`${pad2(start.getDate())}-${pad2(start.getMonth()+1)}-${start.getFullYear()}`;
     if(!end) return s;
-    const e=`${pad2(end.getDate())}.${pad2(end.getMonth()+1)}.${end.getFullYear()}`;
+    const e=`${pad2(end.getDate())}-${pad2(end.getMonth()+1)}-${end.getFullYear()}`;
     return sameDay(start,end)?s:`${s} – ${e}`;
   };
 
@@ -531,7 +531,7 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
     if (onConfirm) {
       const today = new Date();
       const fmt = (d: Date) =>
-        `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+        `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
       onConfirm({
         agent,
         transport,
@@ -591,7 +591,7 @@ export function TovarYuklashCreateModal({ D, t, onClose, pageMode=false, onConfi
   /* ── Agent + date filter ── */
   const agentShort = agent.trim().split(' ')[0];
   const parseRowDate=(dateStr:string)=>{
-    const [d,mo,y]=(dateStr.split(' ')[0]??'').split('.');
+    const [d,mo,y]=(dateStr.split(' ')[0]??'').split(/[.\-/]/);
     return new Date(parseInt(y),parseInt(mo)-1,parseInt(d));
   };
   const dateMatch=(r:{date:string})=>{

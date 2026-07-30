@@ -32,6 +32,7 @@ import uz.lider.client.map.GeoCoords
 import uz.lider.client.map.MapDefaults
 import uz.lider.client.map.MapLayerId
 import uz.lider.client.map.MapTileSources
+import uz.lider.client.map.OrgMapColors
 import uz.lider.client.map.RouteTrim
 import uz.lider.client.presentation.dashboard.LiveMapOrder
 import uz.lider.client.presentation.dashboard.LiveMapVehicle
@@ -42,7 +43,6 @@ import kotlin.math.max
 private val NAVOIY = GeoPoint(MapDefaults.NAVOIY_LAT, MapDefaults.NAVOIY_LNG)
 private const val NAVOIY_ZOOM = 13.5
 private const val SINGLE_POINT_ZOOM = 15.0
-private const val ROUTE_COLOR = 0xFF2563EB.toInt()
 /** GPS oralig‘iga yaqin — Yandex Taxi kabi uzluksiz siljish */
 private const val TRUCK_ANIM_MS = 2_800L
 
@@ -108,12 +108,13 @@ private fun replaceRoutePolylines(
         } else {
             null
         }
-        val pts = if (showRouteStops) order.routePoints else emptyList()
+        val pts = order.routePoints
+        val routeColor = OrgMapColors.forCompany(vehicle.companyId)
         val linePoints = buildRouteLine(courier, delivery, pts)
         if (linePoints.size >= 2) {
             Polyline().apply {
                 setPoints(linePoints)
-                outlinePaint.color = ROUTE_COLOR
+                outlinePaint.color = routeColor
                 outlinePaint.strokeWidth = if (pts.size >= 2) 10f else 6f
                 outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                 outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
@@ -251,20 +252,21 @@ private fun updateFleetMap(
     val ctx = map.context
     val storeSizeDp = if (compactMarkers) 40 else 48
     val truckSizeDp = if (compactMarkers) 32 else 36
-    val idleStoreIcon = createDeliveryPinDrawable(
-        context = ctx,
-        sizeDp = storeSizeDp,
-        status = StoreMarkerStatus.APPROACHING,
-        primaryColor = 0xFF3B82F6.toInt(),
-    )
-    val selectedStoreIcon = createDeliveryPinDrawable(
-        context = ctx,
-        sizeDp = storeSizeDp,
-        status = StoreMarkerStatus.SELECTED,
-        primaryColor = 0xFF3B82F6.toInt(),
-    )
 
     vehicles.forEach { vehicle ->
+        val orgColor = OrgMapColors.forCompany(vehicle.companyId)
+        val idleStoreIcon = createDeliveryPinDrawable(
+            context = ctx,
+            sizeDp = storeSizeDp,
+            status = StoreMarkerStatus.APPROACHING,
+            primaryColor = orgColor,
+        )
+        val selectedStoreIcon = createDeliveryPinDrawable(
+            context = ctx,
+            sizeDp = storeSizeDp,
+            status = StoreMarkerStatus.SELECTED,
+            primaryColor = orgColor,
+        )
         // Bitta poliliniya — bir nechta buyurtma eski yo‘llarni «ghost» qilib qoldirmasin
         val primaryOrder = primaryRouteOrder(vehicle)
         if (primaryOrder != null) {
@@ -284,12 +286,13 @@ private fun updateFleetMap(
             } else {
                 null
             }
-            val displayRoutePoints = if (showRouteStops) primaryOrder.routePoints else emptyList()
+            // showRouteStops faqat 1…N markerlar; yo‘l chizig‘i har doim OSRM marshruti
+            val displayRoutePoints = primaryOrder.routePoints
             val linePoints = buildRouteLine(courier, delivery, displayRoutePoints)
             if (linePoints.size >= 2) {
                 Polyline().apply {
                     setPoints(linePoints)
-                    outlinePaint.color = ROUTE_COLOR
+                    outlinePaint.color = orgColor
                     outlinePaint.strokeWidth = if (displayRoutePoints.size >= 2) 10f else 6f
                     outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
                     outlinePaint.strokeJoin = android.graphics.Paint.Join.ROUND
@@ -349,6 +352,7 @@ private fun updateFleetMap(
                         sequence = stop.sequence,
                         isYou = stop.isYou,
                         sizeDp = if (compactMarkers) 32 else 36,
+                        orgColor = orgColor,
                     )
                     relatedObject = if (stop.isYou) {
                         StoreCallout(name = "Siz", orderId = vehicle.orders.firstOrNull()?.orderId.orEmpty())
@@ -376,6 +380,7 @@ private fun updateFleetMap(
             sizeDp = truckSizeDp,
             online = true,
             orgLabel = vehicle.companyShortName,
+            accentColor = orgColor,
         )
         if (!vehicle.id.startsWith("dest-only") &&
             GeoCoords.isUsableCourier(

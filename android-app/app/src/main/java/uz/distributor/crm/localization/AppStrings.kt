@@ -180,6 +180,9 @@ object AppStrings {
         "Отсроченный платёж",
     )
     fun deliveryRemaining(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
+    fun deliveryPaidLabel(lang: AppLanguage) = tr(lang, "To'langan", "Тўланган", "Оплачено")
+    fun deliveryPaymentsLabel(lang: AppLanguage) = tr(lang, "To'lovlar", "Тўловлар", "Платежи")
+    fun deliveryCollectedBy(lang: AppLanguage) = tr(lang, "Oldi", "Олди", "Принял")
     fun deliveryAmountLabel(lang: AppLanguage) = tr(lang, "Summa", "Сумма", "Сумма")
     fun deliveryDueAtLabel(lang: AppLanguage) = tr(lang, "To'lov muddati", "Тўлов муддати", "Срок оплаты")
     fun deliveryPromisedUntil(lang: AppLanguage) = tr(

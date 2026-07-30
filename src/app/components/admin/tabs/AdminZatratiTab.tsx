@@ -11,6 +11,8 @@ import { fmt } from '../../../data/adminData';
 import * as XLSX from 'xlsx';
 import { AddExpenseModal } from './AddExpenseModal';
 import { demo, demoRec } from '../../../data/demoLimit';
+import { formatDisplayDate } from '../../../utils/dateFormat';
+import { useCompanies } from '../../CompaniesContext';
 
 interface Props {
   D: boolean; card: string; divider: string; sub: string;
@@ -34,7 +36,7 @@ const COMPANY_COST_SCALE: Record<string, Record<string, number>> = {
 const fmtMoney = (v: number) =>
   v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d: Date) =>
-  `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 const sameDay = (a: Date, b: Date) =>
   a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
 const isBetween = (d: Date, a: Date, b: Date) => {
@@ -670,7 +672,7 @@ function DetailModal({ rows, title, period, D, t, onClose }: DetailModalProps) {
                 transition:'background 0.1s',
               }}>
                 <span style={{fontSize:11,color:muted,fontWeight:600}}>{row.id}</span>
-                <span style={{fontSize:11,color:muted,whiteSpace:'nowrap'}}>{row.date}</span>
+                <span style={{fontSize:11,color:muted,whiteSpace:'nowrap'}}>{formatDisplayDate(row.date)}</span>
                 <span style={{fontSize:11,color:txt,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.group}</span>
                 {!isMobile && <span style={{fontSize:11,color:txt,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.item}</span>}
                 {!isMobile && <span style={{fontSize:11,color:muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{row.desc}</span>}
@@ -722,6 +724,14 @@ function DetailModal({ rows, title, period, D, t, onClose }: DetailModalProps) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export function AdminZatratiTab({ D, card, divider, sub, t, showBalances, selectedCompanyIds, viewOrg = 'boran' }: Props) {
+  const { companies } = useCompanies();
+  const selectedOrgNames = (selectedCompanyIds && selectedCompanyIds.size > 0
+    ? companies.filter(c => selectedCompanyIds.has(c.id))
+    : []
+  ).map(c => c.shortName);
+  const multiOrgLabel = selectedOrgNames.length > 0
+    ? selectedOrgNames.join(' · ')
+    : `${selectedCompanyIds?.size ?? 1} ta tashkilot`;
   // Date range
   const [rangeStart, setRangeStart] = useState<Date>(new Date(2026,2,1));   // Mar 1
   const [rangeEnd,   setRangeEnd]   = useState<Date>(new Date(2026,2,10));  // Mar 10 (today)
@@ -808,7 +818,7 @@ export function AdminZatratiTab({ D, card, divider, sub, t, showBalances, select
 
   // ── Dynamic date-based filtering ──────────────────────────────────────────
   const parseTxDate = (s:string) => {
-    const [d,m,y] = s.split('.');
+    const [d,m,y] = s.split(/[.\-/]/);
     return new Date(+y, +m-1, +d);
   };
 
@@ -899,8 +909,8 @@ export function AdminZatratiTab({ D, card, divider, sub, t, showBalances, select
 
     // ── Sheet 1: Xulosa (Category summary) ──────────────────────────────
     const orgLabel = viewOrg === 'all' || (selectedCompanyIds && selectedCompanyIds.size > 1)
-      ? `Barcha tashkilotlar (${selectedCompanyIds?.size ?? 1} ta)`
-      : viewOrg;
+      ? multiOrgLabel
+      : (companies.find(c => c.id === viewOrg)?.shortName ?? viewOrg);
     const summaryRows: (string | number)[][] = [
       [`Xarajatlar hisoboti: ${period}`],
       [`Tashkilot: ${orgLabel}`],
@@ -1063,9 +1073,8 @@ export function AdminZatratiTab({ D, card, divider, sub, t, showBalances, select
           <div style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:12,background:D?'rgba(34,197,94,0.08)':'rgba(34,197,94,0.07)',border:`1px solid ${D?'rgba(34,197,94,0.2)':'rgba(34,197,94,0.2)'}`}}>
             <span style={{fontSize:11,fontWeight:700,color:'#22c55e'}}>
               {viewOrg === 'all' || (selectedCompanyIds && selectedCompanyIds.size > 1)
-                ? `🌐 ${selectedCompanyIds?.size ?? 1} ta tashkilot`
-                : `🏢 ${viewOrg}`}
-            </span>
+                ? `🌐 ${multiOrgLabel}`
+                : `🏢 ${companies.find(c => c.id === viewOrg)?.shortName ?? viewOrg}`}            </span>
           </div>
         </div>
 

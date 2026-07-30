@@ -389,7 +389,7 @@ const getMockDaysWithOrders = (year: number, month: number): Set<number> => {
 export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }: Props) {
   const today = new Date();
   const fmtDate = (d: Date) =>
-    `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(2)}`;
+    `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 
   const [currentDate, setCurrentDate] = useState(today);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);

@@ -295,6 +295,7 @@ data class DebtHistoryItemDto(
     val type: String = "payment",
     val method: String? = null,
     val orderId: String? = null,
+    val createdAt: String? = null,
 )
 
 data class DebtMonthlyPointDto(

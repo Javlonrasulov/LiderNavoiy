@@ -229,6 +229,64 @@ export class OrdersService {
       }
     }
 
+    const onWayOrders = onWay.filter((order) => myClientIds.has(order.clientId));
+    const unpaidOrders = unpaidDelivered.filter((o) => clientMap.has(o.clientId));
+    const deliveryOrderIds = [
+      ...new Set([...onWayOrders, ...unpaidOrders].map((o) => o.id)),
+    ];
+
+    const paymentRows = deliveryOrderIds.length
+      ? await this.paymentRepo.find({
+          where: { orderId: In(deliveryOrderIds) },
+          order: { createdAt: 'ASC' },
+        })
+      : [];
+    const collectedRows = paymentRows.filter((p) => Number(p.paidAmount) > 0.01);
+    const collectorIds = [
+      ...new Set(
+        collectedRows
+          .map((p) => p.collectorDistributorId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const collectorProfiles = collectorIds.length
+      ? await this.profileRepo.find({
+          where: { id: In(collectorIds) },
+          relations: ['user'],
+        })
+      : [];
+    const collectorNameById = new Map(
+      collectorProfiles.map((p) => [
+        p.id,
+        p.user?.fullName?.trim() || p.user?.username || p.phone || 'Dostavkachi',
+      ]),
+    );
+    const paymentsByOrder = new Map<
+      string,
+      Array<{
+        id: string;
+        amount: number;
+        method: string;
+        collectorName: string | null;
+        collectedAt: string;
+        photoUrl: string | null;
+      }>
+    >();
+    for (const p of collectedRows) {
+      const list = paymentsByOrder.get(p.orderId) ?? [];
+      list.push({
+        id: p.id,
+        amount: Number(p.paidAmount),
+        method: p.method,
+        collectorName: p.collectorDistributorId
+          ? collectorNameById.get(p.collectorDistributorId) ?? null
+          : null,
+        collectedAt: p.createdAt.toISOString(),
+        photoUrl: p.photoUrl ?? null,
+      });
+      paymentsByOrder.set(p.orderId, list);
+    }
+
     const mapOrder = (order: Order) => {
       const client = clientMap.get(order.clientId)!;
       const due = dueAtByOrder.get(order.id);
@@ -256,11 +314,11 @@ export class OrdersService {
         clientPhone: client.phone ?? null,
         clientLatitude: client.latitude ?? null,
         clientLongitude: client.longitude ?? null,
+        payments: paymentsByOrder.get(order.id) ?? [],
       };
     };
 
-    const onWayMine = onWay
-      .filter((order) => myClientIds.has(order.clientId))
+    const onWayMine = onWayOrders
       .map(mapOrder)
       .sort((a, b) => {
         const sa = a.deliverySequence ?? Number.MAX_SAFE_INTEGER;
@@ -271,9 +329,7 @@ export class OrdersService {
         return tb - ta;
       });
 
-    const unpaidMine = unpaidDelivered
-      .filter((o) => clientMap.has(o.clientId))
-      .map(mapOrder);
+    const unpaidMine = unpaidOrders.map(mapOrder);
 
     const seen = new Set<string>();
     const merged: ReturnType<typeof mapOrder>[] = [];

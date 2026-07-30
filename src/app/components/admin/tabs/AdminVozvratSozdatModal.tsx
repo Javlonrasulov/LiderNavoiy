@@ -4,6 +4,7 @@ import {
   Search, Save, Check, Plus, RefreshCw, Trash2, ListChecks, Calendar,
 } from 'lucide-react';
 import { demo, demoRec, demoRecKeys } from '../../../data/demoLimit';
+import { formatDisplayDate } from '../../../utils/dateFormat';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OrderLine {
@@ -153,7 +154,7 @@ function CalendarPickerWidget({
   // Navigate to month of first available date when client changes
   useEffect(() => {
     if (availableDates.length > 0) {
-      const p = availableDates[0].split('.');
+      const p = availableDates[0].split(/[.\-/]/);
       setViewMonth(parseInt(p[1], 10) - 1);
       setViewYear(parseInt(p[2], 10));
     }
@@ -215,7 +216,7 @@ function CalendarPickerWidget({
       >
         <Calendar size={12} style={{ color: sub, flexShrink:0 }} />
         <span style={{ flex:1, color: value ? acc : sub, fontWeight: value ? 600 : 400, fontSize:12 }}>
-          {value || '— Tanlang —'}
+          {value ? formatDisplayDate(value) : '— Tanlang —'}
         </span>
         <ChevronRight size={10} style={{ transform:'rotate(90deg)', color:sub, flexShrink:0 }} />
       </button>

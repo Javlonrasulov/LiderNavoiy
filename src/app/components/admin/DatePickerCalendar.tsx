@@ -74,7 +74,7 @@ export function DatePickerCalendar({ value, onChange, label, D, sub, markedDates
   };
 
   const displayVal = value
-    ? value.split('-').reverse().join('.')
+    ? value.split('-').reverse().join('-')
     : '—';
 
   const isSelected = (day: number) =>

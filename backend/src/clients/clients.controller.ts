@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -21,7 +22,7 @@ import { ClientReconciliationService } from './client-reconciliation.service';
 import { ClientCredentialsService } from './client-credentials.service';
 import { ClientStatsService } from './client-stats.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { CreateClientDto, UpdateClientDto, TransferClientsDto } from './dto/client.dto';
 import { SetClientCredentialsDto } from './dto/client-credentials.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
@@ -80,6 +81,18 @@ export class ClientsController {
     const scopedCompany =
       companyId ?? req.user.distributorProfile?.companyId ?? undefined;
     return this.service.findLines(scopedCompany);
+  }
+
+  @Post('transfer')
+  @ApiOperation({ summary: 'Transfer clients to another organization (INN duplicate check)' })
+  transfer(
+    @Request() req: { user: User },
+    @Body() dto: TransferClientsDto,
+  ) {
+    if (req.user.role !== UserRole.ADMIN && req.user.role !== UserRole.MANAGER) {
+      throw new ForbiddenException('Faqat admin/manager o\'tkaza oladi');
+    }
+    return this.service.transfer(dto);
   }
 
   @Get('app-username-available')

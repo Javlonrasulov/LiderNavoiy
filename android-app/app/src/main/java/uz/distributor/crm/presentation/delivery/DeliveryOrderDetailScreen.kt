@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
+import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavGlassInfoToast
@@ -297,8 +298,17 @@ fun DeliveryOrderDetailScreen(
                                 fontSize = 24.sp,
                                 color = textPrimary,
                             )
-                            if (order.paidAmount > 0 || remaining > 0) {
+                            if (order.paidAmount > 0.01) {
                                 Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "${AppStrings.deliveryPaidLabel(lang)}: ${formatter.format(order.paidAmount)} ${AppStrings.sumCurrency(lang)}",
+                                    color = Color(0xFF16A34A),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                            if (order.paidAmount > 0 || remaining > 0) {
+                                Spacer(Modifier.height(6.dp))
                                 Text(
                                     "${AppStrings.deliveryRemaining(lang)}: ${formatter.format(remaining)} ${AppStrings.sumCurrency(lang)}",
                                     color = if (remaining > 0.01) Color(0xFFDC2626) else textMuted,
@@ -319,6 +329,64 @@ fun DeliveryOrderDetailScreen(
                                         )
                                     }
                                 }
+                        }
+                    }
+
+                    if (order.payments.isNotEmpty()) {
+                        Spacer(Modifier.height(20.dp))
+                        Text(
+                            AppStrings.deliveryPaymentsLabel(lang),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            color = textPrimary,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(chipBg)
+                                .padding(horizontal = 14.dp, vertical = 4.dp),
+                        ) {
+                            order.payments.forEachIndexed { index, payment ->
+                                val whenText = payment.collectedAt
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { formatDueAtDisplay(it) }
+                                val who = payment.collectorName?.takeIf { it.isNotBlank() }
+                                val methodLabel = paymentMethodLabel(payment.method, lang)
+                                Column(Modifier.padding(vertical = 12.dp)) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top,
+                                    ) {
+                                        Text(
+                                            "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
+                                            color = textPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 15.sp,
+                                        )
+                                        if (methodLabel != null) {
+                                            Text(methodLabel, color = textMuted, fontSize = 12.sp)
+                                        }
+                                    }
+                                    if (who != null) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "${AppStrings.deliveryCollectedBy(lang)}: $who",
+                                            color = textMuted,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                    if (whenText != null) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(whenText, color = textMuted, fontSize = 12.sp)
+                                    }
+                                }
+                                if (index < order.payments.lastIndex) {
+                                    HorizontalDivider(color = textMuted.copy(alpha = 0.12f))
+                                }
+                            }
                         }
                     }
 
@@ -569,4 +637,11 @@ private fun DetailRow(
             Text(value, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
+}
+
+private fun paymentMethodLabel(method: String?, lang: AppLanguage): String? = when (method?.lowercase()) {
+    "cash" -> AppStrings.paymentCash(lang)
+    "terminal" -> AppStrings.deliveryPayTerminal(lang)
+    "deferred" -> AppStrings.deliveryPayLater(lang)
+    else -> method?.takeIf { it.isNotBlank() }
 }

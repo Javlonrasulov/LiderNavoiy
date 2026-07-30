@@ -118,10 +118,12 @@ export function AdminNavbar({
                       <span key={c.id} className="text-xs md:text-sm leading-none">{c.icon}</span>
                     ))}
                   </div>
-                  <p className={`text-[10px] md:text-xs ${sub} max-w-[80px] md:max-w-[220px] leading-tight whitespace-normal`}>
-                    {selectedCompanyIds.size === 1
-                      ? companies.find(c => selectedCompanyIds.has(c.id))?.name
-                      : `${selectedCompanyIds.size} ta tashkilot tanlangan`}
+                  <p className={`text-[10px] md:text-xs ${sub} max-w-[120px] md:max-w-[320px] leading-tight whitespace-normal`}>
+                    {selectedOrgs.length === 0
+                      ? '—'
+                      : selectedOrgs.length === 1
+                        ? selectedOrgs[0].name
+                        : selectedOrgs.map(c => c.shortName).join(' · ')}
                   </p>
                   <ChevronDown size={11} className={`${sub} transition-transform duration-200 flex-shrink-0 mt-0.5 ${showCompanyDropdown ? 'rotate-180' : ''}`} />
                 </button>
@@ -190,9 +192,11 @@ export function AdminNavbar({
             </button>
             <span className={`text-[11px] font-semibold truncate ${sub}`}>
               {navItems.flatMap(n => n.children ? [n, ...n.children] : [n]).find(n => n.id === tab)?.label}
-              {selectedCompanyIds.size === 1
-                ? ` · ${companies.find(c => selectedCompanyIds.has(c.id))?.icon} ${companies.find(c => selectedCompanyIds.has(c.id))?.shortName}`
-                : ` · ${selectedCompanyIds.size} ta tashkilot`}
+              {selectedOrgs.length === 1
+                ? ` · ${selectedOrgs[0].icon} ${selectedOrgs[0].shortName}`
+                : selectedOrgs.length > 1
+                  ? ` · ${selectedOrgs.map(c => c.shortName).join(' · ')}`
+                  : ''}
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -312,11 +316,13 @@ export function AdminNavbar({
                 );
               })}
               {selectedCompanyIds.size > 1 && (
-                <div className={`px-4 py-3 border-t ${D ? 'border-gray-700' : 'border-gray-100'} flex items-center justify-between`}>
-                  <p className={`text-xs ${sub}`}>{selectedCompanyIds.size} ta tanlangan</p>
+                <div className={`px-4 py-3 border-t ${D ? 'border-gray-700' : 'border-gray-100'} flex items-center justify-between gap-3`}>
+                  <p className={`text-xs ${sub} min-w-0 truncate`}>
+                    {selectedOrgs.map(c => c.shortName).join(' · ')}
+                  </p>
                   <button
                     onClick={() => { setSelectedCompanyIds(() => new Set([selectedCompany.id])); setShowCompanyDropdown(() => false); }}
-                    className="text-xs text-indigo-500 hover:text-indigo-400 font-medium"
+                    className="text-xs text-indigo-500 hover:text-indigo-400 font-medium flex-shrink-0"
                   >
                     Tozalash
                   </button>

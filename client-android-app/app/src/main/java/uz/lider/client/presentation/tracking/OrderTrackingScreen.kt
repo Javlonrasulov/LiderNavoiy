@@ -374,7 +374,8 @@ fun OrderTrackingScreen(
                                 targetValue = totalFlowingLines.toFloat().coerceAtLeast(1f),
                                 animationSpec = infiniteRepeatable(
                                     animation = tween(
-                                        durationMillis = (totalFlowingLines * 900).coerceAtLeast(1800),
+                                        // Har chiziq ~1.8s — sekinroq suv oqimi
+                                        durationMillis = (totalFlowingLines * 1800).coerceAtLeast(3600),
                                         easing = LinearEasing,
                                     ),
                                     repeatMode = RepeatMode.Restart,

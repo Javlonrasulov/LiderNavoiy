@@ -518,7 +518,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   ) : <span />}
                   <div style={{ fontSize: 11, opacity: 0.85, textAlign: 'right' }}>
                     {validFrom && validTo
-                      ? `${validFrom.split('-').reverse().join('.')} — ${validTo.split('-').reverse().join('.')}`
+                      ? `${validFrom.split('-').reverse().join('-')} — ${validTo.split('-').reverse().join('-')}`
                       : (t.aksiyaUnlimited ?? 'Cheksiz')}
                   </div>
                 </div>

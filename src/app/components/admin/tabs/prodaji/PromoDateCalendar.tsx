@@ -26,7 +26,7 @@ function parseDate(d: string): Date | null {
 function fmtDisplay(d: string) {
   if (!d) return '';
   const [y, m, dd] = d.split('-');
-  return `${dd}.${m}.${y}`;
+  return `${dd}-${m}-${y}`;
 }
 
 function startOfWeek(d: Date) {

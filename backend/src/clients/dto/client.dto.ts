@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsNumber,
   IsOptional,
@@ -216,4 +217,27 @@ export class UpdateClientDto {
   @IsString()
   @MinLength(6)
   appPassword?: string;
+}
+
+export class TransferClientsDto {
+  @ApiProperty({ description: 'Target organization id' })
+  @IsString()
+  @MinLength(1)
+  targetCompanyId: string;
+
+  @ApiPropertyOptional({ description: 'Source organization (required when transferAll=true)' })
+  @IsOptional()
+  @IsString()
+  sourceCompanyId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Specific client IDs to transfer' })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  clientIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Transfer all clients from sourceCompanyId' })
+  @IsOptional()
+  @IsBoolean()
+  transferAll?: boolean;
 }

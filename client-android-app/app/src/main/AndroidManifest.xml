@@ -19,7 +19,7 @@
             android:name=".presentation.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.LiderClient"
+            android:theme="@style/Theme.LiderClient.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

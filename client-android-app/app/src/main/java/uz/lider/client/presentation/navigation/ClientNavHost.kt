@@ -1,7 +1,14 @@
 package uz.lider.client.presentation.navigation
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.MaterialTheme
@@ -14,7 +21,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -26,15 +37,20 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import uz.lider.client.R
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
+import uz.lider.client.data.repository.DebtRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertState
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
+import uz.lider.client.data.repository.RecentPaymentSignal
 import uz.lider.client.presentation.analytics.AnalyticsScreen
 import uz.lider.client.presentation.auth.LoginScreen
 import uz.lider.client.presentation.cart.CartScreen
@@ -88,15 +104,37 @@ class ClientNavigationViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     cartRepository: CartRepository,
     private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
+    private val debtRepository: DebtRepository,
 ) : ViewModel() {
     val sessionExpired = authRepository.sessionExpired
     val cartItems = cartRepository.items
     val user = authRepository.getUserFlow()
     val paymentPhotoAlert = paymentPhotoAlertStore.state
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentPhotoAlertState())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, PaymentPhotoAlertState())
 
     init {
         viewModelScope.launch { paymentPhotoAlertStore.clearIfExpired() }
+        // Push kelmasa ham — to‘lov tarixidan modal
+        viewModelScope.launch {
+            while (isActive) {
+                runCatching { pollRecentPayments() }
+                delay(4_000)
+            }
+        }
+    }
+
+    private suspend fun pollRecentPayments() {
+        val debt = debtRepository.getDebt() ?: return
+        val signals = debt.history
+            .filter { it.isPayment && it.id.isNotBlank() && it.createdAtMs > 0L }
+            .map {
+                RecentPaymentSignal(
+                    id = it.id,
+                    orderId = it.orderId,
+                    createdAtMs = it.createdAtMs,
+                )
+            }
+        paymentPhotoAlertStore.ingestRecentPayments(signals)
     }
 
     fun dismissPaymentPhotoModal() {
@@ -126,7 +164,6 @@ fun ClientNavHost(
     val paymentPhotoAlert by navViewModel.paymentPhotoAlert.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val onDashboard = currentRoute == ClientRoutes.DASHBOARD
     val loggedIn = currentRoute != null &&
         currentRoute != ClientRoutes.SPLASH &&
         currentRoute != ClientRoutes.LOGIN
@@ -293,8 +330,8 @@ fun ClientNavHost(
                 )
             }
 
-            // Asosiy ekranda (va login'dan keyin) — to‘lov push modal
-            if (loggedIn && onDashboard && paymentPhotoAlert.shouldShowModal) {
+            // To‘lov olinganda — login bo‘lgan har qanday ekranda majburiy modal
+            if (loggedIn && paymentPhotoAlert.shouldShowModal) {
                 PaymentPhotoAlertModal(
                     title = localized("pay_photo_alert_title"),
                     body = localized("pay_photo_alert_body"),
@@ -311,7 +348,27 @@ private fun SplashRoute(onLoggedIn: () -> Unit, onNotLoggedIn: () -> Unit) {
     LaunchedEffect(Unit) {
         viewModel.checkAuth { if (it) onLoggedIn() else onNotLoggedIn() }
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = ClientColors.Primary)
+    // Agent APK uslubi: oq fon + markazda logo
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.White),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(id = R.drawable.splash_logo),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(160.dp)
+                    .clip(RoundedCornerShape(36.dp)),
+            )
+            Spacer(Modifier.height(28.dp))
+            CircularProgressIndicator(
+                color = ClientColors.Primary,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(28.dp),
+            )
+        }
     }
 }

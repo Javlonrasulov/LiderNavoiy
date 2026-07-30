@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.DebtRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.ProfileRepository
+import uz.lider.client.localization.AppLanguage
 import uz.lider.client.presentation.components.formatCompactMoney
 import uz.lider.client.presentation.dashboard.DashboardDateFilter
 import uz.lider.client.presentation.dashboard.DashboardDateRange
@@ -23,11 +25,14 @@ import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 data class DebtPayment(
+    val id: String = "",
     val date: String,
     val amount: String,
     val amountValue: Double = 0.0,
     val typeKey: String,
     val isPayment: Boolean,
+    val orderId: String? = null,
+    val createdAtMs: Long = 0L,
 ) {
     fun localDate(): LocalDate? = try {
         LocalDate.parse(date, debtDateFormatter)
@@ -59,11 +64,14 @@ data class DebtUiState(
 class DebtViewModel @Inject constructor(
     private val debtRepository: DebtRepository,
     private val profileRepository: ProfileRepository,
+    private val appSettingsRepository: AppSettingsRepository,
     paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DebtUiState())
     val uiState: StateFlow<DebtUiState> = _uiState.asStateFlow()
+
+    private var language: AppLanguage = AppLanguage.DEFAULT
 
     /** To‘lov pushdan keyin 30 daqiqa — rasm eslatmasi */
     val showPayPhotoBanner: StateFlow<Boolean> = paymentPhotoAlertStore.state
@@ -71,6 +79,9 @@ class DebtViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     init {
+        viewModelScope.launch {
+            appSettingsRepository.language.collect { language = it }
+        }
         load()
     }
 
@@ -125,8 +136,8 @@ class DebtViewModel @Inject constructor(
                 chartValues = listOf(currentDebt.toFloat(), currentDebt.toFloat()),
                 chartLabels = emptyList(),
                 chartValueLabels = listOf(
-                    formatCompactMoney(currentDebt),
-                    formatCompactMoney(currentDebt),
+                    formatCompactMoney(currentDebt, language),
+                    formatCompactMoney(currentDebt, language),
                 ),
                 dayDebtAmounts = emptyMap(),
             )
@@ -223,7 +234,7 @@ class DebtViewModel @Inject constructor(
         if (totalDays <= 1) {
             val amount = debtByDay[range.start] ?: 0.0
             val label = range.start.format(dayFmt)
-            val compact = formatCompactMoney(amount)
+            val compact = formatCompactMoney(amount, language)
             return ChartSeries(
                 values = listOf(amount.toFloat(), amount.toFloat()),
                 labels = listOf(label, label),
@@ -261,7 +272,7 @@ class DebtViewModel @Inject constructor(
             } else {
                 bucketStart.format(dayFmt)
             }
-            valueLabels += formatCompactMoney(sum)
+            valueLabels += formatCompactMoney(sum, language)
         }
 
         return if (values.size == 1) {

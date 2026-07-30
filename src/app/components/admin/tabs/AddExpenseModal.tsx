@@ -5,6 +5,7 @@ import {
   AlertCircle, ArrowRightLeft,
 } from 'lucide-react';
 import { demo } from '../../../data/demoLimit';
+import { formatDisplayDateFromDate } from '../../../utils/dateFormat';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Props {
@@ -251,7 +252,7 @@ function SectionLabel({ label, muted }: { label: string; muted: string }) {
 export function AddExpenseModal({ D, t, onClose, onSave }: Props) {
   const [form, setForm] = useState<ExpenseForm>({
     number: '1',
-    date: new Date().toLocaleDateString('ru-RU'),
+    date: formatDisplayDateFromDate(new Date()),
     author: '',
     organization: 'OOO "BORAN LEADERS"',
     kassa: 'Касса SHERIN',

@@ -531,7 +531,10 @@ private fun DayCell(
         when {
             amount != null -> {
                 Text(
-                    text = uz.lider.client.presentation.components.formatCompactMoney(amount),
+                    text = uz.lider.client.presentation.components.formatCompactMoney(
+                        amount,
+                        LocalAppLanguage.current,
+                    ),
                     color = if (isEdge) Color(0xFFFF8A9A) else LiquidGlass.Rose,
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,

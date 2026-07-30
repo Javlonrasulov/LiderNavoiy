@@ -209,6 +209,15 @@ data class VisitDto(
     val orderSource: String? = null,
 )
 
+data class OrderPaymentDto(
+    val id: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val amount: Double = 0.0,
+    val method: String? = null,
+    val collectorName: String? = null,
+    val collectedAt: String? = null,
+    val photoUrl: String? = null,
+)
+
 data class OrderDto(
     val id: String,
     val clientId: String,
@@ -232,6 +241,7 @@ data class OrderDto(
     val dueAt: String? = null,
     val updatedAt: String? = null,
     val isUrgent: Boolean = false,
+    val payments: List<OrderPaymentDto> = emptyList(),
 ) {
     val remainingBalance: Double
         get() = (totalAmount - returnedAmount - paidAmount).coerceAtLeast(0.0)

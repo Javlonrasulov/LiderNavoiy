@@ -8,14 +8,17 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import uz.lider.client.BuildConfig
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +37,12 @@ data class PaymentPhotoAlertState(
     val shouldShowModal: Boolean get() = isActive && !modalDismissed
 }
 
+data class RecentPaymentSignal(
+    val id: String,
+    val orderId: String? = null,
+    val createdAtMs: Long,
+)
+
 @Singleton
 class PaymentPhotoAlertStore @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,11 +50,11 @@ class PaymentPhotoAlertStore @Inject constructor(
     private val expiresAtKey = longPreferencesKey("expires_at_ms")
     private val modalDismissedKey = booleanPreferencesKey("modal_dismissed")
     private val orderIdKey = stringPreferencesKey("order_id")
-    /** Yo‘ldagi xarita banneri — shu versionCode da yopilgan */
     private val mapHintDismissedVersionKey = intPreferencesKey("map_hint_dismissed_version")
+    private val handledPaymentIdsKey = stringSetPreferencesKey("handled_payment_ids")
+    private val bootstrapDoneKey = booleanPreferencesKey("payments_bootstrap_done")
 
     private val _modalEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
-    /** Yangi to‘lov push — modalni darhol ko‘rsatish */
     val modalEvents: SharedFlow<Unit> = _modalEvents.asSharedFlow()
 
     val state: Flow<PaymentPhotoAlertState> = context.paymentPhotoAlertDataStore.data.map { prefs ->
@@ -59,7 +68,6 @@ class PaymentPhotoAlertStore @Inject constructor(
         )
     }
 
-    /** Yo‘ldagi xarita ogohlantirishi — ilova yangilanmaguncha yopiq qoladi */
     val showMapRoutePayHint: Flow<Boolean> = context.paymentPhotoAlertDataStore.data.map { prefs ->
         (prefs[mapHintDismissedVersionKey] ?: 0) != BuildConfig.VERSION_CODE
     }
@@ -70,18 +78,69 @@ class PaymentPhotoAlertStore @Inject constructor(
         }
     }
 
-    suspend fun recordPaymentReceived(orderId: String? = null) {
-        val expiresAt = System.currentTimeMillis() + TTL_MS
+    /** Push / FCM / intent — modal majburiy. */
+    suspend fun recordPaymentReceived(orderId: String? = null, paymentId: String? = null) {
         context.paymentPhotoAlertDataStore.edit { prefs ->
-            prefs[expiresAtKey] = expiresAt
+            prefs[expiresAtKey] = System.currentTimeMillis() + TTL_MS
             prefs[modalDismissedKey] = false
             if (!orderId.isNullOrBlank()) {
                 prefs[orderIdKey] = orderId
             } else {
                 prefs.remove(orderIdKey)
             }
+            if (!paymentId.isNullOrBlank()) {
+                val handled = prefs[handledPaymentIdsKey].orEmpty().toMutableSet()
+                handled.add(paymentId)
+                prefs[handledPaymentIdsKey] = handled.takeLast(80).toSet()
+            }
         }
         _modalEvents.tryEmit(Unit)
+    }
+
+    /**
+     * Push kelmasa ham: yangi to‘lovlar (oxirgi 30 daqiqa) → modal.
+     * Birinchi sync — faqat bootstrap (eski to‘lovlar modal ochmaydi).
+     */
+    suspend fun ingestRecentPayments(payments: List<RecentPaymentSignal>) {
+        if (payments.isEmpty()) return
+        val prefsSnap = context.paymentPhotoAlertDataStore.data.first()
+        val bootstrapped = prefsSnap[bootstrapDoneKey] == true
+        val handled = prefsSnap[handledPaymentIdsKey].orEmpty().toMutableSet()
+        val now = System.currentTimeMillis()
+
+        if (!bootstrapped) {
+            context.paymentPhotoAlertDataStore.edit { prefs ->
+                prefs[bootstrapDoneKey] = true
+                prefs[handledPaymentIdsKey] = payments.map { it.id }.toSet()
+            }
+            return
+        }
+
+        val fresh = payments.filter { p ->
+            p.id.isNotBlank() &&
+                p.id !in handled &&
+                now - p.createdAtMs in 0..TTL_MS
+        }
+        if (fresh.isEmpty()) return
+
+        val newest = fresh.maxByOrNull { it.createdAtMs } ?: return
+        handled.addAll(fresh.map { it.id })
+        context.paymentPhotoAlertDataStore.edit { prefs ->
+            prefs[handledPaymentIdsKey] = handled.takeLast(80).toSet()
+            prefs[expiresAtKey] = now + TTL_MS
+            prefs[modalDismissedKey] = false
+            val oid = newest.orderId
+            if (!oid.isNullOrBlank()) prefs[orderIdKey] = oid else prefs.remove(orderIdKey)
+        }
+        _modalEvents.tryEmit(Unit)
+    }
+
+    /** Yo‘ldagi buyurtma yetkazilganda (pushsiz). */
+    suspend fun onOrderDelivered(orderId: String) {
+        val key = "ord-$orderId"
+        val handled = context.paymentPhotoAlertDataStore.data.first()[handledPaymentIdsKey].orEmpty()
+        if (key in handled) return
+        recordPaymentReceived(orderId = orderId, paymentId = key)
     }
 
     suspend fun dismissModal() {
@@ -106,5 +165,15 @@ class PaymentPhotoAlertStore @Inject constructor(
         const val EXTRA_TYPE = "push_type"
         const val EXTRA_ORDER_ID = "orderId"
         const val TYPE_PAYMENT = "payment"
+
+        fun parseCreatedAtMs(iso: String?): Long? {
+            if (iso.isNullOrBlank()) return null
+            return runCatching { Instant.parse(iso).toEpochMilli() }.getOrNull()
+        }
     }
+}
+
+private fun <T> Collection<T>.takeLast(n: Int): List<T> {
+    if (size <= n) return toList()
+    return drop(size - n)
 }

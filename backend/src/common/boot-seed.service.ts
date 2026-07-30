@@ -60,6 +60,16 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`products.companyId migrate: ${(err as Error).message}`);
     }
 
+    // products.imageData — Render disk ephemeral: rasm DB da
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS "imageData" text NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`products.imageData migrate: ${(err as Error).message}`);
+    }
+
     try {
       await this.dataSource.query(`
         ALTER TABLE orders
@@ -225,8 +235,8 @@ export class BootSeedService implements OnModuleInit {
       courierProfile2 = await this.profiles.save(
         this.profiles.create({
           userId: courierUser2.id,
-          companyId: 'boran',
-          companyName: 'Boran Leaders+',
+          companyId: 'zarafshon',
+          companyName: 'Зарафшон Шерин',
           lineCode: 'D-02',
           phone: '+998901112233',
           position: 'Dostavkachi',
@@ -237,11 +247,13 @@ export class BootSeedService implements OnModuleInit {
           lastLocationAt: null,
         }),
       );
-      this.logger.log('Boot seed: dostavkachi #2 yaratildi');
+      this.logger.log('Boot seed: dostavkachi #2 (zarafshon) yaratildi');
     } else {
       courierProfile2.position = 'Dostavkachi';
       courierProfile2.phone = courierProfile2.phone || '+998901112233';
       courierProfile2.lineCode = courierProfile2.lineCode || 'D-02';
+      courierProfile2.companyId = 'zarafshon';
+      courierProfile2.companyName = courierProfile2.companyName || 'Зарафшон Шерин';
       const locAt2 = courierProfile2.lastLocationAt
         ? new Date(courierProfile2.lastLocationAt).getTime()
         : 0;
@@ -320,8 +332,8 @@ export class BootSeedService implements OnModuleInit {
           phone: demoClient.phone || '+998901112233',
           address: 'Navoiy',
           balance: 0,
-          latitude: 40.0921,
-          longitude: 65.3612,
+          latitude: 40.098,
+          longitude: 65.355,
           companyId: 'zarafshon',
           lineCode: '01',
           category: 'Standard',
@@ -330,9 +342,22 @@ export class BootSeedService implements OnModuleInit {
         }),
       );
       this.logger.log('Boot seed: demo klient (zarafshon) yaratildi');
-    } else if (!demoClientZar.phone) {
-      demoClientZar.phone = demoClient.phone || '+998901112233';
-      await this.clients.save(demoClientZar);
+    } else {
+      let dirtyZar = false;
+      if (!demoClientZar.phone) {
+        demoClientZar.phone = demoClient.phone || '+998901112233';
+        dirtyZar = true;
+      }
+      if (
+        demoClientZar.latitude == null ||
+        demoClientZar.longitude == null ||
+        !this.isUzCoord(demoClientZar.latitude, demoClientZar.longitude)
+      ) {
+        demoClientZar.latitude = 40.098;
+        demoClientZar.longitude = 65.355;
+        dirtyZar = true;
+      }
+      if (dirtyZar) await this.clients.save(demoClientZar);
     }
 
     const mijozUser = await this.ensureUser({
@@ -392,7 +417,94 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`orders companyId backfill: ${(err as Error).message}`);
     }
 
+    // Multi-org xarita testi: Boran + Zarafshon ON_WAY (idempotent)
+    await this.ensureDemoOnWayOrder({
+      clientId: demoClient.id,
+      companyId: 'boran',
+      distributorId: profile.id,
+      deliveryDistributorId: courierProfile.id,
+      deliverySequence: 12,
+      totalAmount: 450000,
+      productName: 'Demo Boran yetkazish',
+    });
+    await this.ensureDemoOnWayOrder({
+      clientId: demoClientZar.id,
+      companyId: 'zarafshon',
+      distributorId: profile.id,
+      deliveryDistributorId: courierProfile2.id,
+      deliverySequence: 5,
+      totalAmount: 320000,
+      productName: 'Demo Zarafshon yetkazish',
+    });
+
     this.logger.log('Boot seed: admin/agent/dostavkachi/dostavkachi2/mijoz — parol 123456');
+  }
+
+  private async ensureDemoOnWayOrder(opts: {
+    clientId: string;
+    companyId: string;
+    distributorId: string;
+    deliveryDistributorId: string;
+    deliverySequence: number;
+    totalAmount: number;
+    productName: string;
+  }) {
+    try {
+      const existing = await this.dataSource.query(
+        `SELECT id FROM orders
+         WHERE "clientId" = $1 AND "companyId" = $2 AND status = 'on_way'
+         LIMIT 1`,
+        [opts.clientId, opts.companyId],
+      );
+      if (existing?.[0]?.id) {
+        await this.dataSource.query(
+          `UPDATE orders SET
+             "deliveryDistributorId" = $2,
+             "deliverySequence" = $3,
+             "totalAmount" = $4,
+             "updatedAt" = now()
+           WHERE id = $1`,
+          [
+            existing[0].id,
+            opts.deliveryDistributorId,
+            opts.deliverySequence,
+            opts.totalAmount,
+          ],
+        );
+        return;
+      }
+      const items = JSON.stringify([
+        {
+          productId: null,
+          productCode: 'DEMO',
+          productName: opts.productName,
+          quantity: 1,
+          price: opts.totalAmount,
+          unit: 'dona',
+        },
+      ]);
+      await this.dataSource.query(
+        `INSERT INTO orders
+         (id, "distributorId", "clientId", "companyId", "deliveryDistributorId", "deliverySequence",
+          status, source, "totalAmount", "paidAmount", "returnedAmount", "paymentStatus", items,
+          "isOfflineCreated", "isUrgent", "createdAt", "updatedAt")
+         VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5,
+                 'on_way', 'agent', $6, 0, 0, 'unpaid', $7::jsonb,
+                 false, false, now(), now())`,
+        [
+          opts.distributorId,
+          opts.clientId,
+          opts.companyId,
+          opts.deliveryDistributorId,
+          opts.deliverySequence,
+          opts.totalAmount,
+          items,
+        ],
+      );
+      this.logger.log(`Boot seed: ON_WAY (${opts.companyId}) yaratildi`);
+    } catch (err) {
+      this.logger.warn(`demo ON_WAY ${opts.companyId}: ${(err as Error).message}`);
+    }
   }
 
   private isUzCoord(lat: number, lng: number): boolean {

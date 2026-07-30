@@ -10,6 +10,7 @@ import { demo } from '../../../../data/demoLimit';
 import { api } from '../../../../api/client';
 import { backendOrderToZayavka, type ZayavkaRow } from '../../../../utils/orderApi';
 import { UrgentDangerIcon } from '../../UrgentDangerIcon';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../../utils/dateFormat';
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -23,7 +24,7 @@ export type Zayavka = ZayavkaRow & { id: string | number };
 
 /* ─── Module-level pure helpers (no state) ──────────────────── */
 function parseDateStr(s: string): Date | null {
-  const p = s.split('.');
+  const p = s.split(/[.\-/]/);
   if (p.length !== 3) return null;
   return new Date(+p[2], +p[1] - 1, +p[0]);
 }
@@ -44,7 +45,7 @@ function isAfterToday(d: Date, today = tashkentToday()) {
     || (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() > today.getDate());
 }
 function fmtShort(d: Date) {
-  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 }
 function buildGrid(month: Date): (Date | null)[] {
   const y = month.getFullYear(), mo = month.getMonth();
@@ -959,7 +960,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                       {r.clientName ?? 'Klient'} {r.clientCode ? `(${r.clientCode})` : ''}
                     </div>
                     <div style={{ fontSize: 12, color: muted }}>
-                      {new Date(r.createdAt).toLocaleString()} · {Math.round(r.totalAmount).toLocaleString()} сум
+                      {formatDisplayDateTime(r.createdAt)} · {Math.round(r.totalAmount).toLocaleString()} сум
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1073,7 +1074,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                             ? row.id.replace(/-/g, '').slice(0, 8).toUpperCase()
                             : row.num}
                         </span>
-                        <span style={{ fontSize:11, color: muted }}>{row.orderDate}</span>
+                        <span style={{ fontSize:11, color: muted }}>{formatDisplayDate(row.orderDate)}</span>
                         <span style={{ fontSize:11, color: muted }}>{row.agent}</span>
                       </div>
                     </div>

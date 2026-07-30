@@ -8,6 +8,7 @@ import { TovarYuklashCreateModal, ConfirmedOrder } from './TovarYuklashCreateMod
 import { demo } from '../../../../data/demoLimit';
 import { api, type Distributor } from '../../../../api/client';
 import { backendOrderToOtgr, type OtgrApiRow } from '../../../../utils/orderApi';
+import { formatDisplayDate } from '../../../../utils/dateFormat';
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -49,7 +50,7 @@ interface OtgrRow {
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 function parseDateStr(s: string): Date | null {
-  const p = s.split('.');
+  const p = s.split(/[.\-/]/);
   if (p.length !== 3) return null;
   return new Date(+p[2], +p[1] - 1, +p[0]);
 }
@@ -69,7 +70,7 @@ function isAfterToday(d: Date, today = tashkentToday()) {
     || (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() > today.getDate());
 }
 function fmtShort(d: Date) {
-  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
 }
 function buildGrid(month: Date): (Date | null)[] {
   const y = month.getFullYear(), mo = month.getMonth();
@@ -167,7 +168,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
         }> : [];
         setApiRows(list.map((o, i) => {
           const d = o.createdAt ? new Date(o.createdAt) : new Date();
-          const date = `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+          const date = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
           const isLoaded = o.status === 'on_way' || !!o.deliveryDistributorId;
           return {
             id: o.id,
@@ -439,6 +440,10 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
   const cellVal = (row: OtgrRow, key: string): string => {
     if (key === 'summa') return fmtSum(row.summa);
     if (key === 'ves')   return fmtVes(row.ves);
+    if (key === 'date' || key === 'timeOtgr') {
+      const v = (row as Record<string, unknown>)[key];
+      return v ? formatDisplayDate(String(v)) : '—';
+    }
     const v = (row as Record<string, unknown>)[key];
     return v !== undefined && v !== null && v !== '' ? String(v) : '—';
   };
@@ -814,7 +819,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
                   {/* meta */}
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
                     <span style={{ fontSize:11, color:muted }}>#{row.num}</span>
-                    <span style={{ fontSize:11, color:muted }}>{row.date}</span>
+                    <span style={{ fontSize:11, color:muted }}>{formatDisplayDate(row.date)}</span>
                     <span style={{ fontSize:11, color:muted }}>{row.driver}</span>
                   </div>
                 </div>
@@ -843,7 +848,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
                   { label: t.otgrVes       ?? 'Vazn',          val: fmtVes(row.ves)    },
                   { label: 'ExID',                              val: row.exid           },
                   { label: t.zDirection    ?? 'Yo\'nalish',    val: row.direction      },
-                  { label: t.otgrTime      ?? 'Yuklash vaqti', val: row.timeOtgr       },
+                  { label: t.otgrTime      ?? 'Yuklash vaqti', val: formatDisplayDate(row.timeOtgr) },
                   { label: t.otgrAuthor    ?? 'Muallif',       val: row.author         },
                 ].map(item => (
                   <div key={item.label} style={{ display:'flex', justifyContent:'space-between', gap:8 }}>

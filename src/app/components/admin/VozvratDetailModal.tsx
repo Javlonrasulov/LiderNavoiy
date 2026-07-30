@@ -4,6 +4,7 @@ import {
   X, Maximize2, Minimize2,
   FileDown, ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
 } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 /* ─── Types ─── */
 export interface VozRowRef {
@@ -117,8 +118,8 @@ export function VozvratDetailModal({ D, t, row, onClose }: Props) {
     /* ── Sheet 1: Tovarlar ── */
     const infoRows = [
       [t.vozNum ?? 'Номер', row.num],
-      [t.vozDateSend ?? 'Дата отправки', row.dateSend],
-      [t.vozDateAccept ?? 'Дата принятия', row.dateAccept],
+      [t.vozDateSend ?? 'Дата отправки', formatDisplayDate(row.dateSend)],
+      [t.vozDateAccept ?? 'Дата принятия', formatDisplayDate(row.dateAccept)],
       [t.detPoluchatel ?? 'Получатель', row.supplier],
       [t.vozSender ?? 'Отправитель', row.org || 'LEADERS BARAKA'],
       [t.detAvtor ?? 'Автор', 'Фарноков Жасур'],
@@ -195,8 +196,8 @@ export function VozvratDetailModal({ D, t, row, onClose }: Props) {
   /* Form fields */
   const mainFields = [
     { label: t.vozNum        ?? 'Номер',                 value: row.num },
-    { label: t.vozDateSend   ?? 'Дата отправки',         value: row.dateSend },
-    { label: t.vozDateAccept ?? 'Дата принятия',         value: row.dateAccept },
+    { label: t.vozDateSend   ?? 'Дата отправки',         value: formatDisplayDate(row.dateSend) },
+    { label: t.vozDateAccept ?? 'Дата принятия',         value: formatDisplayDate(row.dateAccept) },
     { label: t.detPoluchatel ?? 'Получатель',             value: row.supplier },
     { label: t.vozSender     ?? 'Отправитель',            value: row.org || 'LEADERS BARAKA' },
     { label: t.detAvtor      ?? 'Автор',                 value: 'Фарноков Жасур' },
@@ -269,7 +270,7 @@ export function VozvratDetailModal({ D, t, row, onClose }: Props) {
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
               </svg>
-              {row.dateSend}
+              {formatDisplayDate(row.dateSend)}
               {row.supplier && (
                 <>
                   <span className={`mx-0.5 ${D ? 'text-gray-700' : 'text-gray-300'}`}>·</span>

@@ -77,6 +77,7 @@ import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import java.io.File
 import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -116,14 +117,14 @@ fun DeliveryPaymentSheet(
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
     val subColor = Color(0xFF9CA3AF)
     val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
-    val formatter = remember { DecimalFormat("#,###") }
+    val formatter = remember { deliveryAmountFormat() }
     val context = LocalContext.current
 
     var step by remember { mutableStateOf(DeliverSheetStep.TYPE) }
     var method by remember { mutableStateOf<String?>(null) }
     var terminalId by remember { mutableStateOf<String?>(null) }
     var amountText by remember {
-        mutableStateOf(if (remaining > 0) formatter.format(remaining).replace(",", "") else "")
+        mutableStateOf(if (remaining > 0) formatter.format(remaining) else "")
     }
     var dueDate by remember { mutableStateOf(LocalDate.now()) }
     var dueTime by remember { mutableStateOf("18:00") }
@@ -327,13 +328,15 @@ fun DeliveryPaymentSheet(
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = amountText,
-                        onValueChange = { amountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        onValueChange = { raw ->
+                            amountText = formatAmountInput(raw, formatter)
+                        },
                         label = { Text(AppStrings.deliveryAmountLabel(lang)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
-                    val entered = amountText.replace(",", "").toDoubleOrNull() ?: remaining
+                    val entered = parseAmountInput(amountText) ?: remaining
                     val isFullPayment = entered >= remaining - 0.01
                     val needsDue = method == "deferred" || !isFullPayment
                     if (needsDue) {
@@ -422,10 +425,16 @@ fun DeliveryPaymentSheet(
                         onClick = {
                             localError = null
                             val m = method ?: return@Button
-                            val amt = amountText.replace(",", "").toDoubleOrNull()
-                            if (m != "deferred" && (amt == null || amt < 0)) {
-                                localError = AppStrings.deliveryInvalidAmount(lang)
-                                return@Button
+                            val amt = parseAmountInput(amountText)
+                            if (m != "deferred") {
+                                if (amountText.isNotBlank() && amt == null) {
+                                    localError = AppStrings.deliveryInvalidAmount(lang)
+                                    return@Button
+                                }
+                                if (amt != null && amt < 0) {
+                                    localError = AppStrings.deliveryInvalidAmount(lang)
+                                    return@Button
+                                }
                             }
                             if (m == "terminal" && terminalId.isNullOrBlank()) {
                                 localError = AppStrings.deliveryNoTerminals(lang)
@@ -916,6 +925,32 @@ internal fun parseDueAtParts(iso: String?): Pair<LocalDate, String> {
         val zdt = instant.atZone(java.time.ZoneId.systemDefault())
         zdt.toLocalDate() to zdt.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))
     }.getOrElse { fallback }
+}
+
+private fun deliveryAmountFormat(): DecimalFormat {
+    val symbols = DecimalFormatSymbols(Locale.US).apply {
+        groupingSeparator = ' '
+        decimalSeparator = '.'
+    }
+    return DecimalFormat("#,###", symbols).apply {
+        isGroupingUsed = true
+        maximumFractionDigits = 0
+        minimumFractionDigits = 0
+    }
+}
+
+private fun formatAmountInput(raw: String, formatter: DecimalFormat): String {
+    val digits = raw.filter { it in '0'..'9' }
+    if (digits.isEmpty()) return ""
+    val value = digits.toLongOrNull() ?: return digits
+    return formatter.format(value)
+}
+
+/** "62 500", "62,500", NBSP ва ҳ.к. → 62500.0 */
+private fun parseAmountInput(text: String): Double? {
+    val digits = text.filter { it in '0'..'9' }
+    if (digits.isEmpty()) return null
+    return digits.toDoubleOrNull()
 }
 
 private fun createDeliveryCameraUri(context: android.content.Context): Uri {

@@ -1,10 +1,5 @@
 package uz.lider.client.presentation.components
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +15,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -34,8 +27,7 @@ import androidx.compose.ui.unit.sp
 import uz.lider.client.presentation.theme.LiquidGlass
 
 /**
- * Yonib-o‘chib turadigan ogohlantirish:
- * pul berilganda insonni rasmga olishni unutmaslik.
+ * Pul berilganda insonni rasmga olish eslatmasi (barqaror, lippillamaydi).
  */
 @Composable
 fun PaymentPhotoReminderBanner(
@@ -43,43 +35,26 @@ fun PaymentPhotoReminderBanner(
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
 ) {
-    val pulse = rememberInfiniteTransition(label = "pay-photo-pulse")
-    val alpha by pulse.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "pay-photo-alpha",
-    )
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(10.dp, shape, ambientColor = Color(0x55F59E0B), spotColor = Color(0x66EF4444))
+            .shadow(8.dp, shape, ambientColor = Color(0x44F59E0B), spotColor = Color(0x44EF4444))
             .clip(shape)
             .background(
                 Brush.horizontalGradient(
                     listOf(
-                        Color(0xE8B45309),
-                        Color(0xE8C2410C),
-                        Color(0xE8BE185D),
+                        Color(0xF0B45309),
+                        Color(0xF0C2410C),
+                        Color(0xF0BE185D),
                     ),
                 ),
             )
             .border(
                 1.dp,
-                Brush.horizontalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.55f * alpha),
-                        LiquidGlass.Amber.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.25f),
-                    ),
-                ),
+                Color.White.copy(alpha = 0.28f),
                 shape,
             )
-            .alpha(0.72f + 0.28f * alpha)
             .padding(
                 start = 14.dp,
                 end = if (onDismiss != null) 4.dp else 14.dp,

@@ -1,15 +1,27 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Client } from './entities/client.entity';
-import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { UserClientMembership } from './entities/user-client-membership.entity';
+import { CreateClientDto, TransferClientsDto, UpdateClientDto } from './dto/client.dto';
 import { LinesService } from '../lines/lines.service';
+
+function normalizeInn(inn?: string | null): string | null {
+  const v = inn?.trim();
+  return v ? v : null;
+}
 
 @Injectable()
 export class ClientsService {
   constructor(
     @InjectRepository(Client)
     private readonly repo: Repository<Client>,
+    @InjectRepository(UserClientMembership)
+    private readonly membershipRepo: Repository<UserClientMembership>,
     private readonly linesService: LinesService,
   ) {}
 
@@ -43,12 +55,28 @@ export class ClientsService {
   }
 
   findByInn(inn: string) {
-    const normalized = inn.trim();
+    const normalized = normalizeInn(inn);
     if (!normalized) return null;
     return this.baseQuery()
       .where('c.isActive = true')
       .andWhere('c.inn = :inn', { inn: normalized })
       .getOne();
+  }
+
+  findByInnInCompany(inn: string, companyId: string, excludeClientId?: string) {
+    const normalized = normalizeInn(inn);
+    if (!normalized || !companyId) return Promise.resolve(null);
+    const qb = this.baseQuery()
+      .where('c.isActive = true')
+      .andWhere('c.inn = :inn', { inn: normalized })
+      .andWhere(
+        '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
+        { companyId },
+      );
+    if (excludeClientId) {
+      qb.andWhere('c.id != :excludeClientId', { excludeClientId });
+    }
+    return qb.getOne();
   }
 
   search(query: string, distributorId?: string) {
@@ -80,7 +108,7 @@ export class ClientsService {
       longitude: dto.longitude ?? null,
       category: dto.category ?? 'Standard',
       distributorId: dto.distributorId ?? null,
-      inn: dto.inn ?? null,
+      inn: normalizeInn(dto.inn),
       contactPerson: dto.contactPerson ?? null,
       territory: dto.territory ?? null,
       clientClass: dto.clientClass ?? null,
@@ -105,7 +133,7 @@ export class ClientsService {
     if (dto.longitude !== undefined) client.longitude = dto.longitude;
     if (dto.category !== undefined) client.category = dto.category;
     if (dto.distributorId !== undefined) client.distributorId = dto.distributorId;
-    if (dto.inn !== undefined) client.inn = dto.inn;
+    if (dto.inn !== undefined) client.inn = normalizeInn(dto.inn);
     if (dto.contactPerson !== undefined) client.contactPerson = dto.contactPerson;
     if (dto.territory !== undefined) client.territory = dto.territory;
     if (dto.clientClass !== undefined) client.clientClass = dto.clientClass;
@@ -114,5 +142,116 @@ export class ClientsService {
     if (dto.isActive !== undefined) client.isActive = dto.isActive;
     await this.repo.save(client);
     return this.findOne(id);
+  }
+
+  /**
+   * Mijozlarni boshqa tashkilotga o'tkazish.
+   * Maqsad orgda bir xil INN bo'lsa — o'tkazilmaydi (dublikat).
+   */
+  async transfer(dto: TransferClientsDto) {
+    const targetCompanyId = dto.targetCompanyId?.trim();
+    if (!targetCompanyId) {
+      throw new BadRequestException('targetCompanyId majburiy');
+    }
+
+    const transferAll = !!dto.transferAll;
+    let clients: Client[];
+
+    if (transferAll) {
+      const sourceCompanyId = dto.sourceCompanyId?.trim();
+      if (!sourceCompanyId) {
+        throw new BadRequestException('transferAll uchun sourceCompanyId majburiy');
+      }
+      if (sourceCompanyId === targetCompanyId) {
+        throw new BadRequestException('Manba va maqsad tashkilot bir xil');
+      }
+      clients = await this.findAll(sourceCompanyId);
+    } else {
+      const ids = [...new Set((dto.clientIds ?? []).filter(Boolean))];
+      if (ids.length === 0) {
+        throw new BadRequestException('clientIds yoki transferAll kerak');
+      }
+      clients = await this.baseQuery()
+        .where('c.id IN (:...ids)', { ids })
+        .andWhere('c.isActive = true')
+        .getMany();
+      if (clients.length === 0) {
+        throw new NotFoundException('Mijozlar topilmadi');
+      }
+    }
+
+    const transferred: { id: string; name: string; code: string }[] = [];
+    const skipped: {
+      id: string;
+      name: string;
+      code: string;
+      inn: string | null;
+      reason: string;
+    }[] = [];
+
+    for (const client of clients) {
+      const currentCompany =
+        client.companyId ?? client.distributor?.companyId ?? null;
+
+      if (currentCompany === targetCompanyId) {
+        skipped.push({
+          id: client.id,
+          name: client.name,
+          code: client.code,
+          inn: client.inn,
+          reason: 'already_in_target',
+        });
+        continue;
+      }
+
+      const inn = normalizeInn(client.inn);
+      if (inn) {
+        const dup = await this.findByInnInCompany(inn, targetCompanyId, client.id);
+        if (dup) {
+          skipped.push({
+            id: client.id,
+            name: client.name,
+            code: client.code,
+            inn,
+            reason: 'inn_duplicate',
+          });
+          continue;
+        }
+      }
+
+      client.companyId = targetCompanyId;
+      // Boshqa org agentiga bog'liq qolmasin
+      client.distributorId = null;
+      await this.repo.save(client);
+      await this.syncMembershipCompany(client.id, targetCompanyId);
+      transferred.push({ id: client.id, name: client.name, code: client.code });
+    }
+
+    return {
+      targetCompanyId,
+      transferredCount: transferred.length,
+      skippedCount: skipped.length,
+      transferred,
+      skipped,
+    };
+  }
+
+  private async syncMembershipCompany(clientId: string, targetCompanyId: string) {
+    const rows = await this.membershipRepo.find({ where: { clientId } });
+    for (const row of rows) {
+      if (row.companyId === targetCompanyId) continue;
+      const clash = await this.membershipRepo.findOne({
+        where: { userId: row.userId, companyId: targetCompanyId },
+      });
+      if (clash) {
+        // Foydalanuvchi allaqachon maqsad orgda boshqa mijozga bog'langan
+        if (clash.clientId !== clientId) {
+          await this.membershipRepo.remove(row);
+        }
+        continue;
+      }
+      row.companyId = targetCompanyId;
+      await this.membershipRepo.save(row);
+    }
   }
 }

@@ -110,17 +110,17 @@ const TSELI_TYPE: Record<string, PostRowRef['type']> = {
 
 function todayStr() {
   const d = new Date();
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 }
 
 function parseDMY(s: string): Date | null {
-  const [d, m, y] = s.split('.').map(Number);
+  const [d, m, y] = s.split(/[.\-/]/).map(Number);
   if (!d || !m || !y || y < 2000) return null;
   return new Date(y, m - 1, d);
 }
 
 function fmtDMY(d: Date) {
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 }
 
 function fieldCls(D: boolean, red?: boolean) {

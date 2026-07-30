@@ -5,6 +5,7 @@ import { Order } from '../orders/entities/order.entity';
 import { PaymentTerminal } from '../terminals/entities/payment-terminal.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
+import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
@@ -19,6 +20,7 @@ import { PaymentReminderCron } from './payment-reminder.cron';
       PaymentTerminal,
       Client,
       User,
+      UserClientMembership,
     ]),
     NotificationsModule,
   ],

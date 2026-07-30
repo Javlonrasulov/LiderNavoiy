@@ -15,6 +15,15 @@ import android.graphics.drawable.Drawable
 
 private const val BADGE_COLOR = 0xFFEF4444.toInt()
 
+private fun lighten(color: Int, amount: Float): Int {
+    val a = (color ushr 24) and 0xFF
+    val r = (color shr 16) and 0xFF
+    val g = (color shr 8) and 0xFF
+    val b = color and 0xFF
+    fun mix(c: Int) = (c + ((255 - c) * amount)).toInt().coerceIn(0, 255)
+    return (a shl 24) or (mix(r) shl 16) or (mix(g) shl 8) or mix(b)
+}
+
 /** Map pin status — matches web StoreMarkerStatus. */
 enum class StoreMarkerStatus {
     ACTIVE,
@@ -52,6 +61,8 @@ fun createTruckMarkerDrawable(
     sizeDp: Int = 36,
     online: Boolean = true,
     orgLabel: String? = null,
+    /** Org ajratish — doira rangi (null = default yashil). */
+    accentColor: Int? = null,
 ): TruckMarkerIcon {
     val d = context.resources.displayMetrics.density
     val disc = (sizeDp * d).toInt().coerceIn(36, 96)
@@ -121,10 +132,17 @@ fun createTruckMarkerDrawable(
         )
     }
 
-    // Admin: delivery online = #10b981, border #6ee7b7
-    val fill = if (online) 0xFF10B981.toInt() else 0xFF6B7280.toInt()
-    val ring = if (online) 0xFF6EE7B7.toInt() else 0xFF9CA3AF.toInt()
-
+    // Org rangi yoki default yashil
+    val fill = when {
+        !online -> 0xFF6B7280.toInt()
+        accentColor != null -> accentColor
+        else -> 0xFF10B981.toInt()
+    }
+    val ring = when {
+        !online -> 0xFF9CA3AF.toInt()
+        accentColor != null -> lighten(accentColor, 0.35f)
+        else -> 0xFF6EE7B7.toInt()
+    }
     canvas.drawCircle(
         cx, cy + 1.5f * d,
         r,
@@ -413,12 +431,13 @@ private fun drawStrokeStoreIcon(
     )
 }
 
-/** Numbered route stop disc — 1…N (isYou = green). */
+/** Numbered route stop disc — 1…N (isYou = yashil; boshqalar = org rangi). */
 fun createNumberedStopDrawable(
     context: Context,
     sequence: Int,
     isYou: Boolean,
     sizeDp: Int = 36,
+    orgColor: Int = 0xFF6366F1.toInt(),
 ): Drawable {
     val dens = context.resources.displayMetrics.density
     val size = (sizeDp * dens).toInt().coerceIn(32, 72)
@@ -429,7 +448,7 @@ fun createNumberedStopDrawable(
     val cx = out / 2f
     val cy = out / 2f
     val r = size / 2f
-    val fill = if (isYou) 0xFF22C55E.toInt() else 0xFF6366F1.toInt()
+    val fill = if (isYou) 0xFF22C55E.toInt() else orgColor
 
     canvas.drawCircle(
         cx,

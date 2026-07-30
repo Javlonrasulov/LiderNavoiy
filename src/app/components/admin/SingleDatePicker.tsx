@@ -32,7 +32,7 @@ function todayYmd() {
 function fmtDisplay(dateStr: string) {
   if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-');
-  return `${d}.${m}.${y}`;
+  return `${d}-${m}-${y}`;
 }
 
 interface Cell { dateStr: string; day: number; isCurrentMonth: boolean }

@@ -52,11 +52,14 @@ class DebtRepository @Inject constructor(
     private fun DebtHistoryItemDto.toPayment(): DebtPayment {
         val isPayment = type.equals("payment", ignoreCase = true)
         return DebtPayment(
+            id = id.orEmpty(),
             date = date,
             amount = formatAmount(amount),
             amountValue = amount,
             typeKey = if (isPayment) "debt_payment" else "debt_added",
             isPayment = isPayment,
+            orderId = orderId,
+            createdAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(createdAt) ?: 0L,
         )
     }
 

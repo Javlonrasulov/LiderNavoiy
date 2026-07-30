@@ -1,7 +1,9 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -37,7 +39,7 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!localStorage.getItem('api_access_token')) {
       setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
       setError(null);
@@ -58,17 +60,22 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    refresh();
-    const onAuth = () => { refresh(); };
-    window.addEventListener('lider:auth-changed', onAuth);
-    return () => window.removeEventListener('lider:auth-changed', onAuth);
   }, []);
 
+  useEffect(() => {
+    void refresh();
+    const onAuth = () => { void refresh(); };
+    window.addEventListener('lider:auth-changed', onAuth);
+    return () => window.removeEventListener('lider:auth-changed', onAuth);
+  }, [refresh]);
+
+  const value = useMemo(
+    () => ({ companies, loading, error, refresh }),
+    [companies, loading, error, refresh],
+  );
+
   return (
-    <CompaniesContext.Provider value={{ companies, loading, error, refresh }}>
+    <CompaniesContext.Provider value={value}>
       {children}
     </CompaniesContext.Provider>
   );

@@ -20,17 +20,19 @@ export class ProductsService {
     private readonly uploadService: ProductsUploadService,
   ) {}
 
-  private async resolveImageUrl(imageUrl?: string | null): Promise<string | null | undefined> {
-    if (imageUrl === undefined) return undefined;
-    if (!imageUrl) return null;
+  private async resolveImage(
+    imageUrl?: string | null,
+  ): Promise<{ url: string | null | undefined; data: string | null | undefined }> {
+    if (imageUrl === undefined) return { url: undefined, data: undefined };
+    if (!imageUrl) return { url: null, data: null };
     if (imageUrl.startsWith('data:')) {
       const saved = await this.uploadService.saveDataUrl(imageUrl);
-      return saved.url;
+      return { url: saved.url, data: saved.base64 };
     }
     const pathMatch = imageUrl.match(/\/uploads\/products\/[^?#]+/);
-    if (pathMatch) return pathMatch[0];
-    if (imageUrl.startsWith('/uploads/')) return imageUrl;
-    return imageUrl;
+    const url = pathMatch ? pathMatch[0] : imageUrl.startsWith('/uploads/') ? imageUrl : imageUrl;
+    const data = this.uploadService.readBase64FromUrl(url);
+    return { url, data: data ?? undefined };
   }
 
   private applyCompanyFilter(
@@ -124,7 +126,7 @@ export class ProductsService {
     const companyId = dto.companyId?.trim() || null;
     await this.assertCodeAvailable(dto.code, companyId);
     await this.assertNameAvailable(dto.name, companyId);
-    const imageUrl = await this.resolveImageUrl(dto.imageUrl);
+    const image = await this.resolveImage(dto.imageUrl);
     const product = this.repo.create({
       companyId,
       code: dto.code,
@@ -134,14 +136,19 @@ export class ProductsService {
       price: dto.price,
       unit: dto.unit,
       stockBalance: dto.stockBalance ?? 0,
-      imageUrl: imageUrl ?? null,
+      imageUrl: image.url ?? null,
+      imageData: image.data ?? null,
       isActive: true,
     });
     return this.repo.save(product);
   }
 
   async update(id: string, dto: UpdateProductDto) {
-    const product = await this.repo.findOne({ where: { id } });
+    const product = await this.repo
+      .createQueryBuilder('p')
+      .addSelect('p.imageData')
+      .where('p.id = :id', { id })
+      .getOne();
     if (!product) throw new NotFoundException('Product not found');
     const nextCompanyId =
       dto.companyId !== undefined ? dto.companyId?.trim() || null : product.companyId;
@@ -160,14 +167,19 @@ export class ProductsService {
       await this.assertCodeAvailable(product.code, nextCompanyId, id);
       await this.assertNameAvailable(product.name, nextCompanyId, id);
     }
-    const imageUrl = await this.resolveImageUrl(dto.imageUrl);
+    const image = await this.resolveImage(dto.imageUrl);
     Object.assign(product, {
       ...dto,
       companyId: nextCompanyId,
       category: dto.category === undefined ? product.category : dto.category,
       brand: dto.brand === undefined ? product.brand : dto.brand,
-      imageUrl: imageUrl === undefined ? product.imageUrl : imageUrl,
+      imageUrl: image.url === undefined ? product.imageUrl : image.url,
     });
+    if (image.data !== undefined) {
+      product.imageData = image.data;
+    } else if (image.url === null) {
+      product.imageData = null;
+    }
     return this.repo.save(product);
   }
 

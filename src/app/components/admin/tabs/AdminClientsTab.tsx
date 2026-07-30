@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
-import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3 } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft } from 'lucide-react';
 import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
@@ -16,7 +16,9 @@ import {
 import AddClient from '../../AddClient';
 import { ClientStatsPanel } from '../ClientStatsPanel';
 import { ClientMapModal, ClientGpsWarningModal, clientHasGps } from '../ClientMapModal';
+import { TransferClientsModal } from '../TransferClientsModal';
 import { demo } from '../../../data/demoLimit';
+import { formatDisplayDate } from '../../../utils/dateFormat';
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -78,6 +80,8 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [showAddClient, setShowAddClient] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
   const [statsClient, setStatsClient] = useState<ClientRow | null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferPickIds, setTransferPickIds] = useState<string[]>([]);
   const clientFilterBtnRef = useRef<HTMLButtonElement>(null);
   const clientTableRef = useRef<HTMLDivElement>(null);
   const scrollClientTable = (dir: 'left' | 'right') => {
@@ -255,7 +259,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       [t.colGPS]:        c.gps,
       [t.colAgent]:      c.agent,
       [t.colBalance]:    c.balance,
-      [t.colLastVisit]:  c.lastVisit,
+      [t.colLastVisit]:  formatDisplayDate(c.lastVisit),
       [t.colID]:         c.code,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -576,6 +580,17 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           </div>
 
           <button
+            onClick={() => {
+              setTransferPickIds(activeClient ? [activeClient.id] : []);
+              setShowTransfer(true);
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
+              ${D ? 'bg-teal-900/50 hover:bg-teal-800/50 text-teal-300' : 'bg-teal-50 hover:bg-teal-100 text-teal-700'}`}
+          >
+            <ArrowRightLeft size={12} /> {t.transferBtn ?? "O'tkazish"}
+          </button>
+
+          <button
             onClick={() => { if (activeClient) setEditingClient(activeClient); }}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
               ${activeClient
@@ -797,7 +812,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                         {c.category}
                       </span>
                     </td>
-                    <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{c.lastVisit}</td>
+                    <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{formatDisplayDate(c.lastVisit)}</td>
                     <td className={`${tdCls} border-r-0 ${rowText}`}></td>
                   </tr>
                 );
@@ -812,6 +827,19 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         </div>
         <Pagination />
       </div>
+
+      {showTransfer && (
+        <TransferClientsModal
+          D={D}
+          sub={sub}
+          t={t}
+          clients={filtered}
+          sourceCompanyId={companyId}
+          preselectedIds={transferPickIds}
+          onClose={() => setShowTransfer(false)}
+          onDone={() => { void refreshClients(); }}
+        />
+      )}
 
       {/* CLIENT MAP / GPS WARNING */}
       {clientMapOpen && activeClient && (
@@ -889,7 +917,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                 )}
                 <div className={`flex items-center gap-2 text-xs pt-1 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
                   <span>{t.colLastVisit}:</span>
-                  <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{activeClient.lastVisit}</span>
+                  <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{formatDisplayDate(activeClient.lastVisit)}</span>
                 </div>
               </div>
             </div>

@@ -13,6 +13,7 @@ import { PostupleniyaDetailModal, type PostRowRef } from '../PostupleniyaDetailM
 import { VozvratDetailModal, type VozRowRef } from '../VozvratDetailModal';
 import { AktSverkiModal } from '../AktSverkiModal';
 import { BonusStrafCreateModal } from '../BonusStrafCreateModal';
+import { formatDisplayDate } from '../../../utils/dateFormat';
 
 const POST_RECEIPTS_KEY = 'lider_goods_receipts';
 
@@ -174,7 +175,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   const totalDClose = tot('d_close');
   const totalCClose = tot('c_close');
 
-  const fmtDate = (d: string) => d.split('-').reverse().join('.');
+  const fmtDate = (d: string) => d.split('-').reverse().join('-');
 
   useEffect(() => {
     if (!currencyOpen) return;
@@ -469,7 +470,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                       onClick={() => setSelectedPost(r)}
                       className={`${i < postRows.length - 1 ? `border-b ${divider}` : ''} ${D ? 'hover:bg-white/[0.025]' : 'hover:bg-indigo-50/40'} transition-colors cursor-pointer`}
                     >
-                      <td className={`px-4 py-3 text-xs tabular-nums whitespace-nowrap ${sub}`}>{r.date}</td>
+                      <td className={`px-4 py-3 text-xs tabular-nums whitespace-nowrap ${sub}`}>{formatDisplayDate(r.date)}</td>
                       <td className="px-4 py-3 text-sm font-semibold tabular-nums">{r.num}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex w-5 h-5 rounded items-center justify-center text-[10px] font-bold ${r.ox ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
@@ -537,7 +538,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                       }`}>{r.dir}</span>
                     </div>
                     <p className="text-sm font-medium truncate">{r.supplier}</p>
-                    <p className={`text-xs ${sub}`}>{r.date}</p>
+                    <p className={`text-xs ${sub}`}>{formatDisplayDate(r.date)}</p>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     {r.sum > 0 && <p className="text-xs font-semibold tabular-nums">{fmt(r.sum)}</p>}
@@ -636,8 +637,8 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                       onClick={() => setSelectedVoz(r)}
                       className={`${i < vozRows.length - 1 ? `border-b ${divider}` : ''} ${D ? 'hover:bg-white/[0.025]' : 'hover:bg-rose-50/30'} transition-colors cursor-pointer`}
                     >
-                      <td className={`px-4 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{r.dateSend}</td>
-                      <td className={`px-4 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{r.dateAccept}</td>
+                      <td className={`px-4 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{formatDisplayDate(r.dateSend)}</td>
+                      <td className={`px-4 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{formatDisplayDate(r.dateAccept)}</td>
                       <td className="px-4 py-2.5 font-semibold tabular-nums text-sm">{r.num}</td>
                       <td className="px-4 py-2.5 max-w-[140px] truncate">{r.supplier}</td>
                       <td className={`px-4 py-2.5 max-w-[130px] truncate ${sub}`}>{r.org || '—'}</td>
@@ -1196,7 +1197,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                       key={r.id}
                       className={`${i < bnsRows.length - 1 ? `border-b ${divider}` : ''} ${D ? 'hover:bg-white/[0.025]' : 'hover:bg-indigo-50/40'} transition-colors`}
                     >
-                      <td className={`px-3 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{r.date}</td>
+                      <td className={`px-3 py-2.5 text-xs tabular-nums whitespace-nowrap ${sub}`}>{formatDisplayDate(r.date)}</td>
                       <td className="px-3 py-2.5 font-semibold tabular-nums">{r.num}</td>
                       <td className="px-3 py-2.5 max-w-[160px] truncate font-medium">{r.supplier}</td>
                       <td className={`px-3 py-2.5 max-w-[120px] truncate ${sub}`}>{r.org}</td>
@@ -1301,7 +1302,7 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
                         )}
                       </div>
                       <p className="text-sm font-semibold truncate">{r.supplier}</p>
-                      <p className={`text-xs ${sub} tabular-nums mt-0.5`}>{r.date}</p>
+                      <p className={`text-xs ${sub} tabular-nums mt-0.5`}>{formatDisplayDate(r.date)}</p>
                     </div>
 
                     {isExp

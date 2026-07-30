@@ -143,10 +143,7 @@ export default function AdminSelectCompany() {
   /* companies local state (API + local edits for add/edit UI) */
   const [companies, setCompanies] = useState<LocalCompany[]>([]);
 
-  useEffect(() => {
-    refreshCompanies();
-  }, [refreshCompanies]);
-
+  // CompaniesProvider already loads on mount — only sync into local edit state
   useEffect(() => {
     setCompanies(apiCompanies.map(c => ({ ...c })));
   }, [apiCompanies]);

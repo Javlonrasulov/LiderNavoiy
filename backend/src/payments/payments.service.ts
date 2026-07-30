@@ -20,6 +20,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CollectPaymentDto, DeliverOrderDto, UpdateDueAtDto } from './dto/payment.dto';
 import { NotificationType as NType } from '../notifications/notification.types';
 import { User } from '../auth/entities/user.entity';
+import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
 
 @Injectable()
 export class PaymentsService {
@@ -34,6 +35,8 @@ export class PaymentsService {
     private readonly clientRepo: Repository<Client>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(UserClientMembership)
+    private readonly membershipRepo: Repository<UserClientMembership>,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -348,14 +351,20 @@ export class PaymentsService {
     orderId: string,
     type: NType = NType.PAYMENT,
   ) {
-    const user = await this.userRepo.findOne({ where: { clientId } });
-    if (!user) return;
-    await this.notifications.sendToUser(
-      user.id,
-      title,
-      body,
-      type,
-      { orderId, type: 'payment' },
+    const byClient = await this.userRepo.find({ where: { clientId } });
+    const memberships = await this.membershipRepo.find({ where: { clientId } });
+    const userIds = new Set<string>([
+      ...byClient.map((u) => u.id),
+      ...memberships.map((m) => m.userId),
+    ]);
+    if (userIds.size === 0) return;
+    await Promise.all(
+      [...userIds].map((userId) =>
+        this.notifications.sendToUser(userId, title, body, type, {
+          orderId,
+          type: 'payment',
+        }),
+      ),
     );
   }
 

@@ -63,7 +63,7 @@ type Row = {
 const fmt      = (n: number) => n.toLocaleString('uz-UZ');
 const fmtQ     = (n: number) => n.toLocaleString('ru-RU', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 const fmtDate  = (d: Date) =>
-  `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}` +
+  `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}` +
   ` ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 
 const calcSumma = (qty: number, cena: number, skidka: number) =>
