@@ -113,7 +113,7 @@ class OrderRepository @Inject constructor(
         totalAmount = totalAmount,
         items = items.map { item ->
             OrderItem(
-                productId = item.productId,
+                productId = item.productId.orEmpty(),
                 productCode = item.productCode.orEmpty(),
                 productName = item.productName.orEmpty(),
                 quantity = item.quantity,

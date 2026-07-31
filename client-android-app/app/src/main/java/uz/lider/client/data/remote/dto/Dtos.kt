@@ -79,7 +79,8 @@ data class CategoryRowDto(
 )
 
 data class OrderItemDto(
-    val productId: String,
+    /** Seed / eski buyurtmalarda null bo‘lishi mumkin — null bo‘lsa mapper bo‘shatadi. */
+    val productId: String? = null,
     val productCode: String? = null,
     val productName: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class)

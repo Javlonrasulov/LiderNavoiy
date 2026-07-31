@@ -437,6 +437,25 @@ export class BootSeedService implements OnModuleInit {
       productName: 'Demo Zarafshon yetkazish',
     });
 
+    await this.patchNullOrderItemProductIds();
+
+    // Demo xarita: kuryer GPS yaqinda bo‘lsin (mijoz live fleet)
+    for (const [prof, lat, lng] of [
+      [courierProfile, 40.1035, 65.3792],
+      [courierProfile2, 40.115, 65.37],
+    ] as const) {
+      try {
+        prof.isOnline = true;
+        prof.status = DistributorStatus.ON_ROUTE;
+        prof.lastLatitude = lat;
+        prof.lastLongitude = lng;
+        prof.lastLocationAt = new Date();
+        await this.profiles.save(prof);
+      } catch (err) {
+        this.logger.warn(`demo courier GPS: ${(err as Error).message}`);
+      }
+    }
+
     this.logger.log('Boot seed: admin/agent/dostavkachi/dostavkachi2/mijoz — parol 123456');
   }
 
@@ -449,6 +468,16 @@ export class BootSeedService implements OnModuleInit {
     totalAmount: number;
     productName: string;
   }) {
+    const items = JSON.stringify([
+      {
+        productId: 'demo-seed',
+        productCode: 'DEMO',
+        productName: opts.productName,
+        quantity: 1,
+        price: opts.totalAmount,
+        unit: 'dona',
+      },
+    ]);
     try {
       const existing = await this.dataSource.query(
         `SELECT id FROM orders
@@ -462,6 +491,7 @@ export class BootSeedService implements OnModuleInit {
              "deliveryDistributorId" = $2,
              "deliverySequence" = $3,
              "totalAmount" = $4,
+             items = $5::jsonb,
              "updatedAt" = now()
            WHERE id = $1`,
           [
@@ -469,20 +499,11 @@ export class BootSeedService implements OnModuleInit {
             opts.deliveryDistributorId,
             opts.deliverySequence,
             opts.totalAmount,
+            items,
           ],
         );
         return;
       }
-      const items = JSON.stringify([
-        {
-          productId: null,
-          productCode: 'DEMO',
-          productName: opts.productName,
-          quantity: 1,
-          price: opts.totalAmount,
-          unit: 'dona',
-        },
-      ]);
       await this.dataSource.query(
         `INSERT INTO orders
          (id, "distributorId", "clientId", "companyId", "deliveryDistributorId", "deliverySequence",
@@ -504,6 +525,32 @@ export class BootSeedService implements OnModuleInit {
       this.logger.log(`Boot seed: ON_WAY (${opts.companyId}) yaratildi`);
     } catch (err) {
       this.logger.warn(`demo ON_WAY ${opts.companyId}: ${(err as Error).message}`);
+    }
+  }
+
+  /** Android Gson: items[].productId = null butun buyurtmalar ro‘yxatini yutadi. */
+  private async patchNullOrderItemProductIds() {
+    try {
+      await this.dataSource.query(`
+        UPDATE orders
+        SET items = (
+          SELECT COALESCE(jsonb_agg(
+            CASE
+              WHEN elem ? 'productId' AND (elem->'productId') = 'null'::jsonb
+                THEN jsonb_set(elem, '{productId}', '"demo-seed"'::jsonb)
+              WHEN NOT (elem ? 'productId')
+                THEN elem || '{"productId":"demo-seed"}'::jsonb
+              ELSE elem
+            END
+          ), '[]'::jsonb)
+          FROM jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS elem
+        ),
+        "updatedAt" = now()
+        WHERE items IS NOT NULL
+          AND items::text LIKE '%"productId": null%'
+      `);
+    } catch (err) {
+      this.logger.warn(`patch null productId: ${(err as Error).message}`);
     }
   }
 
