@@ -1269,16 +1269,14 @@ private fun DashboardLiveMapFullscreen(
                 activeLayer = mapLayer,
                 onLayerChange = { mapLayer = it },
                 modifier = Modifier.align(Alignment.BottomStart),
-                bottomPadding = navBottom + 72.dp,
+                bottomPadding = navBottom + 120.dp,
             )
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = navBottom + 16.dp,
-                        start = 72.dp,
-                        end = 16.dp,
-                    ),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = navBottom + 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
