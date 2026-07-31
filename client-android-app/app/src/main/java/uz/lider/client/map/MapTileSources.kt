@@ -6,7 +6,7 @@ import org.osmdroid.util.MapTileIndex
 
 /** Admin MapLayerSwitcher.tsx va agent APK bilan bir xil qatlamlar */
 enum class MapLayerId(val key: String, val label: String) {
-    STANDARD("standard", "Стандартный"),
+    STANDARD("standard", "Standart"),
     CYCLOSM("cyclosm", "CyclOSM"),
     CYCLEMAP("cyclemap", "Велосипедная"),
     TRANSPORT("transport", "Транспорт"),
@@ -18,8 +18,11 @@ enum class MapLayerId(val key: String, val label: String) {
 }
 
 object MapTileSources {
+    /** Mijoz xaritasi: faqat Standart + Спутник. */
+    val clientLayers: List<MapLayerId> = listOf(MapLayerId.STANDARD, MapLayerId.SATELLITE)
+
     /** OSM.org MAPNIK «Access Blocked» beradi — Carto barqarorroq. */
-    val defaultLayer: MapLayerId = MapLayerId.SHORTBREAD
+    val defaultLayer: MapLayerId = MapLayerId.STANDARD
     val allLayers: List<MapLayerId> = MapLayerId.entries
 
     /** Admin / agent MapLayerSwitcher bilan bir xil — Navoiy preview tile */

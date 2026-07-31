@@ -46,14 +46,30 @@ data class LiveFleetUi(
         get() = vehicles.minOfOrNull { it.stopsBeforeYou } ?: 0
     val totalStops: Int
         get() = vehicles.maxOfOrNull { it.totalStops } ?: 0
+
+    /** Bitta org — oddiy masofa; ko‘p org — har biri alohida. */
     val distanceLabel: String
-        get() = when {
-            vehicles.isEmpty() -> "—"
-            // Ko‘p buyurtmada eng to‘liq (manzillar orqali) masofani olish — to‘g‘ri chiziq emas
-            else -> vehicles.flatMap { it.orders }.mapNotNull { parseDistanceKm(it.distanceLabel) }
+        get() {
+            val lines = orgDistanceLines()
+            return when {
+                lines.isEmpty() -> "—"
+                lines.size == 1 -> lines.first().second
+                else -> lines.joinToString(" · ") { "${it.first} ${it.second}" }
+            }
+        }
+
+    /** (org shortName, "12,4 km") — fullscreen da alohida chiplar. */
+    fun orgDistanceLines(): List<Pair<String, String>> =
+        vehicles.map { v ->
+            val name = v.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: v.companyId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: "—"
+            val dist = v.orders.mapNotNull { parseDistanceKm(it.distanceLabel) }
                 .maxOrNull()
                 ?.let { formatDistance(it) }
+                ?: v.orders.firstOrNull()?.distanceLabel?.takeIf { it.isNotBlank() && it != "—" }
                 ?: "—"
+            name to dist
         }
 
     private fun parseDistanceKm(label: String): Double? {

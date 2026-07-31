@@ -89,6 +89,7 @@ import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.map.MapTileSources
+import uz.lider.client.map.OrgMapColors
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.OrgSwitcherChips
@@ -348,7 +349,12 @@ fun DashboardScreen(
                                         if (fleet.orderCount > 1) {
                                             append("${fleet.orderCount} ${t("dash_live_orders_unit")} · ")
                                         }
-                                        append("${t("track_distance")}: ${fleet.distanceLabel}")
+                                        val orgDist = fleet.orgDistanceLines()
+                                        if (orgDist.size > 1) {
+                                            append(orgDist.joinToString(" · ") { "${it.first} ${it.second}" })
+                                        } else {
+                                            append("${t("track_distance")}: ${fleet.distanceLabel}")
+                                        }
                                     },
                                     onOpenFullscreen = { showLiveMapFullscreen = true },
                                     onOpenTracking = { orderId ->
@@ -1223,23 +1229,52 @@ private fun DashboardLiveMapFullscreen(
                 modifier = Modifier.align(Alignment.BottomStart),
                 bottomPadding = navBottom + 72.dp,
             )
-            Text(
-                fleet.distanceLabel,
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(
                         bottom = navBottom + 16.dp,
-                        start = 16.dp,
+                        start = 72.dp,
                         end = 16.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val distLines = fleet.orgDistanceLines()
+                if (distLines.size <= 1) {
+                    Text(
+                        distLines.firstOrNull()?.second ?: fleet.distanceLabel,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .shadow(8.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(overlayBg)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                     )
-                    .shadow(8.dp, RoundedCornerShape(14.dp))
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(overlayBg)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-            )
+                } else {
+                    distLines.forEach { (orgName, dist) ->
+                        val accent = Color(OrgMapColors.forCompany(
+                            fleet.vehicles.firstOrNull {
+                                it.companyShortName == orgName || it.companyId == orgName
+                            }?.companyId,
+                        ))
+                        Text(
+                            "$orgName · $dist",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .shadow(8.dp, RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(overlayBg)
+                                .border(1.5.dp, accent.copy(alpha = 0.85f), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 
