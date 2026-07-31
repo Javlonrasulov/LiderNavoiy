@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -538,6 +539,8 @@ fun OrderTrackingMapView(
     /** false — default tozalangan: faqat mashina + siz; true — 1…N manzillar. */
     showRouteStops: Boolean = true,
     mapLayer: MapLayerId = MapTileSources.defaultLayer,
+    /** Fullscreen title qatori ostiga — magazin bubble yashirinmasin. */
+    calloutTopInset: Dp = 0.dp,
     onVehicleClick: (LiveMapVehicle) -> Unit = {},
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -656,7 +659,12 @@ fun OrderTrackingMapView(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = calloutTopInset + 8.dp,
+                        bottom = 10.dp,
+                    ),
             )
         }
     }
@@ -678,6 +686,7 @@ fun OrderTrackingMapView(
     stopsBeforeYou: Int = 0,
     totalStops: Int = 0,
     mapLayer: MapLayerId = MapTileSources.defaultLayer,
+    calloutTopInset: Dp = 0.dp,
 ) {
     val vehicles = remember(
         deliveryLat, deliveryLng, courierLat, courierLng, routePoints, storeName,
@@ -742,5 +751,6 @@ fun OrderTrackingMapView(
         interactive = interactive,
         showRouteStops = true,
         mapLayer = mapLayer,
+        calloutTopInset = calloutTopInset,
     )
 }

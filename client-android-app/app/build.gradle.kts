@@ -17,8 +17,8 @@ android {
         applicationId = "uz.lider.client"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.0.25"
+        versionCode = 27
+        versionName = "1.0.26"
 
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")

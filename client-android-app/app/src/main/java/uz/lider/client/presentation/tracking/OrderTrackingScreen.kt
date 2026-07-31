@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -661,6 +662,10 @@ private fun FullScreenOrderTrackingMapDialog(
         .asPaddingValues()
         .calculateBottomPadding()
         .coerceAtLeast(48.dp)
+    val statusTop = WindowInsets.statusBars
+        .asPaddingValues()
+        .calculateTopPadding()
+    val storeCalloutInset = statusTop + 58.dp
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -696,6 +701,7 @@ private fun FullScreenOrderTrackingMapDialog(
                 stopsBeforeYou = stopsBeforeYou,
                 totalStops = totalStops,
                 mapLayer = mapLayer,
+                calloutTopInset = storeCalloutInset,
                 isDark = false,
                 modifier = Modifier.fillMaxSize(),
             )

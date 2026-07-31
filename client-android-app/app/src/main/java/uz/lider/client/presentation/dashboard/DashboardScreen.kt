@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1184,6 +1185,11 @@ private fun DashboardLiveMapFullscreen(
         .asPaddingValues()
         .calculateBottomPadding()
         .coerceAtLeast(48.dp)
+    val statusTop = WindowInsets.statusBars
+        .asPaddingValues()
+        .calculateTopPadding()
+    // X / title / exit qatori (~44+padding) ostiga magazin bubble
+    val storeCalloutInset = statusTop + 58.dp
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1203,6 +1209,7 @@ private fun DashboardLiveMapFullscreen(
                 interactive = true,
                 showRouteStops = true,
                 mapLayer = mapLayer,
+                calloutTopInset = storeCalloutInset,
                 onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
