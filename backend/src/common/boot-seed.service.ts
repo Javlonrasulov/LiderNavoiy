@@ -320,9 +320,12 @@ export class BootSeedService implements OnModuleInit {
     }
 
     // Zarafshon dagi bog‘langan klient (bir xil telefon — multi-org)
+    // Manzil = bir xil magazin → boran bilan bir xil GPS
     let demoClientZar = await this.clients.findOne({
       where: { code: '29072-Z', companyId: 'zarafshon' },
     });
+    const shopLat = demoClient.latitude ?? 40.0921;
+    const shopLng = demoClient.longitude ?? 65.3612;
     if (!demoClientZar) {
       demoClientZar = await this.clients.save(
         this.clients.create({
@@ -332,8 +335,8 @@ export class BootSeedService implements OnModuleInit {
           phone: demoClient.phone || '+998901112233',
           address: 'Navoiy',
           balance: 0,
-          latitude: 40.098,
-          longitude: 65.355,
+          latitude: shopLat,
+          longitude: shopLng,
           companyId: 'zarafshon',
           lineCode: '01',
           category: 'Standard',
@@ -348,13 +351,17 @@ export class BootSeedService implements OnModuleInit {
         demoClientZar.phone = demoClient.phone || '+998901112233';
         dirtyZar = true;
       }
+      // Har doim bir xil magazin manzili (ikkita org — bitta joy)
+      const zarLat = Number(demoClientZar.latitude);
+      const zarLng = Number(demoClientZar.longitude);
       if (
-        demoClientZar.latitude == null ||
-        demoClientZar.longitude == null ||
-        !this.isUzCoord(demoClientZar.latitude, demoClientZar.longitude)
+        !Number.isFinite(zarLat) ||
+        !Number.isFinite(zarLng) ||
+        Math.abs(zarLat - Number(shopLat)) > 1e-6 ||
+        Math.abs(zarLng - Number(shopLng)) > 1e-6
       ) {
-        demoClientZar.latitude = 40.098;
-        demoClientZar.longitude = 65.355;
+        demoClientZar.latitude = shopLat;
+        demoClientZar.longitude = shopLng;
         dirtyZar = true;
       }
       if (dirtyZar) await this.clients.save(demoClientZar);

@@ -83,26 +83,28 @@ private fun replaceRoutePolylines(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     courierOverride: GeoPoint? = null,
+    overrideVehicleId: String? = null,
     showRouteStops: Boolean = true,
 ) {
+    // Animatsiya bitta mashina uchun chaqirilsa ham — barcha org yo‘llari saqlansin
+    val fleet = fleetVehiclesFromTag(map).ifEmpty { vehicles }
     val overlays = map.overlays
     overlays.removeAll { it is Polyline }
-    vehicles.forEach { vehicle ->
+    fleet.forEach { vehicle ->
         val order = primaryRouteOrder(vehicle) ?: return@forEach
-        val courier = courierOverride
-            ?: if (
-                !vehicle.id.startsWith("dest-only") &&
+        val useOverride = courierOverride != null &&
+            (overrideVehicleId == null || vehicle.id == overrideVehicleId)
+        val courier = when {
+            useOverride -> courierOverride
+            !vehicle.id.startsWith("dest-only") &&
                 GeoCoords.isUsableCourier(
                     vehicle.courierLat,
                     vehicle.courierLng,
                     order.deliveryLat,
                     order.deliveryLng,
-                )
-            ) {
-                GeoPoint(vehicle.courierLat, vehicle.courierLng)
-            } else {
-                null
-            }
+                ) -> GeoPoint(vehicle.courierLat, vehicle.courierLng)
+            else -> null
+        }
         val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
             GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
         } else {
@@ -182,7 +184,11 @@ private data class MapViewFleetTag(
     val showRouteStops: Boolean,
     val stopsSignature: String,
     val routeSignature: String,
+    val vehicles: List<LiveMapVehicle> = emptyList(),
 )
+
+private fun fleetVehiclesFromTag(map: MapView): List<LiveMapVehicle> =
+    (map.tag as? MapViewFleetTag)?.vehicles.orEmpty()
 
 private fun fleetRouteSignature(vehicles: List<LiveMapVehicle>): String =
     vehicles.joinToString("#") { v ->
@@ -210,7 +216,7 @@ private fun updateFleetMap(
     val prevTag = map.tag as? MapViewFleetTag
     val stopsChanged = prevTag?.stopsSignature != stopsSig
     val routeChanged = prevTag?.routeSignature != routeSig
-    map.tag = MapViewFleetTag(showRouteStops, stopsSig, routeSig)
+    map.tag = MapViewFleetTag(showRouteStops, stopsSig, routeSig, vehicles)
 
     val overlays = map.overlays
     val existingTruck = overlays
@@ -233,12 +239,24 @@ private fun updateFleetMap(
         existingTruck.relatedObject = truckTarget
         if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
             if (routeChanged) {
-                replaceRoutePolylines(map, vehicles, courierOverride = dest, showRouteStops = showRouteStops)
+                replaceRoutePolylines(
+                    map,
+                    vehicles,
+                    courierOverride = dest,
+                    overrideVehicleId = truckTarget.id,
+                    showRouteStops = showRouteStops,
+                )
             }
             map.invalidate()
             return
         }
-        replaceRoutePolylines(map, vehicles, courierOverride = dest, showRouteStops = showRouteStops)
+        replaceRoutePolylines(
+            map,
+            vehicles,
+            courierOverride = dest,
+            overrideVehicleId = truckTarget.id,
+            showRouteStops = showRouteStops,
+        )
         animateMarker(map, existingTruck, dest)
         map.invalidate()
         return
@@ -436,7 +454,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
         val vehicle = marker.relatedObject as? LiveMapVehicle
         if (vehicle != null) {
             replaceRoutePolylines(
-                map, listOf(vehicle), courierOverride = to,
+                map,
+                vehicles = fleetVehiclesFromTag(map).ifEmpty { listOf(vehicle) },
+                courierOverride = to,
+                overrideVehicleId = vehicle.id,
                 showRouteStops = showRouteStopsFromTag(map),
             )
         }
@@ -466,7 +487,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
                 val vehicle = marker.relatedObject as? LiveMapVehicle
                 if (vehicle != null) {
                     replaceRoutePolylines(
-                        map, listOf(vehicle), courierOverride = marker.position,
+                        map,
+                        vehicles = fleetVehiclesFromTag(map).ifEmpty { listOf(vehicle) },
+                        courierOverride = marker.position,
+                        overrideVehicleId = vehicle.id,
                         showRouteStops = showRouteStopsFromTag(map),
                     )
                 }
@@ -480,7 +504,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
                 val vehicle = marker.relatedObject as? LiveMapVehicle
                 if (vehicle != null) {
                     replaceRoutePolylines(
-                        map, listOf(vehicle), courierOverride = to,
+                        map,
+                        vehicles = fleetVehiclesFromTag(map).ifEmpty { listOf(vehicle) },
+                        courierOverride = to,
+                        overrideVehicleId = vehicle.id,
                         showRouteStops = showRouteStopsFromTag(map),
                     )
                 }
