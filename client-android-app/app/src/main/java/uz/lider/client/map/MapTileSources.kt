@@ -1,7 +1,6 @@
 package uz.lider.client.map
 
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.MapTileIndex
 
@@ -19,13 +18,14 @@ enum class MapLayerId(val key: String, val label: String) {
 }
 
 object MapTileSources {
-    val defaultLayer: MapLayerId = MapLayerId.STANDARD
+    /** OSM.org MAPNIK «Access Blocked» beradi — Carto barqarorroq. */
+    val defaultLayer: MapLayerId = MapLayerId.SHORTBREAD
     val allLayers: List<MapLayerId> = MapLayerId.entries
 
     /** Admin / agent MapLayerSwitcher bilan bir xil — Navoiy preview tile */
     fun thumbUrl(layerId: MapLayerId): String = when (layerId) {
         MapLayerId.STANDARD ->
-            "https://a.tile.openstreetmap.org/12/2793/1550.png"
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/12/2793/1550.png"
         MapLayerId.CYCLOSM ->
             "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/12/2793/1550.png"
         MapLayerId.CYCLEMAP ->
@@ -45,7 +45,14 @@ object MapTileSources {
     }
 
     fun source(layerId: MapLayerId, dark: Boolean = false): OnlineTileSourceBase = when (layerId) {
-        MapLayerId.STANDARD -> if (dark) darkStandard() else TileSourceFactory.MAPNIK
+        // Standart ham Carto — OSM.org volunteer tile bloklanmasin
+        MapLayerId.STANDARD -> if (dark) darkStandard() else hosts(
+            "CartoVoyager", 20,
+            "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
+            "https://d.basemaps.cartocdn.com/rastertiles/voyager/",
+        )
         MapLayerId.CYCLOSM -> hosts(
             "CyclOSM", 20,
             "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/",

@@ -408,7 +408,7 @@ class DashboardViewModel @Inject constructor(
                         val movedEnough = prev == null ||
                             stopsChanged ||
                             prevLat == null ||
-                            movedM > 18.0 ||
+                            movedM > 45.0 ||
                             oldRoute.isEmpty() ||
                             wentBack ||
                             offRoute
@@ -427,9 +427,21 @@ class DashboardViewModel @Inject constructor(
                             if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                                 routePoints = route.points
                                 distanceLabel = formatDistance(route.distanceKm)
+                            } else if (oldRoute.size >= 2) {
+                                // OSRM blok/timeout — eski yo‘lni saqlaymiz
+                                routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
+                                val pathKm = RouteTrim.pathLengthKm(routePoints)
+                                    .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                                distanceLabel = when {
+                                    pathKm != null -> formatDistance(pathKm)
+                                    rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
+                                        formatDistance(rawKm)
+                                    else -> distanceLabel
+                                }
                             } else {
-                                routePoints = emptyList()
-                                // Fallback: to‘g‘ri chiziqlar yig‘indisi (manzillar orqali)
+                                routePoints = RoadRouteService.fallbackViaWaypoints(
+                                    courierLat!!, courierLng!!, waypoints,
+                                )
                                 val approx = approxStopsDistanceKm(
                                     courierLat, courierLng, waypoints,
                                 )

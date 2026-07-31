@@ -73,41 +73,16 @@ class RoadRouteService @Inject constructor() {
 
         mutex.withLock {
             cached?.takeIf { it.matches(fromLat, fromLng, stops) }?.route?.let { return@withContext it }
-        }
 
-        val coords = buildString {
-            append("$fromLng,$fromLat")
-            stops.forEach { append(";${it.longitude},${it.latitude}") }
-        }
-        // OSRM public: ko‘p waypoint — overview full
-        val url =
-            "https://router.project-osrm.org/route/v1/driving/$coords" +
-                "?overview=full&geometries=geojson&steps=false"
+            // Parallel so‘rovlar public OSRM ni bloklaydi — ketma-ket
+            val resolved = fetchDrivingRouteOsrm(fromLat, fromLng, stops)
+                ?: if (stops.size > 1) fetchDrivingRouteOsrm(fromLat, fromLng, listOf(stops.last())) else null
 
-        val request = Request.Builder().url(url).get().build()
-        val route = try {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val body = response.body?.string() ?: return@use null
-                parseOsrm(body)
-            }
-        } catch (_: Exception) {
-            null
-        }
-
-        // Fallback: agar multi-stop rad etilsa — to‘g‘ridan oxirgisiga
-        val resolved = route ?: if (stops.size > 1) {
-            fetchDrivingRouteOsrm(fromLat, fromLng, listOf(stops.last()))
-        } else {
-            null
-        }
-
-        if (resolved != null) {
-            mutex.withLock {
+            if (resolved != null) {
                 cached = CachedRoute(fromLat, fromLng, stops, resolved)
             }
+            resolved
         }
-        resolved
     }
 
     private fun fetchDrivingRouteOsrm(
@@ -119,18 +94,28 @@ class RoadRouteService @Inject constructor() {
             append("$fromLng,$fromLat")
             stops.forEach { append(";${it.longitude},${it.latitude}") }
         }
-        val url =
-            "https://router.project-osrm.org/route/v1/driving/$coords" +
-                "?overview=full&geometries=geojson&steps=false"
-        return try {
-            client.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val body = response.body?.string() ?: return@use null
-                parseOsrm(body)
+        val urls = listOf(
+            "https://router.project-osrm.org/route/v1/driving/$coords?overview=full&geometries=geojson&steps=false",
+            "https://routing.openstreetmap.de/routed-car/route/v1/driving/$coords?overview=full&geometries=geojson&steps=false",
+        )
+        for (url in urls) {
+            val route = try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "LiderNavoiyClient/1.0 (delivery-tracking)")
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = response.body?.string() ?: return@use null
+                    parseOsrm(body)
+                }
+            } catch (_: Exception) {
+                null
             }
-        } catch (_: Exception) {
-            null
+            if (route != null) return route
         }
+        return null
     }
 
     private fun parseOsrm(json: String): RoadRoute? {
@@ -169,13 +154,14 @@ class RoadRouteService @Inject constructor() {
         val route: RoadRoute,
     ) {
         fun matches(fLat: Double, fLng: Double, stops: List<LatLngPoint>): Boolean {
-            if (haversineM(fromLat, fromLng, fLat, fLng) >= 25.0) return false
+            // GPS shovqiniga chidam — kamroq OSRM so‘rovi
+            if (haversineM(fromLat, fromLng, fLat, fLng) >= 80.0) return false
             if (waypoints.size != stops.size) return false
             return waypoints.indices.all { i ->
                 haversineM(
                     waypoints[i].latitude, waypoints[i].longitude,
                     stops[i].latitude, stops[i].longitude,
-                ) < 25.0
+                ) < 40.0
             }
         }
     }
@@ -244,6 +230,18 @@ class RoadRouteService @Inject constructor() {
                 }
             }
             return out
+        }
+
+        /** OSRM ishlamasa — kuryer → manzillar bo‘ylab chiziq (yo‘l yo‘qolmasin). */
+        fun fallbackViaWaypoints(
+            fromLat: Double,
+            fromLng: Double,
+            waypoints: List<LatLngPoint>,
+        ): List<LatLngPoint> {
+            val pts = ArrayList<LatLngPoint>(waypoints.size + 1)
+            pts.add(LatLngPoint(fromLat, fromLng))
+            waypoints.forEach { pts.add(it) }
+            return dedupeClose(pts, minGapM = 15.0)
         }
     }
 }

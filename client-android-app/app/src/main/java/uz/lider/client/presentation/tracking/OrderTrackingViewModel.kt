@@ -305,12 +305,21 @@ class OrderTrackingViewModel @Inject constructor(
                     )
                 }
             } else {
+                val kept = _uiState.value.routePoints
+                val fallback = if (kept.size >= 2) {
+                    RouteTrim.remaining(courierLat!!, courierLng!!, kept)
+                } else {
+                    RoadRouteService.fallbackViaWaypoints(courierLat!!, courierLng!!, waypoints)
+                }
                 val approx = approxStopsDistanceKm(courierLat, courierLng, tracking)
+                val pathKm = RouteTrim.pathLengthKm(fallback)
+                    .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                val km = pathKm ?: approx
                 _uiState.update {
                     it.copy(
-                        routePoints = emptyList(),
-                        distance = approx?.let { km -> formatDistance(km) } ?: it.distance,
-                        etaLabel = approx?.let { km -> "${etaFromKm(km)} min" } ?: it.etaLabel,
+                        routePoints = fallback.ifEmpty { it.routePoints },
+                        distance = km?.let { d -> formatDistance(d) } ?: it.distance,
+                        etaLabel = km?.let { d -> "${etaFromKm(d)} min" } ?: it.etaLabel,
                     )
                 }
             }
