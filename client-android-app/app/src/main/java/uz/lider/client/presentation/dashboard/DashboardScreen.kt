@@ -326,36 +326,15 @@ fun DashboardScreen(
                                 LiveDeliveryMapCard(
                                     fleet = fleet,
                                     isDark = isDark,
-                                    title = if (fleet.orderCount > 1) {
+                                    title = if (fleet.vehicles.size > 1 || fleet.orderCount > 1) {
                                         t("dash_live_orders")
                                     } else {
                                         t("dash_live_delivery")
                                     },
                                     watchLabel = t("dash_live_watch"),
-                                    distanceLabel = buildString {
-                                        if (fleet.totalStops > 1) {
-                                            append(
-                                                if (fleet.stopsBeforeYou > 0) {
-                                                    t("track_stops_before").replace(
-                                                        "%d",
-                                                        fleet.stopsBeforeYou.toString(),
-                                                    )
-                                                } else {
-                                                    t("track_stops_next")
-                                                },
-                                            )
-                                            append(" · ")
-                                        }
-                                        if (fleet.orderCount > 1) {
-                                            append("${fleet.orderCount} ${t("dash_live_orders_unit")} · ")
-                                        }
-                                        val orgDist = fleet.orgDistanceLines()
-                                        if (orgDist.size > 1) {
-                                            append(orgDist.joinToString(" · ") { "${it.first} ${it.second}" })
-                                        } else {
-                                            append("${t("track_distance")}: ${fleet.distanceLabel}")
-                                        }
-                                    },
+                                    distancePrefix = t("track_distance"),
+                                    stopsBeforeTemplate = t("track_stops_before"),
+                                    stopsNextLabel = t("track_stops_next"),
                                     onOpenFullscreen = { showLiveMapFullscreen = true },
                                     onOpenTracking = { orderId ->
                                         onNavigate(ClientRoutes.orderTracking(orderId))
@@ -918,12 +897,24 @@ private fun LiveDeliveryMapCard(
     isDark: Boolean,
     title: String,
     watchLabel: String,
-    distanceLabel: String,
+    distancePrefix: String,
+    stopsBeforeTemplate: String,
+    stopsNextLabel: String,
     onOpenFullscreen: () -> Unit,
     onOpenTracking: (String) -> Unit,
 ) {
     val shape = RoundedCornerShape(LiquidGlass.RadiusCard)
     var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
+    val multiOrg = fleet.vehicles.size > 1
+    val vehicleLines = fleet.vehicles.map { vehicle ->
+        vehicleLiveSubtitle(
+            vehicle = vehicle,
+            showOrgName = multiOrg,
+            distancePrefix = distancePrefix,
+            stopsBeforeTemplate = stopsBeforeTemplate,
+            stopsNextLabel = stopsNextLabel,
+        )
+    }
 
     Column(
         Modifier
@@ -955,9 +946,9 @@ private fun LiveDeliveryMapCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
+                Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f),
             ) {
                 Box(
                     Modifier
@@ -973,20 +964,25 @@ private fun LiveDeliveryMapCard(
                         modifier = Modifier.size(16.dp),
                     )
                 }
-                Column {
+                Column(
+                    Modifier.weight(1f),
+                ) {
                     Text(
                         title,
                         color = LiquidTheme.text,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                     )
-                    Text(
-                        distanceLabel,
-                        color = LiquidTheme.textMuted,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    vehicleLines.forEachIndexed { index, line ->
+                        Text(
+                            line,
+                            color = LiquidTheme.textMuted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = if (index == 0) 0.dp else 2.dp),
+                        )
+                    }
                 }
             }
             IconButton(
@@ -1048,6 +1044,45 @@ private fun LiveDeliveryMapCard(
             },
         )
     }
+}
+
+/** Bitta tashkilot qatori — keyingi manzil + km; ko‘p orgda nom bilan. */
+private fun vehicleLiveSubtitle(
+    vehicle: LiveMapVehicle,
+    showOrgName: Boolean,
+    distancePrefix: String,
+    stopsBeforeTemplate: String,
+    stopsNextLabel: String,
+): String {
+    val parts = mutableListOf<String>()
+    if (showOrgName) {
+        val org = vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+            ?: vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() }
+        if (org != null) parts += org
+    }
+    if (vehicle.totalStops > 1) {
+        parts += if (vehicle.stopsBeforeYou > 0) {
+            stopsBeforeTemplate.replace("%d", vehicle.stopsBeforeYou.toString())
+        } else {
+            stopsNextLabel
+        }
+    }
+    val dist = vehicle.orders
+        .mapNotNull { label ->
+            val n = label.distanceLabel.replace(',', '.').trim().lowercase()
+            when {
+                n.endsWith("km") -> n.removeSuffix("km").trim().toDoubleOrNull()
+                n.endsWith("m") -> n.removeSuffix("m").trim().toDoubleOrNull()?.div(1000.0)
+                else -> n.toDoubleOrNull()
+            }
+        }
+        .maxOrNull()
+        ?.let { km -> if (km < 1.0) "${(km * 1000).toInt()} m" else String.format("%.1f km", km) }
+        ?: vehicle.orders.firstOrNull()?.distanceLabel?.takeIf { it.isNotBlank() && it != "—" }
+    if (dist != null) {
+        parts += if (showOrgName) dist else "$distancePrefix: $dist"
+    }
+    return parts.joinToString(" · ").ifBlank { "—" }
 }
 
 @Composable
