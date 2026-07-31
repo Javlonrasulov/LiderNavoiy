@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,8 @@ import uz.lider.client.presentation.theme.LiquidGlass
 data class StoreCallout(
     val name: String,
     val orderId: String? = null,
+    /** Ko‘p org — magazin ustida / bubble da. */
+    val organizations: List<String> = emptyList(),
 )
 
 /**
@@ -41,6 +44,7 @@ data class StoreCallout(
 fun GlassStoreNameBubble(
     name: String,
     modifier: Modifier = Modifier,
+    organizations: List<String> = emptyList(),
     onDismiss: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -74,15 +78,26 @@ fun GlassStoreNameBubble(
             tint = LiquidGlass.Indigo,
             modifier = Modifier.size(18.dp),
         )
-        Text(
-            text = name.ifBlank { "—" },
-            color = Color(0xFF0F172A),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(
+                text = name.ifBlank { "Magazin" },
+                color = Color(0xFF0F172A),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (organizations.isNotEmpty()) {
+                Text(
+                    text = organizations.joinToString(" · "),
+                    color = Color(0xFF64748B),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (onDismiss != null) {
             Icon(
                 imageVector = Icons.Default.Close,

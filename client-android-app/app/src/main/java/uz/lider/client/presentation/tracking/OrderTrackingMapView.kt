@@ -271,20 +271,73 @@ private fun updateFleetMap(
     val storeSizeDp = if (compactMarkers) 40 else 48
     val truckSizeDp = if (compactMarkers) 32 else 36
 
+    // Mijoz magazini — barcha org buyurtmalari bitta ikonkada
+    data class ShopAgg(
+        val lat: Double,
+        val lng: Double,
+        var storeName: String,
+        val orderIds: MutableList<String> = mutableListOf(),
+        val orgLabels: MutableList<String> = mutableListOf(),
+        var companyId: String? = null,
+    )
+    val shops = linkedMapOf<String, ShopAgg>()
+    vehicles.forEach { vehicle ->
+        vehicle.orders.forEach { order ->
+            val lat = order.deliveryLat
+            val lng = order.deliveryLng
+            if (!isValidCoord(lat, lng)) return@forEach
+            val key = "%.5f,%.5f".format(lat, lng)
+            val org = vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() }
+            val label = order.storeName.trim().ifBlank {
+                order.tracking.deliveryAddress?.trim().orEmpty()
+            }.ifBlank { "Magazin" }
+            val agg = shops.getOrPut(key) {
+                ShopAgg(lat = lat!!, lng = lng!!, storeName = label, companyId = vehicle.companyId)
+            }
+            if (agg.storeName.isBlank() || agg.storeName == "Magazin") agg.storeName = label
+            if (order.orderId.isNotBlank() && order.orderId !in agg.orderIds) {
+                agg.orderIds += order.orderId
+            }
+            if (org != null && org !in agg.orgLabels) agg.orgLabels += org
+            if (agg.companyId == null) agg.companyId = vehicle.companyId
+        }
+    }
+
+    shops.values.forEach { shop ->
+        val orgColor = OrgMapColors.forCompany(shop.companyId)
+        val callout = StoreCallout(
+            name = shop.storeName,
+            orderId = shop.orderIds.firstOrNull(),
+            organizations = shop.orgLabels.toList(),
+        )
+        val isSelected = selectedStoreOrderId != null &&
+            shop.orderIds.any { it == selectedStoreOrderId }
+        val point = GeoPoint(shop.lat, shop.lng)
+        Marker(map).apply {
+            position = point
+            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+            icon = createDeliveryPinDrawable(
+                context = ctx,
+                sizeDp = storeSizeDp,
+                status = if (isSelected) StoreMarkerStatus.SELECTED else StoreMarkerStatus.APPROACHING,
+                primaryColor = orgColor,
+            )
+            relatedObject = callout
+            disableMarkerBubble(this)
+            setOnMarkerClickListener { marker, mapView ->
+                val payload = marker.relatedObject as? StoreCallout ?: callout
+                onStoreClick(payload)
+                runCatching { mapView.controller.animateTo(marker.position) }
+                mapView.invalidate()
+                true
+            }
+        }.also { overlays.add(it) }
+        cameraPoints.add(point)
+    }
+
     vehicles.forEach { vehicle ->
         val orgColor = OrgMapColors.forCompany(vehicle.companyId)
-        val idleStoreIcon = createDeliveryPinDrawable(
-            context = ctx,
-            sizeDp = storeSizeDp,
-            status = StoreMarkerStatus.APPROACHING,
-            primaryColor = orgColor,
-        )
-        val selectedStoreIcon = createDeliveryPinDrawable(
-            context = ctx,
-            sizeDp = storeSizeDp,
-            status = StoreMarkerStatus.SELECTED,
-            primaryColor = orgColor,
-        )
         // Bitta poliliniya — bir nechta buyurtma eski yo‘llarni «ghost» qilib qoldirmasin
         val primaryOrder = primaryRouteOrder(vehicle)
         if (primaryOrder != null) {
@@ -320,44 +373,10 @@ private fun updateFleetMap(
             }
         }
 
-        vehicle.orders.forEach { order ->
-            val delivery = if (isValidCoord(order.deliveryLat, order.deliveryLng)) {
-                GeoPoint(order.deliveryLat!!, order.deliveryLng!!)
-            } else {
-                null
-            }
-            delivery?.let { point ->
-                val hasRouteStops = showRouteStops && vehicle.routeStops.any {
-                    it.latitude != null && it.longitude != null
-                }
-                if (!hasRouteStops) {
-                    val storeLabel = order.storeName.trim().ifBlank {
-                        order.tracking.deliveryAddress?.trim().orEmpty()
-                    }.ifBlank { "Magazin" }
-                    val callout = StoreCallout(name = storeLabel, orderId = order.orderId)
-                    val isSelected = selectedStoreOrderId != null && selectedStoreOrderId == order.orderId
-                    Marker(map).apply {
-                        position = point
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        icon = if (isSelected) selectedStoreIcon else idleStoreIcon
-                        relatedObject = callout
-                        disableMarkerBubble(this)
-                        setOnMarkerClickListener { marker, mapView ->
-                            val payload = marker.relatedObject as? StoreCallout ?: callout
-                            onStoreClick(payload)
-                            runCatching { mapView.controller.animateTo(marker.position) }
-                            mapView.invalidate()
-                            true
-                        }
-                    }.also { overlays.add(it) }
-                    cameraPoints.add(point)
-                }
-            }
-        }
-
-        // Raqamli manzillar (1…N) — faqat to‘liq yo‘nalish rejimida
+        // Raqamli manzillar (1…N) — «siz» (magazin) o‘rniga raqam emas, yuqoridagi pin
         if (showRouteStops) {
             vehicle.routeStops.forEach { stop ->
+                if (stop.isYou) return@forEach
                 val lat = stop.latitude
                 val lng = stop.longitude
                 if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
@@ -368,25 +387,12 @@ private fun updateFleetMap(
                     icon = createNumberedStopDrawable(
                         context = ctx,
                         sequence = stop.sequence,
-                        isYou = stop.isYou,
+                        isYou = false,
                         sizeDp = if (compactMarkers) 32 else 36,
                         orgColor = orgColor,
                     )
-                    relatedObject = if (stop.isYou) {
-                        StoreCallout(name = "Siz", orderId = vehicle.orders.firstOrNull()?.orderId.orEmpty())
-                    } else {
-                        null
-                    }
+                    relatedObject = null
                     disableMarkerBubble(this)
-                    if (stop.isYou) {
-                        setOnMarkerClickListener { marker, mapView ->
-                            val payload = marker.relatedObject as? StoreCallout
-                            if (payload != null) onStoreClick(payload)
-                            runCatching { mapView.controller.animateTo(marker.position) }
-                            mapView.invalidate()
-                            true
-                        }
-                    }
                 }.also { overlays.add(it) }
                 cameraPoints.add(point)
             }
@@ -645,6 +651,7 @@ fun OrderTrackingMapView(
         selectedStore?.let { callout ->
             GlassStoreNameBubble(
                 name = callout.name,
+                organizations = callout.organizations,
                 onDismiss = { selectedStore = null },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
