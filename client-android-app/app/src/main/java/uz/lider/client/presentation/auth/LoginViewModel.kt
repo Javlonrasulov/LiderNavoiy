@@ -33,8 +33,6 @@ class LoginViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState = _uiState.asStateFlow()
 
-    fun resetForm() = _uiState.update { LoginUiState() }
-
     fun onUsernameChange(value: String) =
         _uiState.update { it.copy(username = value, errorKey = null) }
 
@@ -56,7 +54,7 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorKey = null) }
             try {
-                withTimeout(45_000) {
+                withTimeout(90_000) {
                     authRepository.login(username, password)
                 }
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }

@@ -80,12 +80,15 @@ class CatalogViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
             try {
-                withTimeout(22_000) {
+                withTimeout(90_000) {
                     ensureOrgs()
                     reloadQuiet()
                 }
             } catch (_: Exception) {
-                // timeout / network
+                runCatching {
+                    ensureOrgs()
+                    reloadQuiet()
+                }
             } finally {
                 _uiState.update { it.copy(loading = false) }
             }

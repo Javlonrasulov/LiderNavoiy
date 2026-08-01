@@ -25,9 +25,13 @@ class TokenRefreshInterceptor @Inject constructor(
         if (response.code != 401) return response
 
         response.close()
+        val hadAccessToken = runBlocking { !authRepository.get().peekAccessToken().isNullOrBlank() }
         val refreshed = runBlocking { authRepository.get().refreshAccessToken() }
         if (!refreshed) {
-            runBlocking { authRepository.get().logoutDueToExpiredSession() }
+            // Sessiyasiz (login ekrani) 401 da navigate/reset qilmaslik
+            if (hadAccessToken) {
+                runBlocking { authRepository.get().logoutDueToExpiredSession() }
+            }
             return Response.Builder()
                 .request(request)
                 .protocol(response.protocol)

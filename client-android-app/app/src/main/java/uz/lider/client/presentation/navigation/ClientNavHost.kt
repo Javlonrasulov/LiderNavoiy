@@ -124,6 +124,9 @@ class ClientNavigationViewModel @Inject constructor(
     }
 
     private suspend fun pollRecentPayments() {
+        // Login/splash da token yo‘q — 401 → sessionExpired → ekran qayta ochilib
+        // login/parol maydonlarini tozalab yubormasligi uchun so‘rov yuborilmaydi.
+        if (authRepository.peekAccessToken().isNullOrBlank()) return
         val debt = debtRepository.getDebt() ?: return
         val signals = debt.history
             .filter { it.isPayment && it.id.isNotBlank() && it.createdAtMs > 0L }
@@ -170,6 +173,7 @@ fun ClientNavHost(
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
+            if (navController.currentDestination?.route == ClientRoutes.LOGIN) return@collectLatest
             navController.navigate(ClientRoutes.LOGIN) {
                 popUpTo(0) { inclusive = true }
             }

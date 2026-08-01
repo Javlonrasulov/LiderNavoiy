@@ -4,13 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -87,7 +85,6 @@ fun LoginScreen(
         unfocusedTrailingIconColor = LiquidTheme.textMuted,
     )
 
-    LaunchedEffect(Unit) { viewModel.resetForm() }
     LaunchedEffect(state.isSuccess) { if (state.isSuccess) onLoginSuccess() }
 
     LiquidBackground(modifier = Modifier.fillMaxSize()) {
@@ -129,21 +126,20 @@ fun LoginScreen(
             }
         }
 
-        // Form lifts above keyboard via imePadding; scrollable if space is tight
-        BoxWithConstraints(
+        // imePadding: forma klaviatura ustiga ko‘tariladi; scroll — joy yetmasa
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding(),
         ) {
             Column(
                 modifier = Modifier
+                    .align(Alignment.Center)
                     .fillMaxWidth()
-                    .heightIn(min = maxHeight)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp)
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
             ) {
 
                 // Gradient logo icon with ambient glow
@@ -326,6 +322,12 @@ private fun apiErrorMessage(lang: AppLanguage, key: String): String = when (key)
         AppLanguage.EN -> "Cannot reach server"
         AppLanguage.UZ_KRIL -> "Серверга уланиб бўлмади"
         AppLanguage.UZ -> "Serverga ulanib bo'lmadi"
+    }
+    ApiErrorMapper.SERVER_WAKING -> when (lang) {
+        AppLanguage.RU -> "Сервер просыпается, подождите 1–2 мин и снова"
+        AppLanguage.EN -> "Server waking up — wait 1–2 min and retry"
+        AppLanguage.UZ_KRIL -> "Сервер уйғонмоқда — 1–2 дақиқа кутиб қайта урининг"
+        AppLanguage.UZ -> "Server uyg'onmoqda — 1–2 daqiqa kutib qayta urining"
     }
     else -> when (lang) {
         AppLanguage.RU -> "Ошибка входа"

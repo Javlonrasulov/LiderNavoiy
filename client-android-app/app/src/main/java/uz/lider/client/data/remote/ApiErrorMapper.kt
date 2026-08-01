@@ -1,6 +1,7 @@
 package uz.lider.client.data.remote
 
 import com.google.gson.JsonParser
+import kotlinx.coroutines.TimeoutCancellationException
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -13,13 +14,21 @@ object ApiErrorMapper {
     const val UNAUTHORIZED = "unauthorized"
     const val SAVE_FAILED = "save_failed"
     const val NO_AGENT = "cart_no_agent"
+    const val SERVER_WAKING = "server_waking"
 
     fun toKey(e: Throwable): String = when (e) {
         is ClientOnlyException -> CLIENT_ONLY
+        is TimeoutCancellationException -> SERVER_WAKING
         is HttpException -> mapHttpException(e)
         is IOException -> NETWORK_ERROR
         else -> {
-            if (e.message == "CLIENT_ONLY") CLIENT_ONLY else SAVE_FAILED
+            val cause = e.cause
+            when {
+                e.message == "CLIENT_ONLY" -> CLIENT_ONLY
+                cause is TimeoutCancellationException -> SERVER_WAKING
+                cause is IOException -> NETWORK_ERROR
+                else -> SAVE_FAILED
+            }
         }
     }
 

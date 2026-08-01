@@ -103,11 +103,13 @@ class DashboardViewModel @Inject constructor(
                 )
             }
             try {
-                withTimeout(22_000) {
+                // Render cold start + parallel API — UI 22s timeout ma’lumotni bekor qilib yuborardi
+                withTimeout(90_000) {
                     reloadQuiet(authUser)
                 }
             } catch (_: Exception) {
-                // Timeout / network — bo‘sh dashboard ko‘rsatiladi, loading yopiladi
+                // Timeout / network — bo‘sh dashboard o‘rniga qayta urinish
+                runCatching { reloadQuiet(authUser) }
             } finally {
                 _uiState.update { it.copy(loading = false) }
             }
@@ -146,12 +148,28 @@ class DashboardViewModel @Inject constructor(
             local
         }
         val range = _uiState.value.dateRange
+        // null = barcha orglar (Jami xaridlar); faqat chip tanlanganda filtr
         var companyId = _uiState.value.purchasesCompanyId
         val orgs = data.organizations
-        if (companyId == null || orgs.none { it.companyId == companyId }) {
-            companyId = orgs.firstOrNull()?.companyId
+        if (companyId != null && orgs.none { it.companyId == companyId }) {
+            companyId = null
         }
         val filtered = DashboardDateFilter.computeFiltered(allOrders, range, companyId)
+        // Buyurtmalar bo‘sh/timeout bo‘lsa ham API dashboard raqamlarini ko‘rsatamiz
+        val displayFiltered = if (filtered.totalPurchases <= 0.0 && apiDash != null && apiDash.totalPurchases > 0) {
+            filtered.copy(
+                totalPurchases = if (companyId == null) {
+                    apiDash.totalPurchases
+                } else {
+                    apiDash.purchasesByOrg.firstOrNull { it.companyId == companyId }?.total
+                        ?: filtered.totalPurchases
+                },
+                activeOrderCount = maxOf(filtered.activeOrderCount, apiDash.activeOrderCount),
+                purchasesByOrg = filtered.purchasesByOrg.ifEmpty { apiDash.purchasesByOrg },
+            )
+        } else {
+            filtered
+        }
         _uiState.update {
             it.copy(
                 data = data,
@@ -160,7 +178,7 @@ class DashboardViewModel @Inject constructor(
                 promotions = promotions,
                 dateRange = range,
                 purchasesCompanyId = companyId,
-                filtered = filtered,
+                filtered = displayFiltered,
             )
         }
     }
@@ -195,14 +213,13 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun selectPurchasesOrganization(companyId: String?) {
-        val id = companyId ?: return
         _uiState.update { state ->
             state.copy(
-                purchasesCompanyId = id,
+                purchasesCompanyId = companyId,
                 filtered = DashboardDateFilter.computeFiltered(
                     state.allOrders,
                     state.dateRange,
-                    id,
+                    companyId,
                 ),
             )
         }

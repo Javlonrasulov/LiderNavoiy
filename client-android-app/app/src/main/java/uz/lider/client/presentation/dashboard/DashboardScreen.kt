@@ -419,11 +419,12 @@ fun DashboardScreen(
                                     if (orgs.size >= 2) {
                                         OrgSwitcherChips(
                                             organizations = orgs,
-                                            selectedCompanyId = state.purchasesCompanyId
-                                                ?: orgs.firstOrNull()?.companyId,
-                                            onSelect = viewModel::selectPurchasesOrganization,
+                                            selectedCompanyId = state.purchasesCompanyId,
+                                            onSelect = { viewModel.selectPurchasesOrganization(it) },
                                             onDark = true,
                                             compact = true,
+                                            allLabel = "Барчаси",
+                                            onSelectAll = { viewModel.selectPurchasesOrganization(null) },
                                         )
                                     }
                                 }
