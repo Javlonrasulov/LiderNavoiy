@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.local.AgentLocationHolder
+import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.data.repository.AppSettingsRepository
@@ -15,6 +16,7 @@ import uz.distributor.crm.data.repository.DeliveryRepository
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.localization.AppLanguage
+import uz.distributor.crm.service.LocationTrackingController
 import javax.inject.Inject
 
 data class LocationUiState(
@@ -37,6 +39,8 @@ class LocationViewModel @Inject constructor(
     private val deliveryRepository: DeliveryRepository,
     private val authRepository: AuthRepository,
     private val agentLocationHolder: AgentLocationHolder,
+    private val deviceLocationProvider: DeviceLocationProvider,
+    private val locationTrackingController: LocationTrackingController,
     private val trackingSocket: TrackingSocketManager,
     private val appSettingsRepository: AppSettingsRepository,
 ) : ViewModel() {
@@ -70,7 +74,18 @@ class LocationViewModel @Inject constructor(
             _uiState.update { it.copy(isDeliveryPerson = isDelivery) }
             if (isDelivery) loadDeliveryOrders() else loadClients()
         }
+        ensureLocationTracking()
     }
+
+    /** GPS servis + joriy joylashuv — marshrut shu nuqtadan chiziladi */
+    fun ensureLocationTracking() {
+        locationTrackingController.startIfReady()
+        viewModelScope.launch {
+            deviceLocationProvider.getCurrentLocation()
+        }
+    }
+
+    fun refreshAgentLocation() = ensureLocationTracking()
 
     fun loadClients() {
         viewModelScope.launch {
@@ -104,10 +119,16 @@ class LocationViewModel @Inject constructor(
 
     fun selectClient(client: Client) {
         _uiState.update { it.copy(selectedClient = client, selectedOrderId = null) }
+        refreshAgentLocation()
     }
 
     fun selectOrder(order: OrderDto) {
         _uiState.update { it.copy(selectedOrderId = order.id, selectedClient = null) }
+        refreshAgentLocation()
+    }
+
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedClient = null, selectedOrderId = null) }
     }
 
     fun setSelectedDay(day: String) {

@@ -93,7 +93,12 @@ fun LocationScreen(
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { viewModel.refresh() }
+    ) { granted ->
+        if (granted.values.any { it }) {
+            viewModel.ensureLocationTracking()
+        }
+        viewModel.refresh()
+    }
 
     LaunchedEffect(Unit) {
         val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -104,6 +109,8 @@ fun LocationScreen(
                     Manifest.permission.ACCESS_COARSE_LOCATION,
                 ),
             )
+        } else {
+            viewModel.ensureLocationTracking()
         }
     }
 
@@ -125,6 +132,7 @@ fun LocationScreen(
                     viewModel.selectClient(client)
                 }
             },
+            onSelectionCleared = viewModel::clearSelection,
             modifier = Modifier.fillMaxSize(),
         )
 
