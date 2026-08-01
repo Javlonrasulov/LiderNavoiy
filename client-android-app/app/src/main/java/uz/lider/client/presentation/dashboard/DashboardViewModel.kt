@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import uz.lider.client.data.local.MapRouteStopsHolder
 import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.OrderRepository
@@ -59,17 +60,28 @@ class DashboardViewModel @Inject constructor(
     private val trackingSocket: TrackingSocketManager,
     private val promotionsRepository: uz.lider.client.data.repository.PromotionsRepository,
     private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
+    private val mapRouteStopsHolder: MapRouteStopsHolder,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
-    val showMapRoutePayHint: StateFlow<Boolean> = paymentPhotoAlertStore.showMapRoutePayHint
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val hideStopsCompanyIds: StateFlow<Set<String>> = mapRouteStopsHolder.hideCompanyIds
 
-    fun dismissMapRoutePayHint() {
-        viewModelScope.launch { paymentPhotoAlertStore.dismissMapRoutePayHint() }
+    fun setHideStopsCompanyIds(ids: Set<String>) {
+        mapRouteStopsHolder.setHideCompanyIds(ids)
     }
+
+    val mapPayHintDismissedOrderIds: StateFlow<Set<String>> =
+        paymentPhotoAlertStore.mapPayHintDismissedOrderIds
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    fun dismissMapPayHintFor(orderIds: Collection<String>) {
+        viewModelScope.launch { paymentPhotoAlertStore.dismissMapPayHintFor(orderIds) }
+    }
+
+    fun shouldShowMapPayHint(orderIds: Collection<String>, dismissedIds: Set<String>): Boolean =
+        paymentPhotoAlertStore.shouldShowMapPayHint(orderIds, dismissedIds)
 
     private var livePollJob: Job? = null
     private var socketJob: Job? = null
@@ -95,7 +107,9 @@ class DashboardViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            val authUser = authRepository.getUserFlow().first()
+            val authUser = runCatching {
+                withTimeout(8_000) { authRepository.getUserFlow().first() }
+            }.getOrNull()
             _uiState.update {
                 it.copy(
                     clientName = resolveClientName(null, authUser),
@@ -103,34 +117,56 @@ class DashboardViewModel @Inject constructor(
                 )
             }
             try {
-                // Render cold start + parallel API — UI 22s timeout ma’lumotni bekor qilib yuborardi
-                withTimeout(90_000) {
+                // Render cold start — birinchi urinish; spinner doim finally da o‘chadi
+                withTimeout(55_000) {
                     reloadQuiet(authUser)
                 }
             } catch (_: Exception) {
-                // Timeout / network — bo‘sh dashboard o‘rniga qayta urinish
-                runCatching { reloadQuiet(authUser) }
+                // Spinnerni ushlab qolmaslik — fonida qayta urinish
             } finally {
                 _uiState.update { it.copy(loading = false) }
             }
             ensureLiveDeliveryPolling(reuseOrdersOnce = true)
+            if (_uiState.value.data == null) {
+                launch {
+                    delay(2_500)
+                    runCatching {
+                        withTimeout(55_000) { reloadQuiet(authUser) }
+                    }
+                }
+            }
         }
     }
 
     suspend fun refresh() {
-        reloadQuiet()
+        try {
+            withTimeout(45_000) {
+                reloadQuiet()
+            }
+        } catch (_: Exception) {
+            // Oldingi UI saqlanadi; pull-to-refresh spinner qotib qolmasin
+        }
         ensureLiveDeliveryPolling(reuseOrdersOnce = true)
     }
 
     private suspend fun reloadQuiet(authUserHint: AuthUser? = null) = coroutineScope {
-        val authUser = authUserHint ?: authRepository.getUserFlow().first()
-        val profileDeferred = async { profileRepository.getProfile() }
-        val ordersDeferred = async { profileRepository.getAllOrders() }
-        val promotionsDeferred = async { promotionsRepository.getPromotions() }
+        val authUser = authUserHint ?: runCatching {
+            withTimeout(5_000) { authRepository.getUserFlow().first() }
+        }.getOrNull()
+        val profileDeferred = async { runCatching { profileRepository.getProfile() }.getOrNull() }
+        val ordersDeferred = async {
+            runCatching { profileRepository.getAllOrders() }.getOrElse { emptyList() }
+        }
+        val promotionsDeferred = async {
+            runCatching { promotionsRepository.getPromotions() }.getOrElse { emptyList() }
+        }
+        val apiDashDeferred = async {
+            runCatching { profileRepository.fetchDashboardSummary() }.getOrNull()
+        }
         val profile = profileDeferred.await()
         val allOrders = ordersDeferred.await()
         val promotions = promotionsDeferred.await()
-        val apiDash = runCatching { profileRepository.fetchDashboardSummary() }.getOrNull()
+        val apiDash = apiDashDeferred.await()
         val local = profileRepository.buildDashboardFromProfileOrders(profile, allOrders)
         val data = if (apiDash != null) {
             local.copy(
@@ -148,11 +184,14 @@ class DashboardViewModel @Inject constructor(
             local
         }
         val range = _uiState.value.dateRange
-        // null = barcha orglar (Jami xaridlar); faqat chip tanlanganda filtr
+        // «Барчаси» yo‘q — ko‘p orgda birinchisini tanlaymiz
         var companyId = _uiState.value.purchasesCompanyId
         val orgs = data.organizations
         if (companyId != null && orgs.none { it.companyId == companyId }) {
             companyId = null
+        }
+        if (companyId == null && orgs.size >= 2) {
+            companyId = orgs.first().companyId
         }
         val filtered = DashboardDateFilter.computeFiltered(allOrders, range, companyId)
         // Buyurtmalar bo‘sh/timeout bo‘lsa ham API dashboard raqamlarini ko‘rsatamiz
@@ -282,6 +321,11 @@ class DashboardViewModel @Inject constructor(
             .toSet()
         // Pushsiz: yo‘ldagi buyurtma yetkazilganda modal
         if (onWayTrackReady) {
+            val newlyOnWay = realOnWayIds - trackedOnWayIds
+            if (newlyOnWay.isNotEmpty()) {
+                // Yangi buyurtma keldi — tochkalarni qayta yoqamiz (eski hide qolmasin)
+                mapRouteStopsHolder.clear()
+            }
             val deliveredNow = trackedOnWayIds - realOnWayIds
             for (orderId in deliveredNow) {
                 val status = orders.firstOrNull { it.id == orderId }
@@ -374,6 +418,8 @@ class DashboardViewModel @Inject constructor(
                     }
 
                     var routePoints = prev?.routePoints.orEmpty()
+                    var shopRoutePoints = prev?.shopRoutePoints.orEmpty()
+                    var shopDistanceLabel = prev?.shopDistanceLabel.orEmpty()
                     val rawKm = tracking.distanceKm
                     var distanceLabel = rawKm
                         ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
@@ -394,6 +440,8 @@ class DashboardViewModel @Inject constructor(
                         RouteTrim.stopsSignature(prev?.tracking?.routeStops.orEmpty())
                     if (!gpsOk) {
                         routePoints = emptyList()
+                        shopRoutePoints = emptyList()
+                        shopDistanceLabel = ""
                         distanceLabel = "—"
                     } else if (deliveryLat != null && deliveryLng != null) {
                         val prevLat = prev?.tracking?.deliveryPerson?.latitude
@@ -404,6 +452,7 @@ class DashboardViewModel @Inject constructor(
                             Double.MAX_VALUE
                         }
                         val oldRoute = if (stopsChanged) emptyList() else prev?.routePoints.orEmpty()
+                        val oldShopRoute = if (stopsChanged) emptyList() else prev?.shopRoutePoints.orEmpty()
                         val nearestNow = if (oldRoute.isNotEmpty()) {
                             RouteTrim.nearestIndex(courierLat!!, courierLng!!, oldRoute)
                         } else {
@@ -427,14 +476,17 @@ class DashboardViewModel @Inject constructor(
                             prevLat == null ||
                             movedM > 45.0 ||
                             oldRoute.isEmpty() ||
+                            oldShopRoute.isEmpty() ||
                             wentBack ||
                             offRoute
 
                         if (movedEnough) {
+                            // Flot xaritada barcha raqamli tochkalarni hisobga olamiz
                             val waypoints = RoadRouteService.waypointsUntilYou(
                                 routeStops = tracking.routeStops,
                                 deliveryLat = deliveryLat,
                                 deliveryLng = deliveryLng,
+                                untilYouOnly = false,
                             )
                             val route = roadRouteService.fetchDrivingRoute(
                                 fromLat = courierLat!!,
@@ -445,7 +497,6 @@ class DashboardViewModel @Inject constructor(
                                 routePoints = route.points
                                 distanceLabel = formatDistance(route.distanceKm)
                             } else if (oldRoute.size >= 2) {
-                                // OSRM blok/timeout — eski yo‘lni saqlaymiz
                                 routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
                                 val pathKm = RouteTrim.pathLengthKm(routePoints)
                                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
@@ -470,6 +521,28 @@ class DashboardViewModel @Inject constructor(
                                     "—"
                                 }
                             }
+
+                            // Kichik xarita / tochkalarsiz — faqat magazin (yo‘l bo‘ylab)
+                            val shopRoute = roadRouteService.fetchDrivingRoute(
+                                fromLat = courierLat!!,
+                                fromLng = courierLng!!,
+                                toLat = deliveryLat,
+                                toLng = deliveryLng,
+                            )
+                            if (shopRoute != null && GeoCoords.isPlausibleRouteDistanceKm(shopRoute.distanceKm)) {
+                                shopRoutePoints = shopRoute.points
+                                shopDistanceLabel = formatDistance(shopRoute.distanceKm)
+                            } else if (oldShopRoute.size >= 2) {
+                                shopRoutePoints = RouteTrim.remaining(
+                                    courierLat!!, courierLng!!, oldShopRoute,
+                                )
+                                val shopKm = RouteTrim.pathLengthKm(shopRoutePoints)
+                                    .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                                shopDistanceLabel = shopKm?.let { formatDistance(it) }.orEmpty()
+                            } else {
+                                shopRoutePoints = emptyList()
+                                shopDistanceLabel = ""
+                            }
                         } else {
                             routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
                             val pathKm = RouteTrim.pathLengthKm(routePoints)
@@ -480,6 +553,13 @@ class DashboardViewModel @Inject constructor(
                                     formatDistance(rawKm)
                                 else -> distanceLabel
                             }
+                            shopRoutePoints = RouteTrim.remaining(
+                                courierLat!!, courierLng!!, oldShopRoute,
+                            )
+                            val shopKm = RouteTrim.pathLengthKm(shopRoutePoints)
+                                .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                            shopDistanceLabel = shopKm?.let { formatDistance(it) }
+                                ?: shopDistanceLabel
                         }
                     }
 
@@ -493,6 +573,8 @@ class DashboardViewModel @Inject constructor(
                         amount = tracking.totalAmount,
                         distanceLabel = distanceLabel,
                         routePoints = routePoints,
+                        shopRoutePoints = shopRoutePoints,
+                        shopDistanceLabel = shopDistanceLabel,
                         deliveryLat = deliveryLat,
                         deliveryLng = deliveryLng,
                         storeName = storeName,
@@ -558,7 +640,14 @@ class DashboardViewModel @Inject constructor(
                         courierLng = lng,
                         courierName = person?.name?.ifBlank { "—" } ?: "—",
                         courierPhone = person?.phone,
-                        orders = group.map { it.copy(routePoints = emptyList(), distanceLabel = "—") },
+                        orders = group.map {
+                            it.copy(
+                                routePoints = emptyList(),
+                                shopRoutePoints = emptyList(),
+                                shopDistanceLabel = "",
+                                distanceLabel = "—",
+                            )
+                        },
                         companyId = companyId,
                         companyShortName = companyShortName,
                         routeStops = routeSource?.routeStops.orEmpty(),
@@ -626,7 +715,14 @@ class DashboardViewModel @Inject constructor(
                 } else {
                     order.routePoints
                 }
+                val trimmedShop = if (order.shopRoutePoints.size >= 2) {
+                    RouteTrim.remaining(lat, lng, order.shopRoutePoints)
+                } else {
+                    order.shopRoutePoints
+                }
                 val pathKm = RouteTrim.pathLengthKm(trimmedRoute)
+                    .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                val shopKm = RouteTrim.pathLengthKm(trimmedShop)
                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                 order.copy(
                     distanceLabel = pathKm?.let { formatDistance(it) }
@@ -635,6 +731,9 @@ class DashboardViewModel @Inject constructor(
                             ?.let { formatDistance(it) }
                         ?: order.distanceLabel,
                     routePoints = trimmedRoute,
+                    shopRoutePoints = trimmedShop,
+                    shopDistanceLabel = shopKm?.let { formatDistance(it) }
+                        ?: order.shopDistanceLabel,
                     tracking = order.tracking.copy(
                         distanceKm = pathKm
                             ?: distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }

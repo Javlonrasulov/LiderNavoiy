@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -17,7 +16,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import uz.lider.client.BuildConfig
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,7 +48,7 @@ class PaymentPhotoAlertStore @Inject constructor(
     private val expiresAtKey = longPreferencesKey("expires_at_ms")
     private val modalDismissedKey = booleanPreferencesKey("modal_dismissed")
     private val orderIdKey = stringPreferencesKey("order_id")
-    private val mapHintDismissedVersionKey = intPreferencesKey("map_hint_dismissed_version")
+    private val mapHintDismissedOrderIdsKey = stringSetPreferencesKey("map_hint_dismissed_order_ids")
     private val handledPaymentIdsKey = stringSetPreferencesKey("handled_payment_ids")
     private val bootstrapDoneKey = booleanPreferencesKey("payments_bootstrap_done")
 
@@ -68,13 +66,32 @@ class PaymentPhotoAlertStore @Inject constructor(
         )
     }
 
-    val showMapRoutePayHint: Flow<Boolean> = context.paymentPhotoAlertDataStore.data.map { prefs ->
-        (prefs[mapHintDismissedVersionKey] ?: 0) != BuildConfig.VERSION_CODE
+    /** X bosilgan buyurtma id lari — shu buyurtmalar uchun xarita banneri ko‘rinmaydi. */
+    val mapPayHintDismissedOrderIds: Flow<Set<String>> =
+        context.paymentPhotoAlertDataStore.data.map { prefs ->
+            prefs[mapHintDismissedOrderIdsKey].orEmpty()
+        }
+
+    fun shouldShowMapPayHint(orderIds: Collection<String>, dismissedIds: Set<String>): Boolean {
+        val ids = orderIds.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (ids.isEmpty()) return false
+        return ids.any { it !in dismissedIds }
     }
 
-    suspend fun dismissMapRoutePayHint() {
+    suspend fun dismissMapPayHintFor(orderIds: Collection<String>) {
+        val add = orderIds.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (add.isEmpty()) return
         context.paymentPhotoAlertDataStore.edit { prefs ->
-            prefs[mapHintDismissedVersionKey] = BuildConfig.VERSION_CODE
+            val next = prefs[mapHintDismissedOrderIdsKey].orEmpty().toMutableSet()
+            next.addAll(add)
+            prefs[mapHintDismissedOrderIdsKey] = next.takeLast(120).toSet()
+        }
+    }
+
+    /** Logout — bannerlar qayta chiqishi uchun. */
+    suspend fun clearMapPayHintDismissals() {
+        context.paymentPhotoAlertDataStore.edit { prefs ->
+            prefs.remove(mapHintDismissedOrderIdsKey)
         }
     }
 

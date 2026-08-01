@@ -51,12 +51,16 @@ class OrderTrackingViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(OrderTrackingUiState())
     val uiState: StateFlow<OrderTrackingUiState> = _uiState.asStateFlow()
 
-    val showMapRoutePayHint: StateFlow<Boolean> = paymentPhotoAlertStore.showMapRoutePayHint
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+    val mapPayHintDismissedOrderIds: StateFlow<Set<String>> =
+        paymentPhotoAlertStore.mapPayHintDismissedOrderIds
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    fun dismissMapRoutePayHint() {
-        viewModelScope.launch { paymentPhotoAlertStore.dismissMapRoutePayHint() }
+    fun dismissMapPayHintFor(orderIds: Collection<String>) {
+        viewModelScope.launch { paymentPhotoAlertStore.dismissMapPayHintFor(orderIds) }
     }
+
+    fun shouldShowMapPayHint(orderIds: Collection<String>, dismissedIds: Set<String>): Boolean =
+        paymentPhotoAlertStore.shouldShowMapPayHint(orderIds, dismissedIds)
 
     private var pollJob: Job? = null
     private var routeJob: Job? = null
@@ -290,6 +294,8 @@ class OrderTrackingViewModel @Inject constructor(
                 routeStops = tracking?.routeStops.orEmpty(),
                 deliveryLat = deliveryLat!!,
                 deliveryLng = deliveryLng!!,
+                // Markerlar barcha manzillarni ko‘rsatadi — yo‘l ham shunga mos
+                untilYouOnly = false,
             )
             val route = roadRouteService.fetchDrivingRoute(
                 fromLat = courierLat!!,

@@ -88,7 +88,7 @@ fun OrderTrackingScreen(
     viewModel: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val showMapRoutePayHint by viewModel.showMapRoutePayHint.collectAsState()
+    val dismissedPayHintIds by viewModel.mapPayHintDismissedOrderIds.collectAsState()
     val lang = LocalAppLanguage.current
     val isDark = LiquidTheme.isDark
     val text = LiquidTheme.text
@@ -113,8 +113,8 @@ fun OrderTrackingScreen(
             routeStops = tracking?.routeStops.orEmpty(),
             stopsBeforeYou = tracking?.stopsBeforeYou ?: 0,
             totalStops = tracking?.totalStops ?: 0,
-            showPayPhotoHint = showMapRoutePayHint,
-            onDismissPayPhotoHint = { viewModel.dismissMapRoutePayHint() },
+            showPayPhotoHint = viewModel.shouldShowMapPayHint(listOf(orderId), dismissedPayHintIds),
+            onDismissPayPhotoHint = { viewModel.dismissMapPayHintFor(listOf(orderId)) },
             onDismiss = { showFullScreenMap = false },
         )
     }

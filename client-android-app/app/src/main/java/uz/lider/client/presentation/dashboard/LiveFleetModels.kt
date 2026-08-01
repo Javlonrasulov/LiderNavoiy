@@ -1,16 +1,21 @@
 package uz.lider.client.presentation.dashboard
 
 import uz.lider.client.data.repository.LatLngPoint
-import uz.lider.client.domain.model.DeliveryPersonTracking
+import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.OrderTrackingDetails
 import uz.lider.client.domain.model.RouteStopInfo
+import uz.lider.client.map.RouteTrim
 
 /** One on-the-way order shown on the live map. */
 data class LiveMapOrder(
     val orderId: String,
     val amount: Double,
     val distanceLabel: String,
+    /** To‘liq multi-stop yo‘l (raqamli manzillar bilan). */
     val routePoints: List<LatLngPoint> = emptyList(),
+    /** Faqat kuryer → magazin (yo‘l bo‘ylab) — kichik xarita / tochkalarsiz. */
+    val shopRoutePoints: List<LatLngPoint> = emptyList(),
+    val shopDistanceLabel: String = "",
     val deliveryLat: Double?,
     val deliveryLng: Double?,
     /** Client / magazine name for map callout. */
@@ -59,18 +64,55 @@ data class LiveFleetUi(
         }
 
     /** (org shortName, "12,4 km") — fullscreen da alohida chiplar. */
-    fun orgDistanceLines(): List<Pair<String, String>> =
+    fun orgDistanceLines(shopOnlyCompanyIds: Set<String> = emptySet()): List<Pair<String, String>> =
         vehicles.map { v ->
             val name = v.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
                 ?: v.companyId?.trim()?.takeIf { it.isNotEmpty() }
                 ?: "—"
-            val dist = v.orders.mapNotNull { parseDistanceKm(it.distanceLabel) }
-                .maxOrNull()
-                ?.let { formatDistance(it) }
-                ?: v.orders.firstOrNull()?.distanceLabel?.takeIf { it.isNotBlank() && it != "—" }
-                ?: "—"
+            val shopOnly = isShopOnly(v, shopOnlyCompanyIds)
+            val dist = if (shopOnly) {
+                shopOnlyDistanceLabel(v)
+            } else {
+                v.orders.mapNotNull { parseDistanceKm(it.distanceLabel) }
+                    .maxOrNull()
+                    ?.let { formatDistance(it) }
+                    ?: v.orders.firstOrNull()?.distanceLabel?.takeIf { it.isNotBlank() && it != "—" }
+                    ?: "—"
+            }
             name to dist
         }
+
+    private fun isShopOnly(vehicle: LiveMapVehicle, shopOnlyCompanyIds: Set<String>): Boolean {
+        if (shopOnlyCompanyIds.isEmpty()) return false
+        val id = vehicle.companyId?.trim().orEmpty()
+        val short = vehicle.companyShortName?.trim().orEmpty()
+        val vid = vehicle.id.trim()
+        return (id.isNotEmpty() && id in shopOnlyCompanyIds) ||
+            (short.isNotEmpty() && short in shopOnlyCompanyIds) ||
+            (vid.isNotEmpty() && vid in shopOnlyCompanyIds)
+    }
+
+    /** Oraliq manzillarsiz — OSRM magazin yo‘li km. */
+    private fun shopOnlyDistanceLabel(vehicle: LiveMapVehicle): String {
+        val order = vehicle.orders.maxByOrNull { it.shopRoutePoints.size }
+            ?: vehicle.orders.firstOrNull()
+            ?: return "—"
+        order.shopDistanceLabel.takeIf { it.isNotBlank() && it != "—" }?.let { return it }
+        val pathKm = RouteTrim.pathLengthKm(
+            RouteTrim.remaining(
+                vehicle.courierLat,
+                vehicle.courierLng,
+                order.shopRoutePoints,
+            ),
+        )
+        if (pathKm > 0.01) return formatDistance(pathKm)
+        val dLat = order.deliveryLat ?: return "—"
+        val dLng = order.deliveryLng ?: return "—"
+        val km = RoadRouteService.haversineM(
+            vehicle.courierLat, vehicle.courierLng, dLat, dLng,
+        ) / 1000.0
+        return if (km > 0.01) formatDistance(km) else "—"
+    }
 
     private fun parseDistanceKm(label: String): Double? {
         val normalized = label.replace(',', '.').trim().lowercase()

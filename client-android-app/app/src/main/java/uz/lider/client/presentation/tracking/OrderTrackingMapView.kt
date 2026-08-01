@@ -72,6 +72,18 @@ private fun buildRouteLine(
     }
 }
 
+/**
+ * showRouteStops=true — to‘liq multi-stop yo‘l.
+ * false — faqat magazin (shopRoutePoints, yo‘l bo‘ylab); to‘g‘ri chiziq emas.
+ */
+private fun routePointsForDisplay(
+    order: LiveMapOrder,
+    showRouteStops: Boolean,
+): List<LatLngPoint> {
+    if (showRouteStops) return order.routePoints
+    return order.shopRoutePoints.ifEmpty { emptyList() }
+}
+
 /** Bitta mashina = bitta asosiy marshrut (eski buyurtma chiziqlari «ghost» qolmasin). */
 private fun primaryRouteOrder(vehicle: LiveMapVehicle): LiveMapOrder? {
     val sig = RouteTrim.stopsSignature(vehicle.routeStops)
@@ -80,15 +92,36 @@ private fun primaryRouteOrder(vehicle: LiveMapVehicle): LiveMapOrder? {
     } ?: vehicle.orders.maxByOrNull { it.routePoints.size }
 }
 
+private fun vehicleShowsRouteStops(
+    vehicle: LiveMapVehicle,
+    globalShow: Boolean,
+    hideCompanyIds: Set<String>,
+): Boolean {
+    if (!globalShow) return false
+    if (hideCompanyIds.isEmpty()) return true
+    val id = vehicle.companyId?.trim().orEmpty()
+    val short = vehicle.companyShortName?.trim().orEmpty()
+    val vid = vehicle.id.trim()
+    if (id.isNotEmpty() && id in hideCompanyIds) return false
+    if (short.isNotEmpty() && short in hideCompanyIds) return false
+    if (vid.isNotEmpty() && vid in hideCompanyIds) return false
+    return true
+}
+
 private fun replaceRoutePolylines(
     map: MapView,
     vehicles: List<LiveMapVehicle>,
     courierOverride: GeoPoint? = null,
     overrideVehicleId: String? = null,
     showRouteStops: Boolean = true,
+    hideStopsCompanyIds: Set<String> = emptySet(),
 ) {
     // Animatsiya bitta mashina uchun chaqirilsa ham — barcha org yo‘llari saqlansin
     val fleet = fleetVehiclesFromTag(map).ifEmpty { vehicles }
+    val tag = map.tag as? MapViewFleetTag
+    // Tag — asosiy manba (parametr bo‘sh bo‘lsa ham eski hide yo‘qolmasin / chalkashmasin)
+    val hideIds = tag?.hideStopsCompanyIds ?: hideStopsCompanyIds
+    val globalShow = tag?.showRouteStops ?: showRouteStops
     val overlays = map.overlays
     overlays.removeAll { it is Polyline }
     fleet.forEach { vehicle ->
@@ -111,7 +144,8 @@ private fun replaceRoutePolylines(
         } else {
             null
         }
-        val pts = order.routePoints
+        val showStops = vehicleShowsRouteStops(vehicle, globalShow, hideIds)
+        val pts = routePointsForDisplay(order, showStops)
         val routeColor = OrgMapColors.forCompany(vehicle.companyId)
         val linePoints = buildRouteLine(courier, delivery, pts)
         if (linePoints.size >= 2) {
@@ -183,6 +217,7 @@ private fun disableMarkerBubble(marker: Marker) {
 
 private data class MapViewFleetTag(
     val showRouteStops: Boolean,
+    val hideStopsCompanyIds: Set<String> = emptySet(),
     val stopsSignature: String,
     val routeSignature: String,
     val vehicles: List<LiveMapVehicle> = emptyList(),
@@ -204,6 +239,7 @@ private fun updateFleetMap(
     interactive: Boolean,
     compactMarkers: Boolean,
     showRouteStops: Boolean,
+    hideStopsCompanyIds: Set<String>,
     selectedStoreOrderId: String?,
     onVehicleClick: (LiveMapVehicle) -> Unit,
     onStoreClick: (StoreCallout) -> Unit,
@@ -217,7 +253,15 @@ private fun updateFleetMap(
     val prevTag = map.tag as? MapViewFleetTag
     val stopsChanged = prevTag?.stopsSignature != stopsSig
     val routeChanged = prevTag?.routeSignature != routeSig
-    map.tag = MapViewFleetTag(showRouteStops, stopsSig, routeSig, vehicles)
+    val showStopsChanged = prevTag?.showRouteStops != showRouteStops ||
+        prevTag?.hideStopsCompanyIds != hideStopsCompanyIds
+    map.tag = MapViewFleetTag(
+        showRouteStops = showRouteStops,
+        hideStopsCompanyIds = hideStopsCompanyIds,
+        stopsSignature = stopsSig,
+        routeSignature = routeSig,
+        vehicles = vehicles,
+    )
 
     val overlays = map.overlays
     val existingTruck = overlays
@@ -233,8 +277,8 @@ private fun updateFleetMap(
             truckTarget.orders.firstOrNull()?.deliveryLng,
         )
 
-    // Manzillar o‘zgarsa (yetkazildi) — to‘liq qayta chizish (12/13 markerlar o‘chsin)
-    if (canSlideTruck && !fitCamera && !stopsChanged) {
+    // Manzillar / toggle o‘zgarsa — to‘liq qayta chizish
+    if (canSlideTruck && !fitCamera && !stopsChanged && !showStopsChanged) {
         val dest = GeoPoint(truckTarget!!.courierLat, truckTarget.courierLng)
         val from = existingTruck!!.position
         existingTruck.relatedObject = truckTarget
@@ -278,7 +322,7 @@ private fun updateFleetMap(
         val lng: Double,
         var storeName: String,
         val orderIds: MutableList<String> = mutableListOf(),
-        val orgLabels: MutableList<String> = mutableListOf(),
+        val orgStops: LinkedHashMap<String, OrgStopCount> = linkedMapOf(),
         var companyId: String? = null,
     )
     val shops = linkedMapOf<String, ShopAgg>()
@@ -300,7 +344,24 @@ private fun updateFleetMap(
             if (order.orderId.isNotBlank() && order.orderId !in agg.orderIds) {
                 agg.orderIds += order.orderId
             }
-            if (org != null && org !in agg.orgLabels) agg.orgLabels += org
+            if (org != null) {
+                val stopCount = max(
+                    vehicle.totalStops,
+                    vehicle.routeStops.size,
+                ).coerceAtLeast(vehicle.routeStops.count { !it.isYou })
+                val beforeYou = max(
+                    vehicle.stopsBeforeYou,
+                    vehicle.routeStops.count { !it.isYou },
+                )
+                val orgKey = vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() } ?: org
+                val prev = agg.orgStops[orgKey]
+                agg.orgStops[orgKey] = OrgStopCount(
+                    name = org,
+                    count = max(prev?.count ?: 0, stopCount),
+                    stopsBeforeYou = max(prev?.stopsBeforeYou ?: 0, beforeYou),
+                    companyId = vehicle.companyId,
+                )
+            }
             if (agg.companyId == null) agg.companyId = vehicle.companyId
         }
     }
@@ -310,7 +371,7 @@ private fun updateFleetMap(
         val callout = StoreCallout(
             name = shop.storeName,
             orderId = shop.orderIds.firstOrNull(),
-            organizations = shop.orgLabels.toList(),
+            orgStops = shop.orgStops.values.toList(),
         )
         val isSelected = selectedStoreOrderId != null &&
             shop.orderIds.any { it == selectedStoreOrderId }
@@ -358,8 +419,9 @@ private fun updateFleetMap(
             } else {
                 null
             }
-            // showRouteStops faqat 1…N markerlar; yo‘l chizig‘i har doim OSRM marshruti
-            val displayRoutePoints = primaryOrder.routePoints
+            // Org alohida: hide — raqamlar + oraliq yo‘l yo‘q, faqat magazingacha
+            val showStops = vehicleShowsRouteStops(vehicle, showRouteStops, hideStopsCompanyIds)
+            val displayRoutePoints = routePointsForDisplay(primaryOrder, showStops)
             val linePoints = buildRouteLine(courier, delivery, displayRoutePoints)
             if (linePoints.size >= 2) {
                 Polyline().apply {
@@ -372,30 +434,30 @@ private fun updateFleetMap(
                 }.also { overlays.add(it) }
                 cameraPoints.addAll(linePoints)
             }
-        }
 
-        // Raqamli manzillar (1…N) — «siz» (magazin) o‘rniga raqam emas, yuqoridagi pin
-        if (showRouteStops) {
-            vehicle.routeStops.forEach { stop ->
-                if (stop.isYou) return@forEach
-                val lat = stop.latitude
-                val lng = stop.longitude
-                if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
-                val point = GeoPoint(lat, lng)
-                Marker(map).apply {
-                    position = point
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                    icon = createNumberedStopDrawable(
-                        context = ctx,
-                        sequence = stop.sequence,
-                        isYou = false,
-                        sizeDp = if (compactMarkers) 32 else 36,
-                        orgColor = orgColor,
-                    )
-                    relatedObject = null
-                    disableMarkerBubble(this)
-                }.also { overlays.add(it) }
-                cameraPoints.add(point)
+            // Raqamli manzillar (1…N) — faqat shu org uchun yoqilgan bo‘lsa
+            if (showStops) {
+                vehicle.routeStops.forEach { stop ->
+                    if (stop.isYou) return@forEach
+                    val lat = stop.latitude
+                    val lng = stop.longitude
+                    if (lat == null || lng == null || !isValidCoord(lat, lng)) return@forEach
+                    val point = GeoPoint(lat, lng)
+                    Marker(map).apply {
+                        position = point
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        icon = createNumberedStopDrawable(
+                            context = ctx,
+                            sequence = stop.sequence,
+                            isYou = false,
+                            sizeDp = if (compactMarkers) 32 else 36,
+                            orgColor = orgColor,
+                        )
+                        relatedObject = null
+                        disableMarkerBubble(this)
+                    }.also { overlays.add(it) }
+                    cameraPoints.add(point)
+                }
             }
         }
 
@@ -538,6 +600,8 @@ fun OrderTrackingMapView(
     compactMarkers: Boolean = false,
     /** false — default tozalangan: faqat mashina + siz; true — 1…N manzillar. */
     showRouteStops: Boolean = true,
+    /** companyId / shortName — shu org tochkalarini yashirish (boshqalariga ta’sir qilmaydi). */
+    hideStopsCompanyIds: Set<String> = emptySet(),
     mapLayer: MapLayerId = MapTileSources.defaultLayer,
     /** Fullscreen title qatori ostiga — magazin bubble yashirinmasin. */
     calloutTopInset: Dp = 0.dp,
@@ -631,6 +695,7 @@ fun OrderTrackingMapView(
                     interactive = interactive,
                     compactMarkers = compactMarkers,
                     showRouteStops = showRouteStops,
+                    hideStopsCompanyIds = hideStopsCompanyIds,
                     selectedStoreOrderId = selectedStore?.orderId,
                     onVehicleClick = {
                         selectedStore = null
@@ -654,7 +719,7 @@ fun OrderTrackingMapView(
         selectedStore?.let { callout ->
             GlassStoreNameBubble(
                 name = callout.name,
-                organizations = callout.organizations,
+                orgStops = callout.orgStops,
                 onDismiss = { selectedStore = null },
                 modifier = Modifier
                     .align(Alignment.TopCenter)

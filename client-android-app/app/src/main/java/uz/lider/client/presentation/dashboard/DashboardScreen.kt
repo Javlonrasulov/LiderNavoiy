@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.SettingsBrightness
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
@@ -50,6 +51,8 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +68,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -135,7 +139,7 @@ fun DashboardScreen(
     notificationsViewModel: NotificationsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val showMapRoutePayHint by viewModel.showMapRoutePayHint.collectAsState()
+    val hideStopsCompanyIds by viewModel.hideStopsCompanyIds.collectAsState()
     val readNotificationIds by notificationsViewModel.readIds.collectAsState()
     val hasUnreadNotifications = MockNotificationIds.all.any { it !in readNotificationIds }
     val lang = LocalAppLanguage.current
@@ -200,14 +204,22 @@ fun DashboardScreen(
     } else {
         HeroHeightFallback
     }
+    // Yo‘ldagi karta joyi o‘zgarganda hero balandligini qayta o‘lchash
+    LaunchedEffect(live != null) {
+        heroHeightPx = 0f
+    }
 
     if (showLiveMapFullscreen && live != null) {
+        val liveOrderIds = live.vehicles.flatMap { v -> v.orders.map { it.orderId } }
+        val dismissedPayHintIds by viewModel.mapPayHintDismissedOrderIds.collectAsState()
         DashboardLiveMapFullscreen(
             fleet = live,
             title = if (live.orderCount > 1) t("dash_live_orders") else t("dash_live_delivery"),
             payPhotoHint = t("track_pay_photo_hint"),
-            showPayPhotoHint = showMapRoutePayHint,
-            onDismissPayPhotoHint = { viewModel.dismissMapRoutePayHint() },
+            showPayPhotoHint = viewModel.shouldShowMapPayHint(liveOrderIds, dismissedPayHintIds),
+            onDismissPayPhotoHint = { viewModel.dismissMapPayHintFor(liveOrderIds) },
+            hideStopsCompanyIds = hideStopsCompanyIds,
+            onHideStopsCompanyIdsChange = { viewModel.setHideStopsCompanyIds(it) },
             onDismiss = { showLiveMapFullscreen = false },
             onOpenTracking = { orderId ->
                 showLiveMapFullscreen = false
@@ -322,26 +334,6 @@ fun DashboardScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            live?.let { fleet ->
-                                Spacer(Modifier.height(16.dp))
-                                LiveDeliveryMapCard(
-                                    fleet = fleet,
-                                    isDark = isDark,
-                                    title = if (fleet.vehicles.size > 1 || fleet.orderCount > 1) {
-                                        t("dash_live_orders")
-                                    } else {
-                                        t("dash_live_delivery")
-                                    },
-                                    watchLabel = t("dash_live_watch"),
-                                    distancePrefix = t("track_distance"),
-                                    stopsBeforeTemplate = t("track_stops_before"),
-                                    stopsNextLabel = t("track_stops_next"),
-                                    onOpenFullscreen = { showLiveMapFullscreen = true },
-                                    onOpenTracking = { orderId ->
-                                        onNavigate(ClientRoutes.orderTracking(orderId))
-                                    },
-                                )
-                            }
                             Spacer(Modifier.height(20.dp))
                         }
                     }
@@ -368,30 +360,63 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Total purchases — hero ends at this card’s bottom
+                    // Hero pastki chegara = birinchi katta karta (yo‘lda yoki jami xaridlar)
+                    val measureHeroEnd: Modifier.() -> Modifier = {
+                        onGloballyPositioned { cardCoords ->
+                            val root = dashboardRootCoords ?: return@onGloballyPositioned
+                            if (listState.firstVisibleItemIndex != 0 ||
+                                listState.firstVisibleItemScrollOffset > 2
+                            ) {
+                                return@onGloballyPositioned
+                            }
+                            val bottomInRoot = root.localPositionOf(
+                                cardCoords,
+                                Offset(0f, cardCoords.size.height.toFloat()),
+                            ).y
+                            val minPx = with(density) { 280.dp.toPx() }
+                            val next = bottomInRoot.coerceAtLeast(minPx)
+                            if (kotlin.math.abs(next - heroHeightPx) > 2f) {
+                                heroHeightPx = next
+                            }
+                        }
+                    }
+
+                    // Yo‘lda bor → rasm→oq o‘tish shu kartada; Жами pastroqda oqda
+                    live?.let { fleet ->
+                        item {
+                            LiveDeliveryMapCard(
+                                fleet = fleet,
+                                isDark = isDark,
+                                title = if (fleet.vehicles.size > 1 || fleet.orderCount > 1) {
+                                    t("dash_live_orders")
+                                } else {
+                                    t("dash_live_delivery")
+                                },
+                                watchLabel = t("dash_live_watch"),
+                                distancePrefix = t("track_distance"),
+                                stopsBeforeTemplate = t("track_stops_before"),
+                                stopsNextLabel = t("track_stops_next"),
+                                hideStopsCompanyIds = hideStopsCompanyIds,
+                                onHideStopsCompanyIdsChange = { viewModel.setHideStopsCompanyIds(it) },
+                                onOpenFullscreen = { showLiveMapFullscreen = true },
+                                onOpenTracking = { orderId ->
+                                    onNavigate(ClientRoutes.orderTracking(orderId))
+                                },
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .measureHeroEnd(),
+                            )
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+
+                    // Total purchases — yo‘lda yo‘q bo‘lsa hero shu yerda tugaydi
                     item {
                         Box(
                             Modifier
                                 .padding(horizontal = 16.dp)
                                 .fillMaxWidth()
-                                .onGloballyPositioned { cardCoords ->
-                                    val root = dashboardRootCoords ?: return@onGloballyPositioned
-                                    // Only lock height while list is at top (avoid shrink while scrolling)
-                                    if (listState.firstVisibleItemIndex != 0 ||
-                                        listState.firstVisibleItemScrollOffset > 2
-                                    ) {
-                                        return@onGloballyPositioned
-                                    }
-                                    val bottomInRoot = root.localPositionOf(
-                                        cardCoords,
-                                        Offset(0f, cardCoords.size.height.toFloat()),
-                                    ).y
-                                    val minPx = with(density) { 280.dp.toPx() }
-                                    val next = bottomInRoot.coerceAtLeast(minPx)
-                                    if (kotlin.math.abs(next - heroHeightPx) > 2f) {
-                                        heroHeightPx = next
-                                    }
-                                }
+                                .then(if (live == null) Modifier.measureHeroEnd() else Modifier)
                                 .shadow(
                                     elevation = 16.dp,
                                     shape = RoundedCornerShape(LiquidGlass.RadiusCard),
@@ -423,8 +448,6 @@ fun DashboardScreen(
                                             onSelect = { viewModel.selectPurchasesOrganization(it) },
                                             onDark = true,
                                             compact = true,
-                                            allLabel = "Барчаси",
-                                            onSelectAll = { viewModel.selectPurchasesOrganization(null) },
                                         )
                                     }
                                 }
@@ -902,8 +925,11 @@ private fun LiveDeliveryMapCard(
     distancePrefix: String,
     stopsBeforeTemplate: String,
     stopsNextLabel: String,
+    hideStopsCompanyIds: Set<String>,
+    onHideStopsCompanyIdsChange: (Set<String>) -> Unit,
     onOpenFullscreen: () -> Unit,
     onOpenTracking: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(LiquidGlass.RadiusCard)
     var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
@@ -919,7 +945,7 @@ private fun LiveDeliveryMapCard(
     }
 
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .shadow(
                 elevation = 14.dp,
@@ -1011,7 +1037,8 @@ private fun LiveDeliveryMapCard(
                 vehicles = fleet.vehicles,
                 interactive = true,
                 compactMarkers = true,
-                showRouteStops = false,
+                showRouteStops = true,
+                hideStopsCompanyIds = hideStopsCompanyIds,
                 onVehicleClick = { selectedVehicle = it },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1037,8 +1064,24 @@ private fun LiveDeliveryMapCard(
     }
 
     selectedVehicle?.let { vehicle ->
+        val orgKeys = listOfNotNull(
+            vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() },
+            vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() },
+            vehicle.id.trim().takeIf { it.isNotEmpty() },
+        )
+        val hideThis = orgKeys.any { it in hideStopsCompanyIds }
+        val shopOnlyDist = fleet.orgDistanceLines(orgKeys.toSet())
+            .firstOrNull()?.second
         VehicleOrdersPopup(
             vehicle = vehicle,
+            hideRouteStops = hideThis,
+            shopOnlyDistance = shopOnlyDist,
+            onHideRouteStopsChange = { hide ->
+                onHideStopsCompanyIdsChange(
+                    if (hide) hideStopsCompanyIds + orgKeys
+                    else hideStopsCompanyIds - orgKeys.toSet(),
+                )
+            },
             onDismiss = { selectedVehicle = null },
             onOpenOrder = { orderId ->
                 selectedVehicle = null
@@ -1090,9 +1133,17 @@ private fun vehicleLiveSubtitle(
 @Composable
 private fun VehicleOrdersPopup(
     vehicle: LiveMapVehicle,
+    hideRouteStops: Boolean = false,
+    shopOnlyDistance: String? = null,
+    onHideRouteStopsChange: ((Boolean) -> Unit)? = null,
     onDismiss: () -> Unit,
     onOpenOrder: (String) -> Unit,
 ) {
+    val lang = LocalAppLanguage.current
+    val orgName = vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+        ?: vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() }
+    val stopCount = maxOf(vehicle.totalStops, vehicle.routeStops.size)
+        .coerceAtLeast(vehicle.routeStops.count { !it.isYou })
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -1113,6 +1164,17 @@ private fun VehicleOrdersPopup(
                 color = LiquidTheme.textMuted,
                 fontSize = 11.sp,
             )
+            if (orgName != null && stopCount > 0) {
+                Text(
+                    AppStrings.t(lang, "track_org_stops")
+                        .replace("%s", orgName)
+                        .replace("%d", stopCount.toString()),
+                    color = LiquidGlass.Indigo,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
             vehicle.courierPhone?.takeIf { it.isNotBlank() }?.let { phone ->
                 val context = LocalContext.current
                 Text(
@@ -1133,8 +1195,24 @@ private fun VehicleOrdersPopup(
                         },
                 )
             }
+            val hasOtherStops = vehicle.routeStops.any { !it.isYou } || vehicle.totalStops > 1
+            if (onHideRouteStopsChange != null && hasOtherStops) {
+                Spacer(Modifier.height(10.dp))
+                RouteStopsToggleRow(
+                    checked = hideRouteStops,
+                    label = AppStrings.t(lang, "track_hide_stops"),
+                    hint = AppStrings.t(lang, "track_hide_stops_hint"),
+                    onCheckedChange = onHideRouteStopsChange,
+                )
+            }
             Spacer(Modifier.height(12.dp))
             vehicle.orders.forEach { order ->
+                val dist = if (hideRouteStops) {
+                    shopOnlyDistance?.takeIf { it.isNotBlank() && it != "—" }
+                        ?: order.distanceLabel
+                } else {
+                    order.distanceLabel
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1152,7 +1230,7 @@ private fun VehicleOrdersPopup(
                             fontSize = 14.sp,
                         )
                         Text(
-                            order.distanceLabel,
+                            dist,
                             color = LiquidTheme.textMuted,
                             fontSize = 11.sp,
                         )
@@ -1170,12 +1248,87 @@ private fun VehicleOrdersPopup(
 }
 
 @Composable
+private fun RouteStopsToggleRow(
+    checked: Boolean,
+    label: String,
+    hint: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        LiquidGlass.Indigo.copy(alpha = if (checked) 0.14f else 0.06f),
+                        LiquidGlass.Cyan.copy(alpha = if (checked) 0.10f else 0.04f),
+                    ),
+                ),
+            )
+            .border(
+                1.dp,
+                LiquidGlass.Indigo.copy(alpha = if (checked) 0.28f else 0.12f),
+                RoundedCornerShape(12.dp),
+            )
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(LiquidGlass.Indigo.copy(alpha = if (checked) 0.20f else 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Default.Place,
+                contentDescription = null,
+                tint = if (checked) LiquidTheme.textMuted else LiquidGlass.Indigo,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                label,
+                color = LiquidTheme.text,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+            )
+            Text(
+                hint,
+                color = LiquidTheme.textMuted,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.scale(0.78f),
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = LiquidGlass.Indigo,
+                uncheckedThumbColor = Color.White,
+                uncheckedTrackColor = LiquidTheme.textMuted.copy(alpha = 0.35f),
+                uncheckedBorderColor = Color.Transparent,
+            ),
+        )
+    }
+}
+
+@Composable
 private fun DashboardLiveMapFullscreen(
     fleet: LiveFleetUi,
     title: String,
     payPhotoHint: String,
     showPayPhotoHint: Boolean,
     onDismissPayPhotoHint: () -> Unit,
+    hideStopsCompanyIds: Set<String>,
+    onHideStopsCompanyIdsChange: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
     onOpenTracking: (String) -> Unit,
 ) {
@@ -1189,8 +1342,8 @@ private fun DashboardLiveMapFullscreen(
     val statusTop = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
-    // X / title / exit qatori (~44+padding) ostiga magazin bubble
-    val storeCalloutInset = statusTop + 58.dp
+    // X / title / banner ostiga magazin bubble
+    val storeCalloutInset = statusTop + 58.dp + if (showPayPhotoHint) 56.dp else 0.dp
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -1209,6 +1362,7 @@ private fun DashboardLiveMapFullscreen(
                 vehicles = fleet.vehicles,
                 interactive = true,
                 showRouteStops = true,
+                hideStopsCompanyIds = hideStopsCompanyIds,
                 mapLayer = mapLayer,
                 calloutTopInset = storeCalloutInset,
                 onVehicleClick = { selectedVehicle = it },
@@ -1281,7 +1435,7 @@ private fun DashboardLiveMapFullscreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val distLines = fleet.orgDistanceLines()
+                val distLines = fleet.orgDistanceLines(hideStopsCompanyIds)
                 if (distLines.size <= 1) {
                     Text(
                         distLines.firstOrNull()?.second ?: fleet.distanceLabel,
@@ -1320,8 +1474,24 @@ private fun DashboardLiveMapFullscreen(
     }
 
     selectedVehicle?.let { vehicle ->
+        val orgKeys = listOfNotNull(
+            vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() },
+            vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() },
+            vehicle.id.trim().takeIf { it.isNotEmpty() },
+        )
+        val hideThis = orgKeys.any { it in hideStopsCompanyIds }
+        val shopOnlyDist = fleet.orgDistanceLines(orgKeys.toSet())
+            .firstOrNull()?.second
         VehicleOrdersPopup(
             vehicle = vehicle,
+            hideRouteStops = hideThis,
+            shopOnlyDistance = shopOnlyDist,
+            onHideRouteStopsChange = { hide ->
+                onHideStopsCompanyIdsChange(
+                    if (hide) hideStopsCompanyIds + orgKeys
+                    else hideStopsCompanyIds - orgKeys.toSet(),
+                )
+            },
             onDismiss = { selectedVehicle = null },
             onOpenOrder = { orderId ->
                 selectedVehicle = null

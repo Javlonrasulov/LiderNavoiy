@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import uz.lider.client.data.local.MapRouteStopsHolder
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.local.TokenHolder
 import uz.lider.client.data.remote.ApiService
@@ -33,6 +34,8 @@ class AuthRepository @Inject constructor(
     private val gson: Gson,
     private val tokenHolder: TokenHolder,
     private val selectedOrgHolder: SelectedOrgHolder,
+    private val mapRouteStopsHolder: MapRouteStopsHolder,
+    private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) {
     private val accessTokenKey = stringPreferencesKey("access_token")
     private val refreshTokenKey = stringPreferencesKey("refresh_token")
@@ -123,6 +126,8 @@ class AuthRepository @Inject constructor(
     suspend fun logout() {
         tokenHolder.setToken(null)
         selectedOrgHolder.clear()
+        mapRouteStopsHolder.clear()
+        paymentPhotoAlertStore.clearMapPayHintDismissals()
         context.authDataStore.edit { it.clear() }
     }
 

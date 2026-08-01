@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 
@@ -47,7 +48,9 @@ fun ClientPullToRefresh(
             scope.launch {
                 refreshing = true
                 try {
-                    onRefresh()
+                    // Tarmoq qotib qolsa ham indikator abadiy aylanmasin
+                    withTimeout(50_000) { onRefresh() }
+                } catch (_: Exception) {
                 } finally {
                     refreshing = false
                 }

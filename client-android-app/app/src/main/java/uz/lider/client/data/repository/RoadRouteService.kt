@@ -74,15 +74,52 @@ class RoadRouteService @Inject constructor() {
         mutex.withLock {
             cached?.takeIf { it.matches(fromLat, fromLng, stops) }?.route?.let { return@withContext it }
 
-            // Parallel so‘rovlar public OSRM ni bloklaydi — ketma-ket
+            // Parallel so‘rovlar public OSRM ni bloklaydi — ketma-ket.
+            // Multi-stop muvaffaqiyatsiz bo‘lsa — faqat magazin (oxirgi) ga tushirilmasin:
+            // avval oyog‘ma-oyoq stitch, u ham bo‘lmasa null (UI fallbackViaWaypoints).
             val resolved = fetchDrivingRouteOsrm(fromLat, fromLng, stops)
-                ?: if (stops.size > 1) fetchDrivingRouteOsrm(fromLat, fromLng, listOf(stops.last())) else null
+                ?: stitchLegs(fromLat, fromLng, stops)
 
             if (resolved != null) {
                 cached = CachedRoute(fromLat, fromLng, stops, resolved)
             }
             resolved
         }
+    }
+
+    /**
+     * Bitta OSRM so‘rovi (ko‘p waypoint) ishlamasa — har bir stop uchun alohida leg.
+     * Shunda SofIn kabi 5–6 tochka yo‘qolib, to‘g‘ridan magazin chizilmaydi.
+     */
+    private fun stitchLegs(
+        fromLat: Double,
+        fromLng: Double,
+        stops: List<LatLngPoint>,
+    ): RoadRoute? {
+        if (stops.size <= 1) return null
+        var curLat = fromLat
+        var curLng = fromLng
+        val points = ArrayList<LatLngPoint>()
+        var distanceKm = 0.0
+        var durationMinutes = 0
+        for (stop in stops) {
+            val leg = fetchDrivingRouteOsrm(curLat, curLng, listOf(stop)) ?: return null
+            if (points.isEmpty()) {
+                points.addAll(leg.points)
+            } else if (leg.points.size >= 2) {
+                points.addAll(leg.points.drop(1))
+            }
+            distanceKm += leg.distanceKm
+            durationMinutes += leg.durationMinutes
+            curLat = stop.latitude
+            curLng = stop.longitude
+        }
+        if (points.size < 2 || distanceKm > 250.0) return null
+        return RoadRoute(
+            points = points,
+            distanceKm = distanceKm,
+            durationMinutes = durationMinutes.coerceAtLeast(1),
+        )
     }
 
     private fun fetchDrivingRouteOsrm(
@@ -180,21 +217,22 @@ class RoadRouteService @Inject constructor() {
         fun approxEqual(a: Double, b: Double, eps: Double = 1e-4): Boolean = abs(a - b) < eps
 
         /**
-         * Sizgacha (va siz) bo‘lgan manzillar — marshrut ketma-ketligi.
-         * Agar stop coords yo‘q bo‘lsa, oxiriga delivery nuqtasi qo‘yiladi.
+         * @param untilYouOnly true — faqat sizgacha (bitta buyurtma tracking).
+         * false — kuryerning barcha manzillari (flot xarita: raqamli markerlar bilan mos).
          */
         fun waypointsUntilYou(
             routeStops: List<uz.lider.client.domain.model.RouteStopInfo>,
             deliveryLat: Double,
             deliveryLng: Double,
+            untilYouOnly: Boolean = true,
         ): List<LatLngPoint> {
             val sorted = routeStops.sortedBy { it.sequence }
             if (sorted.isEmpty()) {
                 return listOf(LatLngPoint(deliveryLat, deliveryLng))
             }
             val youIdx = sorted.indexOfFirst { it.isYou }.let { if (it < 0) sorted.lastIndex else it }
-            val untilYou = sorted.take(youIdx + 1)
-            val points = untilYou.mapNotNull { stop ->
+            val selected = if (untilYouOnly) sorted.take(youIdx + 1) else sorted
+            val points = selected.mapNotNull { stop ->
                 val lat = stop.latitude
                 val lng = stop.longitude
                 if (lat == null || lng == null) return@mapNotNull null
@@ -204,11 +242,25 @@ class RoadRouteService @Inject constructor() {
             if (points.isEmpty()) {
                 points.add(LatLngPoint(deliveryLat, deliveryLng))
             } else {
-                val last = points.last()
-                if (haversineM(last.latitude, last.longitude, deliveryLat, deliveryLng) > 40.0) {
-                    // «Siz» stop coords yetishmasa — delivery ni oxiriga qo‘sh
-                    if (untilYou.lastOrNull()?.isYou == true) {
+                val youStop = selected.firstOrNull { it.isYou }
+                val youLat = youStop?.latitude
+                val youLng = youStop?.longitude
+                val shopNearYouStop = youLat != null && youLng != null &&
+                    haversineM(youLat, youLng, deliveryLat, deliveryLng) <= 40.0
+                if (!shopNearYouStop) {
+                    // «Siz» stop coords yetishmasa — delivery ni to‘g‘ri o‘ringa qo‘y
+                    if (untilYouOnly && selected.lastOrNull()?.isYou == true) {
                         points[points.lastIndex] = LatLngPoint(deliveryLat, deliveryLng)
+                    } else if (youIdx in selected.indices) {
+                        val insertAt = selected.take(youIdx + 1).count { s ->
+                            s.latitude != null && s.longitude != null &&
+                                !(s.latitude == 0.0 && s.longitude == 0.0)
+                        }.coerceAtMost(points.size)
+                        if (insertAt > 0 && insertAt <= points.size) {
+                            points[insertAt - 1] = LatLngPoint(deliveryLat, deliveryLng)
+                        } else {
+                            points.add(LatLngPoint(deliveryLat, deliveryLng))
+                        }
                     } else {
                         points.add(LatLngPoint(deliveryLat, deliveryLng))
                     }
