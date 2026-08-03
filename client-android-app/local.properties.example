@@ -1,6 +1,6 @@
 # sdk.dir=C\:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
 #
-# Default API = Render (https://lider-navoiy-api.onrender.com).
-# Faqat lokal backend uchun:
+# Default API = VPS (http://89.39.95.41).
+# Lokal backend uchun:
 # api.host=192.168.1.100
 # Emulator: api.host=10.0.2.2

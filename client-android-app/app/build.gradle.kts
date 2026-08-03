@@ -25,14 +25,14 @@ android {
         if (localPropertiesFile.exists()) {
             localProperties.load(localPropertiesFile.inputStream())
         }
-        // Default: Render. Local: api.host=192.168.x.x yoki api.base.url=...
-        val renderApi = "https://lider-navoiy-api.onrender.com/api/v1/"
-        val renderWs = "https://lider-navoiy-api.onrender.com"
+        // Default: VPS. Local: api.host=192.168.x.x yoki api.base.url=...
+        val prodApi = "http://89.39.95.41/api/v1/"
+        val prodWs = "http://89.39.95.41"
         val apiHost = localProperties.getProperty("api.host")
         val apiBaseUrl = localProperties.getProperty("api.base.url")
-            ?: if (apiHost != null) "http://$apiHost:3000/api/v1/" else renderApi
+            ?: if (apiHost != null) "http://$apiHost:3000/api/v1/" else prodApi
         val wsBaseUrl = localProperties.getProperty("api.ws.url")
-            ?: if (apiHost != null) "http://$apiHost:3000" else renderWs
+            ?: if (apiHost != null) "http://$apiHost:3000" else prodWs
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$wsBaseUrl\"")
     }

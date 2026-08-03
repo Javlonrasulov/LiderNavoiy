@@ -12,12 +12,16 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+RUN apk add --no-cache libc6-compat
+
 ENV NODE_ENV=production
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+
+RUN mkdir -p uploads
 
 EXPOSE 3000
 

@@ -152,14 +152,18 @@ fun LoginScreen(
                 viewModel.setLocationError()
                 return@LaunchedEffect
             }
-            LocationSyncWorker.enqueue(context)
-            LocationSyncWorker.enqueueImmediate(context)
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, LocationTrackingService::class.java).apply {
-                    action = LocationTrackingService.ACTION_START
-                },
-            )
+            runCatching {
+                LocationSyncWorker.enqueue(context)
+                LocationSyncWorker.enqueueImmediate(context)
+            }
+            runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, LocationTrackingService::class.java).apply {
+                        action = LocationTrackingService.ACTION_START
+                    },
+                )
+            }
             onLoginSuccess()
         }
     }

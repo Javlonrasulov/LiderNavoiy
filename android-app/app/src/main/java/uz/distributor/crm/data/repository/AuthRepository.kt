@@ -55,6 +55,9 @@ class AuthRepository @Inject constructor(
 
     val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { it[accessTokenKey] != null }
 
+    /** Interceptor retry uchun joriy access token. */
+    fun peekAccessToken(): String? = tokenHolder.peekToken()
+
     private fun currentDevice(): LoginDeviceDto = LoginDeviceDto(
         id = "${Build.MANUFACTURER}-${Build.MODEL}-${Build.ID}".take(160),
         brand = Build.MANUFACTURER?.replaceFirstChar { it.uppercase() },
@@ -64,13 +67,16 @@ class AuthRepository @Inject constructor(
 
     suspend fun login(username: String, password: String): AuthTokens {
         val response = api.login(LoginRequest(username, password, currentDevice()))
+        if (response.user.role != "distributor") {
+            throw AgentOnlyException()
+        }
         val tokens = AuthTokens(
             accessToken = response.accessToken,
             refreshToken = response.refreshToken,
             expiresIn = response.expiresIn,
             user = response.user.toAuthUser(),
         )
-        clientRepository.clearCache()
+        runCatching { clientRepository.clearCache() }
         saveTokens(tokens, password)
         return tokens
     }
@@ -148,16 +154,20 @@ class AuthRepository @Inject constructor(
     private suspend fun saveTokens(tokens: AuthTokens, password: String? = null) {
         tokenHolder.setToken(tokens.accessToken)
         userIdHolder.userId = tokens.user.id
-        trackingSocket.connect()
-        messagesSocket.connect()
         context.dataStore.edit { prefs ->
             prefs[accessTokenKey] = tokens.accessToken
             prefs[refreshTokenKey] = tokens.refreshToken
             prefs[userKey] = gson.toJson(tokens.user)
             password?.let { prefs[passwordKey] = it }
         }
+        // Socket loginni bloklamasin / yiqitmasin
+        runCatching { trackingSocket.connect() }
+        runCatching { messagesSocket.connect() }
     }
 }
+
+/** Faqat agent (distributor) roli bilan kirish mumkin. */
+class AgentOnlyException : Exception("agent_only")
 
 private fun uz.distributor.crm.data.remote.dto.UserDto.toAuthUser() = AuthUser(
     id = id,

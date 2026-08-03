@@ -25,9 +25,12 @@ class TokenRefreshInterceptor @Inject constructor(
         if (response.code != 401) return response
 
         response.close()
+        val hadAccessToken = runBlocking { !authRepository.get().peekAccessToken().isNullOrBlank() }
         val refreshed = runBlocking { authRepository.get().refreshAccessToken() }
         if (!refreshed) {
-            runBlocking { authRepository.get().logoutDueToExpiredSession() }
+            if (hadAccessToken) {
+                runBlocking { authRepository.get().logoutDueToExpiredSession() }
+            }
             return Response.Builder()
                 .request(request)
                 .protocol(response.protocol)
@@ -37,6 +40,14 @@ class TokenRefreshInterceptor @Inject constructor(
                 .build()
         }
 
-        return chain.proceed(request)
+        val newToken = runBlocking { authRepository.get().peekAccessToken() }
+        val retry = if (!newToken.isNullOrBlank()) {
+            request.newBuilder()
+                .header("Authorization", "Bearer $newToken")
+                .build()
+        } else {
+            request
+        }
+        return chain.proceed(retry)
     }
 }

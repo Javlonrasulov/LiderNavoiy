@@ -1,14 +1,29 @@
 package uz.distributor.crm.data.remote
 
 import com.google.gson.JsonParser
+import kotlinx.coroutines.TimeoutCancellationException
 import retrofit2.HttpException
+import uz.distributor.crm.data.repository.AgentOnlyException
 import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 object ApiErrorMapper {
+    const val SERVER_WAKING = "server_waking"
+
     fun toKey(e: Throwable): String = when (e) {
+        is AgentOnlyException -> "agent_only"
+        is TimeoutCancellationException -> SERVER_WAKING
+        is SocketTimeoutException -> SERVER_WAKING
+        is UnknownHostException -> "network_error"
         is HttpException -> mapHttpException(e)
         is IOException -> "network_error"
-        else -> "save_failed"
+        else -> when {
+            e.cause is TimeoutCancellationException -> SERVER_WAKING
+            e.cause is SocketTimeoutException -> SERVER_WAKING
+            e.cause is IOException -> "network_error"
+            else -> "save_failed"
+        }
     }
 
     private fun mapHttpException(e: HttpException): String {

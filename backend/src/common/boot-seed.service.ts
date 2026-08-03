@@ -12,7 +12,7 @@ import { UserRole, DistributorStatus } from './enums';
 const DEMO_PASSWORD = '123456';
 
 /**
- * Render / production: SEED_ON_BOOT=true bo'lsa admin, agent, mijoz va demo klient yaratadi.
+ * Production: SEED_ON_BOOT=true bo'lsa admin, agent, mijoz va demo klient yaratadi.
  */
 @Injectable()
 export class BootSeedService implements OnModuleInit {
@@ -60,7 +60,7 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`products.companyId migrate: ${(err as Error).message}`);
     }
 
-    // products.imageData — Render disk ephemeral: rasm DB da
+    // products.imageData — rasm backup DB da
     try {
       await this.dataSource.query(`
         ALTER TABLE products

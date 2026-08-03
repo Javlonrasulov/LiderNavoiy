@@ -85,10 +85,10 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorKey = null) }
             try {
-                withTimeout(45_000) {
+                withTimeout(90_000) {
                     authRepository.login(username, password)
                 }
-                messagesRealtime.start()
+                runCatching { messagesRealtime.start() }
                 // FCM kutish loginni bloklamasin
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 runCatching { pushRepository.registerCurrentToken() }

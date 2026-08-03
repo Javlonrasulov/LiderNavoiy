@@ -31,7 +31,7 @@ Push bildirishnomalar **Firebase Cloud Messaging** orqali:
 2. Config qiymatlarini oling
 3. **Project Settings → Cloud Messaging → Web Push certificates** → **Generate key pair** (VAPID)
 
-Netlify / lokal `.env`:
+Lokal / production `.env`:
 
 ```env
 VITE_FIREBASE_API_KEY=...
@@ -48,7 +48,7 @@ Admin login qilganda brauzer bildirishnoma ruxsatini so‘raydi va FCM token ser
 
 1. Firebase → **Project Settings** → **Service accounts**
 2. **Generate new private key**
-3. Backend `.env` yoki Render Environment:
+3. Backend `.env` (serverda `.env.production`):
 
 ```env
 FIREBASE_PROJECT_ID=your-project-id
@@ -76,7 +76,7 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 
 ## 7. Tekshirish
 
-1. Firebase kalitlarini qo‘ying (Android + backend + Netlify)
+1. Firebase kalitlarini qo‘ying (Android + backend + admin panel)
 2. Agent va mijoz APK ni qayta build qiling
 3. Login qiling, bildirishnoma ruxsatini bering
 4. Admin → **Push** → auditoriyani tanlab test yuboring
@@ -87,6 +87,6 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 |--------|--------|
 | `FIREBASE_NOT_CONFIGURED` | Backend `FIREBASE_*` env to‘liq emas |
 | Push kelmayapti | `google-services.json` package name mosligi |
-| Admin brauzerda yo‘q | `VITE_FIREBASE_*` + VAPID + HTTPS (Netlify) |
+| Admin brauzerda yo‘q | `VITE_FIREBASE_*` + VAPID + HTTPS |
 | Token yo‘q | Login + internet + notification permission |
 | Emulator | Google Play Services kerak |

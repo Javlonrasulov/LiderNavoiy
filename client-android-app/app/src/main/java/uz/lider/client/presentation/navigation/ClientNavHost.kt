@@ -43,7 +43,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import uz.lider.client.R
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
@@ -77,23 +76,6 @@ class SplashViewModel @Inject constructor(
 ) : ViewModel() {
     fun checkAuth(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            // Render cold start — splash paytida uyg‘otish (natijani kutmaymiz)
-            launch {
-                runCatching {
-                    withTimeout(8_000) {
-                        okhttp3.OkHttpClient.Builder()
-                            .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-                            .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-                            .build()
-                            .newCall(
-                                okhttp3.Request.Builder()
-                                    .url("${uz.lider.client.BuildConfig.API_BASE_URL.trimEnd('/')}/health")
-                                    .get()
-                                    .build(),
-                            ).execute().close()
-                    }
-                }
-            }
             onResult(authRepository.restoreSession())
         }
     }

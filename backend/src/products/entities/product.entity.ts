@@ -42,7 +42,7 @@ export class Product {
   imageUrl: string | null;
 
   /**
-   * Render ephemeral disk uchun: rasm baytlari (base64).
+   * Disk backup: rasm baytlari (base64).
    * API list/detail javobiga kirmaydi (select: false).
    */
   @Column({ type: 'text', nullable: true, select: false })

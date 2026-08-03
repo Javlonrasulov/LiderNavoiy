@@ -40,7 +40,7 @@ async function bootstrap() {
   const uploadsDir = join(process.cwd(), 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
-  // Disk yo‘qolsa (Render) — DB dagi imageData dan berish
+  // Diskda fayl yo‘qolsa — DB dagi imageData dan berish
   app.use('/uploads/products', (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {

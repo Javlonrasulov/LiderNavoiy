@@ -37,7 +37,7 @@ export class FirebaseAdminService implements OnModuleInit {
       return;
     }
 
-    // Render / .env: qo‘shtirnoq, CRLF, literal \n ni tozalash
+    // .env: qo‘shtirnoq, CRLF, literal \n ni tozalash
     privateKey = privateKey
       .trim()
       .replace(/^"|"$/g, '')

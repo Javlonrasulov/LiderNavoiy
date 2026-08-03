@@ -24,7 +24,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Login va parolni kiriting",
     errWrong:    "Login yoki parol noto'g'ri",
     errBackend:  "Backend ulanmagan. Keyinroq qayta urinib ko'ring.",
-    waking:      "Server uyg'onmoqda... 20–60 soniya kuting",
     demo:        'Demo',
     footer:      'Lider CRM tizimi — v2.0 · Barcha huquqlar himoyalangan',
   },
@@ -38,7 +37,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Логин ва паролни киритинг",
     errWrong:    "Логин ёки парол нотўғри",
     errBackend:  "Backend уланмаган. Кейинроқ қайта уриниб кўринг.",
-    waking:      "Сервер уйғонмоқда... 20–60 сония кутинг",
     demo:        'Демо',
     footer:      'Lider CRM тизими — v2.0 · Барча ҳуқуқлар ҳимояланган',
   },
@@ -52,7 +50,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Введите логин и пароль",
     errWrong:    "Неверный логин или пароль",
     errBackend:  "Backend недоступен. Попробуйте позже.",
-    waking:      "Сервер просыпается... подождите 20–60 сек",
     demo:        'Демо',
     footer:      'Lider CRM система — v2.0 · Все права защищены',
   },
@@ -84,8 +81,6 @@ export default function AdminLogin() {
     ? 'bg-[#1e1e1e] border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500'
     : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400';
 
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
   const isNetworkError = (err: unknown) => {
     const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
     if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid')) return false;
@@ -101,39 +96,15 @@ export default function AdminLogin() {
     );
   };
 
-  /** Har bir so'rov max N ms — aks holda brauzer cheksiz kutadi (Render hang) */
   const withTimeout = (ms: number) => AbortSignal.timeout(ms);
 
-  /** Render free cold-start: qisqa timeout + ko'p urinish */
   const wakeAndLogin = async (user: string, pass: string) => {
-    const wakeAttempts = 20;
-    let awake = false;
-    for (let i = 0; i < wakeAttempts; i++) {
-      setError(`${t.waking} (${i + 1}/${wakeAttempts})`);
-      try {
-        await api.health({ signal: withTimeout(12_000) });
-        awake = true;
-        break;
-      } catch {
-        await sleep(2000);
-      }
-    }
-    if (!awake) {
+    try {
+      await api.health({ signal: withTimeout(8_000) });
+    } catch {
       throw new Error('Backend ulanmagan');
     }
-
-    let lastErr: unknown;
-    for (let i = 0; i < 6; i++) {
-      try {
-        return await api.login(user, pass, { signal: withTimeout(20_000) });
-      } catch (err) {
-        lastErr = err;
-        if (!isNetworkError(err)) throw err;
-        setError(`${t.waking} (${i + 1}/6)`);
-        await sleep(3000);
-      }
-    }
-    throw lastErr;
+    return api.login(user, pass, { signal: withTimeout(20_000) });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

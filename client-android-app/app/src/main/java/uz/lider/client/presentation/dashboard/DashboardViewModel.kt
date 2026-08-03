@@ -117,8 +117,7 @@ class DashboardViewModel @Inject constructor(
                 )
             }
             try {
-                // Render cold start — birinchi urinish; spinner doim finally da o‘chadi
-                withTimeout(55_000) {
+                withTimeout(25_000) {
                     reloadQuiet(authUser)
                 }
             } catch (_: Exception) {
@@ -129,9 +128,9 @@ class DashboardViewModel @Inject constructor(
             ensureLiveDeliveryPolling(reuseOrdersOnce = true)
             if (_uiState.value.data == null) {
                 launch {
-                    delay(2_500)
+                    delay(2_000)
                     runCatching {
-                        withTimeout(55_000) { reloadQuiet(authUser) }
+                        withTimeout(25_000) { reloadQuiet(authUser) }
                     }
                 }
             }

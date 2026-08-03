@@ -385,9 +385,9 @@ object AppStrings {
         else -> role
     }
     fun serverHint(lang: AppLanguage, host: String) = when (lang) {
-        AppLanguage.UZ_LATIN -> "Server: $host — Render cloud (lokal uchun api.host=IP)"
-        AppLanguage.UZ_CYRILLIC -> "Сервер: $host — Render cloud (локал учун api.host=IP)"
-        AppLanguage.RUS -> "Сервер: $host — Render cloud (локально: api.host=IP)"
+        AppLanguage.UZ_LATIN -> "Server: $host — VPS"
+        AppLanguage.UZ_CYRILLIC -> "Сервер: $host — VPS"
+        AppLanguage.RUS -> "Сервер: $host — VPS"
     }
     fun chatPlaceholder(lang: AppLanguage) = tr(lang, "Xabar...", "Хабар...", "Сообщение...")
     fun attachPhoto(lang: AppLanguage) = tr(lang, "Rasm yoki video", "Расм ёки видео", "Фото или видео")
@@ -527,8 +527,10 @@ object AppStrings {
         "password_too_short" -> errorPasswordTooShort(lang)
         "current_password_required" -> errorCurrentPasswordRequired(lang)
         "network_error" -> msgLoadError(lang)
+        "server_waking" -> errorServerWaking(lang)
         "server_error" -> errorServer(lang)
         "unauthorized" -> errorUnauthorized(lang)
+        "agent_only" -> errorAgentOnly(lang)
         "location_failed" -> errorLocationFailed(lang)
         "save_failed" -> errorSaveFailed(lang)
         "inn_client_exists" -> errorInnClientExists(lang)
@@ -803,6 +805,18 @@ object AppStrings {
         "Не удалось определить местоположение — включите GPS",
     )
     fun errorSaveFailed(lang: AppLanguage) = tr(lang, "Saqlashda xatolik", "Сақлашда хатолик", "Ошибка сохранения")
+    fun errorServerWaking(lang: AppLanguage) = tr(
+        lang,
+        "Server uyg'onyapti — 30–60 soniya kuting va qayta urinib ko'ring",
+        "Сервер уйғонмоқда — 30–60 сония кутинг ва қайта уриниб кўринг",
+        "Сервер просыпается — подождите 30–60 сек и попробуйте снова",
+    )
+    fun errorAgentOnly(lang: AppLanguage) = tr(
+        lang,
+        "Bu login agent ilovasi uchun emas (mijoz login)",
+        "Бу логин агент иловаси учун эмас (мижоз логин)",
+        "Этот логин не для агентского приложения",
+    )
     fun errorNetwork(lang: AppLanguage) = tr(
         lang,
         "Internet aloqasi yo'q",

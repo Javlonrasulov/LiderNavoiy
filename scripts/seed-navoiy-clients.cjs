@@ -2,7 +2,7 @@
  * Create 2 clients per weekday for every agent, Navoiy map coords.
  * Usage: node scripts/seed-navoiy-clients.cjs
  */
-const RENDER_API = 'https://lider-navoiy-api.onrender.com/api/v1';
+const API_BASE = process.env.API_BASE || 'http://89.39.95.41/api/v1';
 const ADMIN = { username: 'admin', password: '123456' };
 
 // Navoiy city center-ish
@@ -28,7 +28,7 @@ const SHOPS = [
 ];
 
 async function api(token, method, path, body) {
-  const res = await fetch(`${RENDER_API}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -62,7 +62,7 @@ function offset(seed) {
 }
 
 async function login() {
-  const res = await fetch(`${RENDER_API}/auth/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ADMIN),
@@ -74,7 +74,7 @@ async function login() {
 async function main() {
   for (let i = 0; i < 5; i++) {
     try {
-      const h = await fetch(`${RENDER_API}/health`);
+      const h = await fetch(`${API_BASE}/health`);
       if (h.ok) break;
     } catch {
       /* retry */

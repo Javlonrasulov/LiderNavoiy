@@ -1,12 +1,12 @@
 /**
- * Fix duplicate client APK logins on Render — rename to name+code unique form.
+ * Fix duplicate client APK logins — rename to name+code unique form.
  * Usage: node scripts/fix-duplicate-client-logins.cjs
  */
-const RENDER_API = 'https://lider-navoiy-api.onrender.com/api/v1';
+const API_BASE = process.env.API_BASE || 'http://89.39.95.41/api/v1';
 const ADMIN = { username: 'admin', password: '123456' };
 
 async function login() {
-  const res = await fetch(`${RENDER_API}/auth/login`, {
+  const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(ADMIN),
@@ -16,7 +16,7 @@ async function login() {
 }
 
 async function api(token, method, path, body) {
-  const res = await fetch(`${RENDER_API}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -54,7 +54,7 @@ function toLogin(name, code) {
 async function main() {
   for (let i = 0; i < 6; i++) {
     try {
-      if ((await fetch(`${RENDER_API}/health`)).ok) break;
+      if ((await fetch(`${API_BASE}/health`)).ok) break;
     } catch {
       /* wake */
     }
