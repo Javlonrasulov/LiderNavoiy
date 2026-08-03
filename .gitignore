@@ -27,6 +27,14 @@ Thumbs.db
 # Test
 coverage/
 
+# Temp / local junk
+.tmp/
+tmp/
+tmp-*
+deploy-temp/
+backend/tmp-*.js
+*.tar.gz
+
 # Docker
 postgres_data/
 
