@@ -323,12 +323,6 @@ private fun apiErrorMessage(lang: AppLanguage, key: String): String = when (key)
         AppLanguage.UZ_KRIL -> "Серверга уланиб бўлмади"
         AppLanguage.UZ -> "Serverga ulanib bo'lmadi"
     }
-    ApiErrorMapper.SERVER_WAKING -> when (lang) {
-        AppLanguage.RU -> "Сервер просыпается, подождите 1–2 мин и снова"
-        AppLanguage.EN -> "Server waking up — wait 1–2 min and retry"
-        AppLanguage.UZ_KRIL -> "Сервер уйғонмоқда — 1–2 дақиқа кутиб қайта урининг"
-        AppLanguage.UZ -> "Server uyg'onmoqda — 1–2 daqiqa kutib qayta urining"
-    }
     else -> when (lang) {
         AppLanguage.RU -> "Ошибка входа"
         AppLanguage.EN -> "Login failed"

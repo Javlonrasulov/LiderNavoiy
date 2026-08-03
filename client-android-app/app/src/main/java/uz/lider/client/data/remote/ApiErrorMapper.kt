@@ -14,18 +14,17 @@ object ApiErrorMapper {
     const val UNAUTHORIZED = "unauthorized"
     const val SAVE_FAILED = "save_failed"
     const val NO_AGENT = "cart_no_agent"
-    const val SERVER_WAKING = "server_waking"
 
     fun toKey(e: Throwable): String = when (e) {
         is ClientOnlyException -> CLIENT_ONLY
-        is TimeoutCancellationException -> SERVER_WAKING
+        is TimeoutCancellationException -> NETWORK_ERROR
         is HttpException -> mapHttpException(e)
         is IOException -> NETWORK_ERROR
         else -> {
             val cause = e.cause
             when {
                 e.message == "CLIENT_ONLY" -> CLIENT_ONLY
-                cause is TimeoutCancellationException -> SERVER_WAKING
+                cause is TimeoutCancellationException -> NETWORK_ERROR
                 cause is IOException -> NETWORK_ERROR
                 else -> SAVE_FAILED
             }

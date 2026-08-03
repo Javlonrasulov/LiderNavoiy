@@ -98,7 +98,7 @@ export default function AdminLogin() {
 
   const withTimeout = (ms: number) => AbortSignal.timeout(ms);
 
-  const wakeAndLogin = async (user: string, pass: string) => {
+  const doLogin = async (user: string, pass: string) => {
     try {
       await api.health({ signal: withTimeout(8_000) });
     } catch {
@@ -116,7 +116,7 @@ export default function AdminLogin() {
     setLoading(true);
     setError('');
     try {
-      const res = await wakeAndLogin(username.trim(), password.trim());
+      const res = await doLogin(username.trim(), password.trim());
       if (res.user.role !== 'admin' && res.user.role !== 'manager') {
         clearTokens();
         setError(t.errWrong);

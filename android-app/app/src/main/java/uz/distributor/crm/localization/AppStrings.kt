@@ -527,7 +527,6 @@ object AppStrings {
         "password_too_short" -> errorPasswordTooShort(lang)
         "current_password_required" -> errorCurrentPasswordRequired(lang)
         "network_error" -> msgLoadError(lang)
-        "server_waking" -> errorServerWaking(lang)
         "server_error" -> errorServer(lang)
         "unauthorized" -> errorUnauthorized(lang)
         "agent_only" -> errorAgentOnly(lang)
@@ -805,12 +804,6 @@ object AppStrings {
         "Не удалось определить местоположение — включите GPS",
     )
     fun errorSaveFailed(lang: AppLanguage) = tr(lang, "Saqlashda xatolik", "Сақлашда хатолик", "Ошибка сохранения")
-    fun errorServerWaking(lang: AppLanguage) = tr(
-        lang,
-        "Server uyg'onyapti — 30–60 soniya kuting va qayta urinib ko'ring",
-        "Сервер уйғонмоқда — 30–60 сония кутинг ва қайта уриниб кўринг",
-        "Сервер просыпается — подождите 30–60 сек и попробуйте снова",
-    )
     fun errorAgentOnly(lang: AppLanguage) = tr(
         lang,
         "Bu login agent ilovasi uchun emas (mijoz login)",

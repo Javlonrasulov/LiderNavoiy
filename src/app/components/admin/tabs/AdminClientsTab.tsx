@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft } from 'lucide-react';
-import { allClients, fmtFull, type ClientRow } from '../../../data/adminData';
+import { fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
   apiClientToRow,
@@ -92,7 +92,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const refreshClients = useCallback(async () => {
     if (!hasApiToken()) {
-      setClients(allClients);
+      setClients([]);
       setAgents([]);
       setLines([]);
       setBackendReady(false);
@@ -119,6 +119,11 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       setLines([]);
       setBackendReady(false);
       const msg = e instanceof Error ? e.message : String(e);
+      // 401 → SessionExpiredOverlay; sahifada demo/xato banner ko'rsatilmasin
+      if (/\b401\b/i.test(msg) || /unauthorized/i.test(msg)) {
+        setLoadError(null);
+        return;
+      }
       const isNetwork = /fetch|network|failed|refused|ulanmagan/i.test(msg);
       setLoadError(
         isNetwork

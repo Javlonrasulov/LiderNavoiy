@@ -285,6 +285,20 @@ export function clearTokens() {
   localStorage.removeItem('api_user_id');
 }
 
+let unauthorizedNotified = false;
+
+/** Login muvaffaqiyatli bo‘lganda qayta ishlatish uchun */
+export function resetUnauthorizedGuard() {
+  unauthorizedNotified = false;
+}
+
+export function notifyUnauthorized() {
+  if (unauthorizedNotified) return;
+  unauthorizedNotified = true;
+  clearTokens();
+  window.dispatchEvent(new CustomEvent('lider:unauthorized'));
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -307,6 +321,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     const msg = err.message;
     const text = Array.isArray(msg) ? msg.join(', ') : (msg || res.statusText);
+    const isLogin = path.includes('/auth/login');
+    if (res.status === 401 && !isLogin) {
+      notifyUnauthorized();
+    }
     throw new Error(text ? `HTTP ${res.status}: ${text}` : `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;

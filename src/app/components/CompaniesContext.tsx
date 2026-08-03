@@ -55,7 +55,13 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
         setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
       }
     } catch (e) {
-      setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/\b401\b/i.test(msg) || /unauthorized/i.test(msg)) {
+        setCompanies([]);
+        setError(null);
+        return;
+      }
+      setCompanies([]);
       setError(e instanceof Error ? e.message : 'Tashkilotlarni yuklab bo\'lmadi');
     } finally {
       setLoading(false);
