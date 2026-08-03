@@ -211,10 +211,13 @@ export class ClientsController {
       };
       return this.requestsService.create(requestDto, distributorId, agentName);
     }
-    const client = await this.service.create({
-      ...clientDto,
-      distributorId: clientDto.distributorId ?? distributorId,
-    });
+    const client = await this.service.create(
+      {
+        ...clientDto,
+        distributorId: clientDto.distributorId ?? distributorId,
+      },
+      req.user,
+    );
     await this.applyAppCredentials(client.id, { appUsername, appPassword }, req.user);
     return client;
   }
@@ -227,7 +230,7 @@ export class ClientsController {
     @Body() dto: UpdateClientDto,
   ) {
     const { appUsername, appPassword, ...clientDto } = dto;
-    const client = await this.service.update(id, clientDto);
+    const client = await this.service.update(id, clientDto, req.user);
     await this.applyAppCredentials(id, { appUsername, appPassword }, req.user);
     return client;
   }

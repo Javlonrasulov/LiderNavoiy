@@ -15,6 +15,7 @@ import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.ClientDto
 import uz.distributor.crm.data.remote.dto.CreateClientRequest
 import uz.distributor.crm.data.remote.dto.LineDto
+import uz.distributor.crm.data.remote.dto.UpdateClientLocationRequest
 import uz.distributor.crm.domain.model.Client
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
@@ -147,6 +148,20 @@ class ClientRepository @Inject constructor(
         return CreateClientResult(pendingRequest = pendingRequest)
     }
 
+    suspend fun updateClientLocation(
+        clientId: String,
+        latitude: Double,
+        longitude: Double,
+    ): Client {
+        val updated = api.updateClient(
+            clientId,
+            UpdateClientLocationRequest(latitude = latitude, longitude = longitude),
+        )
+        val entity = updated.toEntity()
+        db.clientDao().insertAll(listOf(entity))
+        return entity.toDomain()
+    }
+
     suspend fun clearCache() {
         db.clientDao().clearAll()
     }
@@ -257,7 +272,12 @@ class ClientRepository @Inject constructor(
 
     private fun ClientDto.toEntity() = ClientEntity(
         id = id, code = code.orEmpty(), name = name, address = address,
-        balance = balance,
+        // API: balance (signed) yoki debt (musbat) — ro‘yxatda qarz ko‘rinsin
+        balance = when {
+            kotlin.math.abs(balance) > 0.005 -> balance
+            debt > 0.005 -> -debt
+            else -> 0.0
+        },
         latitude = latitude, longitude = longitude,
         photoUrl = photoUrl,
         phone = phone, category = category, territory = territory,

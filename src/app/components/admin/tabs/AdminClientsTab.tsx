@@ -262,6 +262,9 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       [t.colContact]:    c.contact,
       [t.colClass]:      c.cls,
       [t.colGPS]:        c.gps,
+      [t.colGpsUpdated]: c.locationUpdatedAt
+        ? `${formatDisplayDate(c.locationUpdatedAt)}${c.locationUpdatedBy ? ` · ${c.locationUpdatedBy}` : ''}`
+        : '',
       [t.colAgent]:      c.agent,
       [t.colBalance]:    c.balance,
       [t.colLastVisit]:  formatDisplayDate(c.lastVisit),
@@ -759,7 +762,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           <button onClick={() => scrollClientTable('right')} className={`flex items-center justify-center w-7 h-7 rounded-lg border ${D ? 'border-gray-700 bg-white/[0.05] hover:bg-white/[0.1] text-gray-300' : 'border-gray-200 bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}><ChevronRight size={14} /></button>
         </div>
         <div ref={clientTableRef} className="show-sb" style={{ maxHeight: 'calc(100vh - 230px)', overflowX: 'scroll', overflowY: 'auto' }}>
-          <table style={{ minWidth: 1400, borderCollapse: 'collapse', width: '100%' }}>
+          <table style={{ minWidth: 1550, borderCollapse: 'collapse', width: '100%' }}>
             <thead className={`sticky top-0 z-10 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>
               <tr className={`border-b ${D ? 'border-gray-700' : 'border-gray-200'}`}>
                 <th className={`${thCls} sticky left-0 z-20 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>{t.colCode}</th>
@@ -774,6 +777,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                 <th className={thCls}>{t.colContact}</th>
                 <th className={thCls}>{t.colClass}</th>
                 <th className={thCls}>{t.colGPS}</th>
+                <th className={thCls}>{t.colGpsUpdated}</th>
                 <th className={thCls}>{t.colID}</th>
                 <th className={thCls}>{t.colCategory}</th>
                 <th className={thCls}>{t.colLastVisit}</th>
@@ -808,6 +812,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     <td className={`${tdCls} ${rowText} max-w-[90px] truncate`}>{c.contact}</td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.cls}</td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.gps}</td>
+                    <td className={`${tdCls} ${rowText} text-[10px] max-w-[160px]`}>
+                      {c.locationUpdatedAt ? (
+                        <div className="leading-tight">
+                          <div className="whitespace-nowrap">{formatDisplayDate(c.locationUpdatedAt)}</div>
+                          {c.locationUpdatedBy && (
+                            <div className={`truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.locationUpdatedBy}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className={D ? 'text-gray-600' : 'text-gray-400'}>—</span>
+                      )}
+                    </td>
                     <td className={`${tdCls} font-mono ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.code}</td>
                     <td className={`${tdCls} ${rowText}`}>
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap
@@ -824,7 +840,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               })}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={16} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
+                  <td colSpan={17} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
                 </tr>
               )}
             </tbody>
@@ -924,6 +940,24 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   <span>{t.colLastVisit}:</span>
                   <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{formatDisplayDate(activeClient.lastVisit)}</span>
                 </div>
+                {activeClient.gps && (
+                  <div className={`text-xs pt-1 space-y-0.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <div>
+                      <span className="opacity-70">{t.gpsUpdatedAt ?? 'Qachon'}: </span>
+                      <span className="font-medium text-inherit">
+                        {activeClient.locationUpdatedAt
+                          ? formatDisplayDate(activeClient.locationUpdatedAt)
+                          : (t.gpsUpdatedNever ?? '—')}
+                      </span>
+                    </div>
+                    {activeClient.locationUpdatedBy && (
+                      <div>
+                        <span className="opacity-70">{t.gpsUpdatedBy ?? 'Kim'}: </span>
+                        <span className="font-medium">{activeClient.locationUpdatedBy}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

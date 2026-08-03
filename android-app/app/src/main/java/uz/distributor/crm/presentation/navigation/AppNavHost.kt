@@ -308,6 +308,7 @@ fun AppNavHost(
             LocationScreen(
                 onNavigate = { tab -> navController.navigateBottomTab(tab) },
                 onOrderClick = { id -> navController.navigate("delivery/$id") },
+                onClientClick = { id -> navController.navigate("client/$id") },
             )
         }
         composable("plan") {

@@ -744,6 +744,18 @@ object AppStrings {
     fun clientLine(lang: AppLanguage) = tr(lang, "Liniya", "Линия", "Линия")
     fun selectLine(lang: AppLanguage) = tr(lang, "Liniyani tanlang", "Линияни танланг", "Выберите линию")
     fun clientLocation(lang: AppLanguage) = tr(lang, "Xaritada joyi", "Харитада жойи", "Место на карте")
+    fun changeClientLocation(lang: AppLanguage) = tr(
+        lang,
+        "Lokatsiyani o'zgartirish",
+        "Локацияни ўзгартириш",
+        "Изменить локацию",
+    )
+    fun locationUpdated(lang: AppLanguage) = tr(
+        lang,
+        "Lokatsiya saqlandi",
+        "Локация сақланди",
+        "Локация сохранена",
+    )
     fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дўкон расми", "Фото магазина")
     fun useMyLocation(lang: AppLanguage) = tr(lang, "Mening joyim", "Менинг жойим", "Моё местоположение")
     fun tapMapHint(lang: AppLanguage) = tr(

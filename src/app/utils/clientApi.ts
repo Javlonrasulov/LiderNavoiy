@@ -94,6 +94,8 @@ export function apiClientToRow(c: BackendClient): ClientRow {
     category: c.category ?? 'Standard',
     lastVisit: c.updatedAt?.slice(0, 10) ?? '',
     rowType: 'normal',
+    locationUpdatedAt: c.locationUpdatedAt ?? undefined,
+    locationUpdatedBy: c.locationUpdatedByName?.trim() || undefined,
   };
 }
 

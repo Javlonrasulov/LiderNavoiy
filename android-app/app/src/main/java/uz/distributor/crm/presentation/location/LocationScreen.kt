@@ -61,6 +61,7 @@ import java.text.DecimalFormat
 fun LocationScreen(
     onNavigate: (NavTab) -> Unit,
     onOrderClick: (String) -> Unit = {},
+    onClientClick: (String) -> Unit = {},
     viewModel: LocationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -413,6 +414,7 @@ fun LocationScreen(
                                         isDark = isDark,
                                         lang = lang,
                                         fmt = fmt,
+                                        onOpenClient = { onClientClick(client.id) },
                                         onNavigate = {
                                             val lat = client.latitude
                                             val lng = client.longitude
@@ -650,6 +652,7 @@ private fun SherinClientSheetCard(
     isDark: Boolean,
     lang: AppLanguage,
     fmt: DecimalFormat,
+    onOpenClient: () -> Unit,
     onNavigate: () -> Unit,
 ) {
     val cardBg = if (isDark) Color(0xFF1F2937) else Color(0xFFF9FAFB)
@@ -660,6 +663,7 @@ private fun SherinClientSheetCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(cardBg)
+            .clickable(onClick = onOpenClient)
             .padding(16.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

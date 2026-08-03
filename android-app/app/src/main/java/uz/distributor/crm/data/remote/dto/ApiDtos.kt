@@ -79,7 +79,8 @@ data class ClientDto(
     val code: String? = null,
     val name: String,
     val address: String? = null,
-    @JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
+    @field:JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
+    @field:JsonAdapter(FlexibleDoubleAdapter::class) val debt: Double = 0.0,
     val latitude: Double? = null,
     val longitude: Double? = null,
     val inn: String? = null,
@@ -137,6 +138,11 @@ data class CreateClientRequest(
     val photoUrl: String? = null,
     val distributorId: String? = null,
     val lineCode: String? = null,
+)
+
+data class UpdateClientLocationRequest(
+    val latitude: Double,
+    val longitude: Double,
 )
 
 data class LineDto(

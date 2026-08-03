@@ -46,6 +46,18 @@ export class Client {
   @Column({ type: 'double precision', nullable: true })
   longitude: number | null;
 
+  /** Oxirgi marta lokatsiya o'zgartirilgan vaqt */
+  @Column({ type: 'timestamptz', nullable: true })
+  locationUpdatedAt: Date | null;
+
+  /** Lokatsiyani o'zgartirgan foydalanuvchi id */
+  @Column({ type: 'uuid', nullable: true })
+  locationUpdatedById: string | null;
+
+  /** Lokatsiyani o'zgartirgan foydalanuvchi nomi (ko'rsatish uchun) */
+  @Column({ type: 'varchar', nullable: true })
+  locationUpdatedByName: string | null;
+
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   balance: number;
 

@@ -65,6 +65,10 @@ export type ClientRow = {
   cls: string; gps: string; agent: string; balance: number;
   category: string; lastVisit: string; rowType: string;
   distributorId?: string;
+  /** Lokatsiya oxirgi o'zgartirilgan vaqt (ISO) */
+  locationUpdatedAt?: string;
+  /** Lokatsiyani o'zgartirgan foydalanuvchi */
+  locationUpdatedBy?: string;
 };
 
 // ─── UTILS ───
@@ -408,6 +412,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     colLegalAddr: 'Yuridik manzil', colPhone: 'Telefon',
     colContact: 'Kontakt', colClass: 'Sinf', colGPS: 'GPS', colID: 'ID',
     colNote: 'Izoh', allClientsLabel: 'Jami mijozlar',
+    colGpsUpdated: 'GPS yangilandi',
+    gpsUpdatedBy: 'Kim o‘zgartirdi',
+    gpsUpdatedAt: 'Qachon',
+    gpsUpdatedNever: 'Hali o‘zgartirilmagan',
     inactiveClientsLabel: 'Ishlamaydigan', allLabel: 'Barchasi',
     allProducts: 'Barchasi',
     catPickerTitle: 'Kategoriya tanlash', catPickerEmpty: "Hali kategoriya yo'q",
@@ -1121,6 +1129,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     colLegalAddr: 'Юридик манзил', colPhone: 'Телефон',
     colContact: 'Контакт', colClass: 'Синф', colGPS: 'GPS', colID: 'ID',
     colNote: 'Изоҳ', allClientsLabel: 'Жами мижозлар',
+    colGpsUpdated: 'GPS янгиланди',
+    gpsUpdatedBy: 'Ким ўзгартирди',
+    gpsUpdatedAt: 'Қачон',
+    gpsUpdatedNever: 'Ҳали ўзгартирилмаган',
     inactiveClientsLabel: 'Ишламайдиган', allLabel: 'Барчаси',
     allProducts: 'Барчаси',
     catPickerTitle: 'Категория танлаш', catPickerEmpty: 'Ҳали категория йўқ',
@@ -1830,6 +1842,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     colLegalAddr: 'Юр. адрес', colPhone: 'Телефон',
     colContact: 'Контакт', colClass: 'Класс', colGPS: 'GPS', colID: 'ID',
     colNote: 'Примечание', allClientsLabel: 'Всего клиентов',
+    colGpsUpdated: 'GPS обновлён',
+    gpsUpdatedBy: 'Кто изменил',
+    gpsUpdatedAt: 'Когда',
+    gpsUpdatedNever: 'Ещё не изменялся',
     inactiveClientsLabel: 'Неактивные', allLabel: 'Все',
     allProducts: 'Все товары',
     catPickerTitle: 'Выбрать категорию', catPickerEmpty: 'Нет категорий',

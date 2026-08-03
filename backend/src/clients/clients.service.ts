@@ -4,15 +4,29 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Client } from './entities/client.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
 import { CreateClientDto, TransferClientsDto, UpdateClientDto } from './dto/client.dto';
 import { LinesService } from '../lines/lines.service';
+import { Order } from '../orders/entities/order.entity';
+import { OrderStatus } from '../common/enums';
+import { User } from '../auth/entities/user.entity';
 
 function normalizeInn(inn?: string | null): string | null {
   const v = inn?.trim();
   return v ? v : null;
+}
+
+function toNum(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function sameCoord(a: number | null | undefined, b: number | null | undefined): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return Math.abs(Number(a) - Number(b)) < 1e-7;
 }
 
 @Injectable()
@@ -22,6 +36,8 @@ export class ClientsService {
     private readonly repo: Repository<Client>,
     @InjectRepository(UserClientMembership)
     private readonly membershipRepo: Repository<UserClientMembership>,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>,
     private readonly linesService: LinesService,
   ) {}
 
@@ -32,7 +48,46 @@ export class ClientsService {
       .leftJoinAndSelect('distributor.user', 'agentUser');
   }
 
-  findAll(companyId?: string, lineCode?: string, distributorId?: string) {
+  /** client.balance ko‘pincha 0 — qarzni yetkazilgan to‘lanmagan buyurtmalardan hisoblaymiz. */
+  private async unpaidDebtsByClientIds(ids: string[]): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (!ids.length) return map;
+    const orders = await this.orderRepo.find({
+      where: { clientId: In(ids), status: OrderStatus.DELIVERED },
+      select: ['clientId', 'totalAmount', 'paidAmount', 'returnedAmount'],
+    });
+    for (const o of orders) {
+      const total = toNum(o.totalAmount) - toNum(o.returnedAmount);
+      const paid = toNum(o.paidAmount);
+      const unpaid = Math.max(0, total - paid);
+      if (unpaid <= 0) continue;
+      map.set(o.clientId, (map.get(o.clientId) ?? 0) + unpaid);
+    }
+    return map;
+  }
+
+  private async withDebts(clients: Client[]): Promise<Client[]> {
+    if (!clients.length) return clients;
+    const unpaidMap = await this.unpaidDebtsByClientIds(clients.map((c) => c.id));
+    for (const c of clients) {
+      const stored = toNum(c.balance);
+      const unpaid = unpaidMap.get(c.id) ?? 0;
+      const fromBalance = Math.abs(stored);
+      const debt = Math.max(fromBalance, unpaid);
+      // Ro‘yxat abs(balance) ko‘rsatadi; detail Qarz = balance < 0
+      if (Math.abs(stored) < 0.005 && debt > 0.005) {
+        c.balance = -debt;
+      } else if (stored > 0.005 && unpaid > stored) {
+        c.balance = -Math.max(stored, unpaid);
+      } else if (stored < -0.005 && unpaid > Math.abs(stored)) {
+        c.balance = -unpaid;
+      }
+      (c as Client & { debt?: number }).debt = debt;
+    }
+    return clients;
+  }
+
+  async findAll(companyId?: string, lineCode?: string, distributorId?: string) {
     const qb = this.baseQuery().where('c.isActive = true');
     if (companyId) {
       qb.andWhere(
@@ -42,7 +97,8 @@ export class ClientsService {
     }
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
     if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
-    return qb.orderBy('c.name', 'ASC').getMany();
+    const clients = await qb.orderBy('c.name', 'ASC').getMany();
+    return this.withDebts(clients);
   }
 
   async findOne(id: string, distributorId?: string) {
@@ -51,7 +107,8 @@ export class ClientsService {
     if (distributorId && client.distributorId !== distributorId) {
       throw new NotFoundException('Client not found');
     }
-    return client;
+    const [enriched] = await this.withDebts([client]);
+    return enriched;
   }
 
   findByInn(inn: string) {
@@ -79,22 +136,24 @@ export class ClientsService {
     return qb.getOne();
   }
 
-  search(query: string, distributorId?: string) {
+  async search(query: string, distributorId?: string) {
     const qb = this.baseQuery()
       .where('c.isActive = true')
       .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
     if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
-    return qb.limit(50).getMany();
+    const clients = await qb.limit(50).getMany();
+    return this.withDebts(clients);
   }
 
   findLines(companyId?: string) {
     return this.linesService.findAll(companyId);
   }
 
-  async create(dto: CreateClientDto) {
+  async create(dto: CreateClientDto, actor?: User) {
     const code =
       dto.code?.trim() ||
       `A${Date.now().toString(36).slice(-7).toUpperCase()}`;
+    const hasLocation = dto.latitude != null || dto.longitude != null;
     const client = this.repo.create({
       code,
       onTradeId: dto.onTradeId?.trim() || code,
@@ -106,6 +165,11 @@ export class ClientsService {
       lineCode: dto.lineCode ?? null,
       latitude: dto.latitude ?? null,
       longitude: dto.longitude ?? null,
+      locationUpdatedAt: hasLocation ? new Date() : null,
+      locationUpdatedById: hasLocation ? actor?.id ?? null : null,
+      locationUpdatedByName: hasLocation
+        ? actor?.fullName?.trim() || actor?.username?.trim() || null
+        : null,
       category: dto.category ?? 'Standard',
       distributorId: dto.distributorId ?? null,
       inn: normalizeInn(dto.inn),
@@ -120,7 +184,7 @@ export class ClientsService {
     return this.findOne(saved.id);
   }
 
-  async update(id: string, dto: UpdateClientDto) {
+  async update(id: string, dto: UpdateClientDto, actor?: User) {
     const client = await this.findOne(id);
     if (dto.code !== undefined) client.code = dto.code;
     if (dto.onTradeId !== undefined) client.onTradeId = dto.onTradeId?.trim() || null;
@@ -129,8 +193,21 @@ export class ClientsService {
     if (dto.phone !== undefined) client.phone = dto.phone;
     if (dto.address !== undefined) client.address = dto.address;
     if (dto.lineCode !== undefined) client.lineCode = dto.lineCode;
+
+    const prevLat = client.latitude;
+    const prevLng = client.longitude;
     if (dto.latitude !== undefined) client.latitude = dto.latitude;
     if (dto.longitude !== undefined) client.longitude = dto.longitude;
+    const locationChanged =
+      (dto.latitude !== undefined && !sameCoord(prevLat, dto.latitude)) ||
+      (dto.longitude !== undefined && !sameCoord(prevLng, dto.longitude));
+    if (locationChanged) {
+      client.locationUpdatedAt = new Date();
+      client.locationUpdatedById = actor?.id ?? null;
+      client.locationUpdatedByName =
+        actor?.fullName?.trim() || actor?.username?.trim() || null;
+    }
+
     if (dto.category !== undefined) client.category = dto.category;
     if (dto.distributorId !== undefined) client.distributorId = dto.distributorId;
     if (dto.inn !== undefined) client.inn = normalizeInn(dto.inn);

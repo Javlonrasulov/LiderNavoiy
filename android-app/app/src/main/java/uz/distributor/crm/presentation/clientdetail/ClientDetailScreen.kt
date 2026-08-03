@@ -1,6 +1,8 @@
 package uz.distributor.crm.presentation.clientdetail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -8,11 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -22,16 +24,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
+import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
-import uz.distributor.crm.presentation.navigation.bottomNavHeight
+import uz.distributor.crm.presentation.clients.LocationPickerMap
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientDetailScreen(
     clientId: String,
@@ -56,9 +63,17 @@ fun ClientDetailScreen(
 
     LaunchedEffect(clientId) { viewModel.load(clientId) }
 
+    LaunchedEffect(state.locationSaved) {
+        if (state.locationSaved) {
+            snackbarHostState.showSnackbar(AppStrings.locationUpdated(lang))
+            viewModel.consumeLocationSaved()
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = pageBg,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
@@ -82,20 +97,25 @@ fun ClientDetailScreen(
                     val displayCategory = client.priceCategory?.takeIf { it.isNotBlank() }
                         ?: client.category?.takeIf { it.isNotBlank() }
                         ?: "Standart"
+                    val hasCoords = client.latitude != null && client.longitude != null &&
+                        !(client.latitude == 0.0 && client.longitude == 0.0)
 
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(bottom = bottomNavHeight()),
+                            .verticalScroll(rememberScrollState()),
                     ) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .background(sherinHeroBrush(isDark))
-                                .padding(bottom = 20.dp),
+                                .background(sherinHeroBrush(isDark)),
                         ) {
-                            Column(Modifier.padding(horizontal = 16.dp).padding(top = 40.dp)) {
+                            Column(
+                                Modifier
+                                    .statusBarsPadding()
+                                    .padding(horizontal = 16.dp)
+                                    .padding(top = 8.dp, bottom = 20.dp),
+                            ) {
                                 SherinGlassIconButton(
                                     onClick = onBack,
                                     icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -197,6 +217,20 @@ fun ClientDetailScreen(
                                 cardBg = cardBg,
                                 titleColor = titleColor,
                                 subColor = subColor,
+                                trailing = {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = AppStrings.changeClientLocation(lang),
+                                        tint = Color(0xFF7C3AED),
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                },
+                                onClick = viewModel::openLocationEditor,
+                                subtitle = if (hasCoords) {
+                                    String.format("%.5f, %.5f", client.latitude, client.longitude)
+                                } else {
+                                    AppStrings.changeClientLocation(lang)
+                                },
                             )
                             Spacer(Modifier.height(10.dp))
                             ClientInfoCard(
@@ -237,9 +271,183 @@ fun ClientDetailScreen(
                     }
                 },
             )
+
+            if (state.showLocationEditor) {
+                EditClientLocationDialog(
+                    latitude = state.editLatitude,
+                    longitude = state.editLongitude,
+                    isDark = isDark,
+                    lang = lang,
+                    isSaving = state.isSavingLocation,
+                    isLocating = state.isLocating,
+                    errorKey = state.locationError,
+                    onLocationSelected = viewModel::onLocationSelected,
+                    onUseMyLocation = viewModel::useMyLocation,
+                    onSave = viewModel::saveLocation,
+                    onDismiss = viewModel::closeLocationEditor,
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun EditClientLocationDialog(
+    latitude: Double,
+    longitude: Double,
+    isDark: Boolean,
+    lang: AppLanguage,
+    isSaving: Boolean,
+    isLocating: Boolean,
+    errorKey: String?,
+    onLocationSelected: (Double, Double) -> Unit,
+    onUseMyLocation: () -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = { if (!isSaving) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(if (isDark) Color(0xFF111827) else Color.White),
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onDismiss, enabled = !isSaving) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = titleColor(isDark))
+                }
+                Text(
+                    AppStrings.changeClientLocation(lang),
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 17.sp,
+                    color = titleColor(isDark),
+                )
+                Spacer(Modifier.width(48.dp))
+            }
+
+            Text(
+                AppStrings.tapMapHint(lang),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                fontSize = 13.sp,
+                color = Color(0xFF9CA3AF),
+            )
+
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB), RoundedCornerShape(16.dp)),
+            ) {
+                LocationPickerMap(
+                    latitude = latitude,
+                    longitude = longitude,
+                    isDark = isDark,
+                    onLocationSelected = onLocationSelected,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Surface(
+                    onClick = { if (!isLocating && !isSaving) onUseMyLocation() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White.copy(alpha = 0.92f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp),
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (isLocating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = SherinColors.Primary,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.MyLocation,
+                                contentDescription = null,
+                                tint = SherinColors.Primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            AppStrings.useMyLocation(lang),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF111827),
+                        )
+                    }
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (isDark) Color(0xFF1E3A5F) else Color(0xFFEEF2FF),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
+                Text(
+                    String.format("%.6f, %.6f", latitude, longitude),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    fontSize = 13.sp,
+                    color = Color(0xFF6366F1),
+                )
+            }
+
+            if (errorKey != null) {
+                Text(
+                    AppStrings.apiError(lang, errorKey),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = Color(0xFFEF4444),
+                    fontSize = 13.sp,
+                )
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+
+            Button(
+                onClick = onSave,
+                enabled = !isSaving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 16.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SherinColors.Primary),
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(AppStrings.saveClient(lang), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun titleColor(isDark: Boolean) =
+    if (isDark) Color.White else Color(0xFF111827)
 
 @Composable
 private fun BalanceStat(label: String, value: String, valueColor: Color) {
@@ -260,11 +468,19 @@ private fun ClientInfoCard(
     cardBg: Color,
     titleColor: Color,
     subColor: Color,
+    subtitle: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = cardBg,
         shadowElevation = if (cardBg == Color.White) 1.dp else 0.dp,
+        modifier = if (onClick != null) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        },
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -291,6 +507,22 @@ private fun ClientInfoCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (subtitle != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(subtitle, fontSize = 11.sp, color = Color(0xFF7C3AED))
+                }
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(8.dp))
+                trailing()
+                if (onClick != null) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = subColor,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
         }
     }

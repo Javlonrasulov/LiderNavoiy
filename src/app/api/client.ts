@@ -162,6 +162,9 @@ export interface Client {
   balance: string | number;
   latitude: number | null;
   longitude: number | null;
+  locationUpdatedAt?: string | null;
+  locationUpdatedById?: string | null;
+  locationUpdatedByName?: string | null;
   category?: string | null;
   distributorId?: string | null;
   inn?: string | null;

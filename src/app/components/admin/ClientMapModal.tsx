@@ -2,6 +2,7 @@ import { AlertTriangle, MapPin, X } from 'lucide-react';
 import { StoreIcon } from '../icons';
 import type { ClientRow } from '../../data/adminData';
 import { clientIdHash } from '../../utils/clientApi';
+import { formatDisplayDate } from '../../utils/dateFormat';
 
 function parseClientGps(gps: string | undefined | null): { lat: number; lng: number } | null {
   if (!gps?.includes(',')) return null;
@@ -129,6 +130,23 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
             {t.gpsAvailable ?? 'GPS mavjud'}
           </span>
         </div>
+
+        {(client.locationUpdatedAt || client.locationUpdatedBy) && (
+          <div className={`px-4 py-2 text-xs flex flex-wrap gap-x-4 gap-y-1 border-b ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
+            {client.locationUpdatedAt && (
+              <span>
+                <span className="opacity-60">{t.gpsUpdatedAt ?? 'Qachon'}: </span>
+                <span className="font-medium">{formatDisplayDate(client.locationUpdatedAt)}</span>
+              </span>
+            )}
+            {client.locationUpdatedBy && (
+              <span>
+                <span className="opacity-60">{t.gpsUpdatedBy ?? 'Kim'}: </span>
+                <span className="font-medium">{client.locationUpdatedBy}</span>
+              </span>
+            )}
+          </div>
+        )}
 
         <iframe
           src={mapSrc}

@@ -52,6 +52,12 @@ interface ApiService {
     @POST("clients")
     suspend fun createClient(@Body body: CreateClientRequest): ClientDto
 
+    @PATCH("clients/{id}")
+    suspend fun updateClient(
+        @Path("id") id: String,
+        @Body body: UpdateClientLocationRequest,
+    ): ClientDto
+
     @Multipart
     @POST("clients/upload-photo")
     suspend fun uploadClientPhoto(@Part file: MultipartBody.Part): ClientPhotoUploadDto

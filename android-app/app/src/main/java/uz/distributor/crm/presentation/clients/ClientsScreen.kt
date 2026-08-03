@@ -254,6 +254,7 @@ private fun ClientListRow(
     onClick: () -> Unit,
 ) {
     val blue = Color(0xFF2563EB)
+    // Qarz: manfiy balance yoki musbat qarz qoldig‘i
     val amount = kotlin.math.abs(client.balance)
     val amountColor = if (amount > 0.005) Color(0xFFB91C1C) else if (isDark) Color.White else Color.Black
     val subtitle = client.territory?.takeIf { it.isNotBlank() }
