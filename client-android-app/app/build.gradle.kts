@@ -17,17 +17,17 @@ android {
         applicationId = "uz.lider.client"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.0.33"
+        versionCode = 35
+        versionName = "1.0.34"
 
         val localProperties = Properties()
         val localPropertiesFile = rootProject.file("local.properties")
         if (localPropertiesFile.exists()) {
             localProperties.load(localPropertiesFile.inputStream())
         }
-        // Default: VPS. Local: api.host=192.168.x.x yoki api.base.url=...
-        val prodApi = "http://89.39.95.41/api/v1/"
-        val prodWs = "http://89.39.95.41"
+        // Default: VPS HTTPS
+        val prodApi = "https://lider-navoiy.uz/api/v1/"
+        val prodWs = "https://lider-navoiy.uz"
         val apiHost = localProperties.getProperty("api.host")
         val apiBaseUrl = localProperties.getProperty("api.base.url")
             ?: if (apiHost != null) "http://$apiHost:3000/api/v1/" else prodApi
@@ -56,6 +56,20 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+        debug {
+            isMinifyEnabled = false
+        }
+    }
 }
 
 dependencies {
@@ -81,6 +95,7 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.socket:socket.io-client:2.1.1") {
         exclude(group = "org.json", module = "json")

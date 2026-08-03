@@ -591,7 +591,7 @@ export class BootSeedService implements OnModuleInit {
       return user;
     }
 
-    user.passwordHash = data.passwordHash;
+    // Mavjud user parolini qayta yozmaslik (xavfsizlik)
     user.isActive = true;
     user.role = data.role;
     if (data.clientId) user.clientId = data.clientId;

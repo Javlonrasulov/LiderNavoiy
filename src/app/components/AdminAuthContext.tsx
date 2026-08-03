@@ -107,11 +107,6 @@ interface AdminAuthContextType {
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
-const ADMIN_CREDENTIALS = [
-  { username: 'admin', password: '123456', name: 'Super Admin', role: 'Bosh administrator' },
-  { username: 'manager', password: '123456', name: 'Mansur Toshev', role: 'Menejer' },
-];
-
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     const logged = localStorage.getItem('admin_logged_in') === 'true';
@@ -155,25 +150,12 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const login = (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }): boolean => {
     resetUnauthorizedGuard();
-    if (userData) {
-      setIsLoggedIn(true);
-      setAdminUser(userData);
-      localStorage.setItem('admin_logged_in', 'true');
-      localStorage.setItem('admin_user', JSON.stringify(userData));
-      return true;
-    }
-    const user = ADMIN_CREDENTIALS.find(
-      c => c.username === username && c.password === password
-    );
-    if (user) {
-      const data = { name: user.name, role: user.role };
-      setIsLoggedIn(true);
-      setAdminUser(data);
-      localStorage.setItem('admin_logged_in', 'true');
-      localStorage.setItem('admin_user', JSON.stringify(data));
-      return true;
-    }
-    return false;
+    if (!userData) return false;
+    setIsLoggedIn(true);
+    setAdminUser(userData);
+    localStorage.setItem('admin_logged_in', 'true');
+    localStorage.setItem('admin_user', JSON.stringify(userData));
+    return true;
   };
 
   const logout = () => {

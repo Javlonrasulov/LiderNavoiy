@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgis/postgis:16-3.4
     container_name: crm_postgres
+    env_file:
+      - .env.production
     environment:
       POSTGRES_USER: ${DB_USERNAME:-crm_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD}

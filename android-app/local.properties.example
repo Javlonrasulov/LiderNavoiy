@@ -1,11 +1,11 @@
 # sdk.dir=C\:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
 #
-# Default API = VPS (http://89.39.95.41).
+# Default API = https://lider-navoiy.uz
 # Lokal backend uchun:
 #
 # api.host=192.168.1.100
 # Emulator: api.host=10.0.2.2
 #
 # Yoki to'liq URL:
-# api.base.url=http://89.39.95.41/api/v1/
-# api.ws.url=http://89.39.95.41/tracking
+# api.base.url=https://lider-navoiy.uz/api/v1/
+# api.ws.url=https://lider-navoiy.uz/tracking

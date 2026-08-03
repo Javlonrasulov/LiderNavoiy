@@ -24,7 +24,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Login va parolni kiriting",
     errWrong:    "Login yoki parol noto'g'ri",
     errBackend:  "Backend ulanmagan. Keyinroq qayta urinib ko'ring.",
-    demo:        'Demo',
     footer:      'Lider CRM tizimi — v2.0 · Barcha huquqlar himoyalangan',
   },
   cy: {
@@ -37,7 +36,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Логин ва паролни киритинг",
     errWrong:    "Логин ёки парол нотўғри",
     errBackend:  "Backend уланмаган. Кейинроқ қайта уриниб кўринг.",
-    demo:        'Демо',
     footer:      'Lider CRM тизими — v2.0 · Барча ҳуқуқлар ҳимояланган',
   },
   ru: {
@@ -50,7 +48,6 @@ const T: Record<Lang, Record<string, string>> = {
     errEmpty:    "Введите логин и пароль",
     errWrong:    "Неверный логин или пароль",
     errBackend:  "Backend недоступен. Попробуйте позже.",
-    demo:        'Демо',
     footer:      'Lider CRM система — v2.0 · Все права защищены',
   },
 };
@@ -302,13 +299,6 @@ export default function AdminLogin() {
                 </>
               ) : t.submit}
             </button>
-
-            {/* Hint */}
-            <div className="text-center pt-1">
-              <p className={`text-xs ${sub}`}>
-                {t.demo}: <span className={`font-mono ${D ? 'text-gray-300' : 'text-gray-600'}`}>admin / 123456</span>
-              </p>
-            </div>
           </form>
 
           {/* Footer */}
