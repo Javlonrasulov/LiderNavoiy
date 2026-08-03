@@ -1,8 +1,10 @@
 package uz.distributor.crm.presentation.auth
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -16,6 +18,7 @@ import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.localization.AppLanguage
+import uz.distributor.crm.security.DeviceIntegrity
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -28,6 +31,7 @@ data class LoginUiState(
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val authRepository: AuthRepository,
     private val pushRepository: PushRepository,
     private val appSettingsRepository: AppSettingsRepository,
@@ -74,6 +78,11 @@ class LoginViewModel @Inject constructor(
         val password = _uiState.value.password
         if (username.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(errorKey = "credentials_required") }
+            return
+        }
+
+        if (DeviceIntegrity.isCompromised(appContext)) {
+            _uiState.update { it.copy(errorKey = "device_compromised") }
             return
         }
 

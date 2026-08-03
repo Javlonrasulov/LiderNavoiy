@@ -3,8 +3,10 @@
  * Set VITE_API_URL in .env (default: http://localhost:3000/api/v1)
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const WS_BASE = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+const WS_BASE =
+  import.meta.env.VITE_WS_URL ||
+  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
 export interface AuthResponse {
   accessToken: string;
@@ -274,9 +276,10 @@ function getToken(): string | null {
   return localStorage.getItem('api_access_token');
 }
 
-export function setTokens(access: string, refresh: string) {
+/** Access token only — refresh lives in HttpOnly cookie */
+export function setTokens(access: string, _refresh?: string) {
   localStorage.setItem('api_access_token', access);
-  localStorage.setItem('api_refresh_token', refresh);
+  localStorage.removeItem('api_refresh_token');
 }
 
 export function clearTokens() {
@@ -286,6 +289,7 @@ export function clearTokens() {
 }
 
 let unauthorizedNotified = false;
+let refreshInFlight: Promise<boolean> | null = null;
 
 /** Login muvaffaqiyatli bo‘lganda qayta ishlatish uchun */
 export function resetUnauthorizedGuard() {
@@ -299,7 +303,35 @@ export function notifyUnauthorized() {
   window.dispatchEvent(new CustomEvent('lider:unauthorized'));
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function tryRefreshTokens(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as AuthResponse;
+      if (!data.accessToken) return false;
+      setTokens(data.accessToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  didRefresh = false,
+): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -309,7 +341,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
     if (name === 'AbortError' || name === 'TimeoutError') {
@@ -317,12 +353,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
     throw new Error(`Backend ulanmagan (${API_BASE})`);
   }
+
+  const isAuthPath =
+    path.includes('/auth/login') || path.includes('/auth/refresh');
+
+  if (res.status === 401 && !isAuthPath && !didRefresh) {
+    const ok = await tryRefreshTokens();
+    if (ok) {
+      return request<T>(path, options, true);
+    }
+    notifyUnauthorized();
+    throw new Error('HTTP 401: Unauthorized');
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     const msg = err.message;
     const text = Array.isArray(msg) ? msg.join(', ') : (msg || res.statusText);
-    const isLogin = path.includes('/auth/login');
-    if (res.status === 401 && !isLogin) {
+    if (res.status === 401 && !isAuthPath) {
       notifyUnauthorized();
     }
     throw new Error(text ? `HTTP ${res.status}: ${text}` : `HTTP ${res.status}`);
@@ -340,7 +388,29 @@ export const api = {
       ...init,
     }),
 
-  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  logout: (all = false) =>
+    request<void>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ all }),
+    }),
+
+  getSessions: () =>
+    request<
+      Array<{
+        id: string;
+        brand: string | null;
+        model: string | null;
+        os: string | null;
+        ip: string | null;
+        userAgent: string | null;
+        createdAt: string;
+        lastSeenAt: string;
+        current: boolean;
+      }>
+    >('/auth/sessions'),
+
+  revokeSession: (id: string) =>
+    request<void>(`/auth/sessions/${id}`, { method: 'DELETE' }),
 
   getUsdExchangeRates: () => request<UsdExchangeRates>('/exchange-rates/usd'),
 
@@ -1379,8 +1449,11 @@ export function getUploadsBase(): string {
   if (import.meta.env.VITE_WS_URL) {
     return String(import.meta.env.VITE_WS_URL).replace(/\/$/, '');
   }
-  // VITE_API_URL: https://host/api/v1 → https://host
-  return API_BASE.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '') || 'http://localhost:3000';
+  // VITE_API_URL: https://host/api/v1 → https://host; /api/v1 → same origin
+  const fromApi = API_BASE.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+  if (fromApi) return fromApi;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
 }
 
 export const UPLOADS_BASE = getUploadsBase();

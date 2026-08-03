@@ -18,6 +18,7 @@ import { OrderPayment } from '../payments/entities/order-payment.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
 import { Company } from '../companies/entities/company.entity';
+import { ProductRating } from '../products/entities/product-rating.entity';
 import { LinesModule } from '../lines/lines.module';
 import { AuthModule } from '../auth/auth.module';
 import { OrdersModule } from '../orders/orders.module';
@@ -36,6 +37,7 @@ import { GpsModule } from '../gps/gps.module';
       User,
       Company,
       UserClientMembership,
+      ProductRating,
     ]),
     LinesModule,
     AuthModule,

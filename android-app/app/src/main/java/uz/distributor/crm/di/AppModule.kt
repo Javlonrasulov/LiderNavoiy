@@ -19,6 +19,7 @@ import uz.distributor.crm.data.local.AppDatabase
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.TokenRefreshInterceptor
+import uz.distributor.crm.security.TlsPins
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -45,7 +46,7 @@ object AppModule {
             } else chain.request()
             chain.proceed(request)
         }
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
@@ -54,7 +55,8 @@ object AppModule {
             .writeTimeout(30, TimeUnit.SECONDS)
             .callTimeout(35, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .build()
+        TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
+        return builder.build()
     }
 
     @Provides @Singleton

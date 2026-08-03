@@ -47,6 +47,24 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`companies.warehouseName migrate: ${(err as Error).message}`);
     }
 
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS login_attempts (
+          id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+          username varchar(120) NOT NULL,
+          ip varchar(64) NULL,
+          "userAgent" varchar(512) NULL,
+          success boolean NOT NULL DEFAULT false,
+          reason varchar(80) NULL,
+          "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_login_attempts_username ON login_attempts (username);
+        CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts (ip);
+      `);
+    } catch (err) {
+      this.logger.warn(`login_attempts migrate: ${(err as Error).message}`);
+    }
+
     // products.companyId — katalog tashkilot bo‘yicha; eski qatorlar → boran
     try {
       await this.dataSource.query(`

@@ -1,11 +1,11 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join, extname } from 'path';
+import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
+import { assertAllowedUpload } from '../common/upload-allowlist';
 
-const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp'];
 const MAX_UPLOAD = 8 * 1024 * 1024;
 const MAX_DIM = 1280;
 
@@ -26,13 +26,9 @@ export class PaymentPhotoUploadService {
     if (file.size > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
-    const ext = extname(file.originalname).toLowerCase();
-    const isImage =
-      ALLOWED.includes(ext) || file.mimetype.startsWith('image/');
-    if (!isImage) throw new BadRequestException('Only images allowed');
+    assertAllowedUpload(file, { imagesOnly: true });
 
     let buffer = file.buffer;
-    let outExt = '.webp';
     try {
       let pipeline = sharp(buffer).rotate();
       const meta = await sharp(buffer).metadata();
@@ -42,13 +38,12 @@ export class PaymentPhotoUploadService {
           withoutEnlargement: true,
         });
       }
-      buffer = await pipeline.webp({ quality: 80 }).toBuffer();
+      buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
     } catch (e) {
       this.logger.warn('Payment photo compress failed', e);
-      outExt = ext || '.jpg';
     }
 
-    const safeName = `${uuidv4()}${outExt}`;
+    const safeName = `${uuidv4()}.jpg`;
     writeFileSync(join(this.uploadDir, safeName), buffer);
     const url = `/uploads/payments/${safeName}`;
     const baseUrl = this.config.get('PUBLIC_URL', 'http://localhost:3000');

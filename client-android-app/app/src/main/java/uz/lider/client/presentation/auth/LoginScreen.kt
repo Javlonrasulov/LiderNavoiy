@@ -317,6 +317,12 @@ private fun apiErrorMessage(lang: AppLanguage, key: String): String = when (key)
         AppLanguage.UZ_KRIL -> "Логин ва паролни киритинг"
         AppLanguage.UZ -> "Login va parolni kiriting"
     }
+    ApiErrorMapper.DEVICE_COMPROMISED -> when (lang) {
+        AppLanguage.RU -> "Устройство небезопасно (root/debug). Вход запрещён."
+        AppLanguage.EN -> "Device is not secure (root/debug). Login blocked."
+        AppLanguage.UZ_KRIL -> "Қурилма хавфсиз эмас (root/debug). Кириш тақиқланган."
+        AppLanguage.UZ -> "Qurilma xavfsiz emas (root/debug). Kirish taqiqlangan."
+    }
     ApiErrorMapper.NETWORK_ERROR -> when (lang) {
         AppLanguage.RU -> "Нет соединения с сервером"
         AppLanguage.EN -> "Cannot reach server"

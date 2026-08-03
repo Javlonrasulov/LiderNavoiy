@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { UserCog, Check, Pencil, Trash2, Plus, AlertCircle, Eye, EyeOff, ChevronDown, AlertTriangle } from 'lucide-react';
 import { api, type SystemUserRecord } from '../../../api/client';
+import { ActiveSessionsPanel } from '../ActiveSessionsPanel';
 import {
   PAGE_PERMISSIONS,
   getAllPositions,
@@ -343,6 +344,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
 
   return (
     <div style={{ width: '100%', minWidth: 0 }}>
+      <ActiveSessionsPanel card={card} sub={sub} />
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>

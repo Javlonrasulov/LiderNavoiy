@@ -3,25 +3,23 @@ package uz.distributor.crm.data.repository
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import uz.distributor.crm.data.remote.ApiErrorMapper
-import uz.distributor.crm.data.remote.dto.ChangePasswordRequest
-import androidx.datastore.preferences.preferencesDataStore
-import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.google.gson.Gson
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import uz.distributor.crm.data.local.SecureAuthStore
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.local.UserIdHolder
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.ApiService
-import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.remote.MessagesSocketManager
+import uz.distributor.crm.data.remote.TrackingSocketManager
+import uz.distributor.crm.data.remote.dto.ChangePasswordRequest
+import uz.distributor.crm.data.remote.dto.LogoutRequest
 import uz.distributor.crm.data.remote.dto.LoginDeviceDto
 import uz.distributor.crm.data.remote.dto.LoginRequest
 import uz.distributor.crm.data.remote.dto.RefreshTokenRequest
@@ -31,8 +29,6 @@ import uz.distributor.crm.service.LocationTrackingService
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.dataStore by preferencesDataStore("auth_prefs")
-
 @Singleton
 class AuthRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -40,23 +36,19 @@ class AuthRepository @Inject constructor(
     private val gson: Gson,
     private val tokenHolder: TokenHolder,
     private val userIdHolder: UserIdHolder,
+    private val secureAuthStore: SecureAuthStore,
     private val trackingSocket: TrackingSocketManager,
     private val messagesSocket: MessagesSocketManager,
     private val clientRepository: ClientRepository,
 ) {
-    private val accessTokenKey = stringPreferencesKey("access_token")
-    private val refreshTokenKey = stringPreferencesKey("refresh_token")
-    private val userKey = stringPreferencesKey("user_json")
-    private val passwordKey = stringPreferencesKey("password")
     private val refreshMutex = Mutex()
 
     private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val sessionExpired = _sessionExpired.asSharedFlow()
 
-    val isLoggedIn: Flow<Boolean> = context.dataStore.data.map { it[accessTokenKey] != null }
+    val isLoggedIn: Flow<Boolean> = secureAuthStore.isLoggedIn
 
-    /** Interceptor retry uchun joriy access token. */
-    fun peekAccessToken(): String? = tokenHolder.peekToken()
+    fun peekAccessToken(): String? = tokenHolder.peekToken() ?: secureAuthStore.peekAccessToken()
 
     private fun currentDevice(): LoginDeviceDto = LoginDeviceDto(
         id = "${Build.MANUFACTURER}-${Build.MODEL}-${Build.ID}".take(160),
@@ -77,27 +69,24 @@ class AuthRepository @Inject constructor(
             user = response.user.toAuthUser(),
         )
         runCatching { clientRepository.clearCache() }
-        saveTokens(tokens, password)
+        saveTokens(tokens)
         return tokens
     }
 
     suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> {
         return try {
             api.changePassword(ChangePasswordRequest(currentPassword, newPassword))
-            context.dataStore.edit { it[passwordKey] = newPassword }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(Exception(ApiErrorMapper.toKey(e)))
         }
     }
 
-    fun getPasswordFlow(): Flow<String?> = context.dataStore.data.map { it[passwordKey] }
-
     suspend fun restoreSession(): Boolean {
-        val prefs = context.dataStore.data.first()
-        val token = prefs[accessTokenKey]
+        secureAuthStore.ensureMigrated()
+        val token = secureAuthStore.peekAccessToken()
         tokenHolder.setToken(token)
-        prefs[userKey]?.let {
+        secureAuthStore.peekUserJson()?.let {
             userIdHolder.userId = gson.fromJson(it, AuthUser::class.java).id
         }
         if (token != null) {
@@ -109,8 +98,8 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun refreshAccessToken(): Boolean = refreshMutex.withLock {
-        val prefs = context.dataStore.data.first()
-        val refresh = prefs[refreshTokenKey] ?: return false
+        secureAuthStore.ensureMigrated()
+        val refresh = secureAuthStore.peekRefreshToken() ?: return false
         return try {
             val response = api.refresh(RefreshTokenRequest(refresh, currentDevice()))
             val user = response.user.toAuthUser()
@@ -129,17 +118,23 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun logoutDueToExpiredSession() {
-        logout()
+        runCatching { api.logout(LogoutRequest(all = false)) }
+        clearLocalSession()
         _sessionExpired.tryEmit(Unit)
     }
 
     suspend fun logout() {
+        runCatching { api.logout(LogoutRequest(all = false)) }
+        clearLocalSession()
+    }
+
+    private suspend fun clearLocalSession() {
         trackingSocket.disconnect()
         messagesSocket.disconnect()
         clientRepository.clearCache()
         tokenHolder.setToken(null)
         userIdHolder.userId = null
-        context.dataStore.edit { it.clear() }
+        secureAuthStore.clear()
         context.startService(
             Intent(context, LocationTrackingService::class.java).apply {
                 action = LocationTrackingService.ACTION_STOP
@@ -147,26 +142,24 @@ class AuthRepository @Inject constructor(
         )
     }
 
-    fun getUserFlow(): Flow<AuthUser?> = context.dataStore.data.map { prefs ->
-        prefs[userKey]?.let { gson.fromJson(it, AuthUser::class.java) }
+    fun getUserFlow(): Flow<AuthUser?> = secureAuthStore.userJson.map { json ->
+        json?.let { gson.fromJson(it, AuthUser::class.java) }
     }
 
-    private suspend fun saveTokens(tokens: AuthTokens, password: String? = null) {
+    private suspend fun saveTokens(tokens: AuthTokens) {
         tokenHolder.setToken(tokens.accessToken)
         userIdHolder.userId = tokens.user.id
-        context.dataStore.edit { prefs ->
-            prefs[accessTokenKey] = tokens.accessToken
-            prefs[refreshTokenKey] = tokens.refreshToken
-            prefs[userKey] = gson.toJson(tokens.user)
-            password?.let { prefs[passwordKey] = it }
-        }
-        // Socket loginni bloklamasin / yiqitmasin
+        secureAuthStore.ensureMigrated()
+        secureAuthStore.save(
+            access = tokens.accessToken,
+            refresh = tokens.refreshToken,
+            userJson = gson.toJson(tokens.user),
+        )
         runCatching { trackingSocket.connect() }
         runCatching { messagesSocket.connect() }
     }
 }
 
-/** Faqat agent (distributor) roli bilan kirish mumkin. */
 class AgentOnlyException : Exception("agent_only")
 
 private fun uz.distributor.crm.data.remote.dto.UserDto.toAuthUser() = AuthUser(
@@ -177,4 +170,5 @@ private fun uz.distributor.crm.data.remote.dto.UserDto.toAuthUser() = AuthUser(
     distributorId = distributorId,
     companyName = companyName,
     position = position,
+    isDelivery = isDelivery,
 )

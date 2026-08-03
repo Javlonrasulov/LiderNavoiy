@@ -135,8 +135,8 @@ export class ClientCredentialsService {
     if (username.length < 3) {
       throw new BadRequestException('Login kamida 3 ta belgi bo‘lishi kerak');
     }
-    if (!dto.password || dto.password.length < 4) {
-      throw new BadRequestException('Parol kamida 4 ta belgi bo‘lishi kerak');
+    if (!dto.password || dto.password.length < 6) {
+      throw new BadRequestException('Parol kamida 6 ta belgi bo‘lishi kerak');
     }
 
     // Aniq tanlangan login — boshqa mijozda bo'lsa ogohlantirish

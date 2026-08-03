@@ -41,6 +41,9 @@ class ProductDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
             reloadQuiet(productId)
+            ratingsRepository.loadRating(productId)?.let { stars ->
+                _uiState.update { it.copy(userRating = stars) }
+            }
             _uiState.update { it.copy(loading = false) }
         }
         ratingJob?.cancel()

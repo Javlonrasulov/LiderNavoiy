@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -38,13 +39,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import uz.lider.client.domain.model.AppNotification
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
-import kotlinx.coroutines.delay
 
 private data class NotifItem(
     val id: String,
@@ -62,95 +63,107 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     viewModel: NotificationsViewModel = hiltViewModel(),
 ) {
-    val readIds by viewModel.readIds.collectAsState()
-    val items = buildNotifications(readIds)
-    val unread = items.filter { !it.read }
-    val read = items.filter { it.read }
+    val items by viewModel.items.collectAsState()
+    val mapped = items.map { it.toNotifItem() }
+    val unread = mapped.filter { !it.read }
+    val read = mapped.filter { it.read }
     val text = LiquidTheme.text
     val textMuted = LiquidTheme.textMuted
 
     ClientStackScaffold(title = localized("notif_title"), onBack = onBack) { padding ->
         LiquidBackground(modifier = Modifier.fillMaxSize()) {
             ClientPullToRefresh(
-                onRefresh = { delay(400) },
+                onRefresh = { viewModel.refreshSuspend() },
                 modifier = Modifier.padding(padding),
             ) {
-            Column(Modifier.fillMaxSize()) {
-                // ── Mark all button ───────────────────────────────────────────
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
+                Column(Modifier.fillMaxSize()) {
                     Row(
                         Modifier
-                            .clip(RoundedCornerShape(50.dp))
-                            .background(Color.White.copy(alpha = 0.12f))
-                            .border(
-                                1.dp,
-                                Brush.linearGradient(
-                                    listOf(
-                                        Color.White.copy(alpha = 0.35f),
-                                        Color.White.copy(alpha = 0.10f),
-                                    )
-                                ),
-                                RoundedCornerShape(50.dp),
-                            )
-                            .clickableNoRipple { viewModel.markAllRead() }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.End,
                     ) {
-                        Icon(
-                            Icons.Default.DoneAll,
-                            null,
-                            tint = LiquidGlass.Cyan,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            localized("notif_mark_all"),
-                            color = text,
-                            fontSize = 13.sp,
-                        )
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .border(
+                                    1.dp,
+                                    Brush.linearGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.35f),
+                                            Color.White.copy(alpha = 0.10f),
+                                        )
+                                    ),
+                                    RoundedCornerShape(50.dp),
+                                )
+                                .clickableNoRipple { viewModel.markAllRead() }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.DoneAll,
+                                null,
+                                tint = LiquidGlass.Cyan,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                localized("notif_mark_all"),
+                                color = text,
+                                fontSize = 13.sp,
+                            )
+                        }
                     }
-                }
 
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    if (unread.isNotEmpty()) {
-                        item {
+                    if (mapped.isEmpty()) {
+                        Box(
+                            Modifier.fillMaxSize().padding(32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
-                                localized("notif_unread").uppercase(),
+                                localized("notif_empty"),
                                 color = textMuted,
-                                fontSize = 11.sp,
-                                letterSpacing = 1.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
                             )
                         }
-                        items(unread, key = { it.id }) { notif ->
-                            NotificationCard(notif) { id -> viewModel.markRead(id) }
-                        }
-                    }
-                    if (read.isNotEmpty()) {
-                        item {
-                            Text(
-                                localized("notif_read").uppercase(),
-                                color = textMuted,
-                                fontSize = 11.sp,
-                                letterSpacing = 1.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 8.dp),
-                            )
-                        }
-                        items(read, key = { it.id }) { notif ->
-                            NotificationCard(notif, onRead = {})
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            if (unread.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        localized("notif_unread").uppercase(),
+                                        color = textMuted,
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
+                                items(unread, key = { it.id }) { notif ->
+                                    NotificationCard(notif) { id -> viewModel.markRead(id) }
+                                }
+                            }
+                            if (read.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        localized("notif_read").uppercase(),
+                                        color = textMuted,
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                }
+                                items(read, key = { it.id }) { notif ->
+                                    NotificationCard(notif, onRead = {})
+                                }
+                            }
                         }
                     }
                 }
-            }
             }
         }
     }
@@ -274,39 +287,46 @@ private fun NotificationCard(notif: NotifItem, onRead: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun buildNotifications(readIds: Set<String>): List<NotifItem> = listOf(
-    NotifItem(
-        MockNotificationIds.ORDER,
-        localized("notif_mock_order_title"),
-        "#ORD-2846",
-        "10:30",
-        Icons.Default.LocalShipping,
-        MockNotificationIds.ORDER in readIds,
-        Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Cyan)),
-        LiquidGlass.Indigo,
-    ),
-    NotifItem(
-        MockNotificationIds.PROMO,
-        localized("notif_mock_promo_title"),
-        "20% Coca Cola",
-        "09:15",
-        Icons.Default.Star,
-        MockNotificationIds.PROMO in readIds,
-        Brush.linearGradient(listOf(LiquidGlass.Amber, LiquidGlass.Rose)),
-        LiquidGlass.Amber,
-    ),
-    NotifItem(
-        MockNotificationIds.PAYMENT,
-        localized("notif_mock_payment_title"),
-        "1,500,000",
-        localized("notif_mock_yesterday"),
-        Icons.Default.Payments,
-        MockNotificationIds.PAYMENT in readIds,
-        Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Cyan)),
-        LiquidGlass.Emerald,
-    ),
-)
+private fun AppNotification.toNotifItem(): NotifItem {
+    val t = type.lowercase()
+    val (icon, gradient, accent) = when {
+        t.contains("order") || t.contains("visit") -> Triple(
+            Icons.Default.LocalShipping,
+            Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Cyan)),
+            LiquidGlass.Indigo,
+        )
+        t.contains("promo") || t.contains("plan") -> Triple(
+            Icons.Default.Star,
+            Brush.linearGradient(listOf(LiquidGlass.Amber, LiquidGlass.Rose)),
+            LiquidGlass.Amber,
+        )
+        t.contains("payment") -> Triple(
+            Icons.Default.Payments,
+            Brush.linearGradient(listOf(LiquidGlass.Emerald, LiquidGlass.Cyan)),
+            LiquidGlass.Emerald,
+        )
+        else -> Triple(
+            Icons.Default.Notifications,
+            Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Indigo)),
+            LiquidGlass.Cyan,
+        )
+    }
+    return NotifItem(
+        id = id,
+        title = title,
+        body = body,
+        time = formatNotifTime(createdAt),
+        icon = icon,
+        read = isRead,
+        iconGradient = gradient,
+        accentColor = accent,
+    )
+}
+
+private fun formatNotifTime(iso: String?): String {
+    if (iso.isNullOrBlank()) return ""
+    return iso.replace('T', ' ').take(16)
+}
 
 private fun Modifier.clickableNoRipple(onClick: () -> Unit) =
     then(Modifier.clickable(onClick = onClick))

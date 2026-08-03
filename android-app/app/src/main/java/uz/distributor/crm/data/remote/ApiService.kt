@@ -12,6 +12,9 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshTokenRequest): AuthResponseDto
 
+    @POST("auth/logout")
+    suspend fun logout(@Body body: LogoutRequest = LogoutRequest())
+
     @POST("auth/change-password")
     suspend fun changePassword(@Body body: ChangePasswordRequest)
 

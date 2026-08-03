@@ -108,7 +108,6 @@ import uz.lider.client.presentation.components.rememberClientPalette
 import uz.lider.client.presentation.map.MapLayerPicker
 import uz.lider.client.presentation.navigation.ClientBottomNavHeight
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.notifications.MockNotificationIds
 import uz.lider.client.presentation.notifications.NotificationsViewModel
 import uz.lider.client.presentation.settings.SettingsViewModel
 import uz.lider.client.presentation.theme.FixedHeroBackdrop
@@ -140,8 +139,8 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val hideStopsCompanyIds by viewModel.hideStopsCompanyIds.collectAsState()
-    val readNotificationIds by notificationsViewModel.readIds.collectAsState()
-    val hasUnreadNotifications = MockNotificationIds.all.any { it !in readNotificationIds }
+    val unreadNotificationCount by notificationsViewModel.unreadCount.collectAsState()
+    val hasUnreadNotifications = unreadNotificationCount > 0
     val lang = LocalAppLanguage.current
     val palette = rememberClientPalette()
     val t = remember(lang) { { key: String -> AppStrings.t(lang, key) } }

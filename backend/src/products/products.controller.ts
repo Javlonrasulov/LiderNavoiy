@@ -9,6 +9,7 @@ import {
 } from './dto/product-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
+import { RequirePage } from '../common/guards/permissions.guard';
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -43,6 +44,7 @@ export class ProductsController {
 
   @Post('category-meta')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Create product category metadata' })
   createCategoryMeta(@Body() dto: CreateProductCategoryDto) {
     return this.service.createCategoryMeta(dto);
@@ -50,6 +52,7 @@ export class ProductsController {
 
   @Patch('category-meta/:metaId')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Update product category metadata' })
   updateCategoryMeta(
     @Param('metaId') metaId: string,
@@ -60,6 +63,7 @@ export class ProductsController {
 
   @Delete('category-meta/:metaId')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Delete product category metadata' })
   removeCategoryMeta(@Param('metaId') metaId: string) {
     return this.service.removeCategoryMeta(metaId);
@@ -73,6 +77,7 @@ export class ProductsController {
 
   @Post('upload-image')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Upload product image' })
   uploadImage(@Body() body: { dataUrl: string }) {
     return this.uploadService.saveDataUrl(body.dataUrl);
@@ -80,6 +85,7 @@ export class ProductsController {
 
   @Post()
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Create product' })
   create(@Body() dto: CreateProductDto) {
     return this.service.create(dto);
@@ -87,6 +93,7 @@ export class ProductsController {
 
   @Patch(':id')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Update product' })
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.service.update(id, dto);
@@ -94,6 +101,7 @@ export class ProductsController {
 
   @Delete(':id')
   @UseGuards(AdminGuard)
+  @RequirePage('products')
   @ApiOperation({ summary: 'Deactivate product' })
   remove(@Param('id') id: string) {
     return this.service.remove(id);

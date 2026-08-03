@@ -17,7 +17,13 @@ import { JwtPayload } from '../auth/auth.service';
 import { GpsService } from '../gps/gps.service';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: {
+    origin: (process.env.CORS_ORIGINS || 'http://localhost:5173')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s && s !== '*'),
+    credentials: true,
+  },
   namespace: '/tracking',
 })
 export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect {

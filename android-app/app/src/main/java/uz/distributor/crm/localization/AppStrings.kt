@@ -530,6 +530,7 @@ object AppStrings {
         "server_error" -> errorServer(lang)
         "unauthorized" -> errorUnauthorized(lang)
         "agent_only" -> errorAgentOnly(lang)
+        "device_compromised" -> errorDeviceCompromised(lang)
         "location_failed" -> errorLocationFailed(lang)
         "save_failed" -> errorSaveFailed(lang)
         "inn_client_exists" -> errorInnClientExists(lang)
@@ -693,6 +694,7 @@ object AppStrings {
     fun position(lang: AppLanguage) = tr(lang, "Lavozim", "Лавозим", "Должность")
     fun company(lang: AppLanguage) = tr(lang, "Kompaniya", "Компания", "Компания")
     fun salesAgentPosition(lang: AppLanguage) = tr(lang, "Sotuv agenti", "Сотув агенти", "Торговый агент")
+    fun deliveryPosition(lang: AppLanguage) = tr(lang, "Dostavkachi", "Доставкачи", "Доставщик")
     fun changePassword(lang: AppLanguage) = tr(lang, "Parolni o'zgartirish", "Паролни ўзгартириш", "Изменить пароль")
     fun currentPassword(lang: AppLanguage) = tr(lang, "Joriy parol", "Жорий парол", "Текущий пароль")
     fun newPassword(lang: AppLanguage) = tr(lang, "Yangi parol", "Янги парол", "Новый пароль")
@@ -827,6 +829,12 @@ object AppStrings {
         "Kirish muddati tugagan — qayta kiring",
         "Кириш муддати тугаган — қайта киринг",
         "Сессия истекла — войдите снова",
+    )
+    fun errorDeviceCompromised(lang: AppLanguage) = tr(
+        lang,
+        "Qurilma xavfsiz emas (root/debug). Kirish taqiqlangan.",
+        "Қурилма хавфсиз эмас (root/debug). Кириш тақиқланган.",
+        "Устройство небезопасно (root/debug). Вход запрещён.",
     )
     fun errorInnClientExists(lang: AppLanguage) = tr(
         lang,

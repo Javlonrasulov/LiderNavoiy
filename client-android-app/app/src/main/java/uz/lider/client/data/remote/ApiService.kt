@@ -7,6 +7,7 @@ import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -18,9 +19,14 @@ import uz.lider.client.data.remote.dto.OrderTrackingDto
 import uz.lider.client.data.remote.dto.ClientProfileDto
 import uz.lider.client.data.remote.dto.CreateOrderRequest
 import uz.lider.client.data.remote.dto.LoginRequest
+import uz.lider.client.data.remote.dto.LogoutRequest
 import uz.lider.client.data.remote.dto.ProductDto
+import uz.lider.client.data.remote.dto.ProductRatingDto
 import uz.lider.client.data.remote.dto.PromotionDto
+import uz.lider.client.data.remote.dto.PushNotificationDto
 import uz.lider.client.data.remote.dto.RefreshRequest
+import uz.lider.client.data.remote.dto.SetProductRatingRequest
+import uz.lider.client.data.remote.dto.UnreadCountDto
 import uz.lider.client.data.remote.dto.ChatMessageDto
 import uz.lider.client.data.remote.dto.ConversationDto
 import uz.lider.client.data.remote.dto.DeleteMessagesRequest
@@ -36,6 +42,9 @@ interface ApiService {
 
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshRequest): AuthResponseDto
+
+    @POST("auth/logout")
+    suspend fun logout(@Body body: LogoutRequest = LogoutRequest())
 
     @GET("client-portal/me")
     suspend fun getProfile(
@@ -117,4 +126,28 @@ interface ApiService {
 
     @POST("notifications/fcm-token")
     suspend fun registerFcmToken(@Body body: Map<String, String>)
+
+    @GET("notifications")
+    suspend fun getNotifications(): List<PushNotificationDto>
+
+    @GET("notifications/unread-count")
+    suspend fun getUnreadNotificationCount(): UnreadCountDto
+
+    @PATCH("notifications/{id}/read")
+    suspend fun markNotificationRead(@Path("id") id: String): Map<String, Boolean>
+
+    @PATCH("notifications/read-all")
+    suspend fun markAllNotificationsRead(): Map<String, Boolean>
+
+    @GET("client-portal/product-ratings")
+    suspend fun getProductRatings(): Map<String, Int>
+
+    @GET("client-portal/products/{productId}/rating")
+    suspend fun getProductRating(@Path("productId") productId: String): ProductRatingDto
+
+    @PUT("client-portal/products/{productId}/rating")
+    suspend fun setProductRating(
+        @Path("productId") productId: String,
+        @Body body: SetProductRatingRequest,
+    ): ProductRatingDto
 }

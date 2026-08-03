@@ -10,6 +10,7 @@ import { CreateOrderDto } from '../orders/dto/order.dto';
 import { OrdersService } from '../orders/orders.service';
 import { ProductsService } from '../products/products.service';
 import { Product } from '../products/entities/product.entity';
+import { ProductRating } from '../products/entities/product-rating.entity';
 import { PromotionsService } from '../promotions/promotions.service';
 import { OrderPayment } from '../payments/entities/order-payment.entity';
 import { Client } from './entities/client.entity';
@@ -40,6 +41,8 @@ export class ClientPortalService {
     private readonly membershipRepo: Repository<UserClientMembership>,
     @InjectRepository(OrderPayment)
     private readonly paymentRepo: Repository<OrderPayment>,
+    @InjectRepository(ProductRating)
+    private readonly ratingRepo: Repository<ProductRating>,
     private readonly ordersService: OrdersService,
     private readonly productsService: ProductsService,
     private readonly promotionsService: PromotionsService,
@@ -1253,5 +1256,37 @@ export class ClientPortalService {
       }))
       .sort((a, b) => b.quantity - a.quantity || b.amount - a.amount)
       .slice(0, limit);
+  }
+
+  async listMyProductRatings(user: User): Promise<Record<string, number>> {
+    const rows = await this.ratingRepo.find({ where: { userId: user.id } });
+    const out: Record<string, number> = {};
+    for (const row of rows) {
+      if (row.stars >= 1 && row.stars <= 5) out[row.productId] = row.stars;
+    }
+    return out;
+  }
+
+  async getMyProductRating(user: User, productId: string) {
+    const row = await this.ratingRepo.findOne({
+      where: { userId: user.id, productId },
+    });
+    return { productId, stars: row?.stars ?? null };
+  }
+
+  async setMyProductRating(user: User, productId: string, stars: number) {
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      throw new BadRequestException('stars must be 1..5');
+    }
+    let row = await this.ratingRepo.findOne({
+      where: { userId: user.id, productId },
+    });
+    if (!row) {
+      row = this.ratingRepo.create({ userId: user.id, productId, stars });
+    } else {
+      row.stars = stars;
+    }
+    await this.ratingRepo.save(row);
+    return { productId, stars: row.stars };
   }
 }

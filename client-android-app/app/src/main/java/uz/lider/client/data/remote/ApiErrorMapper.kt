@@ -14,6 +14,7 @@ object ApiErrorMapper {
     const val UNAUTHORIZED = "unauthorized"
     const val SAVE_FAILED = "save_failed"
     const val NO_AGENT = "cart_no_agent"
+    const val DEVICE_COMPROMISED = "device_compromised"
 
     fun toKey(e: Throwable): String = when (e) {
         is ClientOnlyException -> CLIENT_ONLY

@@ -165,7 +165,7 @@ export class ClientsController {
   @Post('upload-photo')
   @ApiOperation({ summary: 'Upload client storefront photo' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }))
   uploadPhoto(@UploadedFile() file: Express.Multer.File) {
     return this.uploadService.savePhoto(file);
   }

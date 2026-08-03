@@ -30,9 +30,6 @@ class ProfileViewModel @Inject constructor(
     val user = authRepository.getUserFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val password = authRepository.getPasswordFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
     private val _showChangePassword = MutableStateFlow(false)
     val showChangePassword: StateFlow<Boolean> = _showChangePassword.asStateFlow()
 

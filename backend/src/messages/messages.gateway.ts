@@ -15,7 +15,13 @@ import { MessagesService } from './messages.service';
 import { JwtPayload } from '../auth/auth.service';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: {
+    origin: (process.env.CORS_ORIGINS || 'http://localhost:5173')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s && s !== '*'),
+    credentials: true,
+  },
   namespace: '/messages',
 })
 export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect {

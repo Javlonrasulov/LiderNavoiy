@@ -1,12 +1,11 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join, extname } from 'path';
+import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
+import { assertAllowedUpload } from '../common/upload-allowlist';
 
-const ALLOWED_IMAGE = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-const ALLOWED_DOC = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.rar'];
 const MAX_UPLOAD = 10 * 1024 * 1024;
 const MAX_DOC = 5 * 1024 * 1024;
 const MAX_IMAGE_DIM = 1280;
@@ -31,33 +30,22 @@ export class MessagesUploadService {
       throw new BadRequestException('File too large (max 10MB)');
     }
 
-    const ext = extname(file.originalname).toLowerCase();
-    const isImage =
-      ALLOWED_IMAGE.includes(ext) || file.mimetype.startsWith('image/');
-    const isDoc =
-      ALLOWED_DOC.includes(ext) ||
-      file.mimetype.startsWith('application/') ||
-      file.mimetype.startsWith('text/');
-
-    if (!isImage && !isDoc) {
-      throw new BadRequestException('Unsupported file type');
+    const allowed = assertAllowedUpload(file);
+    if (!allowed.isImage && file.size > MAX_DOC) {
+      throw new BadRequestException('Document too large (max 5MB)');
     }
 
     let buffer = file.buffer;
-    let outExt = ext || (isImage ? '.jpg' : '.bin');
-    let mimeType = file.mimetype;
+    let outExt = allowed.ext;
+    let mimeType = allowed.mime;
     let outName = file.originalname;
 
-    if (isImage && file.mimetype !== 'image/gif') {
+    if (allowed.isImage) {
       const compressed = await this.compressImage(buffer, file.size);
       buffer = compressed.buffer;
       outExt = compressed.ext;
       mimeType = compressed.mimeType;
       outName = this.withExtension(file.originalname, outExt);
-    } else if (isImage && file.size > 2 * 1024 * 1024) {
-      throw new BadRequestException('GIF too large (max 2MB)');
-    } else if (isDoc && file.size > MAX_DOC) {
-      throw new BadRequestException('Document too large (max 5MB)');
     }
 
     const safeName = `${uuidv4()}${outExt}`;
@@ -73,7 +61,7 @@ export class MessagesUploadService {
       fileName: outName,
       mimeType,
       fileSize: buffer.length,
-      messageType: isImage ? ('image' as const) : ('document' as const),
+      messageType: allowed.isImage ? ('image' as const) : ('document' as const),
     };
   }
 
@@ -104,8 +92,10 @@ export class MessagesUploadService {
         });
       }
 
-      const buffer = await pipeline.webp({ quality: WEBP_QUALITY }).toBuffer();
-      return { buffer, ext: '.webp', mimeType: 'image/webp' };
+      // Store as jpg/png only (webp not in TZ allowlist for original upload;
+      // compressed storage may use webp — keep jpg for strict allowlist compliance)
+      const buffer = await pipeline.jpeg({ quality: WEBP_QUALITY }).toBuffer();
+      return { buffer, ext: '.jpg', mimeType: 'image/jpeg' };
     } catch (e) {
       this.logger.warn('Image compression failed, saving original', e);
       return { buffer: input, ext: '.jpg', mimeType: 'image/jpeg' };

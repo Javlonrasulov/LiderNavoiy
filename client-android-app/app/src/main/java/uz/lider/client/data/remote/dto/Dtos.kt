@@ -38,10 +38,23 @@ class FlexibleDoubleAdapter : TypeAdapter<Double>() {
 data class LoginRequest(
     val username: String,
     val password: String,
+    val device: LoginDeviceDto? = null,
+)
+
+data class LoginDeviceDto(
+    val id: String? = null,
+    val brand: String? = null,
+    val model: String? = null,
+    val os: String? = null,
 )
 
 data class RefreshRequest(
     val refreshToken: String,
+    val device: LoginDeviceDto? = null,
+)
+
+data class LogoutRequest(
+    val all: Boolean = false,
 )
 
 data class AuthResponseDto(
@@ -334,4 +347,27 @@ data class PromotionDto(
     val validTo: String? = null,
     val isActive: Boolean = true,
     val sortOrder: Int = 0,
+)
+
+data class PushNotificationDto(
+    val id: String,
+    val title: String,
+    val body: String,
+    val type: String? = null,
+    val isRead: Boolean = false,
+    val createdAt: String? = null,
+    val data: Map<String, String>? = null,
+)
+
+data class UnreadCountDto(
+    val count: Int = 0,
+)
+
+data class ProductRatingDto(
+    val productId: String,
+    val stars: Int? = null,
+)
+
+data class SetProductRatingRequest(
+    val stars: Int,
 )

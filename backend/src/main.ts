@@ -7,7 +7,9 @@ import { NextFunction, Request, Response } from 'express';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { DataSource } from 'typeorm';
+import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -16,11 +18,18 @@ async function bootstrap() {
   });
   app.useBodyParser('json', { limit: '12mb' });
   app.useBodyParser('urlencoded', { limit: '12mb', extended: true });
+  app.use(cookieParser());
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
+  const isProd = configService.get('NODE_ENV') === 'production';
   const corsOrigins = configService.get<string>('CORS_ORIGINS', '*');
+
+  if (isProd && (!corsOrigins || corsOrigins.trim() === '*')) {
+    throw new Error('CORS_ORIGINS must be an explicit allowlist in production (no *)');
+  }
 
   app.setGlobalPrefix(apiPrefix);
   app.useGlobalPipes(
@@ -32,15 +41,19 @@ async function bootstrap() {
     }),
   );
 
+  const originList =
+    corsOrigins === '*'
+      ? true
+      : corsOrigins.split(',').map((s) => s.trim()).filter(Boolean);
+
   app.enableCors({
-    origin: corsOrigins === '*' ? true : corsOrigins.split(','),
+    origin: originList,
     credentials: true,
   });
 
   const uploadsDir = join(process.cwd(), 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
-  // Diskda fayl yo‘qolsa — DB dagi imageData dan berish
   app.use('/uploads/products', (req: Request, res: Response, next: NextFunction) => {
     void (async () => {
       try {
@@ -86,17 +99,19 @@ async function bootstrap() {
 
   app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Distributor CRM API')
-    .setDescription('Backend API for Distributor CRM Mobile App and Admin Panel')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  if (!isProd) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Distributor CRM API')
+      .setDescription('Backend API for Distributor CRM Mobile App and Admin Panel')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+    logger.log(`Swagger docs: http://localhost:${port}/docs`);
+  }
 
   await app.listen(port);
   logger.log(`API running on http://localhost:${port}/${apiPrefix}`);
-  logger.log(`Swagger docs: http://localhost:${port}/docs`);
 }
 
 bootstrap();

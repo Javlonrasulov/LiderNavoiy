@@ -1,11 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
+import { assertAllowedUpload } from '../common/upload-allowlist';
 
-const ALLOWED_IMAGE = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 const MAX_UPLOAD = 8 * 1024 * 1024;
 
 @Injectable()
@@ -25,28 +25,16 @@ export class ClientsUploadService {
       throw new BadRequestException('File too large (max 8MB)');
     }
 
-    const ext = extname(file.originalname).toLowerCase();
-    const isImage =
-      ALLOWED_IMAGE.includes(ext) || file.mimetype.startsWith('image/');
-    if (!isImage) {
-      throw new BadRequestException('Only image files are allowed');
-    }
+    assertAllowedUpload(file, { imagesOnly: true });
 
-    let buffer = file.buffer;
-    let outExt = '.webp';
-    let mimeType = 'image/webp';
+    const buffer = await sharp(file.buffer)
+      .rotate()
+      .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
 
-    if (file.mimetype !== 'image/gif') {
-      buffer = await sharp(buffer)
-        .rotate()
-        .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toBuffer();
-    } else {
-      outExt = '.gif';
-      mimeType = 'image/gif';
-    }
-
+    const outExt = '.jpg';
+    const mimeType = 'image/jpeg';
     const safeName = `${uuidv4()}${outExt}`;
     writeFileSync(join(this.uploadDir, safeName), buffer);
 

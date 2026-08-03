@@ -16,6 +16,7 @@ import uz.lider.client.data.local.TokenHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.TokenRefreshInterceptor
 import uz.lider.client.data.remote.dto.FlexibleDoubleAdapter
+import uz.lider.client.security.TlsPins
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -54,7 +55,7 @@ object AppModule {
             }
             chain.proceed(request)
         }
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
@@ -63,7 +64,8 @@ object AppModule {
             .writeTimeout(30, TimeUnit.SECONDS)
             .callTimeout(35, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
-            .build()
+        TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
+        return builder.build()
     }
 
     @Provides

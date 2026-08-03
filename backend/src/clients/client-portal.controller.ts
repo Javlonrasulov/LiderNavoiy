@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   Post,
+  Put,
   Query,
   Request,
   UseGuards,
@@ -13,7 +14,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../auth/entities/user.entity';
 import { ClientGuard } from '../common/guards/client.guard';
-import { ClientCreateOrderDto } from './dto/client-portal.dto';
+import { ClientCreateOrderDto, SetProductRatingDto } from './dto/client-portal.dto';
 import { ClientPortalService } from './client-portal.service';
 
 @ApiTags('Client Portal')
@@ -151,5 +152,30 @@ export class ClientPortalController {
   @ApiOperation({ summary: 'Active promotions for client app' })
   promotions() {
     return this.service.listPromotions();
+  }
+
+  @Get('product-ratings')
+  @ApiOperation({ summary: 'Current user product ratings map' })
+  productRatings(@Request() req: { user: User }) {
+    return this.service.listMyProductRatings(req.user);
+  }
+
+  @Get('products/:productId/rating')
+  @ApiOperation({ summary: 'Get my rating for a product' })
+  getProductRating(
+    @Request() req: { user: User },
+    @Param('productId') productId: string,
+  ) {
+    return this.service.getMyProductRating(req.user, productId);
+  }
+
+  @Put('products/:productId/rating')
+  @ApiOperation({ summary: 'Set my rating for a product (1-5)' })
+  setProductRating(
+    @Request() req: { user: User },
+    @Param('productId') productId: string,
+    @Body() dto: SetProductRatingDto,
+  ) {
+    return this.service.setMyProductRating(req.user, productId, dto.stars);
   }
 }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { demo } from '../data/demoLimit';
-import { clearTokens, resetUnauthorizedGuard } from '../api/client';
+import { api, clearTokens, resetUnauthorizedGuard } from '../api/client';
 import { registerAdminWebPush } from '../lib/firebaseMessaging';
 
 export type ProductType = 'kg_dona' | 'dona' | 'kg';
@@ -159,6 +159,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    void api.logout().catch(() => undefined);
     clearTokens();
     setIsLoggedIn(false);
     setAdminUser(null);

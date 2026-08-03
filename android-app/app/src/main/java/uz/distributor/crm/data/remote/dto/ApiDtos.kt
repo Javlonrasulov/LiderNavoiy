@@ -20,6 +20,10 @@ data class RefreshTokenRequest(
     val device: LoginDeviceDto? = null,
 )
 
+data class LogoutRequest(
+    val all: Boolean = false,
+)
+
 data class ChangePasswordRequest(
     val currentPassword: String,
     val newPassword: String,
@@ -40,6 +44,7 @@ data class UserDto(
     val distributorId: String?,
     val companyName: String?,
     val position: String? = null,
+    val isDelivery: Boolean? = null,
 )
 
 data class DashboardStatsDto(

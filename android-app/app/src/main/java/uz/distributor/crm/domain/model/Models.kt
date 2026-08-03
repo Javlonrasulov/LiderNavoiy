@@ -8,22 +8,24 @@ data class AuthUser(
     val distributorId: String?,
     val companyName: String?,
     val position: String? = null,
+    /** Backend `isDelivery` (login/refresh); null = eski sessiya → position fallback */
+    val isDelivery: Boolean? = null,
 ) {
-    /** Agent va dostavkachi ikkalasi ham role=distributor; farq position orqali. */
+    /** Agent va dostavkachi ikkalasi ham role=distributor; farq backend position/isDelivery. */
     fun isDeliveryPerson(): Boolean {
-        val p = (position ?: "").lowercase()
-        if (
-            p.contains("delivery") ||
-            p.contains("yetkaz") ||
-            p.contains("kuryer") ||
-            p.contains("dostav") ||
-            p.contains("haydov")
-        ) {
-            return true
-        }
-        val u = username.lowercase()
-        return u.contains("dostav") || u.contains("delivery") || u.contains("kuryer")
+        isDelivery?.let { return it }
+        return isDeliveryPosition(position)
     }
+}
+
+/** Backend `staff-role.util.ts` bilan bir xil markerlar. */
+fun isDeliveryPosition(position: String?): Boolean {
+    val p = (position ?: "").lowercase()
+    return p.contains("delivery") ||
+        p.contains("yetkaz") ||
+        p.contains("kuryer") ||
+        p.contains("dostav") ||
+        p.contains("haydov")
 }
 
 data class AuthTokens(

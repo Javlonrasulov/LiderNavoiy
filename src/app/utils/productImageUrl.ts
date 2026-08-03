@@ -1,7 +1,10 @@
 /** API server manzili (static /uploads uchun) */
 export function getApiOrigin(): string {
-  const base = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-  return base.replace(/\/api\/v\d+\/?$/, '');
+  const base = import.meta.env.VITE_API_URL || '/api/v1';
+  const origin = base.replace(/\/api\/v\d+\/?$/, '');
+  if (origin) return origin;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
 }
 
 /** Mahsulot rasmi URL — DB dagi path yoki base64 ni ko'rsatish uchun */

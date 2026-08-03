@@ -47,8 +47,9 @@ class LocationTrackingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        /** Yuqori aniqlik — har 2 soniyada */
-        const val INTERVAL_MS = 2_000L
+        /** Batareya: 15s / 25m — hali ham jonli tracking, 2s emas */
+        const val INTERVAL_MS = 15_000L
+        const val MIN_DISTANCE_M = 25f
         /** Soft filter: juda yomon fixni tashlash, lekin jonli holatni o‘ldirmaslik */
         const val MAX_ACCURACY_M = 100f
     }
@@ -95,9 +96,9 @@ class LocationTrackingService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
+        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, INTERVAL_MS)
             .setMinUpdateIntervalMillis(INTERVAL_MS)
-            .setMinUpdateDistanceMeters(0f)
+            .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
             .setWaitForAccurateLocation(false)
             .setMaxUpdateDelayMillis(INTERVAL_MS * 2)
             .build()

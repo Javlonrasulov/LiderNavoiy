@@ -13,8 +13,6 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.bottomNavHeight
@@ -42,7 +39,6 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user by viewModel.user.collectAsState(initial = null)
-    val storedPassword by viewModel.password.collectAsState(initial = null)
     val showChangePassword by viewModel.showChangePassword.collectAsState()
     val changePasswordState by viewModel.changePasswordState.collectAsState()
     val lang = LocalAppLanguage.current
@@ -51,13 +47,16 @@ fun ProfileScreen(
     val cardBg = if (isDark) SherinColors.CardDark else Color.White
     val labelColor = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280)
     val textColor = if (isDark) Color.White else Color.Black
-    var passwordVisible by remember { mutableStateOf(false) }
 
     val (firstName, lastName) = remember(user?.fullName) {
         splitFullName(user?.fullName ?: "")
     }
-    val position = AppStrings.salesAgentPosition(lang)
-    val displayPassword = storedPassword ?: "•••••••••"
+    val position = user?.position?.takeIf { it.isNotBlank() }
+        ?: if (user?.isDeliveryPerson() == true) {
+            AppStrings.deliveryPosition(lang)
+        } else {
+            AppStrings.salesAgentPosition(lang)
+        }
 
     Box(Modifier.fillMaxSize().background(pageBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -157,16 +156,7 @@ fun ProfileScreen(
                 Spacer(Modifier.height(10.dp))
                 ProfileInfoCard(AppStrings.loginField(lang), user?.username ?: "—", cardBg, labelColor, textColor)
                 Spacer(Modifier.height(10.dp))
-                ProfilePasswordCard(
-                    label = AppStrings.password(lang),
-                    value = if (passwordVisible) displayPassword else "•".repeat(displayPassword.length.coerceAtLeast(9)),
-                    cardBg = cardBg,
-                    labelColor = labelColor,
-                    textColor = textColor,
-                    visible = passwordVisible,
-                    onToggleVisibility = { passwordVisible = !passwordVisible },
-                    lang = lang,
-                )
+                ProfileInfoCard(AppStrings.password(lang), "•••••••••", cardBg, labelColor, textColor)
                 Spacer(Modifier.height(10.dp))
                 ProfileInfoCard(AppStrings.position(lang), position, cardBg, labelColor, textColor)
                 Spacer(Modifier.height(10.dp))
@@ -239,45 +229,6 @@ private fun ProfileInfoCard(
             Text(label, fontSize = 12.sp, color = labelColor)
             Spacer(Modifier.height(4.dp))
             Text(value.ifBlank { "—" }, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = textColor)
-        }
-    }
-}
-
-@Composable
-private fun ProfilePasswordCard(
-    label: String,
-    value: String,
-    cardBg: Color,
-    labelColor: Color,
-    textColor: Color,
-    visible: Boolean,
-    onToggleVisibility: () -> Unit,
-    lang: AppLanguage,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(label, fontSize = 12.sp, color = labelColor)
-                Spacer(Modifier.height(4.dp))
-                Text(value, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = textColor)
-            }
-            IconButton(onClick = onToggleVisibility) {
-                Icon(
-                    imageVector = if (visible) Icons.Default.Visibility else Icons.Outlined.VisibilityOff,
-                    contentDescription = if (visible) AppStrings.hide(lang) else AppStrings.showPassword(lang),
-                    tint = labelColor,
-                )
-            }
         }
     }
 }

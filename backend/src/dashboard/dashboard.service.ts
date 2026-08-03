@@ -8,6 +8,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
 import { User } from '../auth/entities/user.entity';
 import { OrderStatus, OrderSource, UserRole } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
+import { detectStaffRole as detectRole } from '../common/staff-role.util';
 
 const DEFAULT_AGENT_MONTHLY_PLAN = 15_000_000;
 const CATEGORY_COLORS: Record<string, string> = {
@@ -44,20 +45,6 @@ function initials(name: string): string {
 function categoryColor(name: string, index: number): string {
   const key = name.trim().toLowerCase();
   return CATEGORY_COLORS[key] ?? CATEGORY_FALLBACK_COLORS[index % CATEGORY_FALLBACK_COLORS.length];
-}
-
-function detectRole(position: string | null | undefined): 'agent' | 'delivery' {
-  const p = (position ?? '').toLowerCase();
-  if (
-    p.includes('delivery') ||
-    p.includes('yetkaz') ||
-    p.includes('kuryer') ||
-    p.includes('dostav') ||
-    p.includes('haydov')
-  ) {
-    return 'delivery';
-  }
-  return 'agent';
 }
 
 /** Oxirgi GPS 90 soniyadan yangi bo'lsa — haqiqiy online */

@@ -49,10 +49,11 @@ export class LoginDto {
 }
 
 export class RefreshTokenDto {
-  @ApiProperty()
+  /** Optional when HttpOnly refresh cookie is present (web) */
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  refreshToken: string;
+  refreshToken?: string;
 
   @ApiPropertyOptional({ type: LoginDeviceDto })
   @IsOptional()
@@ -83,6 +84,8 @@ export class AuthResponseDto {
     fullName: string;
     role: string;
     position?: string | null;
+    /** true = dostavkachi (position bo‘yicha); faqat distributor uchun */
+    isDelivery?: boolean;
     permissions?: string[] | null;
     distributorId?: string;
     companyName?: string;

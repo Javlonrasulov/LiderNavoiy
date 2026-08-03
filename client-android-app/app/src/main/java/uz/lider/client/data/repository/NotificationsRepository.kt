@@ -1,41 +1,56 @@
 package uz.lider.client.data.repository
 
-import android.content.Context
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import uz.lider.client.data.remote.ApiService
+import uz.lider.client.domain.model.AppNotification
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.notificationsDataStore by preferencesDataStore("client_notifications")
-
 @Singleton
 class NotificationsRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val api: ApiService,
 ) {
-    private val readIdsKey = stringSetPreferencesKey("read_notification_ids")
+    private val _items = MutableStateFlow<List<AppNotification>>(emptyList())
+    val items: StateFlow<List<AppNotification>> = _items.asStateFlow()
 
-    /** Payment notification is read by default (demo data). */
-    private val defaultReadIds = setOf("3")
+    private val _unreadCount = MutableStateFlow(0)
+    val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
 
-    val readIds: Flow<Set<String>> = context.notificationsDataStore.data.map { prefs ->
-        prefs[readIdsKey] ?: defaultReadIds
+    suspend fun refresh() {
+        runCatching {
+            val list = api.getNotifications().map {
+                AppNotification(
+                    id = it.id,
+                    title = it.title,
+                    body = it.body,
+                    type = it.type.orEmpty(),
+                    isRead = it.isRead,
+                    createdAt = it.createdAt,
+                )
+            }
+            _items.value = list
+            _unreadCount.value = list.count { !it.isRead }
+        }.onFailure {
+            runCatching {
+                _unreadCount.value = api.getUnreadNotificationCount().count
+            }
+        }
     }
 
     suspend fun markRead(id: String) {
-        context.notificationsDataStore.edit { prefs ->
-            val current = prefs[readIdsKey] ?: defaultReadIds
-            prefs[readIdsKey] = current + id
+        runCatching { api.markNotificationRead(id) }
+        _items.update { list ->
+            list.map { if (it.id == id) it.copy(isRead = true) else it }
         }
+        _unreadCount.value = _items.value.count { !it.isRead }
     }
 
-    suspend fun markAllRead(ids: Set<String>) {
-        context.notificationsDataStore.edit { prefs ->
-            val current = prefs[readIdsKey] ?: defaultReadIds
-            prefs[readIdsKey] = current + ids
-        }
+    suspend fun markAllRead() {
+        runCatching { api.markAllNotificationsRead() }
+        _items.update { list -> list.map { it.copy(isRead = true) } }
+        _unreadCount.value = 0
     }
 }

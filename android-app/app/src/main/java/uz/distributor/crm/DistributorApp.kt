@@ -4,6 +4,7 @@ import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
 import uz.distributor.crm.map.OsmdroidConfig
 import uz.distributor.crm.push.NotificationHelper
+import uz.distributor.crm.security.ScreenSecurity
 import uz.distributor.crm.service.LocationNetworkWatcher
 import uz.distributor.crm.util.AppForegroundTracker
 import javax.inject.Inject
@@ -15,6 +16,7 @@ class DistributorApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ScreenSecurity.install(this)
         AppForegroundTracker.init()
         NotificationHelper.createChannel(this)
         OsmdroidConfig.init(this)

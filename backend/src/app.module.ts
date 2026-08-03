@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { DistributorsModule } from './distributors/distributors.module';
 import { GpsModule } from './gps/gps.module';
@@ -30,11 +32,18 @@ import { Company } from './companies/entities/company.entity';
 import { Client } from './clients/entities/client.entity';
 import { DistributorProfile } from './distributors/entities/distributor-profile.entity';
 import { BootSeedService } from './common/boot-seed.service';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService): TypeOrmModuleOptions => {
@@ -92,6 +101,10 @@ import { BootSeedService } from './common/boot-seed.service';
     PaymentsModule,
     ReturnsModule,
   ],
-  providers: [BootSeedService],
+  providers: [
+    BootSeedService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: PermissionsGuard },
+  ],
 })
 export class AppModule {}
