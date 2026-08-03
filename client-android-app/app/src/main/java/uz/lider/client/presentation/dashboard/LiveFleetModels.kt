@@ -73,14 +73,53 @@ data class LiveFleetUi(
             val dist = if (shopOnly) {
                 shopOnlyDistanceLabel(v)
             } else {
-                v.orders.mapNotNull { parseDistanceKm(it.distanceLabel) }
-                    .maxOrNull()
-                    ?.let { formatDistance(it) }
-                    ?: v.orders.firstOrNull()?.distanceLabel?.takeIf { it.isNotBlank() && it != "—" }
-                    ?: "—"
+                viaStopsDistanceLabel(v)
             }
             name to dist
         }
+
+    /** Bitta mashina uchun magazin-only km (popup / toggle). */
+    fun shopOnlyDistanceFor(vehicle: LiveMapVehicle): String = shopOnlyDistanceLabel(vehicle)
+
+    /** Bitta mashina uchun tochkalari bilan km. */
+    fun viaStopsDistanceFor(vehicle: LiveMapVehicle): String = viaStopsDistanceLabel(vehicle)
+
+    /** Tochklar yoqilganda: kuryer → 1 → 2 → … → magazin yo‘li. */
+    private fun viaStopsDistanceLabel(vehicle: LiveMapVehicle): String {
+        val order = vehicle.orders.maxByOrNull { it.routePoints.size }
+            ?: vehicle.orders.firstOrNull()
+            ?: return "—"
+        val pathKm = RouteTrim.pathLengthKm(
+            RouteTrim.remaining(
+                vehicle.courierLat,
+                vehicle.courierLng,
+                order.routePoints,
+            ),
+        ).takeIf { it > 0.01 }
+        if (pathKm != null) return formatDistance(pathKm)
+        order.distanceLabel.takeIf { it.isNotBlank() && it != "—" }?.let { return it }
+        // Label yo‘q — stop coords bo‘ylab taxmin (magazin haversine emas)
+        val stops = vehicle.routeStops.ifEmpty { order.tracking.routeStops }
+        if (stops.size > 1) {
+            val youIdx = stops.indexOfFirst { it.isYou }.let { if (it < 0) stops.lastIndex else it }
+            val untilYou = stops.sortedBy { it.sequence }.take(youIdx + 1)
+            var sum = 0.0
+            var prevLat = vehicle.courierLat
+            var prevLng = vehicle.courierLng
+            var ok = false
+            for (s in untilYou) {
+                val lat = s.latitude ?: continue
+                val lng = s.longitude ?: continue
+                if (lat == 0.0 && lng == 0.0) continue
+                sum += RoadRouteService.haversineM(prevLat, prevLng, lat, lng)
+                prevLat = lat
+                prevLng = lng
+                ok = true
+            }
+            if (ok && sum > 10.0) return formatDistance(sum / 1000.0)
+        }
+        return "—"
+    }
 
     private fun isShopOnly(vehicle: LiveMapVehicle, shopOnlyCompanyIds: Set<String>): Boolean {
         if (shopOnlyCompanyIds.isEmpty()) return false
@@ -112,22 +151,6 @@ data class LiveFleetUi(
             vehicle.courierLat, vehicle.courierLng, dLat, dLng,
         ) / 1000.0
         return if (km > 0.01) formatDistance(km) else "—"
-    }
-
-    private fun parseDistanceKm(label: String): Double? {
-        val normalized = label.replace(',', '.').trim().lowercase()
-        return when {
-            normalized.endsWith("km") -> normalized
-                .removeSuffix("km")
-                .trim()
-                .toDoubleOrNull()
-            normalized.endsWith("m") -> normalized
-                .removeSuffix("m")
-                .trim()
-                .toDoubleOrNull()
-                ?.div(1000.0)
-            else -> normalized.toDoubleOrNull()
-        }
     }
 
     private fun formatDistance(km: Double): String =

@@ -480,13 +480,14 @@ class DashboardViewModel @Inject constructor(
                             offRoute
 
                         if (movedEnough) {
-                            // Flot xaritada barcha raqamli tochkalarni hisobga olamiz
+                            // Km = kuryer → tochka1 → … → mijoz (siz); magazin-only alohida.
                             val waypoints = RoadRouteService.waypointsUntilYou(
                                 routeStops = tracking.routeStops,
                                 deliveryLat = deliveryLat,
                                 deliveryLng = deliveryLng,
-                                untilYouOnly = false,
+                                untilYouOnly = true,
                             )
+                            val multiStop = waypoints.size > 1
                             val route = roadRouteService.fetchDrivingRoute(
                                 fromLat = courierLat!!,
                                 fromLng = courierLng!!,
@@ -495,13 +496,15 @@ class DashboardViewModel @Inject constructor(
                             if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
                                 routePoints = route.points
                                 distanceLabel = formatDistance(route.distanceKm)
-                            } else if (oldRoute.size >= 2) {
+                            } else if (oldRoute.size >= 2 && !stopsChanged) {
                                 routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
                                 val pathKm = RouteTrim.pathLengthKm(routePoints)
                                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                                 distanceLabel = when {
                                     pathKm != null -> formatDistance(pathKm)
-                                    rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
+                                    // Multi-stopda backend rawKm (faqat magazin) ni ishlatmaymiz
+                                    !multiStop && rawKm != null &&
+                                        GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
                                         formatDistance(rawKm)
                                     else -> distanceLabel
                                 }
@@ -512,12 +515,12 @@ class DashboardViewModel @Inject constructor(
                                 val approx = approxStopsDistanceKm(
                                     courierLat, courierLng, waypoints,
                                 )
-                                distanceLabel = if (approx != null) {
-                                    formatDistance(approx)
-                                } else if (rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm)) {
-                                    formatDistance(rawKm)
-                                } else {
-                                    "—"
+                                distanceLabel = when {
+                                    approx != null -> formatDistance(approx)
+                                    !multiStop && rawKm != null &&
+                                        GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
+                                        formatDistance(rawKm)
+                                    else -> distanceLabel.ifBlank { "—" }
                                 }
                             }
 
@@ -546,9 +549,11 @@ class DashboardViewModel @Inject constructor(
                             routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
                             val pathKm = RouteTrim.pathLengthKm(routePoints)
                                 .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+                            val multiStop = tracking.routeStops.size > 1
                             distanceLabel = when {
                                 pathKm != null -> formatDistance(pathKm)
-                                rawKm != null && GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
+                                !multiStop && rawKm != null &&
+                                    GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
                                     formatDistance(rawKm)
                                 else -> distanceLabel
                             }
@@ -723,22 +728,34 @@ class DashboardViewModel @Inject constructor(
                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                 val shopKm = RouteTrim.pathLengthKm(trimmedShop)
                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
-                order.copy(
-                    distanceLabel = pathKm?.let { formatDistance(it) }
-                        ?: distKm
+                val multiStop = order.tracking.routeStops.size > 1 ||
+                    order.tracking.routeStops.any { !it.isYou }
+                // Live GPS: multi-stop km ni magazin haversine bilan almashtirmaslik
+                val nextDistanceLabel = pathKm?.let { formatDistance(it) }
+                    ?: order.distanceLabel.takeIf { it.isNotBlank() && it != "—" }
+                    ?: if (!multiStop) {
+                        distKm
                             ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
                             ?.let { formatDistance(it) }
-                        ?: order.distanceLabel,
+                    } else {
+                        null
+                    }
+                    ?: order.distanceLabel
+                order.copy(
+                    distanceLabel = nextDistanceLabel,
                     routePoints = trimmedRoute,
                     shopRoutePoints = trimmedShop,
                     shopDistanceLabel = shopKm?.let { formatDistance(it) }
                         ?: order.shopDistanceLabel,
                     tracking = order.tracking.copy(
                         distanceKm = pathKm
-                            ?: distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                            ?: if (!multiStop) {
+                                distKm?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                            } else {
+                                null
+                            }
                             ?: order.tracking.distanceKm,
-                        etaMinutes = (pathKm ?: distKm)
-                            ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+                        etaMinutes = pathKm
                             ?.let { maxOf(5, Math.round((it / 30.0) * 60).toInt()) }
                             ?: order.tracking.etaMinutes,
                         deliveryPerson = person,

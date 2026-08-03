@@ -73,8 +73,8 @@ function distributorToMarker(d: Distributor): EmployeeMarker | null {
   const lng = d.lastLongitude != null ? Number(d.lastLongitude) : NaN;
   if (!isInServiceArea(lat, lng)) return null;
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
-  // Sticky DB isOnline ishlatilmaydi — faqat yangi GPS (180s)
-  const fresh = isGpsLiveOnline(d.lastLocationAt);
+  // API applyLiveGps isOnline + lastLocationAt — ikkalasini ham hisobga olamiz
+  const fresh = !!d.isOnline || isGpsLiveOnline(d.lastLocationAt);
   return {
     id: clientIdHash(d.id),
     name,
@@ -229,7 +229,8 @@ export default function AdminPanel() {
     };
 
     load();
-    const interval = window.setInterval(load, 10_000);
+    // Jonli online — 2s da HTTP zaxira (WS bo'lmasa ham sekundlarda)
+    const interval = window.setInterval(load, 2_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -245,6 +246,7 @@ export default function AdminPanel() {
     connectTracking({
       onLocation: (data) => {
         if (!data.distributorId || data.latitude == null || data.longitude == null) return;
+        if (!isInServiceArea(data.latitude, data.longitude)) return;
         setLiveLocations(prev => ({
           ...prev,
           [data.distributorId]: {
@@ -253,10 +255,46 @@ export default function AdminPanel() {
             online: true,
             lastSeen: 'hozir',
             at: Date.now(),
+            name: prev[data.distributorId]?.name,
           },
         }));
+        // Distributors ro'yxatini ham darhol online qilish
+        setMapDistributors(prev =>
+          prev.map(d =>
+            d.id === data.distributorId
+              ? {
+                  ...d,
+                  lastLatitude: data.latitude,
+                  lastLongitude: data.longitude,
+                  lastLocationAt: new Date().toISOString(),
+                  isOnline: true,
+                }
+              : d,
+          ),
+        );
       },
-      // Online faqat location:live dan — socket ulanishi yetarli emas
+      onOnline: (d) => {
+        if (!d.distributorId) return;
+        setLiveLocations(prev => {
+          const cur = prev[d.distributorId!];
+          return {
+            ...prev,
+            [d.distributorId!]: {
+              lat: cur?.lat ?? 0,
+              lng: cur?.lng ?? 0,
+              online: true,
+              lastSeen: 'hozir',
+              at: Date.now(),
+              name: cur?.name,
+            },
+          };
+        });
+        setMapDistributors(prev =>
+          prev.map(x =>
+            x.id === d.distributorId ? { ...x, isOnline: true } : x,
+          ),
+        );
+      },
       onOffline: (d) => {
         if (!d.distributorId) return;
         setLiveLocations(prev => {
@@ -276,7 +314,7 @@ export default function AdminPanel() {
       socket = s;
     });
 
-    // Eski WS nuqtalarini offline qilish (180s)
+    // Eski WS nuqtalari — 3 daqiqadan keyin
     const expire = window.setInterval(() => {
       const cutoff = Date.now() - 180_000;
       setLiveLocations(prev => {
@@ -397,13 +435,15 @@ export default function AdminPanel() {
     if (dashData?.employeeLocations) {
       for (const e of dashData.employeeLocations) {
         if (!isInServiceArea(e.lat, e.lng)) continue;
+        const prev = byDist.get(e.distributorId);
         byDist.set(e.distributorId, {
           id: clientIdHash(e.distributorId),
           name: e.name,
           avatar: e.avatar,
           role: e.role,
-          online: e.online,
-          lastSeen: e.lastSeen,
+          // Online ni pastga tushirmaymiz — distributors/WS yangiroq bo'lishi mumkin
+          online: e.online || !!prev?.online,
+          lastSeen: e.online ? e.lastSeen : (prev?.lastSeen || e.lastSeen),
           lat: e.lat,
           lng: e.lng,
           orgId: e.orgId,
@@ -412,7 +452,7 @@ export default function AdminPanel() {
       }
     }
 
-    // 3) WebSocket jonli yangilanish
+    // 3) WebSocket jonli yangilanish — online ni kuchaytiradi, HTTP online ni o'chirmaydi
     const now = Date.now();
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
@@ -423,7 +463,8 @@ export default function AdminPanel() {
         byDist.set(distributorId, {
           ...existing,
           ...(hasCoords ? { lat: live.lat, lng: live.lng } : {}),
-          online: liveOnline,
+          // WS online → true; aks holda HTTP/dashboard online saqlanadi
+          online: liveOnline || existing.online,
           lastSeen: liveOnline ? (live.lastSeen || existing.lastSeen) : existing.lastSeen,
         });
         continue;

@@ -33,7 +33,8 @@ import uz.distributor.crm.map.RoadRouteService
 /** Admin TrackingMap — Navoiy default */
 private val NAVOIY_CENTER = GeoPoint(40.0843, 65.3791)
 private const val NAVOIY_ZOOM = 12.0
-private const val ROUTE_COLOR = 0xFF6366F1.toInt()
+private const val ROUTE_CASING = 0xFFFFFFFF.toInt()
+private const val ROUTE_FILL = 0xFF2563EB.toInt()
 private const val MARKER_PURPLE = 0xFF4F46E5.toInt()
 private const val MARKER_SELECTED = 0xFF7C3AED.toInt()
 private const val USER_COLOR = 0xFF2563EB.toInt()
@@ -41,6 +42,37 @@ private const val USER_COLOR = 0xFF2563EB.toInt()
 /** GPS faqat Navoiy atrofida bo‘lsa yo‘l chiziladi (emulyator okeanga sakramasligi uchun) */
 private fun isNearNavoiy(lat: Double, lng: Double): Boolean =
     lat in 39.7..40.6 && lng in 64.8..66.0
+
+/** Xodim GPS — zamonaviy kichik ko‘k nuqta */
+private fun agentLocationDrawable(density: Float): Drawable {
+    val size = (18 * density).toInt().coerceAtLeast(16)
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bmp)
+    val cx = size / 2f
+    val cy = size / 2f
+    // Yumshoq halo
+    canvas.drawCircle(
+        cx,
+        cy,
+        size / 2f - 0.5f * density,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x332563EB },
+    )
+    // Oq ring
+    canvas.drawCircle(
+        cx,
+        cy,
+        5.5f * density,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() },
+    )
+    // Ichki ko‘k nuqta
+    canvas.drawCircle(
+        cx,
+        cy,
+        3.8f * density,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = USER_COLOR },
+    )
+    return bitmapDrawable(bmp, density)
+}
 
 private fun pinDrawable(
     density: Float,
@@ -206,30 +238,41 @@ private fun bitmapDrawable(bmp: Bitmap, density: Float, densityDpi: Int = (densi
     }
 
 private fun distanceBadgeDrawable(density: Float, kmText: String): Drawable {
-    val padH = (7 * density).toInt()
-    val padV = (3.5f * density).toInt()
+    val padH = (6 * density).toInt()
+    val padV = (3 * density).toInt()
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFFFFFFF.toInt()
-        textSize = 10f * density
+        textSize = 9.5f * density
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
     }
     val tw = paint.measureText(kmText).toInt()
-    val w = (padH * 2 + tw).coerceAtLeast((28 * density).toInt())
+    val w = (padH * 2 + tw).coerceAtLeast((26 * density).toInt())
     val h = padV * 2 + paint.textSize.toInt()
     val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
     val rect = RectF(0.5f * density, 0.5f * density, w - 0.5f * density, h - 0.5f * density)
     canvas.drawRoundRect(
-        RectF(rect.left, rect.top + 0.8f * density, rect.right, rect.bottom + 0.8f * density),
+        RectF(rect.left, rect.top + 0.6f * density, rect.right, rect.bottom + 0.6f * density),
         h / 2f,
         h / 2f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33000000 },
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x28000000 },
     )
     canvas.drawRoundRect(
         rect,
         h / 2f,
         h / 2f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = MARKER_PURPLE },
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ROUTE_FILL },
+    )
+    // Yupqa oq border
+    canvas.drawRoundRect(
+        rect,
+        h / 2f,
+        h / 2f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = 1.2f * density
+        },
     )
     val ty = h / 2f - (paint.descent() + paint.ascent()) / 2f
     canvas.drawText(kmText, padH.toFloat(), ty, paint)
@@ -238,13 +281,26 @@ private fun distanceBadgeDrawable(density: Float, kmText: String): Drawable {
 
 private fun clearRouteOverlays(
     map: MapView,
+    routeCasingRef: MutableState<Polyline?>,
     routeLineRef: MutableState<Polyline?>,
     distanceMarkerRef: MutableState<Marker?>,
 ) {
+    routeCasingRef.value?.let { map.overlays.remove(it) }
+    routeCasingRef.value = null
     routeLineRef.value?.let { map.overlays.remove(it) }
     routeLineRef.value = null
     distanceMarkerRef.value?.let { map.overlays.remove(it) }
     distanceMarkerRef.value = null
+}
+
+/** Google/Apple Maps uslubidagi yo‘l: oq kontur + ko‘k chiziq */
+private fun styleRoutePaint(paint: Paint, color: Int, widthPx: Float) {
+    paint.color = color
+    paint.strokeWidth = widthPx
+    paint.isAntiAlias = true
+    paint.style = Paint.Style.STROKE
+    paint.strokeCap = Paint.Cap.ROUND
+    paint.strokeJoin = Paint.Join.ROUND
 }
 
 private fun formatKm(km: Double): String =
@@ -288,6 +344,7 @@ fun LocationMapView(
     val mapViewRef = remember { mutableStateOf<MapView?>(null) }
     val clientMarkers = remember { mutableStateMapOf<String, Marker>() }
     val userMarkerRef = remember { mutableStateOf<Marker?>(null) }
+    val routeCasingRef = remember { mutableStateOf<Polyline?>(null) }
     val routeLineRef = remember { mutableStateOf<Polyline?>(null) }
     val distanceMarkerRef = remember { mutableStateOf<Marker?>(null) }
     val appliedLayer = remember { mutableStateOf<MapLayerId?>(null) }
@@ -295,7 +352,7 @@ fun LocationMapView(
     val selectedClientIdState = rememberUpdatedState(selectedClientId)
     val initialCameraDone = remember { mutableStateOf(false) }
 
-    val iconAgent = remember(density) { pinDrawable(density, USER_COLOR, sizeDp = 38f) }
+    val iconAgent = remember(density) { agentLocationDrawable(density) }
 
     val onClientSelectedState = rememberUpdatedState(onClientSelected)
     val onSelectionClearedState = rememberUpdatedState(onSelectionCleared)
@@ -426,7 +483,7 @@ fun LocationMapView(
     // Xodim → tanlangan nuqta: yo‘l marshruti + kichik km
     LaunchedEffect(selectedClientId, agentLocation, mapInstance) {
         val map = mapInstance ?: return@LaunchedEffect
-        clearRouteOverlays(map, routeLineRef, distanceMarkerRef)
+        clearRouteOverlays(map, routeCasingRef, routeLineRef, distanceMarkerRef)
         map.invalidate()
 
         val selected = selectedClientId?.let { id ->
@@ -448,14 +505,21 @@ fun LocationMapView(
         if (selectedClientIdState.value != selected.id) return@LaunchedEffect
 
         val geoPoints = route.points.map { GeoPoint(it.latitude, it.longitude) }
-        val line = Polyline().apply {
+        val casingW = (10f * density).coerceIn(12f, 18f)
+        val fillW = (6f * density).coerceIn(7f, 11f)
+
+        val casing = Polyline().apply {
             setPoints(geoPoints)
-            outlinePaint.color = ROUTE_COLOR
-            outlinePaint.strokeWidth = (8f * density).coerceIn(10f, 22f)
-            outlinePaint.isAntiAlias = true
+            styleRoutePaint(outlinePaint, ROUTE_CASING, casingW)
         }
-        map.overlays.add(line)
-        routeLineRef.value = line
+        val fill = Polyline().apply {
+            setPoints(geoPoints)
+            styleRoutePaint(outlinePaint, ROUTE_FILL, fillW)
+        }
+        map.overlays.add(casing)
+        map.overlays.add(fill)
+        routeCasingRef.value = casing
+        routeLineRef.value = fill
 
         val mid = geoPoints[geoPoints.size / 2]
         val badge = Marker(map).apply {
@@ -492,12 +556,12 @@ fun LocationMapView(
         val point = GeoPoint(loc.latitude, loc.longitude)
         val userMark = userMarkerRef.value ?: Marker(map).also {
             it.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-            it.icon = iconAgent
             it.setInfoWindow(null)
             it.title = "Xodim"
             userMarkerRef.value = it
             map.overlays.add(it)
         }
+        userMark.icon = iconAgent
         if (userMark.position != point) userMark.position = point
         map.invalidate()
     }

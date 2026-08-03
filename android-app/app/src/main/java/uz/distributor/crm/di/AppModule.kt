@@ -19,6 +19,7 @@ import uz.distributor.crm.data.local.AppDatabase
 import uz.distributor.crm.data.local.TokenHolder
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.TokenRefreshInterceptor
+import uz.distributor.crm.security.ApiDns
 import uz.distributor.crm.security.TlsPins
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
@@ -47,6 +48,7 @@ object AppModule {
             chain.proceed(request)
         }
         val builder = OkHttpClient.Builder()
+            .dns(ApiDns)
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)

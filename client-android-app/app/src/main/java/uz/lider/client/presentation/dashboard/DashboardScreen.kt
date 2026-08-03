@@ -933,6 +933,9 @@ private fun LiveDeliveryMapCard(
     val shape = RoundedCornerShape(LiquidGlass.RadiusCard)
     var selectedVehicle by remember { mutableStateOf<LiveMapVehicle?>(null) }
     val multiOrg = fleet.vehicles.size > 1
+    val orgDistMap = remember(fleet, hideStopsCompanyIds) {
+        fleet.orgDistanceLines(hideStopsCompanyIds).toMap()
+    }
     val vehicleLines = fleet.vehicles.map { vehicle ->
         vehicleLiveSubtitle(
             vehicle = vehicle,
@@ -940,6 +943,11 @@ private fun LiveDeliveryMapCard(
             distancePrefix = distancePrefix,
             stopsBeforeTemplate = stopsBeforeTemplate,
             stopsNextLabel = stopsNextLabel,
+            distanceOverride = orgDistMap[
+                vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: "—"
+            ],
         )
     }
 
@@ -1069,12 +1077,13 @@ private fun LiveDeliveryMapCard(
             vehicle.id.trim().takeIf { it.isNotEmpty() },
         )
         val hideThis = orgKeys.any { it in hideStopsCompanyIds }
-        val shopOnlyDist = fleet.orgDistanceLines(orgKeys.toSet())
-            .firstOrNull()?.second
+        val shopOnlyDist = fleet.shopOnlyDistanceFor(vehicle)
+        val viaStopsDist = fleet.viaStopsDistanceFor(vehicle)
         VehicleOrdersPopup(
             vehicle = vehicle,
             hideRouteStops = hideThis,
             shopOnlyDistance = shopOnlyDist,
+            viaStopsDistance = viaStopsDist,
             onHideRouteStopsChange = { hide ->
                 onHideStopsCompanyIdsChange(
                     if (hide) hideStopsCompanyIds + orgKeys
@@ -1097,6 +1106,7 @@ private fun vehicleLiveSubtitle(
     distancePrefix: String,
     stopsBeforeTemplate: String,
     stopsNextLabel: String,
+    distanceOverride: String? = null,
 ): String {
     val parts = mutableListOf<String>()
     if (showOrgName) {
@@ -1111,7 +1121,8 @@ private fun vehicleLiveSubtitle(
             stopsNextLabel
         }
     }
-    val dist = vehicle.orders
+    val dist = distanceOverride?.takeIf { it.isNotBlank() && it != "—" }
+        ?: vehicle.orders
         .mapNotNull { label ->
             val n = label.distanceLabel.replace(',', '.').trim().lowercase()
             when {
@@ -1134,6 +1145,7 @@ private fun VehicleOrdersPopup(
     vehicle: LiveMapVehicle,
     hideRouteStops: Boolean = false,
     shopOnlyDistance: String? = null,
+    viaStopsDistance: String? = null,
     onHideRouteStopsChange: ((Boolean) -> Unit)? = null,
     onDismiss: () -> Unit,
     onOpenOrder: (String) -> Unit,
@@ -1208,9 +1220,11 @@ private fun VehicleOrdersPopup(
             vehicle.orders.forEach { order ->
                 val dist = if (hideRouteStops) {
                     shopOnlyDistance?.takeIf { it.isNotBlank() && it != "—" }
+                        ?: order.shopDistanceLabel.takeIf { it.isNotBlank() && it != "—" }
                         ?: order.distanceLabel
                 } else {
-                    order.distanceLabel
+                    viaStopsDistance?.takeIf { it.isNotBlank() && it != "—" }
+                        ?: order.distanceLabel
                 }
                 Row(
                     Modifier
@@ -1479,12 +1493,13 @@ private fun DashboardLiveMapFullscreen(
             vehicle.id.trim().takeIf { it.isNotEmpty() },
         )
         val hideThis = orgKeys.any { it in hideStopsCompanyIds }
-        val shopOnlyDist = fleet.orgDistanceLines(orgKeys.toSet())
-            .firstOrNull()?.second
+        val shopOnlyDist = fleet.shopOnlyDistanceFor(vehicle)
+        val viaStopsDist = fleet.viaStopsDistanceFor(vehicle)
         VehicleOrdersPopup(
             vehicle = vehicle,
             hideRouteStops = hideThis,
             shopOnlyDistance = shopOnlyDist,
+            viaStopsDistance = viaStopsDist,
             onHideRouteStopsChange = { hide ->
                 onHideStopsCompanyIdsChange(
                     if (hide) hideStopsCompanyIds + orgKeys

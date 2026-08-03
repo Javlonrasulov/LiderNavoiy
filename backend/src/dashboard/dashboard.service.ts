@@ -447,8 +447,11 @@ export class DashboardService {
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
       const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
-      // Sticky DB isOnline ISHLATILMAYDI — faqat yangi GPS (90s)
-      const online = ageMs <= LOCATION_ONLINE_MAX_AGE_MS;
+      // Sticky DB isOnline ISHLATILMAYDI — yangi GPS yoki Redis online
+      const online =
+        ageMs <= LOCATION_ONLINE_MAX_AGE_MS
+        || onlineIds.has(d.id)
+        || liveMap.has(d.id);
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {

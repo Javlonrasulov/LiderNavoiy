@@ -294,8 +294,7 @@ class OrderTrackingViewModel @Inject constructor(
                 routeStops = tracking?.routeStops.orEmpty(),
                 deliveryLat = deliveryLat!!,
                 deliveryLng = deliveryLng!!,
-                // Markerlar barcha manzillarni ko‘rsatadi — yo‘l ham shunga mos
-                untilYouOnly = false,
+                untilYouOnly = true,
             )
             val route = roadRouteService.fetchDrivingRoute(
                 fromLat = courierLat!!,

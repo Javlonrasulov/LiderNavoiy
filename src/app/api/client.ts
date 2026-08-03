@@ -4,10 +4,17 @@
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
-const WS_BASE =
-  import.meta.env.VITE_WS_URL ||
-  (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
+function resolveWsBase(): string {
+  const explicit = import.meta.env.VITE_WS_URL as string | undefined;
+  if (explicit) return String(explicit).replace(/\/$/, '');
+  const fromApi = String(API_BASE).replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '');
+  if (fromApi.startsWith('http://') || fromApi.startsWith('https://')) return fromApi;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
+}
+
+const WS_BASE = resolveWsBase();
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
@@ -1356,6 +1363,11 @@ export async function connectTracking(handlers: {
     auth: { token },
     transports: ['websocket', 'polling'],
     reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+  });
+  socket.on('connect', () => {
+    // room join serverda JWT orqali
   });
   socket.on('location:live', handlers.onLocation);
   if (handlers.onOnline) socket.on('distributor:online', handlers.onOnline);

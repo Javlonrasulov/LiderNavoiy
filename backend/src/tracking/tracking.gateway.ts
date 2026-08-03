@@ -18,10 +18,29 @@ import { GpsService } from '../gps/gps.service';
 
 @WebSocketGateway({
   cors: {
-    origin: (process.env.CORS_ORIGINS || 'http://localhost:5173')
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s && s !== '*'),
+    origin: (origin, callback) => {
+      const raw = process.env.CORS_ORIGINS || 'http://localhost:5173';
+      if (!origin || raw.trim() === '*') {
+        callback(null, true);
+        return;
+      }
+      const allowed = raw.split(',').map((s) => s.trim()).filter(Boolean);
+      if (allowed.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      // Netlify preview / lokal
+      if (
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.endsWith('.netlify.app') ||
+        origin.includes('lider-navoiy')
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
   },
   namespace: '/tracking',
@@ -61,19 +80,22 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       if (payload.distributorId) {
         client.join(`distributor:${payload.distributorId}`);
-        // Online faqat GPS kelganda — ulanishning o'zi yetarli emas
       }
 
-      if (payload.role === 'admin' || payload.role === 'manager') {
+      // Admin panel — agent GPS ni darhol olish uchun
+      const isStaff =
+        payload.role === 'admin' ||
+        payload.role === 'manager' ||
+        (!payload.distributorId && payload.role !== 'client');
+      if (isStaff) {
         client.join('admins');
       }
 
-      // Mijoz APK ham tracking socketga ulanishi mumkin (watch:courier)
       if (payload.role === 'client') {
         client.join(`client:${payload.sub}`);
       }
 
-      this.logger.log(`Client connected: ${client.id} (${payload.username})`);
+      this.logger.log(`Client connected: ${client.id} (${payload.username}, role=${payload.role})`);
     } catch {
       client.disconnect();
     }
@@ -132,6 +154,10 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
       receivedAt: new Date().toISOString(),
     };
     this.server.to('admins').emit('location:live', payload);
+    this.server.to('admins').emit('distributor:online', {
+      distributorId,
+      timestamp: payload.receivedAt,
+    });
     // Mijoz APK — Yandex Taxi uslubida jonli kuzatuv
     this.server.to(`watch:${distributorId}`).emit('courier:location', payload);
   }
