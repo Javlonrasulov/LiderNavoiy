@@ -33,7 +33,7 @@ export class NotificationsController {
     @Request() req: { user: User },
     @Body() dto: RegisterFcmTokenDto,
   ) {
-    return this.service.registerFcmToken(req.user.id, dto.token);
+    return this.service.registerFcmToken(req.user.id, dto.token, dto.language);
   }
 
   @Get()

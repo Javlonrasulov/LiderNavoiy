@@ -75,7 +75,19 @@ class DeliveryOrdersViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isReordering = true, error = null) }
             try {
-                val orders = sortDeliveryOrders(repository.reorderOnWay(orderIds))
+                val prevLoaded = _uiState.value.orders.associate { it.id to it.loadedAt }
+                val orders = sortDeliveryOrders(repository.reorderOnWay(orderIds)).map { order ->
+                    val keep = prevLoaded[order.id]?.takeIf { !it.isNullOrBlank() }
+                    if (keep != null && (order.loadedAt.isNullOrBlank() || order.loadedAt != keep)) {
+                        // Server updatedAt ni loadedAt qilib qaytarmasin
+                        val serverLoaded = order.loadedAt
+                        val preferPrev = serverLoaded.isNullOrBlank() ||
+                            isLoadedAtReset(serverLoaded, keep)
+                        if (preferPrev) order.copy(loadedAt = keep) else order
+                    } else {
+                        order
+                    }
+                }
                 _uiState.update { it.copy(isReordering = false, orders = orders) }
             } catch (e: Exception) {
                 _uiState.update {
@@ -84,6 +96,18 @@ class DeliveryOrdersViewModel @Inject constructor(
                 load()
             }
         }
+    }
+
+    /** Reorder dan keyin loadedAt «hozir» ga sakrab ketganini aniqlash. */
+    private fun isLoadedAtReset(serverLoadedAt: String, previousLoadedAt: String): Boolean {
+        return runCatching {
+            val server = java.time.Instant.parse(serverLoadedAt)
+            val prev = java.time.Instant.parse(previousLoadedAt)
+            val now = java.time.Instant.now()
+            val serverAgeMin = java.time.Duration.between(server, now).toMinutes()
+            val prevAgeMin = java.time.Duration.between(prev, now).toMinutes()
+            serverAgeMin <= 2 && prevAgeMin > 2
+        }.getOrDefault(false)
     }
 
     fun clearError() {

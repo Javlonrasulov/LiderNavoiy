@@ -12,6 +12,7 @@ import {
   SendToUsersDto,
 } from './dto/notification.dto';
 import { UserRole } from '../common/enums';
+import { normalizePushLang, PushI18n, PushLang } from './push-i18n';
 
 export interface SendResult {
   sent: boolean;
@@ -34,10 +35,33 @@ export class NotificationsService {
     private readonly notifRepo: Repository<PushNotification>,
   ) {}
 
-  async registerFcmToken(userId: string, token: string) {
-    await this.userRepo.update(userId, { fcmToken: token });
-    this.logger.log(`FCM token registered for user ${userId}`);
+  async registerFcmToken(userId: string, token: string, language?: string) {
+    const patch: Partial<User> = { fcmToken: token };
+    if (language) {
+      patch.preferredLanguage = normalizePushLang(language);
+    }
+    await this.userRepo.update(userId, patch);
+    this.logger.log(
+      `FCM token registered for user ${userId}` +
+        (language ? ` lang=${normalizePushLang(language)}` : ''),
+    );
     return { registered: true, tokenPreview: token.slice(0, 12) + '...' };
+  }
+
+  async getUserLang(userId: string): Promise<PushLang> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'preferredLanguage'],
+    });
+    return normalizePushLang(user?.preferredLanguage);
+  }
+
+  async getDistributorLang(distributorId: string): Promise<PushLang> {
+    const profile = await this.profileRepo.findOne({
+      where: { id: distributorId },
+      relations: ['user'],
+    });
+    return normalizePushLang(profile?.user?.preferredLanguage);
   }
 
   async getMyNotifications(userId: string, limit = 50) {
@@ -188,7 +212,12 @@ export class NotificationsService {
   }
 
   /** Notify all admins/managers when agent creates order */
-  async notifyAdminsNewOrder(agentName: string, orderTotal: number, clientName?: string) {
+  async notifyAdminsNewOrder(
+    agentName: string,
+    orderTotal: number,
+    clientName?: string,
+    extras?: { territory?: string | null; orderId?: string },
+  ) {
     const admins = await this.userRepo.find({
       where: {
         role: In([UserRole.ADMIN, UserRole.MANAGER]),
@@ -196,12 +225,25 @@ export class NotificationsService {
       },
     });
 
-    const title = 'Yangi buyurtma';
-    const body = `${agentName}: ${clientName ?? 'Mijoz'} — ${orderTotal.toLocaleString()} SUM`;
-    const data = { type: NotificationType.ORDER, screen: 'orders' };
+    const agent = (agentName || 'Agent').trim() || 'Agent';
+    const client = (clientName || 'Mijoz').trim() || 'Mijoz';
+    const territory = extras?.territory?.trim();
+    const sum = orderTotal.toLocaleString('uz-UZ');
+    const place = territory ? `${client} · ${territory}` : client;
+    const data: Record<string, string> = {
+      type: NotificationType.ORDER,
+      screen: 'orders',
+      agentName: agent,
+      clientName: client,
+    };
+    if (extras?.orderId) data.orderId = extras.orderId;
+    if (territory) data.territory = territory;
 
     let sent = 0;
     for (const admin of admins) {
+      const lang = normalizePushLang(admin.preferredLanguage);
+      const title = PushI18n.adminNewOrderTitle(lang, agent);
+      const body = PushI18n.adminNewOrderBody(lang, agent, place, sum);
       const result = await this.sendToUser(
         admin.id,
         title,

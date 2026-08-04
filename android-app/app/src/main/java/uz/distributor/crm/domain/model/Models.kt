@@ -89,6 +89,7 @@ data class Product(
 )
 
 data class CartItem(
+    val clientId: String,
     val productId: String,
     val productCode: String,
     val productName: String,

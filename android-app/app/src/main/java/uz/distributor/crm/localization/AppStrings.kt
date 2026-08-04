@@ -131,6 +131,20 @@ object AppStrings {
         AppLanguage.UZ_CYRILLIC -> "$count та янги хабар бор"
         AppLanguage.RUS -> "Новых сообщений: $count"
     }
+
+    fun pushNewMessageFallback(lang: AppLanguage) = tr(
+        lang,
+        "Yangi xabar",
+        "Янги хабар",
+        "Новое сообщение",
+    )
+
+    fun pushPlanAssignedFallback(lang: AppLanguage) = tr(
+        lang,
+        "Yangi reja tayinlandi",
+        "Янги режа тайинланди",
+        "Назначен новый план",
+    )
     fun newNotificationsReceived(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "$count ta yangi bildirishnoma"
         AppLanguage.UZ_CYRILLIC -> "$count та янги билдиришнома"

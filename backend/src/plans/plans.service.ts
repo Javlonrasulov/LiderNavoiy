@@ -10,6 +10,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
 import { User } from '../auth/entities/user.entity';
 import { OrderStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushI18n } from '../notifications/push-i18n';
 import {
   addCalendarMonth,
   getTashkentDateParts,
@@ -133,8 +134,9 @@ export class PlansService {
 
   private async notifyAgentPlanAssigned(plan: AgentPlan, isNew: boolean) {
     const total = Number(plan.totalAmount).toLocaleString('uz-UZ');
-    const title = isNew ? 'Yangi reja tayinlandi' : 'Reja yangilandi';
-    const body = `${plan.year}-${String(plan.month).padStart(2, '0')} uchun reja: ${total} so'm`;
+    const lang = await this.notifications.getDistributorLang(plan.distributorId);
+    const title = PushI18n.planAssignedTitle(lang, isNew);
+    const body = PushI18n.planAssignedBody(lang, plan.year, plan.month, total);
 
     try {
       const result = await this.notifications.notifyPlanAssigned(

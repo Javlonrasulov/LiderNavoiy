@@ -2,7 +2,6 @@ package uz.distributor.crm.data.repository
 
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import uz.distributor.crm.data.local.AppDatabase
 import uz.distributor.crm.data.local.CartItemEntity
 import uz.distributor.crm.data.local.PendingOrderEntity
@@ -33,18 +32,28 @@ class CartRepository @Inject constructor(
         emit(db.cartDao().getAll().map { it.toDomain() })
     }
 
+    /** Barcha klientlar bo'yicha savatcha (dashboard badge va h.k.) */
     suspend fun getCart(): List<CartItem> = db.cartDao().getAll().map { it.toDomain() }
 
-    suspend fun addToCart(product: uz.distributor.crm.domain.model.Product, qty: Double) {
-        setCartQty(product, qty)
+    suspend fun getCartForClient(clientId: String): List<CartItem> =
+        db.cartDao().getByClient(clientId).map { it.toDomain() }
+
+    /** Klient ID → mahsulotlar */
+    suspend fun getCartGroupedByClient(): Map<String, List<CartItem>> =
+        getCart().groupBy { it.clientId }.filterKeys { it.isNotBlank() }
+
+    suspend fun addToCart(clientId: String, product: uz.distributor.crm.domain.model.Product, qty: Double) {
+        setCartQty(clientId, product, qty)
     }
 
-    suspend fun setCartQty(product: uz.distributor.crm.domain.model.Product, qty: Double) {
+    suspend fun setCartQty(clientId: String, product: uz.distributor.crm.domain.model.Product, qty: Double) {
+        if (clientId.isBlank()) return
         if (qty <= 0) {
-            db.cartDao().delete(product.id)
+            db.cartDao().delete(clientId, product.id)
         } else {
             db.cartDao().insert(
                 CartItemEntity(
+                    clientId = clientId,
                     productId = product.id,
                     productCode = product.code,
                     productName = product.name,
@@ -57,25 +66,30 @@ class CartRepository @Inject constructor(
         }
     }
 
-    suspend fun removeFromCart(productId: String) {
-        db.cartDao().delete(productId)
+    suspend fun removeFromCart(clientId: String, productId: String) {
+        db.cartDao().delete(clientId, productId)
     }
 
-    suspend fun updateQty(productId: String, qty: Double) {
-        val item = db.cartDao().getAll().find { it.productId == productId } ?: return
-        if (qty <= 0) db.cartDao().delete(productId)
-        else db.cartDao().insert(item.copy(quantity = qty))
+    suspend fun updateQty(clientId: String, productId: String, qty: Double) {
+        val item = db.cartDao().getByClient(clientId).find { it.productId == productId } ?: return
+        val normalized = (Math.round(qty * 1000.0) / 1000.0)
+        if (normalized <= 0) db.cartDao().delete(clientId, productId)
+        else db.cartDao().insert(item.copy(quantity = normalized))
     }
 
     suspend fun clearCart() = db.cartDao().clear()
 
-    /** Klient buyurtmasini tahrirlash uchun savatchani seed qiladi */
-    suspend fun seedCartFromOrderItems(items: List<OrderItemDto>) {
-        db.cartDao().clear()
+    suspend fun clearClientCart(clientId: String) = db.cartDao().clearClient(clientId)
+
+    /** Klient buyurtmasini tahrirlash uchun shu klient savatchasini seed qiladi */
+    suspend fun seedCartFromOrderItems(clientId: String, items: List<OrderItemDto>) {
+        if (clientId.isBlank()) return
+        db.cartDao().clearClient(clientId)
         for (it in items) {
             if (it.quantity <= 0) continue
             db.cartDao().insert(
                 CartItemEntity(
+                    clientId = clientId,
                     productId = it.productId,
                     productCode = it.productCode,
                     productName = it.productName,
@@ -90,16 +104,19 @@ class CartRepository @Inject constructor(
 
     suspend fun getTotal(): Double = db.cartDao().getAll().sumOf { it.price * it.quantity }
 
+    suspend fun getTotalForClient(clientId: String): Double =
+        db.cartDao().getByClient(clientId).sumOf { it.price * it.quantity }
+
     /** Pending klient buyurtmasini savatcha mazmuni bilan yangilaydi (yangi order yaratmaydi) */
-    suspend fun saveCartToClientOrder(orderId: String): Result<Unit> {
-        val items = db.cartDao().getAll()
+    suspend fun saveCartToClientOrder(orderId: String, clientId: String): Result<Unit> {
+        val items = db.cartDao().getByClient(clientId)
         if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
         val orderItems = items.map {
             OrderItemDto(it.productId, it.productCode, it.productName, it.quantity, it.price, it.unit)
         }
         return try {
             api.updateClientOrderItems(orderId, UpdateOrderItemsRequest(orderItems))
-            db.cartDao().clear()
+            db.cartDao().clearClient(clientId)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -110,7 +127,7 @@ class CartRepository @Inject constructor(
         if (clientId.isBlank()) {
             return Result.failure(Exception("Klient tanlanmagan"))
         }
-        val items = db.cartDao().getAll()
+        val items = db.cartDao().getByClient(clientId)
         if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
 
         val orderItems = items.map {
@@ -128,14 +145,13 @@ class CartRepository @Inject constructor(
                     orderTotal = total,
                 ))
             } catch (_: Exception) {
-                // Buyurtma ketgan — vizit yozuvi keyin sync qilinadi
                 db.pendingVisitDao().insert(PendingVisitEntity(
                     offlineId = offlineId, clientId = clientId,
                     visitedAt = System.currentTimeMillis(), checkInLat = null, checkInLng = null,
                     orderTotal = total,
                 ))
             }
-            db.cartDao().clear()
+            db.cartDao().clearClient(clientId)
             Result.success(Unit)
         } catch (e: Exception) {
             db.pendingOrderDao().insert(PendingOrderEntity(
@@ -147,9 +163,26 @@ class CartRepository @Inject constructor(
                 visitedAt = System.currentTimeMillis(), checkInLat = null, checkInLng = null,
                 orderTotal = total,
             ))
-            db.cartDao().clear()
+            db.cartDao().clearClient(clientId)
             Result.success(Unit)
         }
+    }
+
+    /** Barcha klientlarning joriy savatchalarini yuboradi */
+    suspend fun submitAllDrafts(): Result<Int> {
+        val grouped = getCartGroupedByClient()
+        if (grouped.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
+        var submitted = 0
+        var lastError: Exception? = null
+        for ((clientId, _) in grouped) {
+            val result = submitOrder(clientId)
+            result.fold(
+                onSuccess = { submitted++ },
+                onFailure = { e -> lastError = e as? Exception ?: Exception(e) },
+            )
+        }
+        return if (submitted > 0) Result.success(submitted)
+        else Result.failure(lastError ?: Exception("Yuborib bo'lmadi"))
     }
 
     suspend fun syncPending(): Int {
@@ -176,6 +209,13 @@ class CartRepository @Inject constructor(
     }
 
     private fun CartItemEntity.toDomain() = CartItem(
-        productId, productCode, productName, price, quantity, unit, category,
+        clientId = clientId,
+        productId = productId,
+        productCode = productCode,
+        productName = productName,
+        price = price,
+        quantity = quantity,
+        unit = unit,
+        category = category,
     )
 }

@@ -88,10 +88,7 @@ fun isDecimalUnit(unit: String): Boolean {
 fun formatQty(qty: Double): String =
     if (qty % 1.0 == 0.0) qty.toInt().toString() else qty.toString()
 
-fun cartBadgeCount(items: List<uz.lider.client.domain.model.CartItem>): Int {
-    val sum = items.sumOf { it.qty }
-    return if (sum % 1.0 == 0.0) sum.toInt() else kotlin.math.ceil(sum).toInt()
-}
+fun cartBadgeCount(items: List<uz.lider.client.domain.model.CartItem>): Int = items.size
 
 @Immutable
 data class ClientPalette(

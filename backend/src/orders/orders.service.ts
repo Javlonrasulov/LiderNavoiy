@@ -6,6 +6,7 @@ import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
 import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus, PaymentStatus } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
+import { PushI18n, normalizePushLang, PushLang } from '../notifications/push-i18n';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
@@ -62,7 +63,7 @@ export class OrdersService {
     if (source === OrderSource.CLIENT) {
       this.notifyAgentClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
     } else {
-      this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount).catch(() => {});
+      this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
     }
 
     return saved;
@@ -77,10 +78,11 @@ export class OrdersService {
     const client = await this.clientRepo.findOne({ where: { id: clientId } });
     const name = client?.name ?? 'Klient';
     const amount = Math.round(totalAmount).toLocaleString('uz-UZ');
+    const lang = await this.notifications.getDistributorLang(distributorId);
     await this.notifications.sendToDistributor(
       distributorId,
-      'Yangi klient buyurtmasi',
-      `${name}: ${amount} so'm`,
+      PushI18n.clientOrderTitle(lang),
+      PushI18n.clientOrderBody(lang, name, amount),
       NotificationType.ORDER,
       { orderId, type: 'client_order' },
     );
@@ -90,18 +92,26 @@ export class OrdersService {
     distributorId: string,
     clientId: string,
     totalAmount: number,
+    orderId?: string,
   ) {
-    const profile = await this.profileRepo.findOne({ where: { id: distributorId } });
-    let agentName = 'Agent';
-    if (profile?.userId) {
-      const user = await this.userRepo.findOne({ where: { id: profile.userId } });
-      agentName = user?.fullName ?? agentName;
-    }
+    const profile = await this.profileRepo.findOne({
+      where: { id: distributorId },
+      relations: ['user'],
+    });
+    const agentName =
+      profile?.user?.fullName?.trim() ||
+      profile?.user?.username?.trim() ||
+      profile?.companyName?.trim() ||
+      'Agent';
     const client = await this.clientRepo.findOne({ where: { id: clientId } });
     await this.notifications.notifyAdminsNewOrder(
       agentName,
       totalAmount,
-      client?.name,
+      client?.name ?? client?.fullName ?? undefined,
+      {
+        territory: client?.territory ?? null,
+        orderId,
+      },
     );
   }
 
@@ -235,6 +245,14 @@ export class OrdersService {
       ...new Set([...onWayOrders, ...unpaidOrders].map((o) => o.id)),
     ];
 
+    // Reorder updatedAt ni yangilaydi — loadedAt bo‘sh bo‘lsa bir marta to‘ldiramiz
+    for (const order of onWayOrders) {
+      if (!order.loadedAt) {
+        order.loadedAt = order.createdAt ? new Date(order.createdAt) : new Date();
+        await this.repo.save(order);
+      }
+    }
+
     const paymentRows = deliveryOrderIds.length
       ? await this.paymentRepo.find({
           where: { orderId: In(deliveryOrderIds) },
@@ -310,8 +328,8 @@ export class OrdersService {
         updatedAt: order.updatedAt,
         loadedAt: order.loadedAt
           ? order.loadedAt.toISOString()
-          : order.status === OrderStatus.ON_WAY
-            ? new Date(order.updatedAt).toISOString()
+          : order.status === OrderStatus.ON_WAY && order.createdAt
+            ? new Date(order.createdAt).toISOString()
             : null,
         clientName: client.name ?? 'Klient',
         clientCode: client.code ?? '',
@@ -697,8 +715,7 @@ export class OrdersService {
 
     this.notifyClientOrderStatus(
       order.clientId,
-      'Buyurtma qabul qilindi',
-      'Agent buyurtmangizni qabul qildi',
+      (lang) => PushI18n.orderAccepted(lang),
       order.id,
     ).catch(() => {});
 
@@ -722,8 +739,7 @@ export class OrdersService {
     const saved = await this.repo.save(order);
     this.notifyClientOrderStatus(
       order.clientId,
-      'Buyurtma qaytarildi',
-      'Agent buyurtmangizni rad etdi',
+      (lang) => PushI18n.orderRejected(lang),
       order.id,
     ).catch(() => {});
     return saved;
@@ -731,18 +747,22 @@ export class OrdersService {
 
   private async notifyClientOrderStatus(
     clientId: string,
-    title: string,
-    body: string,
+    build: (lang: PushLang) => { title: string; body: string },
     orderId: string,
   ) {
-    const user = await this.userRepo.findOne({ where: { clientId } });
-    if (!user) return;
-    await this.notifications.sendToUser(
-      user.id,
-      title,
-      body,
-      NotificationType.ORDER,
-      { orderId, type: 'order_status' },
+    const users = await this.userRepo.find({ where: { clientId } });
+    if (users.length === 0) return;
+    await Promise.all(
+      users.map((user) => {
+        const msg = build(normalizePushLang(user.preferredLanguage));
+        return this.notifications.sendToUser(
+          user.id,
+          msg.title,
+          msg.body,
+          NotificationType.ORDER,
+          { orderId, type: 'order_status' },
+        );
+      }),
     );
   }
 
@@ -941,12 +961,11 @@ export class OrdersService {
     }
 
     if (dto.status !== undefined && dto.status !== prevStatus) {
-      const notify = this.clientNotifyForStatus(dto.status);
-      if (notify) {
+      const statusKey = this.clientStatusKey(dto.status);
+      if (statusKey) {
         this.notifyClientOrderStatus(
           order.clientId,
-          notify.title,
-          notify.body,
+          (lang) => PushI18n.orderStatus(lang, statusKey)!,
           order.id,
         ).catch(() => {});
       }
@@ -954,30 +973,18 @@ export class OrdersService {
     return saved;
   }
 
-  private clientNotifyForStatus(
+  private clientStatusKey(
     status: OrderStatus,
-  ): { title: string; body: string } | null {
+  ): 'packing' | 'on_way' | 'delivered' | 'cancelled' | null {
     switch (status) {
       case OrderStatus.PACKING:
-        return {
-          title: "Buyurtma yig'ildi",
-          body: "Ombor buyurtmangizni yig'ib bo'ldi",
-        };
+        return 'packing';
       case OrderStatus.ON_WAY:
-        return {
-          title: "Buyurtma yo'lda",
-          body: 'Dostavkachi buyurtmani yetkazmoqda',
-        };
+        return 'on_way';
       case OrderStatus.DELIVERED:
-        return {
-          title: 'Buyurtma yetkazildi',
-          body: 'Buyurtmangiz muvaffaqiyatli yetkazildi',
-        };
+        return 'delivered';
       case OrderStatus.CANCELLED:
-        return {
-          title: 'Buyurtma bekor qilindi',
-          body: 'Buyurtmangiz bekor qilindi',
-        };
+        return 'cancelled';
       default:
         return null;
     }

@@ -13,6 +13,7 @@ import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.data.repository.DashboardRefreshRepository
 import uz.distributor.crm.data.repository.DashboardRepository
+import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.domain.model.AuthUser
 import uz.distributor.crm.domain.model.DashboardStats
 import uz.distributor.crm.localization.AppLanguage
@@ -46,6 +47,7 @@ class DashboardViewModel @Inject constructor(
     private val dashboardRefreshRepository: DashboardRefreshRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val cartRepository: CartRepository,
+    private val pushRepository: PushRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -70,7 +72,10 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch { appSettingsRepository.setLanguage(language) }
+        viewModelScope.launch {
+            appSettingsRepository.setLanguage(language)
+            pushRepository.syncPreferredLanguage()
+        }
     }
 
     fun toggleBalance() {
@@ -98,9 +103,8 @@ class DashboardViewModel @Inject constructor(
             val user = authRepository.getUserFlow().first()
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
-            val cart = cartRepository.getCart()
-            val cartTotal = cart.sumOf { it.price * it.quantity }
-            val cartItemsCount = cart.size
+            // Dostavkachi agent savatchasini ko‘rmasin (qurilmadagi eski cart)
+            val (cartTotal, cartItemsCount) = resolveCartTotals(user)
 
             try {
                 val result = dashboardRefreshRepository.refreshAndDetectChanges(lang)
@@ -152,9 +156,7 @@ class DashboardViewModel @Inject constructor(
             val user = authRepository.getUserFlow().first()
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
-            val cart = cartRepository.getCart()
-            val cartTotal = cart.sumOf { it.price * it.quantity }
-            val cartItemsCount = cart.size
+            val (cartTotal, cartItemsCount) = resolveCartTotals(user)
 
             try {
                 withTimeout(25_000) {
@@ -187,6 +189,13 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Agent savatchasi faqat agent uchun; dostavkachida 0. */
+    private suspend fun resolveCartTotals(user: AuthUser?): Pair<Double, Int> {
+        if (user?.isDeliveryPerson() == true) return 0.0 to 0
+        val cart = cartRepository.getCart()
+        return cart.sumOf { it.price * it.quantity } to cart.size
     }
 
     private fun formatToday(lang: AppLanguage): String {

@@ -40,7 +40,10 @@ class LoginViewModel @Inject constructor(
 ) : ViewModel() {
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch { appSettingsRepository.setLanguage(language) }
+        viewModelScope.launch {
+            appSettingsRepository.setLanguage(language)
+            pushRepository.syncPreferredLanguage()
+        }
     }
 
     private val _uiState = MutableStateFlow(LoginUiState())

@@ -16,6 +16,14 @@ export class RegisterFcmTokenDto {
   @IsString()
   @IsNotEmpty()
   token: string;
+
+  @ApiPropertyOptional({
+    description: 'App language: uz | uz_cyr | uz_kril | ru | en',
+    enum: ['uz', 'uz_cyr', 'uz_kril', 'ru', 'en'],
+  })
+  @IsOptional()
+  @IsIn(['uz', 'uz_cyr', 'uz_cyrl', 'uz_kril', 'uz_latn', 'ru', 'en'])
+  language?: string;
 }
 
 export class SendNotificationDto {

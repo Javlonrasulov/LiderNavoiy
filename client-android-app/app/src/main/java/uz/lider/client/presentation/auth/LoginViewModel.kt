@@ -44,7 +44,10 @@ class LoginViewModel @Inject constructor(
         _uiState.update { it.copy(password = value, errorKey = null) }
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch { appSettingsRepository.setLanguage(language) }
+        viewModelScope.launch {
+            appSettingsRepository.setLanguage(language)
+            pushRepository.syncPreferredLanguage()
+        }
     }
 
     fun login() {

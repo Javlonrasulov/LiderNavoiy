@@ -105,19 +105,9 @@ class VisitViewModel @Inject constructor(
 
     fun init(clientId: String) {
         viewModelScope.launch {
-            val previousClient = appSettingsRepository.getActiveClientId()
-            // Savatcha bitta klientga tegishli — boshqa klientga o'tilganda tozalanadi
-            val switchedClient = previousClient != null &&
-                previousClient.isNotBlank() &&
-                previousClient != clientId
-            if (switchedClient) {
-                cartRepository.clearCart()
-            }
             _uiState.update {
                 it.copy(
                     clientId = clientId,
-                    cart = if (switchedClient) emptyList() else it.cart,
-                    cartTotal = if (switchedClient) 0.0 else it.cartTotal,
                 )
             }
             appSettingsRepository.setActiveClientId(clientId)
@@ -241,12 +231,18 @@ class VisitViewModel @Inject constructor(
         viewModelScope.launch { persistDetailQuantity(clamped) }
     }
 
-    fun incrementDetailQty(step: Double = 1.0) {
+    fun incrementDetailQty(step: Double = detailQtyStep()) {
         setDetailQuantity(_uiState.value.detailQuantity + step)
     }
 
-    fun decrementDetailQty(step: Double = 1.0) {
-        setDetailQuantity((_uiState.value.detailQuantity - step).coerceAtLeast(0.0))
+    fun decrementDetailQty(step: Double = detailQtyStep()) {
+        val minQty = step
+        setDetailQuantity((_uiState.value.detailQuantity - step).coerceAtLeast(minQty))
+    }
+
+    private fun detailQtyStep(): Double {
+        val unit = _uiState.value.selectedProduct?.unit.orEmpty()
+        return if (unit.equals("kg", ignoreCase = true) || unit.equals("кг", ignoreCase = true)) 0.1 else 1.0
     }
 
     fun setDetailNote(note: String) {
@@ -267,14 +263,19 @@ class VisitViewModel @Inject constructor(
     }
 
     private suspend fun persistDetailQuantity(qty: Double) {
-        val product = _uiState.value.selectedProduct ?: return
-        cartRepository.setCartQty(product, qty)
+        val state = _uiState.value
+        val product = state.selectedProduct ?: return
+        val clientId = state.clientId
+        if (clientId.isBlank()) return
+        cartRepository.setCartQty(clientId, product, qty)
         refreshCart()
     }
 
     fun removeFromCart(productId: String) {
         viewModelScope.launch {
-            cartRepository.removeFromCart(productId)
+            val clientId = _uiState.value.clientId
+            if (clientId.isBlank()) return@launch
+            cartRepository.removeFromCart(clientId, productId)
             refreshCart()
             if (_uiState.value.selectedProductId == productId) {
                 _uiState.update { it.copy(detailQuantity = 0.0) }
@@ -409,8 +410,10 @@ class VisitViewModel @Inject constructor(
     }
 
     private suspend fun refreshCart() {
-        val cart = cartRepository.getCart()
-        _uiState.update { it.copy(cart = cart, cartTotal = cartRepository.getTotal()) }
+        val clientId = _uiState.value.clientId
+        val cart = if (clientId.isBlank()) emptyList() else cartRepository.getCartForClient(clientId)
+        val total = if (clientId.isBlank()) 0.0 else cartRepository.getTotalForClient(clientId)
+        _uiState.update { it.copy(cart = cart, cartTotal = total) }
     }
 
     private fun buildCategoryCounts(

@@ -35,6 +35,10 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   fcmToken: string | null;
 
+  /** Ilova tili: uz | uz_cyr | ru — push matnlari shu tilda */
+  @Column({ type: 'varchar', length: 16, nullable: true, default: 'uz_cyr' })
+  preferredLanguage: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 

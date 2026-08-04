@@ -44,17 +44,76 @@ fun OrgSwitcherDropdown(
     modifier: Modifier = Modifier,
 ) {
     if (organizations.size < 2) return
-    var expanded by remember { mutableStateOf(false) }
     val selected = organizations.find { it.companyId == selectedCompanyId }
         ?: organizations.first()
     val label = selected.shortName.ifBlank { selected.name }
-    val shape = RoundedCornerShape(LiquidGlass.RadiusChip)
+    GlassDropdownChip(
+        label = label,
+        selected = true,
+        modifier = modifier,
+    ) { dismiss ->
+        organizations.forEach { org ->
+            val name = org.shortName.ifBlank { org.name }
+            LiquidGlassDropdownItem(
+                text = name,
+                selected = org.companyId == selected.companyId,
+                onClick = {
+                    onSelect(org.companyId)
+                    dismiss()
+                },
+            )
+        }
+    }
+}
 
+/** Барчаси / Севимлилар / kategoriya — bitta dropdown */
+@Composable
+fun CatalogFilterDropdown(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (options.isEmpty()) return
+    val index = selectedIndex.coerceIn(0, options.lastIndex)
+    GlassDropdownChip(
+        label = options[index],
+        selected = true,
+        modifier = modifier,
+    ) { dismiss ->
+        options.forEachIndexed { i, label ->
+            LiquidGlassDropdownItem(
+                text = label,
+                selected = i == index,
+                onClick = {
+                    onSelect(i)
+                    dismiss()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun GlassDropdownChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    menuContent: @Composable (dismiss: () -> Unit) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(LiquidGlass.RadiusChip)
     Box(modifier = modifier) {
         Row(
             modifier = Modifier
                 .clip(shape)
-                .background(LiquidGlass.GradientPrimary)
+                .then(
+                    if (selected) {
+                        Modifier.background(LiquidGlass.GradientPrimary)
+                    } else {
+                        Modifier.background(Color.White.copy(alpha = 0.9f))
+                    },
+                )
                 .clickable { expanded = true }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -62,7 +121,7 @@ fun OrgSwitcherDropdown(
         ) {
             Text(
                 label,
-                color = Color.White,
+                color = if (selected) Color.White else LiquidGlass.TextDark,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -71,7 +130,7 @@ fun OrgSwitcherDropdown(
             Icon(
                 Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = Color.White,
+                tint = if (selected) Color.White else LiquidGlass.TextDark,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -79,17 +138,7 @@ fun OrgSwitcherDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            organizations.forEach { org ->
-                val name = org.shortName.ifBlank { org.name }
-                LiquidGlassDropdownItem(
-                    text = name,
-                    selected = org.companyId == selected.companyId,
-                    onClick = {
-                        onSelect(org.companyId)
-                        expanded = false
-                    },
-                )
-            }
+            menuContent { expanded = false }
         }
     }
 }

@@ -948,44 +948,39 @@ private fun deliveryAmountFormat(): DecimalFormat {
 /** Ko‘rsatish: "123456" → "123 456". State da faqat raqamlar (kursor buzilmasin). */
 private object AmountSpaceVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
-        val digits = text.text
-        if (digits.isEmpty()) {
-            return TransformedText(text, OffsetMapping.Identity)
+        val original = text.text.filter { it in '0'..'9' }
+        if (original.isEmpty()) {
+            return TransformedText(AnnotatedString(""), OffsetMapping.Identity)
         }
-        val n = digits.length
+        val n = original.length
         val formatted = buildString(n + n / 3) {
-            digits.forEachIndexed { i, c ->
+            original.forEachIndexed { i, c ->
                 if (i > 0 && (n - i) % 3 == 0) append(' ')
                 append(c)
             }
         }
+        val out = AnnotatedString(formatted)
         val mapping = object : OffsetMapping {
             override fun originalToTransformed(offset: Int): Int {
                 val o = offset.coerceIn(0, n)
                 if (o == 0) return 0
-                var spaces = 0
-                for (i in 1..o) {
-                    if ((n - i) % 3 == 0) spaces++
+                if (o >= n) return formatted.length
+                var digitsSeen = 0
+                for (i in formatted.indices) {
+                    if (formatted[i] != ' ') {
+                        digitsSeen++
+                        if (digitsSeen == o) return i + 1
+                    }
                 }
-                return o + spaces
+                return formatted.length
             }
 
             override fun transformedToOriginal(offset: Int): Int {
                 val t = offset.coerceIn(0, formatted.length)
-                var orig = 0
-                var seen = 0
-                while (seen < t && orig < n) {
-                    if (orig > 0 && (n - orig) % 3 == 0) {
-                        seen++
-                        if (seen >= t) return orig
-                    }
-                    orig++
-                    seen++
-                }
-                return orig.coerceIn(0, n)
+                return formatted.take(t).count { it != ' ' }.coerceIn(0, n)
             }
         }
-        return TransformedText(AnnotatedString(formatted), mapping)
+        return TransformedText(out, mapping)
     }
 }
 

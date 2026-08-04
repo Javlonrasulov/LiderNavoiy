@@ -29,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
@@ -62,9 +64,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.localization.AppLanguage
@@ -96,6 +103,7 @@ fun DeliveryOrderDetailScreen(
     var showCollectSheet by remember { mutableStateOf(false) }
     var showDueSheet by remember { mutableStateOf(false) }
     var showReturnSheet by remember { mutableStateOf(false) }
+    var previewPhotoUrl by remember { mutableStateOf<String?>(null) }
     var snack by remember { mutableStateOf<String?>(null) }
     var snackVisible by remember { mutableStateOf(false) }
 
@@ -389,13 +397,9 @@ fun DeliveryOrderDetailScreen(
                                             }
                                         }
                                         if (photoUrl != null) {
-                                            AsyncImage(
-                                                model = photoUrl,
-                                                contentDescription = null,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(56.dp)
-                                                    .clip(RoundedCornerShape(10.dp)),
+                                            PaymentPhotoThumbnail(
+                                                url = photoUrl,
+                                                onClick = { previewPhotoUrl = photoUrl },
                                             )
                                         }
                                     }
@@ -615,6 +619,13 @@ fun DeliveryOrderDetailScreen(
                     isDark = isDark,
                 )
             }
+
+            previewPhotoUrl?.let { url ->
+                PaymentPhotoFullScreen(
+                    imageUrl = url,
+                    onDismiss = { previewPhotoUrl = null },
+                )
+            }
         }
     }
 }
@@ -665,7 +676,135 @@ private fun paymentMethodLabel(method: String?, lang: AppLanguage): String? = wh
 
 private fun resolvePaymentPhotoUrl(path: String?): String? {
     if (path.isNullOrBlank()) return null
-    if (path.startsWith("http")) return path
-    val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
-    return "$base$path"
+    val trimmed = path.trim()
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed
+    val base = BuildConfig.API_BASE_URL.trimEnd('/')
+        .removeSuffix("/api/v1")
+        .removeSuffix("/api")
+        .trimEnd('/')
+    val rel = if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+    return "$base$rel"
+}
+
+@Composable
+private fun paymentPhotoRequest(url: String): ImageRequest {
+    val context = LocalContext.current
+    return remember(url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            // Ba'zi qurilmalarda hardware bitmap qora kvadrat beradi
+            .allowHardware(false)
+            .crossfade(true)
+            .build()
+    }
+}
+
+@Composable
+private fun PaymentPhotoThumbnail(
+    url: String,
+    onClick: () -> Unit,
+) {
+    val request = paymentPhotoRequest(url)
+    SubcomposeAsyncImage(
+        model = request,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .size(56.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .background(Color(0xFFE5E7EB)),
+    ) {
+        when (painter.state) {
+            is AsyncImagePainter.State.Loading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = Accent,
+                    )
+                }
+            }
+            is AsyncImagePainter.State.Error -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.BrokenImage,
+                        null,
+                        tint = Color(0xFF9CA3AF),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            else -> SubcomposeAsyncImageContent()
+        }
+    }
+}
+
+@Composable
+private fun PaymentPhotoFullScreen(
+    imageUrl: String,
+    onDismiss: () -> Unit,
+) {
+    val request = paymentPhotoRequest(imageUrl)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center,
+        ) {
+            SubcomposeAsyncImage(
+                model = request,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+                    .clickable(enabled = false) {},
+            ) {
+                when (painter.state) {
+                    is AsyncImagePainter.State.Loading -> {
+                        CircularProgressIndicator(color = Color.White)
+                    }
+                    is AsyncImagePainter.State.Error -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.BrokenImage,
+                                null,
+                                tint = Color.White.copy(alpha = 0.7f),
+                                modifier = Modifier.size(48.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Rasm yuklanmadi",
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
+                    else -> SubcomposeAsyncImageContent()
+                }
+            }
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+            }
+        }
+    }
 }

@@ -3,27 +3,23 @@ package uz.distributor.crm.presentation.delivery
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.border
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +32,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -58,9 +61,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -249,7 +252,7 @@ fun DeliveryOrdersScreen(
                                     stopNumber = stopNumber,
                                     canReorder = canReorder,
                                     isDragging = isDragging,
-                                    isDark = isDark,
+                                    cardBg = cardBg,
                                     textPrimary = textPrimary,
                                     textMuted = textMuted,
                                     lang = lang,
@@ -305,7 +308,7 @@ private fun DeliveryOrderCard(
     stopNumber: Int?,
     canReorder: Boolean,
     isDragging: Boolean,
-    isDark: Boolean,
+    cardBg: Color,
     textPrimary: Color,
     textMuted: Color,
     lang: AppLanguage,
@@ -319,218 +322,205 @@ private fun DeliveryOrderCard(
     val canNavigate = (order.clientLatitude != null && order.clientLongitude != null) ||
         !order.clientAddress.isNullOrBlank()
 
-    val loadAge = remember(order.loadedAt, order.updatedAt, order.status) {
+    val loadAge = remember(order.loadedAt, order.createdAt, order.status) {
         resolveLoadAge(order)
     }
-    val tone = remember(loadAge?.hoursElapsed, isDark, order.status) {
-        deliveryLoadTone(loadAge?.hoursElapsed, isDark, order.status == "on_way")
+    val timeColor = remember(loadAge?.hoursElapsed, order.status, textMuted) {
+        loadTimeColor(loadAge?.hoursElapsed, order.status == "on_way", textMuted)
     }
+    val blinkOverdue = (loadAge?.hoursElapsed ?: 0.0) >= 6.0 && order.status == "on_way"
+    val infiniteTransition = rememberInfiniteTransition(label = "loadBlink")
+    val blinkAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (blinkOverdue) 0.25f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "loadBlinkAlpha",
+    )
+    val timeAlpha = if (blinkOverdue) blinkAlpha else 1f
     val loadedLabel = remember(loadAge, lang) {
         loadAge?.let { formatLoadedLabel(it, lang) }
     }
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(1.5.dp, tone.border, RoundedCornerShape(16.dp)),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = tone.cardBg),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-        ) {
-            Box(
-                Modifier
-                    .width(5.dp)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(listOf(tone.accent, tone.accentSoft)),
-                    ),
-            )
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (stopNumber != null) {
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(listOf(tone.accent, tone.accentSoft)),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                "$stopNumber",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp,
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                    }
-                    Text(
-                        name,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp,
-                        color = textPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable(enabled = !isDragging, onClick = onCardClick),
-                    )
-                    if (canReorder) {
-                        Icon(
-                            Icons.Default.DragHandle,
-                            contentDescription = null,
-                            tint = if (isDragging) tone.accent else textMuted,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .padding(start = 4.dp),
-                        )
-                    }
-                }
-
-                if (loadedLabel != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(tone.chipBg)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                if (stopNumber != null) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Accent),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            Icons.Default.AccessTime,
-                            null,
-                            tint = tone.label,
-                            modifier = Modifier.size(15.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
                         Text(
-                            loadedLabel,
-                            color = tone.label,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            "$stopNumber",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
                         )
                     }
+                    Spacer(Modifier.width(10.dp))
                 }
+                Text(
+                    name,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 17.sp,
+                    color = textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(enabled = !isDragging, onClick = onCardClick),
+                )
+                if (canReorder) {
+                    Icon(
+                        Icons.Default.DragHandle,
+                        contentDescription = null,
+                        tint = if (isDragging) Accent else textMuted,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .padding(start = 4.dp),
+                    )
+                }
+            }
 
-                if (order.needsPaymentFollowUp) {
-                    Spacer(Modifier.height(6.dp))
+            if (loadedLabel != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.alpha(timeAlpha),
+                ) {
+                    Icon(
+                        Icons.Default.AccessTime,
+                        null,
+                        tint = timeColor,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        "${AppStrings.deliveryCollectPayment(lang)} · ${AppStrings.deliveryRemaining(lang)}: ${
-                            java.text.DecimalFormat("#,###").format(order.remainingBalance)
-                        }",
-                        color = Color(0xFFDC2626),
+                        loadedLabel,
+                        color = timeColor,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    order.dueAt?.takeIf { it.isNotBlank() }?.let { due ->
-                        formatDueAtDisplay(due)?.let { formatted ->
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
-                                color = Color(0xFFD97706),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
-                    }
                 }
+            }
 
-                Column(Modifier.clickable(enabled = !isDragging, onClick = onCardClick)) {
-                    if (address != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.Top) {
-                            Icon(
-                                Icons.Default.Place,
-                                null,
-                                tint = textMuted,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .padding(top = 2.dp),
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                address,
-                                color = textMuted,
-                                fontSize = 14.sp,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
-                    }
-
-                    if (phone != null) {
-                        Spacer(Modifier.height(10.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                phone,
-                                color = textPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(tone.accent.copy(alpha = 0.14f))
-                                    .clickable(enabled = !isDragging) {
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
-                                        )
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Default.Phone,
-                                    contentDescription = AppStrings.deliveryCallClient(lang),
-                                    tint = tone.accent,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                if (canNavigate) {
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = { openNavigation(context, order) },
-                        enabled = !isDragging,
-                        colors = ButtonDefaults.buttonColors(containerColor = tone.accent),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 12.dp),
-                    ) {
-                        Icon(
-                            Icons.Default.Navigation,
-                            null,
-                            modifier = Modifier.size(18.dp),
-                            tint = Color.White,
-                        )
-                        Spacer(Modifier.width(8.dp))
+            if (order.needsPaymentFollowUp) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${AppStrings.deliveryCollectPayment(lang)} · ${AppStrings.deliveryRemaining(lang)}: ${
+                        java.text.DecimalFormat("#,###").format(order.remainingBalance)
+                    }",
+                    color = Color(0xFFDC2626),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                order.dueAt?.takeIf { it.isNotBlank() }?.let { due ->
+                    formatDueAtDisplay(due)?.let { formatted ->
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            AppStrings.deliveryNavigate(lang),
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
+                            "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
+                            color = Color(0xFFD97706),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
                         )
                     }
+                }
+            }
+
+            Column(Modifier.clickable(enabled = !isDragging, onClick = onCardClick)) {
+                if (address != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            Icons.Default.Place,
+                            null,
+                            tint = textMuted,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(top = 2.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            address,
+                            color = textMuted,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                if (phone != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            phone,
+                            color = textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Accent.copy(alpha = 0.12f))
+                                .clickable(enabled = !isDragging) {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")),
+                                    )
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Default.Phone,
+                                contentDescription = AppStrings.deliveryCallClient(lang),
+                                tint = Accent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (canNavigate) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { openNavigation(context, order) },
+                    enabled = !isDragging,
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Navigation,
+                        null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        AppStrings.deliveryNavigate(lang),
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    )
                 }
             }
         }
@@ -542,18 +532,10 @@ private data class LoadAge(
     val hoursElapsed: Double,
 )
 
-private data class DeliveryLoadTone(
-    val accent: Color,
-    val accentSoft: Color,
-    val border: Color,
-    val cardBg: Color,
-    val chipBg: Color,
-    val label: Color,
-)
-
 private fun resolveLoadAge(order: OrderDto): LoadAge? {
+    // updatedAt ishlatilmasin — reorder dan keyin "1 daq" bo‘lib ketadi
     val raw = order.loadedAt?.takeIf { it.isNotBlank() }
-        ?: order.updatedAt?.takeIf { order.status == "on_way" && it.isNotBlank() }
+        ?: order.createdAt.takeIf { order.status == "on_way" && it.isNotBlank() }
         ?: return null
     val instant = parseInstantSafe(raw) ?: return null
     val hours = Duration.between(instant, Instant.now()).toMinutes() / 60.0
@@ -581,66 +563,14 @@ private fun formatLoadedLabel(age: LoadAge, lang: AppLanguage): String {
     return "${AppStrings.deliveryLoadedAt(lang)}: $time · $elapsed"
 }
 
-private fun deliveryLoadTone(hours: Double?, isDark: Boolean, isOnWay: Boolean): DeliveryLoadTone {
-    if (!isOnWay || hours == null) {
-        return DeliveryLoadTone(
-            accent = Accent,
-            accentSoft = Color(0xFF818CF8),
-            border = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB),
-            cardBg = if (isDark) Color(0xFF17212B) else Color.White,
-            chipBg = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
-            label = if (isDark) Color(0xFF9CA3AF) else Color(0xFF6B7280),
-        )
-    }
+/** Faqat yuklangan vaqt matni rangi (karta o‘zgarmaydi). */
+private fun loadTimeColor(hours: Double?, isOnWay: Boolean, muted: Color): Color {
+    if (!isOnWay || hours == null) return muted
     return when {
-        hours >= 12 -> DeliveryLoadTone(
-            accent = Color(0xFF7F1D1D),
-            accentSoft = Color(0xFFDC2626),
-            border = Color(0xFFEF4444),
-            cardBg = if (isDark) Color(0xFF2A1212) else Color(0xFFFFF1F2),
-            chipBg = if (isDark) Color(0xFF450A0A) else Color(0xFFFEE2E2),
-            label = Color(0xFFB91C1C),
-        )
-        hours >= 8 -> DeliveryLoadTone(
-            accent = Color(0xFFB91C1C),
-            accentSoft = Color(0xFFEF4444),
-            border = Color(0xFFF87171),
-            cardBg = if (isDark) Color(0xFF2A1515) else Color(0xFFFFF5F5),
-            chipBg = if (isDark) Color(0xFF3F1515) else Color(0xFFFEE2E2),
-            label = Color(0xFFDC2626),
-        )
-        hours >= 6 -> DeliveryLoadTone(
-            accent = Color(0xFFDC2626),
-            accentSoft = Color(0xFFF97316),
-            border = Color(0xFFFCA5A5),
-            cardBg = if (isDark) Color(0xFF2A1814) else Color(0xFFFFF7ED),
-            chipBg = if (isDark) Color(0xFF3B1D14) else Color(0xFFFFEDD5),
-            label = Color(0xFFEA580C),
-        )
-        hours >= 4 -> DeliveryLoadTone(
-            accent = Color(0xFFF59E0B),
-            accentSoft = Color(0xFFFBBF24),
-            border = Color(0xFFFCD34D),
-            cardBg = if (isDark) Color(0xFF241C0C) else Color(0xFFFFFBEB),
-            chipBg = if (isDark) Color(0xFF3B2F12) else Color(0xFFFEF3C7),
-            label = Color(0xFFD97706),
-        )
-        hours >= 2 -> DeliveryLoadTone(
-            accent = Color(0xFF2563EB),
-            accentSoft = Color(0xFF60A5FA),
-            border = Color(0xFF93C5FD),
-            cardBg = if (isDark) Color(0xFF111827) else Color(0xFFEFF6FF),
-            chipBg = if (isDark) Color(0xFF1E3A5F) else Color(0xFFDBEAFE),
-            label = Color(0xFF2563EB),
-        )
-        else -> DeliveryLoadTone(
-            accent = Color(0xFF16A34A),
-            accentSoft = Color(0xFF4ADE80),
-            border = Color(0xFF86EFAC),
-            cardBg = if (isDark) Color(0xFF0F1F17) else Color(0xFFF0FDF4),
-            chipBg = if (isDark) Color(0xFF14532D) else Color(0xFFDCFCE7),
-            label = Color(0xFF15803D),
-        )
+        hours >= 6 -> Color(0xFFDC2626)
+        hours >= 4 -> Color(0xFFD97706)
+        hours >= 2 -> Color(0xFF2563EB)
+        else -> Color(0xFF16A34A)
     }
 }
 

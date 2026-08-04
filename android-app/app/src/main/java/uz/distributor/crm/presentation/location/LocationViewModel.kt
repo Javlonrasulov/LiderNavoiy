@@ -13,6 +13,7 @@ import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.data.repository.DeliveryRepository
+import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.localization.AppLanguage
@@ -43,6 +44,7 @@ class LocationViewModel @Inject constructor(
     private val locationTrackingController: LocationTrackingController,
     private val trackingSocket: TrackingSocketManager,
     private val appSettingsRepository: AppSettingsRepository,
+    private val pushRepository: PushRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LocationUiState())
@@ -144,7 +146,10 @@ class LocationViewModel @Inject constructor(
     }
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch { appSettingsRepository.setLanguage(language) }
+        viewModelScope.launch {
+            appSettingsRepository.setLanguage(language)
+            pushRepository.syncPreferredLanguage()
+        }
     }
 
     fun filteredClients(): List<Client> {

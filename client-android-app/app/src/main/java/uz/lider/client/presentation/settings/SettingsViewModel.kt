@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AppSettingsRepository
+import uz.lider.client.data.repository.PushRepository
 import uz.lider.client.data.repository.ThemeMode
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.presentation.theme.TextTone
@@ -16,6 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val appSettingsRepository: AppSettingsRepository,
+    private val pushRepository: PushRepository,
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = appSettingsRepository.themeMode
@@ -32,7 +34,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setLanguage(language: AppLanguage) {
-        viewModelScope.launch { appSettingsRepository.setLanguage(language) }
+        viewModelScope.launch {
+            appSettingsRepository.setLanguage(language)
+            pushRepository.syncPreferredLanguage()
+        }
     }
 
     fun setTextTone(tone: TextTone) {

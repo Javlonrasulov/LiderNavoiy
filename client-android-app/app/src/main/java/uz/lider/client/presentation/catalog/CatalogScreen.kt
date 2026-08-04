@@ -62,6 +62,7 @@ import uz.lider.client.domain.model.Product
 import uz.lider.client.localization.LocalAppLanguage
 import uz.lider.client.presentation.components.AddToCartQuantityDialog
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.CatalogFilterDropdown
 import uz.lider.client.presentation.components.OrgSwitcherDropdown
 import uz.lider.client.presentation.components.ProductImageBox
 import uz.lider.client.presentation.components.PulsingCountBadge
@@ -69,7 +70,6 @@ import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
@@ -245,13 +245,11 @@ fun CatalogScreen(
                                     onSelect = viewModel::selectOrganization,
                                 )
                             }
-                            categories.forEachIndexed { index, cat ->
-                                GlassFilterChip(
-                                    label = cat,
-                                    selected = state.activeCategoryIndex == index,
-                                    onClick = { viewModel.onCategorySelected(index) },
-                                )
-                            }
+                            CatalogFilterDropdown(
+                                options = categories,
+                                selectedIndex = state.activeCategoryIndex,
+                                onSelect = viewModel::onCategorySelected,
+                            )
                         }
                     }
 

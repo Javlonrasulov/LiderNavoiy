@@ -19,6 +19,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { CollectPaymentDto, DeliverOrderDto, UpdateDueAtDto } from './dto/payment.dto';
 import { NotificationType as NType } from '../notifications/notification.types';
+import { PushI18n, normalizePushLang } from '../notifications/push-i18n';
 import { User } from '../auth/entities/user.entity';
 import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
 
@@ -257,11 +258,7 @@ export class PaymentsService {
         due.toDateString() === now.toDateString() &&
         msUntil > hourMs
       ) {
-        await this.remindBoth(
-          p,
-          'Bugun to\'lov kuni',
-          'Bugun mijoz to\'lov qilishi kerak',
-        );
+        await this.remindBoth(p, 'day');
         p.dayReminderSent = true;
         p.lastRemindedAt = now;
         await this.paymentRepo.save(p);
@@ -270,11 +267,7 @@ export class PaymentsService {
 
       // 1 hour before
       if (!p.hourReminderSent && msUntil > 0 && msUntil <= hourMs) {
-        await this.remindBoth(
-          p,
-          'To\'lov eslatmasi',
-          '1 soatdan keyin to\'lov muddati',
-        );
+        await this.remindBoth(p, 'hour');
         p.hourReminderSent = true;
         p.lastRemindedAt = now;
         await this.paymentRepo.save(p);
@@ -286,11 +279,7 @@ export class PaymentsService {
         const dayMs = 24 * hourMs;
         const last = p.lastRemindedAt ? new Date(p.lastRemindedAt).getTime() : 0;
         if (now.getTime() - last >= dayMs) {
-          await this.remindBoth(
-            p,
-            'To\'lov muddati o\'tdi',
-            'Mijoz hali to\'lov qilmadi — eslatma',
-          );
+          await this.remindBoth(p, 'overdue');
           p.lastRemindedAt = now;
           await this.paymentRepo.save(p);
         }
@@ -298,56 +287,49 @@ export class PaymentsService {
     }
   }
 
-  private async remindBoth(p: OrderPayment, title: string, body: string) {
+  private async remindBoth(
+    p: OrderPayment,
+    kind: 'day' | 'hour' | 'overdue',
+  ) {
     const client = await this.clientRepo.findOne({ where: { id: p.clientId } });
     const name = client?.name ?? 'Mijoz';
-    const fullBody = `${name}: ${body}`;
+    const textFor = (lang: ReturnType<typeof normalizePushLang>) => {
+      const t =
+        kind === 'day'
+          ? PushI18n.paymentReminderDay(lang)
+          : kind === 'hour'
+            ? PushI18n.paymentReminderHour(lang)
+            : PushI18n.paymentReminderOverdue(lang);
+      return { title: t.title, body: `${name}: ${t.body}` };
+    };
+
     if (p.collectorDistributorId) {
+      const lang = await this.notifications.getDistributorLang(
+        p.collectorDistributorId,
+      );
+      const msg = textFor(lang);
       await this.notifications.sendToDistributor(
         p.collectorDistributorId,
-        title,
-        fullBody,
+        msg.title,
+        msg.body,
         NType.PAYMENT_REMINDER,
         { orderId: p.orderId, type: 'payment_reminder' },
       );
     }
-    await this.notifyClientByClientId(
+    await this.notifyClientLocalized(
       p.clientId,
-      title,
-      fullBody,
+      textFor,
       p.orderId,
       NType.PAYMENT_REMINDER,
     );
   }
 
-  private async notifyPaymentCollected(
-    order: Order,
-    collected: number,
-    stillDue: number,
-    hasPhoto: boolean,
-  ) {
-    const amount = Math.round(collected).toLocaleString('uz-UZ');
-    let body = `Dostavkachi ${amount} so'm oldi`;
-    if (stillDue > 0.01) {
-      body += `. Qoldiq: ${Math.round(stillDue).toLocaleString('uz-UZ')} so'm`;
-    }
-    if (!hasPhoto) {
-      body +=
-        ". Xavfsizlik: pul bergan insoningizni rasmga tushirib qo'ying";
-    }
-    await this.notifyClientByClientId(
-      order.clientId,
-      "To'lov qabul qilindi",
-      body,
-      order.id,
-      NType.PAYMENT,
-    );
-  }
-
-  private async notifyClientByClientId(
+  private async notifyClientLocalized(
     clientId: string,
-    title: string,
-    body: string,
+    build: (lang: ReturnType<typeof normalizePushLang>) => {
+      title: string;
+      body: string;
+    },
     orderId: string,
     type: NType = NType.PAYMENT,
   ) {
@@ -358,13 +340,51 @@ export class PaymentsService {
       ...memberships.map((m) => m.userId),
     ]);
     if (userIds.size === 0) return;
+    const users = await this.userRepo.find({ where: { id: In([...userIds]) } });
     await Promise.all(
-      [...userIds].map((userId) =>
-        this.notifications.sendToUser(userId, title, body, type, {
+      users.map((user) => {
+        const msg = build(normalizePushLang(user.preferredLanguage));
+        return this.notifications.sendToUser(user.id, msg.title, msg.body, type, {
           orderId,
-          type: 'payment',
-        }),
-      ),
+          type: type === NType.PAYMENT_REMINDER ? 'payment_reminder' : 'payment',
+        });
+      }),
+    );
+  }
+
+  private async notifyPaymentCollected(
+    order: Order,
+    collected: number,
+    stillDue: number,
+    hasPhoto: boolean,
+  ) {
+    const amount = Math.round(collected).toLocaleString('uz-UZ');
+    const remaining =
+      stillDue > 0.01 ? Math.round(stillDue).toLocaleString('uz-UZ') : null;
+    const byClient = await this.userRepo.find({ where: { clientId: order.clientId } });
+    const memberships = await this.membershipRepo.find({ where: { clientId: order.clientId } });
+    const userIds = new Set<string>([
+      ...byClient.map((u) => u.id),
+      ...memberships.map((m) => m.userId),
+    ]);
+    if (userIds.size === 0) return;
+
+    const users = await this.userRepo.find({ where: { id: In([...userIds]) } });
+    await Promise.all(
+      users.map((user) => {
+        const lang = normalizePushLang(user.preferredLanguage);
+        let body = PushI18n.deliveryCollectedBody(lang, amount, remaining);
+        if (!hasPhoto) {
+          body += PushI18n.paymentPhotoHint(lang);
+        }
+        return this.notifications.sendToUser(
+          user.id,
+          PushI18n.deliveryCollectedTitle(lang),
+          body,
+          NType.PAYMENT,
+          { orderId: order.id, type: 'payment' },
+        );
+      }),
     );
   }
 

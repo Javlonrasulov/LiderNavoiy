@@ -50,9 +50,10 @@ data class ProductEntity(
     val cachedAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(tableName = "cart_items")
+@Entity(tableName = "cart_items", primaryKeys = ["clientId", "productId"])
 data class CartItemEntity(
-    @PrimaryKey val productId: String,
+    val clientId: String,
+    val productId: String,
     val productCode: String,
     val productName: String,
     val price: Double,
@@ -117,7 +118,12 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 @Dao interface CartDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(item: CartItemEntity)
     @Query("SELECT * FROM cart_items") suspend fun getAll(): List<CartItemEntity>
-    @Query("DELETE FROM cart_items WHERE productId = :id") suspend fun delete(id: String)
+    @Query("SELECT * FROM cart_items WHERE clientId = :clientId")
+    suspend fun getByClient(clientId: String): List<CartItemEntity>
+    @Query("DELETE FROM cart_items WHERE clientId = :clientId AND productId = :productId")
+    suspend fun delete(clientId: String, productId: String)
+    @Query("DELETE FROM cart_items WHERE clientId = :clientId")
+    suspend fun clearClient(clientId: String)
     @Query("DELETE FROM cart_items") suspend fun clear()
 }
 
@@ -138,7 +144,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 @Database(
     entities = [PendingLocationEntity::class, ClientEntity::class, ProductEntity::class,
         CartItemEntity::class, PendingOrderEntity::class, PendingVisitEntity::class],
-    version = 5, exportSchema = false,
+    version = 6, exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingLocationDao(): PendingLocationDao

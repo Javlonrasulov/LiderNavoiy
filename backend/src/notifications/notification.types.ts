@@ -15,7 +15,7 @@ export enum NotificationType {
 export const NOTIFICATION_TEMPLATES = {
   NEW_ORDER: {
     title: 'Yangi buyurtma',
-    body: 'Agent yangi buyurtma yubordi',
+    body: 'Agent: {agent} · {client} — {sum} SUM',
     type: NotificationType.ORDER,
   },
   VISIT_COMPLETED: {

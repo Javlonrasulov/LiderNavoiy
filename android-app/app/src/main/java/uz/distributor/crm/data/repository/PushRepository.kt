@@ -3,6 +3,7 @@ package uz.distributor.crm.data.repository
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import uz.distributor.crm.data.local.TokenHolder
@@ -14,6 +15,7 @@ import javax.inject.Singleton
 class PushRepository @Inject constructor(
     private val api: ApiService,
     private val tokenHolder: TokenHolder,
+    private val appSettingsRepository: AppSettingsRepository,
 ) {
     suspend fun registerCurrentToken() {
         if (tokenHolder.peekToken() == null) return
@@ -36,10 +38,26 @@ class PushRepository @Inject constructor(
         }
     }
 
+    /** Til o‘zgaganda serverga yuborish (push matnlari uchun) */
+    suspend fun syncPreferredLanguage() {
+        if (tokenHolder.peekToken() == null) return
+        val fcmToken = withTimeoutOrNull(10_000) {
+            FirebaseMessaging.getInstance().token.await()
+        } ?: return
+        runCatching { registerToken(fcmToken) }
+            .onFailure { Log.e(TAG, "Failed to sync language", it) }
+    }
+
     suspend fun registerToken(token: String) {
         if (tokenHolder.peekToken() == null) return
-        api.registerFcmToken(mapOf("token" to token))
-        Log.d(TAG, "FCM token registered on server")
+        val lang = appSettingsRepository.language.first().code
+        api.registerFcmToken(
+            mapOf(
+                "token" to token,
+                "language" to lang,
+            ),
+        )
+        Log.d(TAG, "FCM token registered on server lang=$lang")
     }
 
     companion object {

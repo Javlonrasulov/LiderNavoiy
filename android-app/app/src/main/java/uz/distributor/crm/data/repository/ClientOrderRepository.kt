@@ -31,7 +31,7 @@ class ClientOrderRepository @Inject constructor(
 
     /** Buyurtmani tahrirlash: savatchani to'ldiradi va edit rejimini yoqadi */
     suspend fun beginEdit(order: OrderDto) {
-        cartRepository.seedCartFromOrderItems(order.items)
+        cartRepository.seedCartFromOrderItems(order.clientId, order.items)
         appSettingsRepository.setActiveClientId(order.clientId)
         appSettingsRepository.setEditingClientOrderId(order.id)
     }

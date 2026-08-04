@@ -42,6 +42,7 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
         if (type == PaymentPhotoAlertStore.TYPE_PAYMENT ||
             title.contains("To'lov qabul", ignoreCase = true) ||
             title.contains("Тўлов қабул", ignoreCase = true) ||
+            title.contains("Оплата получена", ignoreCase = true) ||
             title.contains("Платёж получен", ignoreCase = true) ||
             title.contains("Payment received", ignoreCase = true)
         ) {

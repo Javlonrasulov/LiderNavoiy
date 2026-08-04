@@ -15,6 +15,7 @@ import { Client } from '../clients/entities/client.entity';
 import { UserRole } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
+import { PushI18n, normalizePushLang } from '../notifications/push-i18n';
 
 export interface ChatUserDto {
   id: string;
@@ -338,9 +339,12 @@ export class MessagesService {
       ]);
       const senderLabel = sender
         ? this.formatChatDisplayName(sender, recipient?.role)
-        : 'Yangi xabar';
+        : PushI18n.newMessageFallback(normalizePushLang(recipient?.preferredLanguage));
+      const lang = normalizePushLang(recipient?.preferredLanguage);
       const preview = trimmed
-        || (messageType === 'image' ? '📷 Rasm' : `📎 ${attachment?.fileName ?? 'Fayl'}`);
+        || (messageType === 'image'
+          ? PushI18n.imagePreview(lang)
+          : PushI18n.filePreview(lang, attachment?.fileName));
       await this.notifications.sendToUser(
         recipientId,
         senderLabel,

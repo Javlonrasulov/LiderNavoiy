@@ -615,8 +615,8 @@ private fun VisitProductDetailContent(
                 ) {
                     VisitQtyButton(
                         icon = Icons.Default.Remove,
-                        enabled = quantity > 0,
-                        tint = if (quantity > 0) titleColor else subColor,
+                        enabled = quantity > qtyStepForProduct(product.unit),
+                        tint = if (quantity > qtyStepForProduct(product.unit)) titleColor else subColor,
                         bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
                         onClick = onDecrement,
                     )
@@ -1197,7 +1197,9 @@ private fun VisitEditableQuantity(
     var inputText by remember { mutableStateOf("") }
 
     LaunchedEffect(quantity) {
-        if (!isEditing) {
+        val parsed = parseQuantityInput(inputText)
+        // Tugmalar orqali o'zgarganda matn ham yangilansin (isEditing bo'lsa ham)
+        if (parsed == null || kotlin.math.abs(parsed - quantity) > 0.0001) {
             inputText = formatQuantityInput(quantity, stockFmt)
         }
     }
@@ -1288,6 +1290,9 @@ private fun formatQuantityDisplay(quantity: Double, stockFmt: DecimalFormat): St
 private fun formatQuantityInput(quantity: Double, stockFmt: DecimalFormat): String =
     if (quantity <= 0.0) "" else formatQuantityDisplay(quantity, stockFmt)
 
+private fun qtyStepForProduct(unit: String): Double =
+    if (unit.equals("kg", ignoreCase = true) || unit.equals("кг", ignoreCase = true)) 0.1 else 1.0
+
 private fun parseQuantityInput(input: String): Double? {
     val normalized = input.trim().replace(',', '.')
     if (normalized.isEmpty() || normalized == ".") return 0.0
@@ -1302,16 +1307,15 @@ private fun VisitQtyButton(
     bg: Color,
     onClick: () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
-        color = bg,
-        modifier = Modifier.size(52.dp),
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
-        }
+        Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
     }
 }
 

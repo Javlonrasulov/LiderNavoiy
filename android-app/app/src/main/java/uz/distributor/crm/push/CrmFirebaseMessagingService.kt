@@ -7,15 +7,20 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import uz.distributor.crm.R
+import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.PushRepository
+import uz.distributor.crm.localization.AppStrings
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class CrmFirebaseMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var pushRepository: PushRepository
+    @Inject lateinit var appSettingsRepository: AppSettingsRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -30,6 +35,11 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+        val lang = runBlocking {
+            runCatching { appSettingsRepository.language.first() }.getOrElse {
+                uz.distributor.crm.localization.AppLanguage.DEFAULT
+            }
+        }
         val type = message.data["type"].orEmpty()
         val title = message.notification?.title
             ?: message.data["title"]
@@ -47,7 +57,7 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
                 context = this,
                 conversationId = conversationId,
                 senderName = title,
-                preview = body.ifBlank { "Yangi xabar" },
+                preview = body.ifBlank { AppStrings.pushNewMessageFallback(lang) },
             )
             return
         }
@@ -57,7 +67,7 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
         NotificationHelper.showNotification(
             context = this,
             title = title,
-            body = body.ifBlank { "Yangi reja tayinlandi" },
+            body = body.ifBlank { AppStrings.pushPlanAssignedFallback(lang) },
             notificationId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
             isMessage = false,
             openScreen = openScreen,
