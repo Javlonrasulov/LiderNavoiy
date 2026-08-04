@@ -117,7 +117,29 @@ class ClientNavigationViewModel @Inject constructor(
 
         val alert = paymentPhotoAlertStore.state.first()
         if (alert.isActive) {
-            // Eslatma tirik — yangi signal bilan ustiga yozmaslik kifoya
+            // Summa/vaqt yo‘q bo‘lsa — debt tarixidan to‘ldiramiz
+            if (alert.amount == null || alert.collectedAtMs == null) {
+                val match = debt.history.firstOrNull { p ->
+                    p.isPayment && (
+                        (!alert.paymentId.isNullOrBlank() && p.id == alert.paymentId) ||
+                            (!alert.orderId.isNullOrBlank() && p.orderId == alert.orderId)
+                        )
+                } ?: debt.history
+                    .filter {
+                        it.isPayment &&
+                            it.createdAtMs > 0L &&
+                            it.photoUrl.isNullOrBlank()
+                    }
+                    .maxByOrNull { it.createdAtMs }
+                if (match != null) {
+                    paymentPhotoAlertStore.enrichPaymentDetails(
+                        amount = match.amountValue.takeIf { it > 0 },
+                        collectedAtMs = match.createdAtMs.takeIf { it > 0 },
+                        orderId = match.orderId ?: alert.orderId,
+                        paymentId = match.id.takeIf { it.isNotBlank() } ?: alert.paymentId,
+                    )
+                }
+            }
             return
         }
 
@@ -133,6 +155,7 @@ class ClientNavigationViewModel @Inject constructor(
                     id = it.id,
                     orderId = it.orderId,
                     createdAtMs = it.createdAtMs,
+                    amount = it.amountValue.takeIf { v -> v > 0 },
                 )
             }
         paymentPhotoAlertStore.ingestRecentPayments(signals)
@@ -152,12 +175,19 @@ class ClientNavigationViewModel @Inject constructor(
         body: String?,
         orderId: String?,
         paymentId: String?,
+        amount: Double? = null,
+        collectedAtMs: Long? = null,
     ) {
         if (!PaymentPhotoAlertStore.isPaymentPushExtras(type, title, body, orderId, paymentId)) {
             return
         }
         viewModelScope.launch {
-            paymentPhotoAlertStore.recordPaymentReceived(orderId, paymentId)
+            paymentPhotoAlertStore.recordPaymentReceived(
+                orderId = orderId,
+                paymentId = paymentId,
+                amount = amount,
+                collectedAtMs = collectedAtMs,
+            )
         }
     }
 }
@@ -211,6 +241,14 @@ fun ClientNavHost(
             body = extra("body", "gcm.notification.body"),
             orderId = extra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, "orderId"),
             paymentId = extra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID, "paymentId"),
+            amount = PaymentPhotoAlertStore.parseAmount(
+                extra(PaymentPhotoAlertStore.EXTRA_AMOUNT, "amount"),
+            ),
+            collectedAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(
+                extra(PaymentPhotoAlertStore.EXTRA_COLLECTED_AT, "collectedAt"),
+            ) ?: extra(PaymentPhotoAlertStore.EXTRA_COLLECTED_AT, "collectedAt")
+                ?.toLongOrNull()
+                ?.takeIf { it > 1_000_000_000_000L },
         )
         // Asosiyga o‘tish
         if (currentRoute != ClientRoutes.DASHBOARD &&

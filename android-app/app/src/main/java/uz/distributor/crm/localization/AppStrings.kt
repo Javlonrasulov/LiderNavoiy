@@ -339,9 +339,9 @@ object AppStrings {
     )
     fun deliveryCourierPhoto(lang: AppLanguage) = tr(
         lang,
-        "Dostavkachi rasmi",
-        "Доставчи расми",
-        "Фото доставщика",
+        "Yetkazib beruvchi rasmi",
+        "Етказиб берувчи расми",
+        "Фото курьера",
     )
     fun deliveryClientSecurityPhoto(lang: AppLanguage) = tr(
         lang,
@@ -883,7 +883,7 @@ object AppStrings {
     fun position(lang: AppLanguage) = tr(lang, "Lavozim", "Лавозим", "Должность")
     fun company(lang: AppLanguage) = tr(lang, "Kompaniya", "Компания", "Компания")
     fun salesAgentPosition(lang: AppLanguage) = tr(lang, "Sotuv agenti", "Сотув агенти", "Торговый агент")
-    fun deliveryPosition(lang: AppLanguage) = tr(lang, "Dostavkachi", "Доставкачи", "Доставщик")
+    fun deliveryPosition(lang: AppLanguage) = tr(lang, "Yetkazib beruvchi", "Етказиб берувчи", "Курьер")
     fun changePassword(lang: AppLanguage) = tr(lang, "Parolni o'zgartirish", "Паролни ўзгартириш", "Изменить пароль")
     fun currentPassword(lang: AppLanguage) = tr(lang, "Joriy parol", "Жорий парол", "Текущий пароль")
     fun newPassword(lang: AppLanguage) = tr(lang, "Yangi parol", "Янги парол", "Новый пароль")

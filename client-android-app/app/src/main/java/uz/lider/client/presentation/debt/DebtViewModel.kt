@@ -98,6 +98,8 @@ class DebtViewModel @Inject constructor(
             visible = alert.isActive || uploading || !preview.isNullOrBlank(),
             orderId = alert.orderId,
             paymentId = alert.paymentId,
+            amount = alert.amount,
+            collectedAtMs = alert.collectedAtMs,
             uploading = uploading,
             error = error,
             previewUrl = preview,

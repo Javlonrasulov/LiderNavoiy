@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -31,6 +32,8 @@ data class PaymentPhotoAlertState(
     val modalDismissed: Boolean = false,
     val orderId: String? = null,
     val paymentId: String? = null,
+    val amount: Double? = null,
+    val collectedAtMs: Long? = null,
     val expiresAtMs: Long = 0L,
 ) {
     /** Asosiy ekran (xarita osti) — X bosilmaguncha */
@@ -41,6 +44,7 @@ data class RecentPaymentSignal(
     val id: String,
     val orderId: String? = null,
     val createdAtMs: Long,
+    val amount: Double? = null,
 )
 
 @Singleton
@@ -51,6 +55,8 @@ class PaymentPhotoAlertStore @Inject constructor(
     private val modalDismissedKey = booleanPreferencesKey("modal_dismissed")
     private val orderIdKey = stringPreferencesKey("order_id")
     private val paymentIdKey = stringPreferencesKey("payment_id")
+    private val amountKey = doublePreferencesKey("amount")
+    private val collectedAtMsKey = longPreferencesKey("collected_at_ms")
     private val mapHintDismissedOrderIdsKey = stringSetPreferencesKey("map_hint_dismissed_order_ids")
     private val handledPaymentIdsKey = stringSetPreferencesKey("handled_payment_ids")
     private val bootstrapDoneKey = booleanPreferencesKey("payments_bootstrap_done")
@@ -61,11 +67,15 @@ class PaymentPhotoAlertStore @Inject constructor(
     val state: Flow<PaymentPhotoAlertState> = context.paymentPhotoAlertDataStore.data.map { prefs ->
         val expiresAt = prefs[expiresAtKey] ?: 0L
         val active = expiresAt > System.currentTimeMillis()
+        val amount = prefs[amountKey]
+        val collectedAt = prefs[collectedAtMsKey]
         PaymentPhotoAlertState(
             isActive = active,
             modalDismissed = if (active) prefs[modalDismissedKey] == true else false,
             orderId = prefs[orderIdKey],
             paymentId = prefs[paymentIdKey],
+            amount = amount?.takeIf { it > 0 },
+            collectedAtMs = collectedAt?.takeIf { it > 0 },
             expiresAtMs = expiresAt,
         )
     }
@@ -100,7 +110,12 @@ class PaymentPhotoAlertStore @Inject constructor(
     }
 
     /** Push / FCM / intent — modal majburiy (30 daqiqa). */
-    suspend fun recordPaymentReceived(orderId: String? = null, paymentId: String? = null) {
+    suspend fun recordPaymentReceived(
+        orderId: String? = null,
+        paymentId: String? = null,
+        amount: Double? = null,
+        collectedAtMs: Long? = null,
+    ) {
         context.paymentPhotoAlertDataStore.edit { prefs ->
             prefs[expiresAtKey] = System.currentTimeMillis() + TTL_MS
             prefs[modalDismissedKey] = false
@@ -111,6 +126,14 @@ class PaymentPhotoAlertStore @Inject constructor(
             if (!paymentId.isNullOrBlank() && !paymentId.startsWith("ord-")) {
                 prefs[paymentIdKey] = paymentId
             }
+            if (amount != null && amount > 0) {
+                prefs[amountKey] = amount
+            }
+            if (collectedAtMs != null && collectedAtMs > 0) {
+                prefs[collectedAtMsKey] = collectedAtMs
+            } else if (prefs[collectedAtMsKey] == null) {
+                prefs[collectedAtMsKey] = System.currentTimeMillis()
+            }
             if (!paymentId.isNullOrBlank()) {
                 val handled = prefs[handledPaymentIdsKey].orEmpty().toMutableSet()
                 handled.add(paymentId)
@@ -118,6 +141,23 @@ class PaymentPhotoAlertStore @Inject constructor(
             }
         }
         _modalEvents.tryEmit(Unit)
+    }
+
+    /** Faol eslatmaga summa/vaqt qo‘shish (debt poll). */
+    suspend fun enrichPaymentDetails(
+        amount: Double? = null,
+        collectedAtMs: Long? = null,
+        orderId: String? = null,
+        paymentId: String? = null,
+    ) {
+        context.paymentPhotoAlertDataStore.edit { prefs ->
+            if (amount != null && amount > 0) prefs[amountKey] = amount
+            if (collectedAtMs != null && collectedAtMs > 0) prefs[collectedAtMsKey] = collectedAtMs
+            if (!orderId.isNullOrBlank()) prefs[orderIdKey] = orderId
+            if (!paymentId.isNullOrBlank() && !paymentId.startsWith("ord-")) {
+                prefs[paymentIdKey] = paymentId
+            }
+        }
     }
 
     /**
@@ -146,6 +186,7 @@ class PaymentPhotoAlertStore @Inject constructor(
                     if (!oid.isNullOrBlank()) prefs[orderIdKey] = oid else prefs.remove(orderIdKey)
                     val pid = newest.id.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
                     if (pid != null) prefs[paymentIdKey] = pid else prefs.remove(paymentIdKey)
+                    writePaymentMeta(prefs, newest.amount, newest.createdAtMs)
                 }
             }
             if (newest != null) _modalEvents.tryEmit(Unit)
@@ -169,8 +210,18 @@ class PaymentPhotoAlertStore @Inject constructor(
             if (!oid.isNullOrBlank()) prefs[orderIdKey] = oid else prefs.remove(orderIdKey)
             val pid = newest.id.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
             if (pid != null) prefs[paymentIdKey] = pid else prefs.remove(paymentIdKey)
+            writePaymentMeta(prefs, newest.amount, newest.createdAtMs)
         }
         _modalEvents.tryEmit(Unit)
+    }
+
+    private fun writePaymentMeta(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        amount: Double?,
+        collectedAtMs: Long?,
+    ) {
+        if (amount != null && amount > 0) prefs[amountKey] = amount
+        if (collectedAtMs != null && collectedAtMs > 0) prefs[collectedAtMsKey] = collectedAtMs
     }
 
     /** Yo‘ldagi buyurtma yetkazilganda (pushsiz). */
@@ -194,6 +245,8 @@ class PaymentPhotoAlertStore @Inject constructor(
             prefs.remove(modalDismissedKey)
             prefs.remove(orderIdKey)
             prefs.remove(paymentIdKey)
+            prefs.remove(amountKey)
+            prefs.remove(collectedAtMsKey)
         }
     }
 
@@ -205,6 +258,8 @@ class PaymentPhotoAlertStore @Inject constructor(
                 prefs.remove(modalDismissedKey)
                 prefs.remove(orderIdKey)
                 prefs.remove(paymentIdKey)
+                prefs.remove(amountKey)
+                prefs.remove(collectedAtMsKey)
             }
         }
     }
@@ -214,7 +269,15 @@ class PaymentPhotoAlertStore @Inject constructor(
         const val EXTRA_TYPE = "push_type"
         const val EXTRA_ORDER_ID = "orderId"
         const val EXTRA_PAYMENT_ID = "paymentId"
+        const val EXTRA_AMOUNT = "amount"
+        const val EXTRA_COLLECTED_AT = "collectedAt"
         const val TYPE_PAYMENT = "payment"
+
+        fun parseAmount(raw: String?): Double? {
+            if (raw.isNullOrBlank()) return null
+            val cleaned = raw.replace(" ", "").replace(",", "").replace('\u00A0', ' ').trim()
+            return cleaned.toDoubleOrNull()?.takeIf { it > 0 }
+        }
 
         fun parseCreatedAtMs(iso: String?): Long? {
             if (iso.isNullOrBlank()) return null

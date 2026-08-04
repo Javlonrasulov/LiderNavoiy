@@ -37,6 +37,8 @@ object NotificationHelper {
         type: String? = null,
         orderId: String? = null,
         paymentId: String? = null,
+        amount: Double? = null,
+        collectedAtMs: Long? = null,
         notificationId: Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -52,6 +54,14 @@ object NotificationHelper {
             if (!paymentId.isNullOrBlank()) {
                 putExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID, paymentId)
                 putExtra("paymentId", paymentId)
+            }
+            if (amount != null && amount > 0) {
+                putExtra(PaymentPhotoAlertStore.EXTRA_AMOUNT, amount.toString())
+                putExtra("amount", amount.toString())
+            }
+            if (collectedAtMs != null && collectedAtMs > 0) {
+                putExtra(PaymentPhotoAlertStore.EXTRA_COLLECTED_AT, collectedAtMs.toString())
+                putExtra("collectedAt", collectedAtMs.toString())
             }
             putExtra("title", title)
         }

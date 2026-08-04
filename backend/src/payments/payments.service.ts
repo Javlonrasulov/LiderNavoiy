@@ -412,6 +412,8 @@ export class PaymentsService {
           {
             orderId: order.id,
             type: 'payment',
+            amount: String(Math.round(collected)),
+            collectedAt: new Date().toISOString(),
             ...(paymentId ? { paymentId: String(paymentId) } : {}),
           },
         );

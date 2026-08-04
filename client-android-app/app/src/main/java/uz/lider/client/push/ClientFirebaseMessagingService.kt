@@ -35,6 +35,12 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
         val type = message.data["type"].orEmpty()
         val orderId = message.data["orderId"]
         val paymentId = message.data["paymentId"]
+        val amount = PaymentPhotoAlertStore.parseAmount(
+            message.data["amount"] ?: message.data[PaymentPhotoAlertStore.EXTRA_AMOUNT],
+        )
+        val collectedAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(
+            message.data["collectedAt"] ?: message.data[PaymentPhotoAlertStore.EXTRA_COLLECTED_AT],
+        ) ?: System.currentTimeMillis()
         val title = message.notification?.title
             ?: message.data["title"]
             ?: getString(R.string.app_name)
@@ -49,7 +55,12 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
 
         if (isPayment) {
             scope.launch {
-                paymentPhotoAlertStore.recordPaymentReceived(orderId, paymentId)
+                paymentPhotoAlertStore.recordPaymentReceived(
+                    orderId = orderId,
+                    paymentId = paymentId,
+                    amount = amount,
+                    collectedAtMs = collectedAtMs,
+                )
             }
         }
 
@@ -65,6 +76,8 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
                 },
                 orderId = orderId,
                 paymentId = paymentId,
+                amount = amount,
+                collectedAtMs = collectedAtMs,
             )
         }
     }

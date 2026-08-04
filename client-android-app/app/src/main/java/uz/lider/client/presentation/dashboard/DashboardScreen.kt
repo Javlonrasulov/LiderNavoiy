@@ -377,6 +377,11 @@ fun DashboardScreen(
                                 previewUrl = paymentPhotoSection.previewUrl,
                                 onCapture = { viewModel.uploadPaymentProof(it) },
                                 onDismiss = { viewModel.dismissPaymentPhotoSection() },
+                                amount = paymentPhotoSection.amount,
+                                collectedAtMs = paymentPhotoSection.collectedAtMs,
+                                amountLabel = t("pay_photo_amount_label"),
+                                timeLabel = t("pay_photo_time_label"),
+                                currencyLabel = t("com_som"),
                                 modifier = Modifier.padding(horizontal = 16.dp),
                             )
                             Spacer(Modifier.height(20.dp))

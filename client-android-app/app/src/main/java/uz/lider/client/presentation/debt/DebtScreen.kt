@@ -137,6 +137,11 @@ fun DebtScreen(
                                 previewUrl = paymentPhotoSection.previewUrl,
                                 onCapture = { viewModel.uploadPaymentProof(it) },
                                 onDismiss = null,
+                                amount = paymentPhotoSection.amount,
+                                collectedAtMs = paymentPhotoSection.collectedAtMs,
+                                amountLabel = localized("pay_photo_amount_label"),
+                                timeLabel = localized("pay_photo_time_label"),
+                                currencyLabel = localized("com_som"),
                             )
                         }
                     }

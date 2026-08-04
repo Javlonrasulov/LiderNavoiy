@@ -67,21 +67,16 @@ class DeliveryRepository @Inject constructor(
         return order?.let { withVisiblePaymentPhotos(it) }
     }
 
-    /** Oxirgi to‘lovda rasm bo‘sh bo‘lsa — order.last* dan to‘ldiramiz (alohida maydonlar). */
+    /** Oxirgi to‘lovda yetkazib beruvchi rasmi bo‘sh bo‘lsa — lastPaymentPhotoUrl dan. */
     private fun withVisiblePaymentPhotos(order: OrderDto): OrderDto {
         val payments = order.payments
         if (payments.isEmpty()) return order
         val last = payments.last()
         val courierFallback = order.lastPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
-        val clientFallback = order.lastClientPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
-        val needCourier = last.photoUrl.isNullOrBlank() && courierFallback != null
-        val needClient = last.clientPhotoUrl.isNullOrBlank() && clientFallback != null
-        if (!needCourier && !needClient) return order
+            ?: return order
+        if (!last.photoUrl.isNullOrBlank()) return order
         return order.copy(
-            payments = payments.dropLast(1) + last.copy(
-                photoUrl = if (needCourier) courierFallback else last.photoUrl,
-                clientPhotoUrl = if (needClient) clientFallback else last.clientPhotoUrl,
-            ),
+            payments = payments.dropLast(1) + last.copy(photoUrl = courierFallback),
         )
     }
 

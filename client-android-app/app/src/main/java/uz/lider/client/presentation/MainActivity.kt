@@ -104,6 +104,18 @@ class MainActivity : ComponentActivity() {
         )
         val title = firstExtra(extras, "title", "gcm.notification.title").orEmpty()
         val body = firstExtra(extras, "body", "gcm.notification.body").orEmpty()
+        val amount = PaymentPhotoAlertStore.parseAmount(
+            firstExtra(extras, PaymentPhotoAlertStore.EXTRA_AMOUNT, "amount"),
+        )
+        val collectedAtRaw = firstExtra(
+            extras,
+            PaymentPhotoAlertStore.EXTRA_COLLECTED_AT,
+            "collectedAt",
+            "collected_at",
+        )
+        val collectedAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(collectedAtRaw)
+            ?: collectedAtRaw?.toLongOrNull()?.takeIf { it > 1_000_000_000_000L }
+            ?: System.currentTimeMillis()
 
         val isPayment = PaymentPhotoAlertStore.isPaymentPushExtras(
             type, title, body, orderId, paymentId,
@@ -111,7 +123,7 @@ class MainActivity : ComponentActivity() {
         Log.d(
             TAG,
             "pushIntent action=${intent.action} type=$type orderId=$orderId " +
-                "paymentId=$paymentId isPayment=$isPayment title=$title",
+                "paymentId=$paymentId isPayment=$isPayment title=$title amount=$amount",
         )
 
         if (isPayment) {
@@ -119,6 +131,8 @@ class MainActivity : ComponentActivity() {
                 paymentPhotoAlertStore.recordPaymentReceived(
                     orderId = orderId,
                     paymentId = paymentId,
+                    amount = amount,
+                    collectedAtMs = collectedAtMs,
                 )
             }
         }

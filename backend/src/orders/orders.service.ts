@@ -302,7 +302,8 @@ export class OrdersService {
           : null,
         collectedAt: p.createdAt.toISOString(),
         photoUrl: p.photoUrl ?? null,
-        clientPhotoUrl: p.clientPhotoUrl ?? null,
+        // Mijoz xavfsizlik rasmi yetkazib beruvchiga ko‘rsatilmaydi
+        clientPhotoUrl: null,
       });
       paymentsByOrder.set(p.orderId, list);
     }
@@ -340,7 +341,7 @@ export class OrdersService {
             ? new Date(order.updatedAt).toISOString()
             : null,
         lastPaymentPhotoUrl: order.lastPaymentPhotoUrl ?? null,
-        lastClientPaymentPhotoUrl: order.lastClientPaymentPhotoUrl ?? null,
+        lastClientPaymentPhotoUrl: null,
         clientName: client.name ?? 'Klient',
         clientCode: client.code ?? '',
         clientAddress: client.address ?? null,

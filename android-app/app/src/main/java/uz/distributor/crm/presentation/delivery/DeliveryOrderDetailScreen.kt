@@ -390,14 +390,7 @@ fun DeliveryOrderDetailScreen(
                                     } else {
                                         null
                                     }
-                                val rawClientPhoto = payment.clientPhotoUrl?.takeIf { it.isNotBlank() }
-                                    ?: if (index == order.payments.lastIndex) {
-                                        order.lastClientPaymentPhotoUrl?.takeIf { it.isNotBlank() }
-                                    } else {
-                                        null
-                                    }
                                 val courierPhotoUrl = resolvePaymentPhotoUrl(rawCourierPhoto)
-                                val clientPhotoUrl = resolvePaymentPhotoUrl(rawClientPhoto)
                                 Column(Modifier.padding(vertical = 12.dp)) {
                                     Text(
                                         "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
@@ -432,19 +425,6 @@ fun DeliveryOrderDetailScreen(
                                         PaymentPhotoWide(
                                             url = courierPhotoUrl,
                                             onClick = { previewPhotoUrl = courierPhotoUrl },
-                                        )
-                                    }
-                                    if (clientPhotoUrl != null) {
-                                        Spacer(Modifier.height(10.dp))
-                                        Text(
-                                            AppStrings.deliveryClientSecurityPhoto(lang),
-                                            color = textMuted,
-                                            fontSize = 12.sp,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        PaymentPhotoWide(
-                                            url = clientPhotoUrl,
-                                            onClick = { previewPhotoUrl = clientPhotoUrl },
                                         )
                                     }
                                 }
