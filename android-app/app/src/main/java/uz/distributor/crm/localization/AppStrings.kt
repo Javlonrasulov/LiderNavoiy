@@ -212,6 +212,19 @@ object AppStrings {
     )
     fun deliveryStatusOnWay(lang: AppLanguage) = tr(lang, "Yo'lda", "Йўлда", "В пути")
     fun deliveryStatusDelivered(lang: AppLanguage) = tr(lang, "Yetkazildi", "Етказилди", "Доставлен")
+    fun deliveryLoadedAt(lang: AppLanguage) = tr(lang, "Yuklangan", "Юкланган", "Загружен")
+    fun deliveryHoursAgo(lang: AppLanguage, hours: Int) = tr(
+        lang,
+        "$hours soat",
+        "$hours soat",
+        "$hours ч",
+    )
+    fun deliveryMinutesAgo(lang: AppLanguage, minutes: Int) = tr(
+        lang,
+        "$minutes min",
+        "$minutes daq",
+        "$minutes мин",
+    )
     fun deliveryNavigate(lang: AppLanguage) = tr(lang, "Navigatorda ochish", "Навигаторда очиш", "Открыть навигатор")
     fun deliveryAddressLabel(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
     fun deliveryPhoneLabel(lang: AppLanguage) = tr(lang, "Telefon", "Телефон", "Телефон")

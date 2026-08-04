@@ -62,9 +62,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,7 +128,8 @@ fun DeliveryPaymentSheet(
     var method by remember { mutableStateOf<String?>(null) }
     var terminalId by remember { mutableStateOf<String?>(null) }
     var amountText by remember {
-        mutableStateOf(if (remaining > 0) formatter.format(remaining) else "")
+        // Faqat raqamlar saqlanadi; bo‘shliq VisualTransformation orqali ko‘rsatiladi
+        mutableStateOf(if (remaining > 0) remaining.toLong().coerceAtLeast(0).toString() else "")
     }
     var dueDate by remember { mutableStateOf(LocalDate.now()) }
     var dueTime by remember { mutableStateOf("18:00") }
@@ -329,10 +334,11 @@ fun DeliveryPaymentSheet(
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { raw ->
-                            amountText = formatAmountInput(raw, formatter)
+                            amountText = raw.filter { it in '0'..'9' }.take(12)
                         },
                         label = { Text(AppStrings.deliveryAmountLabel(lang)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        visualTransformation = AmountSpaceVisualTransformation,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
@@ -939,14 +945,51 @@ private fun deliveryAmountFormat(): DecimalFormat {
     }
 }
 
-private fun formatAmountInput(raw: String, formatter: DecimalFormat): String {
-    val digits = raw.filter { it in '0'..'9' }
-    if (digits.isEmpty()) return ""
-    val value = digits.toLongOrNull() ?: return digits
-    return formatter.format(value)
+/** Ko‘rsatish: "123456" → "123 456". State da faqat raqamlar (kursor buzilmasin). */
+private object AmountSpaceVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text
+        if (digits.isEmpty()) {
+            return TransformedText(text, OffsetMapping.Identity)
+        }
+        val n = digits.length
+        val formatted = buildString(n + n / 3) {
+            digits.forEachIndexed { i, c ->
+                if (i > 0 && (n - i) % 3 == 0) append(' ')
+                append(c)
+            }
+        }
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int {
+                val o = offset.coerceIn(0, n)
+                if (o == 0) return 0
+                var spaces = 0
+                for (i in 1..o) {
+                    if ((n - i) % 3 == 0) spaces++
+                }
+                return o + spaces
+            }
+
+            override fun transformedToOriginal(offset: Int): Int {
+                val t = offset.coerceIn(0, formatted.length)
+                var orig = 0
+                var seen = 0
+                while (seen < t && orig < n) {
+                    if (orig > 0 && (n - orig) % 3 == 0) {
+                        seen++
+                        if (seen >= t) return orig
+                    }
+                    orig++
+                    seen++
+                }
+                return orig.coerceIn(0, n)
+            }
+        }
+        return TransformedText(AnnotatedString(formatted), mapping)
+    }
 }
 
-/** "62 500", "62,500", NBSP ва ҳ.к. → 62500.0 */
+/** "62 500", "62500", NBSP ва ҳ.к. → 62500.0 */
 private fun parseAmountInput(text: String): Double? {
     val digits = text.filter { it in '0'..'9' }
     if (digits.isEmpty()) return null

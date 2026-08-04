@@ -39,10 +39,7 @@ class CartRepository @Inject constructor(
     }
 
     val itemCount: Int
-        get() {
-            val sum = _items.value.sumOf { it.qty }
-            return if (sum % 1.0 == 0.0) sum.toInt() else kotlin.math.ceil(sum).toInt()
-        }
+        get() = _items.value.size
 
     private suspend fun restore() {
         runCatching {

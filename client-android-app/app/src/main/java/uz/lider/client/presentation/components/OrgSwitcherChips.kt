@@ -10,21 +10,89 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uz.lider.client.domain.model.ClientOrganization
 import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.LiquidGlass
+import uz.lider.client.presentation.theme.LiquidGlassDropdownItem
+import uz.lider.client.presentation.theme.LiquidGlassDropdownMenu
+
+@Composable
+fun OrgSwitcherDropdown(
+    organizations: List<ClientOrganization>,
+    selectedCompanyId: String?,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (organizations.size < 2) return
+    var expanded by remember { mutableStateOf(false) }
+    val selected = organizations.find { it.companyId == selectedCompanyId }
+        ?: organizations.first()
+    val label = selected.shortName.ifBlank { selected.name }
+    val shape = RoundedCornerShape(LiquidGlass.RadiusChip)
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(shape)
+                .background(LiquidGlass.GradientPrimary)
+                .clickable { expanded = true }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        LiquidGlassDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            organizations.forEach { org ->
+                val name = org.shortName.ifBlank { org.name }
+                LiquidGlassDropdownItem(
+                    text = name,
+                    selected = org.companyId == selected.companyId,
+                    onClick = {
+                        onSelect(org.companyId)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun OrgSwitcherChips(

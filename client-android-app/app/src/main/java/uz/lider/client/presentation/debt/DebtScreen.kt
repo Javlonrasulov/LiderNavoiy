@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
 import uz.lider.client.presentation.components.FullScreenImageViewer
@@ -55,6 +56,7 @@ import uz.lider.client.presentation.theme.LiquidGlass
 import uz.lider.client.presentation.theme.LiquidTheme
 import uz.lider.client.presentation.theme.PremiumHeaderButton
 import uz.lider.client.presentation.theme.liquidGlassThemed
+import androidx.compose.ui.platform.LocalContext
 
 private val debtHeroGradient = Brush.linearGradient(
     listOf(
@@ -385,8 +387,13 @@ fun DebtScreen(
                                         )
                                     }
                                     payment.photoUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                        val ctx = LocalContext.current
                                         AsyncImage(
-                                            model = url,
+                                            model = ImageRequest.Builder(ctx)
+                                                .data(url)
+                                                .allowHardware(false)
+                                                .crossfade(true)
+                                                .build(),
                                             contentDescription = null,
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier

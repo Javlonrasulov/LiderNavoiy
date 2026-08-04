@@ -308,6 +308,11 @@ export class OrdersService {
         isUrgent: !!order.isUrgent,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        loadedAt: order.loadedAt
+          ? order.loadedAt.toISOString()
+          : order.status === OrderStatus.ON_WAY
+            ? new Date(order.updatedAt).toISOString()
+            : null,
         clientName: client.name ?? 'Klient',
         clientCode: client.code ?? '',
         clientAddress: client.address ?? null,
@@ -875,6 +880,15 @@ export class OrdersService {
 
     if (leavingOnWay) {
       order.deliverySequence = null;
+    }
+
+    // Birinchi marta on_way ga o‘tganda yuklash vaqtini belgilash
+    if (
+      order.status === OrderStatus.ON_WAY &&
+      prevStatus !== OrderStatus.ON_WAY &&
+      !order.loadedAt
+    ) {
+      order.loadedAt = new Date();
     }
 
     const assignedDriverPreview = order.deliveryDistributorId;

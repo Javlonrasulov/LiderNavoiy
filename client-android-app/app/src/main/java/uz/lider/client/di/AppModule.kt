@@ -1,10 +1,13 @@
 package uz.lider.client.di
 
+import android.content.Context
+import coil.ImageLoader
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -19,6 +22,7 @@ import uz.lider.client.data.remote.dto.FlexibleDoubleAdapter
 import uz.lider.client.security.ApiDns
 import uz.lider.client.security.TlsPins
 import java.util.concurrent.TimeUnit
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -69,6 +73,33 @@ object AppModule {
         TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
         return builder.build()
     }
+
+    /** Rasmlar uchun — auth refresh yo‘q, faqat ApiDns + TLS */
+    @Provides
+    @Singleton
+    @Named("imageOkHttp")
+    fun provideImageOkHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .dns(ApiDns)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(35, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+        TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideImageLoader(
+        @ApplicationContext context: Context,
+        @Named("imageOkHttp") imageOkHttp: OkHttpClient,
+    ): ImageLoader =
+        ImageLoader.Builder(context)
+            .okHttpClient(imageOkHttp)
+            .crossfade(true)
+            .allowHardware(false)
+            .build()
 
     @Provides
     @Singleton

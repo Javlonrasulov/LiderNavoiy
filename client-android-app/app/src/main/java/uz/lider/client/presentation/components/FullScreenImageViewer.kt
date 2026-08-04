@@ -16,11 +16,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import uz.lider.client.presentation.theme.LiquidGlass
+import coil.request.ImageRequest
 
 @Composable
 fun FullScreenImageViewer(
@@ -28,6 +29,7 @@ fun FullScreenImageViewer(
     contentDescription: String?,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -40,7 +42,11 @@ fun FullScreenImageViewer(
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
-                model = imageUrl,
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .allowHardware(false)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,

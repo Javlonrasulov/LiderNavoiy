@@ -28,13 +28,13 @@ class DeliveryOrdersViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DeliveryOrdersUiState())
     val uiState: StateFlow<DeliveryOrdersUiState> = _uiState.asStateFlow()
 
-    init {
-        load()
-    }
-
-    fun load() {
+    fun load(silent: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            if (!silent) {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+            } else {
+                _uiState.update { it.copy(error = null) }
+            }
             try {
                 val orders = sortDeliveryOrders(repository.getAssignedOrders())
                 _uiState.update { it.copy(isLoading = false, orders = orders) }

@@ -40,16 +40,24 @@ class ProductRepository @Inject constructor(
         if (path.isNullOrBlank()) return ""
         val trimmed = path.trim()
         if (
-            trimmed.startsWith("http://", ignoreCase = true) ||
-            trimmed.startsWith("https://", ignoreCase = true) ||
             trimmed.startsWith("data:", ignoreCase = true) ||
             trimmed.startsWith("content:", ignoreCase = true) ||
             trimmed.startsWith("file:", ignoreCase = true)
         ) {
             return trimmed
         }
+        // Eski Render URL → production host
+        val normalized = trimmed
+            .replace("https://lider-navoiy-api.onrender.com", "https://lider-navoiy.uz")
+            .replace("http://lider-navoiy-api.onrender.com", "https://lider-navoiy.uz")
+        if (
+            normalized.startsWith("http://", ignoreCase = true) ||
+            normalized.startsWith("https://", ignoreCase = true)
+        ) {
+            return normalized
+        }
         val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
-        val relative = if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+        val relative = if (normalized.startsWith("/")) normalized else "/$normalized"
         return "$base$relative"
     }
 

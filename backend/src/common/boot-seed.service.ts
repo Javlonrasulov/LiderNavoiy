@@ -533,10 +533,10 @@ export class BootSeedService implements OnModuleInit {
         `INSERT INTO orders
          (id, "distributorId", "clientId", "companyId", "deliveryDistributorId", "deliverySequence",
           status, source, "totalAmount", "paidAmount", "returnedAmount", "paymentStatus", items,
-          "isOfflineCreated", "isUrgent", "createdAt", "updatedAt")
+          "isOfflineCreated", "isUrgent", "loadedAt", "createdAt", "updatedAt")
          VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5,
                  'on_way', 'agent', $6, 0, 0, 'unpaid', $7::jsonb,
-                 false, false, now(), now())`,
+                 false, false, now(), now(), now())`,
         [
           opts.distributorId,
           opts.clientId,

@@ -62,6 +62,10 @@ export class Order {
   @Column({ type: 'jsonb', default: [] })
   items: OrderItem[];
 
+  /** Mashinaga yuklangan (on_way) vaqti */
+  @Column({ type: 'timestamptz', nullable: true })
+  loadedAt: Date | null;
+
   @Column({ default: false })
   isOfflineCreated: boolean;
 

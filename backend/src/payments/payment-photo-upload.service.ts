@@ -26,12 +26,18 @@ export class PaymentPhotoUploadService {
     if (file.size > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
+    if (!file.buffer || file.buffer.length < 2048) {
+      throw new BadRequestException('File is empty or too small');
+    }
     assertAllowedUpload(file, { imagesOnly: true });
 
     let buffer = file.buffer;
     try {
       let pipeline = sharp(buffer).rotate();
       const meta = await sharp(buffer).metadata();
+      if (!meta.width || !meta.height || meta.width < 16 || meta.height < 16) {
+        throw new BadRequestException('Invalid image dimensions');
+      }
       if ((meta.width ?? 0) > MAX_DIM || (meta.height ?? 0) > MAX_DIM) {
         pipeline = pipeline.resize(MAX_DIM, MAX_DIM, {
           fit: 'inside',
@@ -39,8 +45,23 @@ export class PaymentPhotoUploadService {
         });
       }
       buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
+      if (buffer.length < 2048) {
+        throw new BadRequestException('Processed image is empty');
+      }
     } catch (e) {
+      if (e instanceof BadRequestException) throw e;
       this.logger.warn('Payment photo compress failed', e);
+      // Compress muvaffaqiyatsiz — originalni faqat haqiqiy rasm bo‘lsa saqlaymiz
+      try {
+        const meta = await sharp(file.buffer).metadata();
+        if (!meta.width || !meta.height) {
+          throw new BadRequestException('Invalid image file');
+        }
+      } catch (inner) {
+        if (inner instanceof BadRequestException) throw inner;
+        throw new BadRequestException('Invalid image file');
+      }
+      buffer = file.buffer;
     }
 
     const safeName = `${uuidv4()}.jpg`;

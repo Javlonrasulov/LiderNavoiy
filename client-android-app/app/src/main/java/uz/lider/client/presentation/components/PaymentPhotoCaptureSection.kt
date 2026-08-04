@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import uz.lider.client.presentation.theme.LiquidGlass
 import java.io.File
 
@@ -72,7 +73,25 @@ fun PaymentPhotoCaptureSection(
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
     ) { ok ->
-        if (ok) pendingCameraUri?.let(onCapture)
+        val uri = pendingCameraUri
+        pendingCameraUri = null
+        if (!ok || uri == null) return@rememberLauncherForActivityResult
+        // Ba'zi qurilmalarda kamera bo‘sh/qora fayl qaytaradi
+        val sizeOk = try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                var total = 0
+                val buf = ByteArray(4096)
+                while (total < 2_049) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    total += n
+                }
+                total > 2_048
+            } ?: false
+        } catch (_: Exception) {
+            false
+        }
+        if (sizeOk) onCapture(uri)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -181,7 +200,11 @@ fun PaymentPhotoCaptureSection(
 
         if (saved) {
             AsyncImage(
-                model = previewUrl,
+                model = ImageRequest.Builder(context)
+                    .data(previewUrl)
+                    .allowHardware(false)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -230,7 +253,11 @@ fun PaymentPhotoCaptureSection(
 }
 
 private fun createPaymentCameraUri(context: Context): Uri {
-    val file = File(context.cacheDir, "payment_proof_${System.currentTimeMillis()}.jpg")
+    val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
+    val file = File(dir, "payment_proof_${System.currentTimeMillis()}.jpg")
+    if (!file.exists()) {
+        file.createNewFile()
+    }
     return FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",

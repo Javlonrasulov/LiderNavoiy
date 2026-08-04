@@ -1,10 +1,8 @@
 package uz.lider.client.presentation.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,12 +19,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.AppStrings
@@ -47,32 +46,17 @@ fun ProductImageBox(
     contentScale: ContentScale = ContentScale.Crop,
 ) {
     if (!imageUrl.isNullOrBlank()) {
-        val painter = rememberAsyncImagePainter(model = imageUrl)
-        val state = painter.state
-        Box(modifier = modifier) {
-            when (state) {
-                is AsyncImagePainter.State.Success -> {
-                    Image(
-                        painter = painter,
-                        contentDescription = contentDescription,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = contentScale,
-                    )
-                }
-                is AsyncImagePainter.State.Loading,
-                is AsyncImagePainter.State.Empty -> {
-                    val palette = rememberClientPalette()
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(palette.surface2),
-                    )
-                }
-                is AsyncImagePainter.State.Error -> {
-                    NoProductImagePlaceholder(modifier = Modifier.fillMaxSize())
-                }
-            }
-        }
+        val context = LocalContext.current
+        val palette = rememberClientPalette()
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(imageUrl)
+                .crossfade(true)
+                .build(),
+            contentDescription = contentDescription,
+            modifier = modifier.background(palette.surface2),
+            contentScale = contentScale,
+        )
     } else {
         NoProductImagePlaceholder(modifier = modifier)
     }
