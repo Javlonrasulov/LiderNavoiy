@@ -315,6 +315,7 @@ data class DebtHistoryItemDto(
     val method: String? = null,
     val orderId: String? = null,
     val photoUrl: String? = null,
+    val clientPhotoUrl: String? = null,
     val createdAt: String? = null,
 )
 
@@ -394,4 +395,5 @@ data class AttachPaymentPhotoResponseDto(
     val id: String? = null,
     val orderId: String? = null,
     val photoUrl: String? = null,
+    val clientPhotoUrl: String? = null,
 )

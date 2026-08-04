@@ -49,6 +49,10 @@ export class OrderPayment {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
+  /** Mijoz o‘zi tushirgan xavfsizlik rasmi (dostavkachi photoUrl dan alohida) */
+  @Column({ type: 'varchar', nullable: true })
+  clientPhotoUrl: string | null;
+
   @Column({ default: false })
   dayReminderSent: boolean;
 

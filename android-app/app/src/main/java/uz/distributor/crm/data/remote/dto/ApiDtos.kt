@@ -226,7 +226,10 @@ data class OrderPaymentDto(
     val method: String? = null,
     val collectorName: String? = null,
     val collectedAt: String? = null,
+    /** Dostavkachi rasmi */
     val photoUrl: String? = null,
+    /** Mijoz xavfsizlik rasmi */
+    val clientPhotoUrl: String? = null,
 )
 
 data class OrderDto(
@@ -254,6 +257,7 @@ data class OrderDto(
     val loadedAt: String? = null,
     val deliveredAt: String? = null,
     val lastPaymentPhotoUrl: String? = null,
+    val lastClientPaymentPhotoUrl: String? = null,
     val isUrgent: Boolean = false,
     val payments: List<OrderPaymentDto> = emptyList(),
 ) {

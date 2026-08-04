@@ -137,7 +137,7 @@ export class PaymentsService {
     if (photoUrl) order.lastPaymentPhotoUrl = photoUrl;
     await this.orderRepo.save(order);
 
-    await this.notifyPaymentCollected(order, collectNow, stillDue, !!photoUrl, payment.id);
+    await this.notifyPaymentCollected(order, collectNow, stillDue, false, payment.id);
     this.recheckNearbyAfterDelivery(distributorId);
 
     return { order, payment };
@@ -217,7 +217,7 @@ export class PaymentsService {
       }
     }
 
-    await this.notifyPaymentCollected(order, collectNow, stillDue, !!photoUrl, payment.id);
+    await this.notifyPaymentCollected(order, collectNow, stillDue, false, payment.id);
     return { order, payment };
   }
 

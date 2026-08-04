@@ -60,7 +60,7 @@ class DebtRepository @Inject constructor(
             typeKey = if (isPayment) "debt_payment" else "debt_added",
             isPayment = isPayment,
             orderId = orderId,
-            photoUrl = resolveMediaUrl(photoUrl),
+            photoUrl = resolveMediaUrl(clientPhotoUrl?.takeIf { it.isNotBlank() } ?: photoUrl),
             createdAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(createdAt) ?: 0L,
         )
     }

@@ -67,16 +67,21 @@ class DeliveryRepository @Inject constructor(
         return order?.let { withVisiblePaymentPhotos(it) }
     }
 
-    /** Oxirgi to‘lovda photoUrl bo‘sh bo‘lsa — lastPaymentPhotoUrl dan to‘ldiramiz. */
+    /** Oxirgi to‘lovda rasm bo‘sh bo‘lsa — order.last* dan to‘ldiramiz (alohida maydonlar). */
     private fun withVisiblePaymentPhotos(order: OrderDto): OrderDto {
-        val fallback = order.lastPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
-            ?: return order
         val payments = order.payments
         if (payments.isEmpty()) return order
         val last = payments.last()
-        if (!last.photoUrl.isNullOrBlank()) return order
+        val courierFallback = order.lastPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
+        val clientFallback = order.lastClientPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
+        val needCourier = last.photoUrl.isNullOrBlank() && courierFallback != null
+        val needClient = last.clientPhotoUrl.isNullOrBlank() && clientFallback != null
+        if (!needCourier && !needClient) return order
         return order.copy(
-            payments = payments.dropLast(1) + last.copy(photoUrl = fallback),
+            payments = payments.dropLast(1) + last.copy(
+                photoUrl = if (needCourier) courierFallback else last.photoUrl,
+                clientPhotoUrl = if (needClient) clientFallback else last.clientPhotoUrl,
+            ),
         )
     }
 
@@ -361,21 +366,25 @@ class DeliveryRepository @Inject constructor(
     }
 
     private suspend fun prepareJpegBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
-        // 1) Coil — galereya/kamera URI lar uchun eng ishonchli
-        decodeWithCoil(uri)?.let { return@withContext it }
-
         var lastError: Exception? = null
         repeat(4) { attempt ->
             try {
                 val cached = copyUriToCacheFile(uri)
                 try {
-                    compressFileToJpeg(cached)?.let { return@withContext it }
                     val raw = cached.readBytes()
-                    if (raw.size >= 256 && isJpeg(raw)) {
+                    // Allaqachon yaxshi JPEG bo‘lsa — qayta siqmaslik (sifat saqlanadi)
+                    if (isJpeg(raw) && raw.size >= MIN_VALID_BYTES && raw.size <= MAX_KEEP_BYTES) {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
+                        if (bounds.outWidth in 1..MAX_SIDE && bounds.outHeight in 1..MAX_SIDE) {
+                            return@withContext raw
+                        }
                         reencodeJpeg(raw)?.let { return@withContext it }
-                        if (raw.size >= MIN_VALID_BYTES) return@withContext raw
                     }
-                    reencodeJpeg(raw)?.let { return@withContext it }
+                    compressFileToJpeg(cached)?.let { return@withContext it }
+                    if (isJpeg(raw) && raw.size >= MIN_VALID_BYTES) {
+                        reencodeJpeg(raw)?.let { return@withContext it }
+                    }
                     throw IllegalArgumentException("Photo decode failed")
                 } finally {
                     cached.delete()
@@ -385,6 +394,7 @@ class DeliveryRepository @Inject constructor(
             }
             if (attempt < 3) delay(200L * (attempt + 1))
         }
+        decodeWithCoil(uri)?.let { return@withContext it }
         throw lastError ?: IllegalArgumentException("Cannot read photo")
     }
 
@@ -393,7 +403,7 @@ class DeliveryRepository @Inject constructor(
             val request = ImageRequest.Builder(context)
                 .data(uri)
                 .allowHardware(false)
-                .size(1280)
+                .size(MAX_SIDE)
                 .build()
             val result = imageLoader.execute(request)
             if (result !is SuccessResult) return null
@@ -401,16 +411,13 @@ class DeliveryRepository @Inject constructor(
             val bitmap = when (drawable) {
                 is BitmapDrawable -> drawable.bitmap
                 else -> drawable.toBitmap(
-                    width = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(1280),
-                    height = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(1280),
+                    width = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(MAX_SIDE),
+                    height = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(MAX_SIDE),
                 )
             }
-            val scaled = scaleBitmap(bitmap, 1280)
+            val scaled = scaleBitmap(bitmap, MAX_SIDE)
             val out = ByteArrayOutputStream()
-            val ok = scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
-            if (scaled !== bitmap && !bitmap.isRecycled) {
-                // coil managed bitmap — don't recycle source aggressively
-            }
+            val ok = scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
             if (scaled !== bitmap) scaled.recycle()
             if (!ok) return null
             out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
@@ -472,8 +479,7 @@ class DeliveryRepository @Inject constructor(
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var sample = 1
-        val maxSide = 1280
-        while (bounds.outWidth / sample > maxSide || bounds.outHeight / sample > maxSide) {
+        while (bounds.outWidth / sample > MAX_SIDE || bounds.outHeight / sample > MAX_SIDE) {
             sample *= 2
         }
         val opts = BitmapFactory.Options().apply {
@@ -483,7 +489,7 @@ class DeliveryRepository @Inject constructor(
         val bitmap = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
         return try {
             val out = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)) return null
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
             out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
         } finally {
             bitmap.recycle()
@@ -495,8 +501,7 @@ class DeliveryRepository @Inject constructor(
         BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        val maxSide = 1280
-        while (bounds.outWidth / sample > maxSide || bounds.outHeight / sample > maxSide) {
+        while (bounds.outWidth / sample > MAX_SIDE || bounds.outHeight / sample > MAX_SIDE) {
             sample *= 2
         }
         val opts = BitmapFactory.Options().apply {
@@ -506,7 +511,7 @@ class DeliveryRepository @Inject constructor(
         val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, opts) ?: return null
         return try {
             val out = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)) return null
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
             out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
         } finally {
             bitmap.recycle()
@@ -518,5 +523,8 @@ class DeliveryRepository @Inject constructor(
 
     companion object {
         private const val MIN_VALID_BYTES = 512
+        private const val MAX_SIDE = 2560
+        private const val JPEG_QUALITY = 92
+        private const val MAX_KEEP_BYTES = 3 * 1024 * 1024
     }
 }

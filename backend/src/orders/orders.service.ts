@@ -288,6 +288,7 @@ export class OrdersService {
         collectorName: string | null;
         collectedAt: string;
         photoUrl: string | null;
+        clientPhotoUrl: string | null;
       }>
     >();
     for (const p of collectedRows) {
@@ -301,6 +302,7 @@ export class OrdersService {
           : null,
         collectedAt: p.createdAt.toISOString(),
         photoUrl: p.photoUrl ?? null,
+        clientPhotoUrl: p.clientPhotoUrl ?? null,
       });
       paymentsByOrder.set(p.orderId, list);
     }
@@ -338,6 +340,7 @@ export class OrdersService {
             ? new Date(order.updatedAt).toISOString()
             : null,
         lastPaymentPhotoUrl: order.lastPaymentPhotoUrl ?? null,
+        lastClientPaymentPhotoUrl: order.lastClientPaymentPhotoUrl ?? null,
         clientName: client.name ?? 'Klient',
         clientCode: client.code ?? '',
         clientAddress: client.address ?? null,

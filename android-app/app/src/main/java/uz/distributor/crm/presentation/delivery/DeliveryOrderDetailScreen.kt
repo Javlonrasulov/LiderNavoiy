@@ -384,13 +384,20 @@ fun DeliveryOrderDetailScreen(
                                     ?.let { formatDueAtDisplay(it) }
                                 val who = payment.collectorName?.takeIf { it.isNotBlank() }
                                 val methodLabel = paymentMethodLabel(payment.method, lang)
-                                val rawPhoto = payment.photoUrl?.takeIf { it.isNotBlank() }
+                                val rawCourierPhoto = payment.photoUrl?.takeIf { it.isNotBlank() }
                                     ?: if (index == order.payments.lastIndex) {
                                         order.lastPaymentPhotoUrl?.takeIf { it.isNotBlank() }
                                     } else {
                                         null
                                     }
-                                val photoUrl = resolvePaymentPhotoUrl(rawPhoto)
+                                val rawClientPhoto = payment.clientPhotoUrl?.takeIf { it.isNotBlank() }
+                                    ?: if (index == order.payments.lastIndex) {
+                                        order.lastClientPaymentPhotoUrl?.takeIf { it.isNotBlank() }
+                                    } else {
+                                        null
+                                    }
+                                val courierPhotoUrl = resolvePaymentPhotoUrl(rawCourierPhoto)
+                                val clientPhotoUrl = resolvePaymentPhotoUrl(rawClientPhoto)
                                 Column(Modifier.padding(vertical = 12.dp)) {
                                     Text(
                                         "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
@@ -414,11 +421,30 @@ fun DeliveryOrderDetailScreen(
                                         Spacer(Modifier.height(2.dp))
                                         Text(whenText, color = textMuted, fontSize = 12.sp)
                                     }
-                                    if (photoUrl != null) {
+                                    if (courierPhotoUrl != null) {
                                         Spacer(Modifier.height(10.dp))
+                                        Text(
+                                            AppStrings.deliveryCourierPhoto(lang),
+                                            color = textMuted,
+                                            fontSize = 12.sp,
+                                        )
+                                        Spacer(Modifier.height(6.dp))
                                         PaymentPhotoWide(
-                                            url = photoUrl,
-                                            onClick = { previewPhotoUrl = photoUrl },
+                                            url = courierPhotoUrl,
+                                            onClick = { previewPhotoUrl = courierPhotoUrl },
+                                        )
+                                    }
+                                    if (clientPhotoUrl != null) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(
+                                            AppStrings.deliveryClientSecurityPhoto(lang),
+                                            color = textMuted,
+                                            fontSize = 12.sp,
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        PaymentPhotoWide(
+                                            url = clientPhotoUrl,
+                                            onClick = { previewPhotoUrl = clientPhotoUrl },
                                         )
                                     }
                                 }

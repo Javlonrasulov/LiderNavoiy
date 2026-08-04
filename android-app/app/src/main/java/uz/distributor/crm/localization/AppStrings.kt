@@ -337,6 +337,18 @@ object AppStrings {
         "Пул олган одамингиз расми (ихтиёрий)",
         "Фото человека, у которого взяли деньги (необязательно)",
     )
+    fun deliveryCourierPhoto(lang: AppLanguage) = tr(
+        lang,
+        "Dostavkachi rasmi",
+        "Доставчи расми",
+        "Фото доставщика",
+    )
+    fun deliveryClientSecurityPhoto(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz xavfsizlik rasmi",
+        "Мижоз хавфсизлик расми",
+        "Фото безопасности клиента",
+    )
     fun deliveryGallery(lang: AppLanguage) = tr(lang, "Galereya", "Галерея", "Галерея")
     fun deliveryCamera(lang: AppLanguage) = tr(lang, "Kamera", "Камера", "Камера")
     fun deliveryPhotoSelected(lang: AppLanguage) = tr(lang, "Rasm tanlandi", "Расм танланди", "Фото выбрано")

@@ -878,7 +878,9 @@ export class ClientPortalService {
       type: 'payment' | 'debt';
       method: string | null;
       orderId: string | null;
+      /** Faqat mijoz xavfsizlik rasmi — dostavkachi photoUrl aralashmasin */
       photoUrl: string | null;
+      clientPhotoUrl: string | null;
       createdAt: Date;
     };
 
@@ -888,6 +890,7 @@ export class ClientPortalService {
       const paid = Number(payment.paidAmount) || 0;
       if (paid <= 0.01) continue;
       if (payment.status === PaymentStatus.CANCELLED) continue;
+      const clientPhoto = payment.clientPhotoUrl ?? null;
       history.push({
         id: `pay-${payment.id}`,
         date: this.fmtDebtDate(new Date(payment.createdAt)),
@@ -895,7 +898,8 @@ export class ClientPortalService {
         type: 'payment',
         method: payment.method ?? null,
         orderId: payment.orderId,
-        photoUrl: payment.photoUrl ?? null,
+        photoUrl: clientPhoto,
+        clientPhotoUrl: clientPhoto,
         createdAt: new Date(payment.createdAt),
       });
     }
@@ -913,6 +917,7 @@ export class ClientPortalService {
         method: null,
         orderId: order.id,
         photoUrl: null,
+        clientPhotoUrl: null,
         createdAt: new Date(order.createdAt),
       });
     }
@@ -1030,32 +1035,35 @@ export class ClientPortalService {
         id: null,
         orderId: dto.orderId ?? null,
         photoUrl,
+        clientPhotoUrl: photoUrl,
       };
     }
 
-    payment.photoUrl = photoUrl;
+    // Mijoz rasmi — dostavkachi photoUrl ni hech qachon ustiga yozmaymiz
+    payment.clientPhotoUrl = photoUrl;
     await this.paymentRepo.save(payment);
 
     if (payment.orderId) {
       await this.orderRepo.update(
         { id: payment.orderId },
-        { lastPaymentPhotoUrl: photoUrl },
+        { lastClientPaymentPhotoUrl: photoUrl },
       );
     }
 
     return {
       id: payment.id,
       orderId: payment.orderId,
-      photoUrl: payment.photoUrl,
+      photoUrl: payment.clientPhotoUrl,
+      clientPhotoUrl: payment.clientPhotoUrl,
     };
   }
 
   private pickPaymentForPhoto(candidates: OrderPayment[]): OrderPayment | null {
     if (!candidates.length) return null;
     return (
-      candidates.find((p) => Number(p.paidAmount) > 0.01 && !p.photoUrl) ??
+      candidates.find((p) => Number(p.paidAmount) > 0.01 && !p.clientPhotoUrl) ??
       candidates.find((p) => Number(p.paidAmount) > 0.01) ??
-      candidates.find((p) => !p.photoUrl) ??
+      candidates.find((p) => !p.clientPhotoUrl) ??
       candidates[0] ??
       null
     );
@@ -1086,7 +1094,8 @@ export class ClientPortalService {
       paidAmount: paid,
       status: paid > 0.01 ? PaymentStatus.PAID : PaymentStatus.PENDING,
       dueAt: null,
-      photoUrl,
+      photoUrl: null,
+      clientPhotoUrl: photoUrl,
     });
     return this.paymentRepo.save(payment);
   }

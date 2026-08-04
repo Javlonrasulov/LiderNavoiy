@@ -59,6 +59,10 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   lastPaymentPhotoUrl: string | null;
 
+  /** Mijoz xavfsizlik rasmi (oxirgi) — dostavkachi rasmidan alohida */
+  @Column({ type: 'varchar', nullable: true })
+  lastClientPaymentPhotoUrl: string | null;
+
   /** Magazinga 1 km ichida «tez orada yetadi» push yuborilgan vaqt */
   @Column({ type: 'timestamptz', nullable: true })
   courierNearbyNotifiedAt: Date | null;
