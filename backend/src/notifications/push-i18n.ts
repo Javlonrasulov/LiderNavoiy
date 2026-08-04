@@ -310,4 +310,21 @@ export const PushI18n = {
         return null;
     }
   },
+
+  courierApproaching(lang: PushLang): { title: string; body: string } {
+    return {
+      title: pick(lang, {
+        uz: 'Buyurtma yaqinlashmoqda',
+        uz_cyr: 'Буюртма яқинлашмоқда',
+        ru: 'Заказ приближается',
+        en: 'Order approaching',
+      }),
+      body: pick(lang, {
+        uz: 'Buyurtmangiz tez orada yetib keladi',
+        uz_cyr: 'Буюртмангиз тез орада етиб келади',
+        ru: 'Ваш заказ скоро будет у вас',
+        en: 'Your order will arrive soon',
+      }),
+    };
+  },
 };

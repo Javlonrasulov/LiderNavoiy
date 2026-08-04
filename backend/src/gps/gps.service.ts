@@ -7,6 +7,7 @@ import { RedisService } from '../common/redis/redis.service';
 import { LocationPointDto, BatchLocationDto, RouteHistoryQueryDto } from './dto/gps.dto';
 import { DistributorStatus } from '../common/enums';
 import { TrackingGateway } from '../tracking/tracking.gateway';
+import { CourierNearbyService } from './courier-nearby.service';
 
 const LIVE_LOCATION_TTL = 600; // 10 daqiqa — qisqa GPS tanaffusda offline miltillamasin
 
@@ -23,6 +24,7 @@ export class GpsService {
     private readonly redis: RedisService,
     @Inject(forwardRef(() => TrackingGateway))
     private readonly trackingGateway: TrackingGateway,
+    private readonly courierNearby: CourierNearbyService,
   ) {}
 
   async ingestSingle(distributorId: string, dto: LocationPointDto): Promise<LocationPoint | null> {
@@ -337,5 +339,7 @@ export class GpsService {
     } catch {
       // Redis ishlamasa ham DB yangilangan
     }
+
+    this.courierNearby.checkFromGps(distributorId, dto.latitude, dto.longitude);
   }
 }

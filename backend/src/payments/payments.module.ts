@@ -7,6 +7,7 @@ import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
 import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { GpsModule } from '../gps/gps.module';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { PaymentPhotoUploadService } from './payment-photo-upload.service';
@@ -23,6 +24,7 @@ import { PaymentReminderCron } from './payment-reminder.cron';
       UserClientMembership,
     ]),
     NotificationsModule,
+    GpsModule,
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService, PaymentPhotoUploadService, PaymentReminderCron],

@@ -22,6 +22,8 @@ import { NotificationType as NType } from '../notifications/notification.types';
 import { PushI18n, normalizePushLang } from '../notifications/push-i18n';
 import { User } from '../auth/entities/user.entity';
 import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
+import { CourierNearbyService } from '../gps/courier-nearby.service';
+import { GpsService } from '../gps/gps.service';
 
 @Injectable()
 export class PaymentsService {
@@ -39,6 +41,8 @@ export class PaymentsService {
     @InjectRepository(UserClientMembership)
     private readonly membershipRepo: Repository<UserClientMembership>,
     private readonly notifications: NotificationsService,
+    private readonly courierNearby: CourierNearbyService,
+    private readonly gps: GpsService,
   ) {}
 
   async deliver(orderId: string, distributorId: string, dto: DeliverOrderDto) {
@@ -117,6 +121,7 @@ export class PaymentsService {
     await this.orderRepo.save(order);
 
     await this.notifyPaymentCollected(order, collectNow, stillDue, !!dto.photoUrl);
+    this.recheckNearbyAfterDelivery(distributorId);
 
     return { order, payment };
   }
@@ -386,6 +391,23 @@ export class PaymentsService {
         );
       }),
     );
+  }
+
+  private recheckNearbyAfterDelivery(distributorId: string) {
+    void this.gps
+      .getLastLocation(distributorId)
+      .then((loc) => {
+        if (loc?.latitude != null && loc?.longitude != null) {
+          this.courierNearby.checkAfterStopDelivered(
+            distributorId,
+            Number(loc.latitude),
+            Number(loc.longitude),
+          );
+        }
+      })
+      .catch(() => {
+        /* GPS yo‘q — keyingi GPS tickda tekshiriladi */
+      });
   }
 
   private async assertTerminal(terminalId: string | undefined, distributorId: string) {

@@ -668,12 +668,15 @@ export class ClientPortalService {
     const youIdx = routeStops.findIndex((s) => s.isYou);
     const yourSequence = youIdx >= 0 ? routeStops[youIdx].sequence : null;
     const stopsBeforeYou = youIdx >= 0 ? youIdx : 0;
+    // Mijozdan keyingi (undan keyin boradigan) tochalar — ko‘rinmasin
+    const visibleStops =
+      youIdx >= 0 ? routeStops.slice(0, youIdx + 1) : routeStops;
 
     return {
-      routeStops,
+      routeStops: visibleStops,
       stopsBeforeYou,
       yourSequence,
-      totalStops: routeStops.length,
+      totalStops: visibleStops.length,
     };
   }
 

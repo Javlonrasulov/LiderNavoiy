@@ -89,7 +89,7 @@ fun PromotionsScreen(
                         .background(Color.White.copy(alpha = 0.10f))
                         .border(
                             1.dp,
-                            Brush.linearGradient(
+                            Brush.horizontalGradient(
                                 listOf(
                                     Color.White.copy(alpha = 0.30f),
                                     Color.White.copy(alpha = 0.08f),
@@ -101,35 +101,40 @@ fun PromotionsScreen(
                 ) {
                     Row(Modifier.fillMaxWidth()) {
                         tabs.forEachIndexed { index, label ->
+                            val selected = tab == index
                             Box(
                                 Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(50.dp))
-                                    .background(
-                                        if (tab == index)
-                                            Brush.linearGradient(
-                                                listOf(
-                                                    LiquidGlass.Indigo,
-                                                    LiquidGlass.Violet,
-                                                    LiquidGlass.Cyan,
+                                    .then(
+                                        if (selected) {
+                                            Modifier.background(
+                                                Brush.horizontalGradient(
+                                                    listOf(
+                                                        LiquidGlass.Indigo,
+                                                        LiquidGlass.Violet,
+                                                        LiquidGlass.Cyan,
+                                                    ),
                                                 ),
-                                                start = Offset(0f, 0f),
-                                                end = Offset(Float.POSITIVE_INFINITY, 0f),
                                             )
-                                        else
-                                            Brush.linearGradient(
-                                                listOf(Color.Transparent, Color.Transparent),
-                                            )
+                                        } else {
+                                            Modifier
+                                        },
                                     )
                                     .clickableNoRipple { tab = index }
-                                    .padding(vertical = 10.dp),
+                                    .padding(horizontal = 6.dp, vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     label,
-                                    color = if (tab == index) Color.White else textMuted,
+                                    color = if (selected) Color.White else textMuted,
                                     fontSize = 12.sp,
-                                    fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
                         }

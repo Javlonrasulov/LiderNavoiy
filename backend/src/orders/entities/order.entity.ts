@@ -59,6 +59,10 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   lastPaymentPhotoUrl: string | null;
 
+  /** Magazinga 1 km ichida «tez orada yetadi» push yuborilgan vaqt */
+  @Column({ type: 'timestamptz', nullable: true })
+  courierNearbyNotifiedAt: Date | null;
+
   @Column({ type: 'jsonb', default: [] })
   items: OrderItem[];
 
