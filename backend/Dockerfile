@@ -12,7 +12,8 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat
+# sharp (libvips) + musl
+RUN apk add --no-cache libc6-compat vips
 
 ENV NODE_ENV=production
 
@@ -21,7 +22,7 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-RUN mkdir -p uploads
+RUN mkdir -p uploads/payments uploads/products uploads/chat uploads/clients && chmod -R 777 uploads
 
 EXPOSE 3000
 

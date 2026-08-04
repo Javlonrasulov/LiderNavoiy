@@ -130,7 +130,10 @@ fun DebtScreen(
                                 captureLabel = localized("pay_photo_capture"),
                                 savedLabel = localized("pay_photo_saved"),
                                 uploading = paymentPhotoSection.uploading,
-                                error = paymentPhotoSection.error?.let { localized("pay_photo_upload_error") },
+                                error = paymentPhotoSection.error?.let { err ->
+                                    if (err.startsWith("HTTP") || err.contains("Photo") || err.contains("photo")) err
+                                    else localized("pay_photo_upload_error")
+                                },
                                 previewUrl = paymentPhotoSection.previewUrl,
                                 onCapture = { viewModel.uploadPaymentProof(it) },
                                 onDismiss = null,

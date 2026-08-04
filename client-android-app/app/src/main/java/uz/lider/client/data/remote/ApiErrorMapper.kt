@@ -37,6 +37,17 @@ object ApiErrorMapper {
         }
     }
 
+    fun detailMessage(e: Throwable): String {
+        if (e is HttpException) {
+            val code = e.code()
+            val serverMsg = runCatching {
+                e.response()?.errorBody()?.use { it.string() }?.let(::parseMessage)
+            }.getOrNull()
+            return if (!serverMsg.isNullOrBlank()) "HTTP $code: $serverMsg" else "HTTP $code"
+        }
+        return e.message?.takeIf { it.isNotBlank() } ?: "upload_failed"
+    }
+
     private fun mapHttpException(e: HttpException): String {
         val serverMsg = e.response()?.errorBody()?.use { it.string() }?.let(::parseMessage)
         if (serverMsg != null) return mapServerMessage(serverMsg)

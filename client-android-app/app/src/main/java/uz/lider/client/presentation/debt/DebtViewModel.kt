@@ -133,8 +133,8 @@ class DebtViewModel @Inject constructor(
                     delay(1800)
                     _photoPreview.value = null
                 },
-                onFailure = {
-                    _photoError.value = it.message ?: "upload_failed"
+                onFailure = { err ->
+                    _photoError.value = uz.lider.client.data.remote.ApiErrorMapper.detailMessage(err)
                 },
             )
         }

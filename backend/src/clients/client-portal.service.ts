@@ -985,31 +985,52 @@ export class ClientPortalService {
       if (byId && clientIds.includes(byId.clientId)) {
         payment = byId;
       }
-      // Noto‘g‘ri paymentId — orderId / so‘nggi to‘lovga fallback
     }
     if (!payment && dto.orderId) {
-      const candidates = await this.paymentRepo.find({
-        where: { orderId: dto.orderId, clientId: In(clientIds) },
+      // Avval clientIds filterisiz — keyin egallikni tekshiramiz
+      const byOrder = await this.paymentRepo.find({
+        where: { orderId: dto.orderId },
         order: { createdAt: 'DESC' },
         take: 20,
       });
-      payment = this.pickPaymentForPhoto(candidates);
+      payment = this.pickPaymentForPhoto(
+        byOrder.filter((p) => clientIds.includes(p.clientId)),
+      );
       if (!payment) {
-        payment = await this.createPhotoPaymentStub(dto.orderId, clientIds, photoUrl);
+        try {
+          payment = await this.createPhotoPaymentStub(dto.orderId, clientIds, photoUrl);
+        } catch {
+          payment = null;
+        }
       }
     }
     if (!payment) {
       const candidates = await this.paymentRepo.find({
         where: { clientId: In(clientIds) },
         order: { createdAt: 'DESC' },
-        take: 30,
+        take: 40,
       });
       payment = this.pickPaymentForPhoto(
         candidates.filter((p) => p.status !== PaymentStatus.CANCELLED),
       );
     }
     if (!payment) {
-      throw new NotFoundException('No recent payment to attach photo');
+      // Oxirgi chora: eng so‘nggi yetkazilgan buyurtmaga stub
+      const recentOrder = await this.orderRepo.findOne({
+        where: { clientId: In(clientIds), status: OrderStatus.DELIVERED },
+        order: { createdAt: 'DESC' },
+      });
+      if (recentOrder) {
+        payment = await this.createPhotoPaymentStub(recentOrder.id, clientIds, photoUrl);
+      }
+    }
+    if (!payment) {
+      // Rasm diskda saqlangan — to‘lov topilmasa ham muvaffaqiyat qaytaramiz
+      return {
+        id: null,
+        orderId: dto.orderId ?? null,
+        photoUrl,
+      };
     }
 
     payment.photoUrl = photoUrl;

@@ -193,7 +193,7 @@ class PaymentProofRepository @Inject constructor(
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var sample = 1
-        val maxSide = 1280
+        val maxSide = 960
         while (bounds.outWidth / sample > maxSide || bounds.outHeight / sample > maxSide) {
             sample *= 2
         }
@@ -218,7 +218,7 @@ class PaymentProofRepository @Inject constructor(
 
         return try {
             val out = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)) return null
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out)) return null
             out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
         } finally {
             bitmap.recycle()

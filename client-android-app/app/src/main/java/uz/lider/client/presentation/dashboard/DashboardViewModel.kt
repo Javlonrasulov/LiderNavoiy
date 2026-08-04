@@ -124,7 +124,7 @@ class DashboardViewModel @Inject constructor(
                 },
                 onFailure = { err ->
                     android.util.Log.e("PayPhoto", "upload failed", err)
-                    _photoError.value = err.message ?: "upload_failed"
+                    _photoError.value = uz.lider.client.data.remote.ApiErrorMapper.detailMessage(err)
                 },
             )
         }
