@@ -154,6 +154,7 @@ fun DeliveryPaymentSheet(
     var showCalendar by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var localError by remember { mutableStateOf<String?>(null) }
     var amountOverLimit by remember { mutableStateOf(false) }
     var amountWarningTick by remember { mutableIntStateOf(0) }
@@ -183,28 +184,35 @@ fun DeliveryPaymentSheet(
         }
     }
 
-    // Kamera: xotiradagi bitmap → lokal JPEG (FileProvider bo‘sh fayl muammosi yo‘q)
+    // To‘liq kamera (TakePicturePreview emas — u past sifatli thumbnail)
     val cameraLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicturePreview(),
-    ) { bitmap ->
-        if (bitmap == null) return@rememberLauncherForActivityResult
+        ActivityResultContracts.TakePicture(),
+    ) { ok ->
+        if (!ok) {
+            pendingCameraUri = null
+            return@rememberLauncherForActivityResult
+        }
+        val captured = pendingCameraUri
+        pendingCameraUri = null
+        if (captured == null) return@rememberLauncherForActivityResult
         scope.launch {
             val local = withContext(Dispatchers.IO) {
-                savePaymentBitmapToCache(context, bitmap)
+                // Kamera faylini yuqori sifatda qayta saqlash (EXIF rotate + limit)
+                materializePaymentPhotoUri(context, captured) ?: captured
             }
-            if (local != null) {
-                photoUri = local
-                localError = null
-            } else {
-                localError = AppStrings.errorPhotoUploadFailed(lang)
-            }
+            photoUri = local
+            localError = null
         }
     }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) cameraLauncher.launch(null)
+        if (granted) {
+            val uri = createDeliveryCameraUri(context)
+            pendingCameraUri = uri
+            cameraLauncher.launch(uri)
+        }
     }
 
     fun resetAndDismiss() {
@@ -504,7 +512,9 @@ fun DeliveryPaymentSheet(
                                     Manifest.permission.CAMERA,
                                 ) == PackageManager.PERMISSION_GRANTED
                                 if (granted) {
-                                    cameraLauncher.launch(null)
+                                    val uri = createDeliveryCameraUri(context)
+                                    pendingCameraUri = uri
+                                    cameraLauncher.launch(uri)
                                 } else {
                                     cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                 }
@@ -1217,34 +1227,39 @@ private fun parseAmountInput(text: String): Double? {
     return digits.toDoubleOrNull()
 }
 
-/** Galereya URI ni darhol cache JPEG ga ko‘chiradi (ruxsat yo‘qolmasin). */
+/** Galereya/kamera URI ni server uchun ixcham JPEG ga yozadi. */
 private fun materializePaymentPhotoUri(context: Context, source: Uri): Uri? {
     return try {
         val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
-        val outFile = File(dir, "gallery_${System.currentTimeMillis()}.jpg")
-        // Avval decode → JPEG (HEIC/WebP ham)
+        val outFile = File(dir, "photo_${System.currentTimeMillis()}.jpg")
+        val maxDim = 1280
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(source)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
         }
         if (bounds.outWidth > 0 && bounds.outHeight > 0) {
             var sample = 1
-            while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) {
+            while (bounds.outWidth / sample > maxDim || bounds.outHeight / sample > maxDim) {
                 sample *= 2
             }
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
             val bitmap = context.contentResolver.openInputStream(source)?.use {
                 BitmapFactory.decodeStream(it, null, opts)
             } ?: return null
+            val scaled = scalePaymentBitmap(bitmap, maxDim)
             FileOutputStream(outFile).use { fos ->
-                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 88, fos)) {
+                if (!scaled.compress(Bitmap.CompressFormat.JPEG, 78, fos)) {
+                    if (scaled !== bitmap) scaled.recycle()
                     bitmap.recycle()
                     return null
                 }
             }
+            if (scaled !== bitmap) scaled.recycle()
             bitmap.recycle()
         } else {
-            // Decode bo‘lmasa — raw nusxa
             context.contentResolver.openInputStream(source)?.use { input ->
                 FileOutputStream(outFile).use { output -> input.copyTo(output) }
             } ?: return null
@@ -1263,30 +1278,14 @@ private fun materializePaymentPhotoUri(context: Context, source: Uri): Uri? {
     }
 }
 
-private fun savePaymentBitmapToCache(context: Context, bitmap: Bitmap): Uri? {
-    return try {
-        val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
-        val outFile = File(dir, "camera_${System.currentTimeMillis()}.jpg")
-        val scaled = scalePaymentBitmap(bitmap, 1280)
-        FileOutputStream(outFile).use { fos ->
-            if (!scaled.compress(Bitmap.CompressFormat.JPEG, 88, fos)) {
-                if (scaled !== bitmap) scaled.recycle()
-                return null
-            }
-        }
-        if (scaled !== bitmap) scaled.recycle()
-        if (outFile.length() < 256) {
-            outFile.delete()
-            return null
-        }
-        FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            outFile,
-        )
-    } catch (_: Exception) {
-        null
-    }
+private fun createDeliveryCameraUri(context: Context): Uri {
+    val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
+    val file = File.createTempFile("cam_", ".jpg", dir)
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
 }
 
 private fun scalePaymentBitmap(src: Bitmap, maxDim: Int): Bitmap {

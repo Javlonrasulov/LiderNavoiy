@@ -523,8 +523,9 @@ class DeliveryRepository @Inject constructor(
 
     companion object {
         private const val MIN_VALID_BYTES = 512
-        private const val MAX_SIDE = 2560
-        private const val JPEG_QUALITY = 92
-        private const val MAX_KEEP_BYTES = 3 * 1024 * 1024
+        /** Server joyi: ~1280px, sifat ~78 — o‘qiladi, lekin katta emas */
+        private const val MAX_SIDE = 1280
+        private const val JPEG_QUALITY = 78
+        private const val MAX_KEEP_BYTES = 350 * 1024
     }
 }

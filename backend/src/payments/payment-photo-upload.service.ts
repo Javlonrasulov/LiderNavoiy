@@ -47,7 +47,7 @@ export class PaymentPhotoUploadService {
           withoutEnlargement: true,
         });
       }
-      buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
+      buffer = await pipeline.jpeg({ quality: 78 }).toBuffer();
       if (buffer.length < 64) {
         throw new BadRequestException('Processed image is empty');
       }

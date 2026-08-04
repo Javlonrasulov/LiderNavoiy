@@ -33,7 +33,7 @@ export class ClientsUploadService {
       buffer = await sharp(file.buffer)
         .rotate()
         .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 82 })
+        .jpeg({ quality: 78 })
         .toBuffer();
     } catch (e) {
       // sharp Alpine/musl da ba’zan yiqiladi — original JPEG/PNG ni saqlaymiz

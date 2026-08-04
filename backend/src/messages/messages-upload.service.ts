@@ -9,8 +9,8 @@ import { assertAllowedUpload } from '../common/upload-allowlist';
 const MAX_UPLOAD = 10 * 1024 * 1024;
 const MAX_DOC = 5 * 1024 * 1024;
 const MAX_IMAGE_DIM = 1280;
-const WEBP_QUALITY = 80;
-const SKIP_COMPRESS_BELOW = 200 * 1024;
+const JPEG_QUALITY = 78;
+const SKIP_COMPRESS_BELOW = 250 * 1024;
 
 @Injectable()
 export class MessagesUploadService {
@@ -94,7 +94,7 @@ export class MessagesUploadService {
 
       // Store as jpg/png only (webp not in TZ allowlist for original upload;
       // compressed storage may use webp — keep jpg for strict allowlist compliance)
-      const buffer = await pipeline.jpeg({ quality: WEBP_QUALITY }).toBuffer();
+      const buffer = await pipeline.jpeg({ quality: JPEG_QUALITY }).toBuffer();
       return { buffer, ext: '.jpg', mimeType: 'image/jpeg' };
     } catch (e) {
       this.logger.warn('Image compression failed, saving original', e);
