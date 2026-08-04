@@ -26,13 +26,13 @@ export class PaymentPhotoUploadService {
     if (file.size > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
-    if (!file.buffer || file.buffer.length < 512) {
+    if (!file.buffer || file.buffer.length < 256) {
       throw new BadRequestException('File is empty or too small');
     }
-    assertAllowedUpload(file, { imagesOnly: true });
 
     let buffer = file.buffer;
     try {
+      // Avval sharp bilan tekshirib JPEG ga o‘giramiz (HEIC/WebP ham)
       let pipeline = sharp(buffer).rotate();
       const meta = await sharp(buffer).metadata();
       if (!meta.width || !meta.height || meta.width < 16 || meta.height < 16) {
@@ -45,29 +45,31 @@ export class PaymentPhotoUploadService {
         });
       }
       buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
-      if (buffer.length < 512) {
+      if (buffer.length < 256) {
         throw new BadRequestException('Processed image is empty');
       }
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
       this.logger.warn('Payment photo compress failed', e);
-      // Compress muvaffaqiyatsiz — originalni faqat haqiqiy rasm bo‘lsa saqlaymiz
+      // Fallback: magic allowlist
       try {
+        assertAllowedUpload(file, { imagesOnly: true });
         const meta = await sharp(file.buffer).metadata();
         if (!meta.width || !meta.height) {
           throw new BadRequestException('Invalid image file');
         }
+        buffer = file.buffer;
       } catch (inner) {
         if (inner instanceof BadRequestException) throw inner;
         throw new BadRequestException('Invalid image file');
       }
-      buffer = file.buffer;
     }
 
     const safeName = `${uuidv4()}.jpg`;
     writeFileSync(join(this.uploadDir, safeName), buffer);
     const url = `/uploads/payments/${safeName}`;
     const baseUrl = this.config.get('PUBLIC_URL', 'http://localhost:3000');
+    this.logger.log(`Payment photo saved ${safeName} (${buffer.length} bytes)`);
     return { url, fullUrl: `${baseUrl}${url}` };
   }
 }

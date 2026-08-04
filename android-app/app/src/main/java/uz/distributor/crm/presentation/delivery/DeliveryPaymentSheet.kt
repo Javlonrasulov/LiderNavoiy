@@ -54,10 +54,13 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,6 +113,7 @@ fun DeliveryPaymentSheet(
     terminals: List<PaymentTerminalDto>,
     isSubmitting: Boolean,
     initialDueAt: String? = null,
+    submitError: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (
         method: String,
@@ -145,6 +149,13 @@ fun DeliveryPaymentSheet(
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var localError by remember { mutableStateOf<String?>(null) }
     var amountOverLimit by remember { mutableStateOf(false) }
+    var amountWarningTick by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(submitError) {
+        if (!submitError.isNullOrBlank()) {
+            localError = submitError
+        }
+    }
 
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
@@ -171,6 +182,7 @@ fun DeliveryPaymentSheet(
         photoUri = null
         localError = null
         amountOverLimit = false
+        amountWarningTick = 0
         showCalendar = false
         showTimePicker = false
         onDismiss()
@@ -355,6 +367,12 @@ fun DeliveryPaymentSheet(
                     Spacer(Modifier.height(12.dp))
                     val maxAmount = remaining.toLong().coerceAtLeast(0L)
                     val amountErrorColor = Color(0xFFDC2626)
+                    LaunchedEffect(amountWarningTick) {
+                        if (amountWarningTick == 0) return@LaunchedEffect
+                        amountOverLimit = true
+                        delay(3_000)
+                        amountOverLimit = false
+                    }
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { raw ->
@@ -362,25 +380,15 @@ fun DeliveryPaymentSheet(
                             val parsed = digits.toLongOrNull()
                             if (parsed != null && parsed > maxAmount) {
                                 amountText = maxAmount.toString()
-                                amountOverLimit = true
+                                amountWarningTick++
                             } else {
                                 amountText = digits
-                                amountOverLimit = false
                             }
                         },
                         label = { Text(AppStrings.deliveryAmountLabel(lang)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         visualTransformation = AmountSpaceVisualTransformation,
                         isError = amountOverLimit,
-                        supportingText = if (amountOverLimit) {
-                            {
-                                Text(
-                                    AppStrings.deliveryAmountExceeds(lang),
-                                    color = amountErrorColor,
-                                    fontSize = 12.sp,
-                                )
-                            }
-                        } else null,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = if (amountOverLimit) amountErrorColor else PayAccent,
                             unfocusedBorderColor = if (amountOverLimit) amountErrorColor else borderColor,
@@ -396,6 +404,15 @@ fun DeliveryPaymentSheet(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
+                    if (amountOverLimit) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            AppStrings.deliveryAmountExceeds(lang),
+                            color = amountErrorColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                     val entered = (parseAmountInput(amountText) ?: remaining).coerceAtMost(remaining)
                     val isFullPayment = entered >= remaining - 0.01
                     val needsDue = method == "deferred" || !isFullPayment
@@ -1172,10 +1189,8 @@ private fun parseAmountInput(text: String): Double? {
 
 private fun createDeliveryCameraUri(context: android.content.Context): Uri {
     val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
-    val file = File(dir, "payment_${System.currentTimeMillis()}.jpg")
-    if (!file.exists()) {
-        file.createNewFile()
-    }
+    val file = File.createTempFile("payment_", ".jpg", dir)
+    // Kamera yozishi uchun bo‘sh fayl kerak; FileProvider path=cache
     return FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",

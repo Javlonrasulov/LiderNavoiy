@@ -338,80 +338,128 @@ fun DebtScreen(
                         }
                     } else {
                         items(state.filteredPayments) { payment ->
-                            var previewUrl by remember(payment.id) { mutableStateOf<String?>(null) }
-                            if (previewUrl != null) {
-                                FullScreenImageViewer(
-                                    imageUrl = previewUrl!!,
-                                    contentDescription = localized("debt_payment"),
-                                    onDismiss = { previewUrl = null },
-                                )
-                            }
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .liquidGlassThemed()
-                                    .padding(14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    Box(
-                                        Modifier
-                                            .size(42.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(
-                                                if (payment.isPayment)
-                                                    LiquidGlass.Emerald.copy(alpha = 0.2f)
-                                                else
-                                                    LiquidGlass.Rose.copy(alpha = 0.2f),
-                                            ),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(
-                                            if (payment.isPayment) Icons.Default.CheckCircle else Icons.Default.CreditCard,
-                                            null,
-                                            tint = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
-                                        Text(
-                                            localized(payment.typeKey),
-                                            color = LiquidTheme.text,
-                                            fontWeight = FontWeight.SemiBold,
-                                        )
-                                    }
-                                    payment.photoUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                                        val ctx = LocalContext.current
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(ctx)
-                                                .data(url)
-                                                .allowHardware(false)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .clickable { previewUrl = url },
-                                        )
-                                    }
-                                }
-                                Text(
-                                    "${if (payment.isPayment) "-" else "+"}${payment.amount} ${localized("com_som")}",
-                                    color = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
+                            DebtHistoryCard(payment = payment)
                         }
                     }
                 }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DebtHistoryCard(payment: DebtPayment) {
+    val photoUrl = payment.photoUrl?.takeIf { it.isNotBlank() }
+    var previewUrl by remember(payment.id) { mutableStateOf<String?>(null) }
+    if (previewUrl != null) {
+        FullScreenImageViewer(
+            imageUrl = previewUrl!!,
+            contentDescription = localized("debt_photo_proof"),
+            onDismiss = { previewUrl = null },
+        )
+    }
+
+    val accent = if (payment.isPayment) LiquidGlass.Emerald else LiquidGlass.Rose
+    val amountText =
+        "${if (payment.isPayment) "-" else "+"}${payment.amount} ${localized("com_som")}"
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .liquidGlassThemed()
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                Box(
+                    Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(accent.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (payment.isPayment) Icons.Default.CheckCircle else Icons.Default.CreditCard,
+                        null,
+                        tint = accent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Column {
+                    Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
+                    Text(
+                        localized(payment.typeKey),
+                        color = LiquidTheme.text,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Text(
+                amountText,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+            )
+        }
+
+        if (photoUrl != null) {
+            val ctx = LocalContext.current
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(148.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(LiquidTheme.text.copy(alpha = 0.06f))
+                    .clickable { previewUrl = photoUrl },
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(ctx)
+                        .data(photoUrl)
+                        .allowHardware(false)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = localized("debt_photo_proof"),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                            ),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            localized("debt_photo_proof"),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            localized("debt_photo_open"),
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
             }
         }

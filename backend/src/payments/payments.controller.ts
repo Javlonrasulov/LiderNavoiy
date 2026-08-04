@@ -33,6 +33,19 @@ export class PaymentsController {
     private readonly upload: PaymentPhotoUploadService,
   ) {}
 
+  @Post(['orders/upload-payment-photo', 'payments/upload-photo'])
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload payment proof photo' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  uploadPhoto(@UploadedFile() file: Express.Multer.File) {
+    return this.upload.saveFile(file);
+  }
+
   @Patch('orders/:id/deliver')
   @ApiOperation({ summary: 'Courier marks order delivered + payment' })
   deliver(
@@ -61,18 +74,5 @@ export class PaymentsController {
     @Body() dto: UpdateDueAtDto,
   ) {
     return this.payments.updateDueAt(id, req.user.distributorProfile!.id, dto);
-  }
-
-  @Post('orders/upload-payment-photo')
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload payment proof photo' })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: memoryStorage(),
-      limits: { fileSize: 8 * 1024 * 1024 },
-    }),
-  )
-  uploadPhoto(@UploadedFile() file: Express.Multer.File) {
-    return this.upload.saveFile(file);
   }
 }

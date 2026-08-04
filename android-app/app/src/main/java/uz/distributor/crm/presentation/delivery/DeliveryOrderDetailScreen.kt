@@ -112,6 +112,7 @@ fun DeliveryOrderDetailScreen(
     var previewPhotoUrl by remember { mutableStateOf<String?>(null) }
     var snack by remember { mutableStateOf<String?>(null) }
     var snackVisible by remember { mutableStateOf(false) }
+    var paymentSheetError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(state.doneAndLeave) {
         if (state.doneAndLeave) onBack()
@@ -124,6 +125,7 @@ fun DeliveryOrderDetailScreen(
                 snackVisible = true
                 showDeliverSheet = false
                 showCollectSheet = false
+                paymentSheetError = null
                 viewModel.clearMessages()
             }
             "due" -> {
@@ -142,9 +144,17 @@ fun DeliveryOrderDetailScreen(
     }
 
     LaunchedEffect(state.error) {
-        state.error?.let {
-            snack = AppStrings.apiError(lang, it)
-            snackVisible = true
+        state.error?.let { key ->
+            val msg = AppStrings.apiError(lang, key)
+            if (showDeliverSheet || showCollectSheet) {
+                // Sheet ochiq — xabar orqa fonda emas, sheet ichida
+                paymentSheetError = msg
+                snack = null
+                snackVisible = false
+            } else {
+                snack = msg
+                snackVisible = true
+            }
             viewModel.clearMessages()
         }
     }
@@ -567,8 +577,13 @@ fun DeliveryOrderDetailScreen(
                     terminals = state.terminals,
                     isSubmitting = state.isSubmitting,
                     initialDueAt = order.dueAt,
-                    onDismiss = { showDeliverSheet = false },
+                    submitError = paymentSheetError,
+                    onDismiss = {
+                        showDeliverSheet = false
+                        paymentSheetError = null
+                    },
                     onSubmit = { method, terminalId, amount, dueAt, photoUri ->
+                        paymentSheetError = null
                         viewModel.deliver(method, terminalId, amount, dueAt, photoUri)
                     },
                 )
@@ -582,8 +597,13 @@ fun DeliveryOrderDetailScreen(
                     terminals = state.terminals,
                     isSubmitting = state.isSubmitting,
                     initialDueAt = order.dueAt,
-                    onDismiss = { showCollectSheet = false },
+                    submitError = paymentSheetError,
+                    onDismiss = {
+                        showCollectSheet = false
+                        paymentSheetError = null
+                    },
                     onSubmit = { method, terminalId, amount, dueAt, photoUri ->
+                        paymentSheetError = null
                         val amt = amount ?: remaining
                         viewModel.collectPayment(method, terminalId, amt, dueAt, photoUri)
                     },

@@ -117,7 +117,7 @@ interface ApiService {
     ): Map<String, Any>
 
     @Multipart
-    @POST("orders/upload-payment-photo")
+    @POST("payments/upload-photo")
     suspend fun uploadPaymentPhoto(@Part file: MultipartBody.Part): PaymentPhotoUploadDto
 
     @POST("orders/{id}/returns")
