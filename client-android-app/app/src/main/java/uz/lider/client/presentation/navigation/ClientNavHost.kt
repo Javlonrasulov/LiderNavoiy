@@ -87,6 +87,7 @@ class ClientNavigationViewModel @Inject constructor(
     val sessionExpired = authRepository.sessionExpired
     val cartItems = cartRepository.items
     val user = authRepository.getUserFlow()
+    val paymentPhotoModalEvents = paymentPhotoAlertStore.modalEvents
 
     init {
         viewModelScope.launch { paymentPhotoAlertStore.clearIfExpired() }
@@ -108,16 +109,9 @@ class ClientNavigationViewModel @Inject constructor(
         if (authRepository.peekAccessToken().isNullOrBlank()) return
         val debt = debtRepository.getDebt() ?: return
         val alert = paymentPhotoAlertStore.state.first()
-        if (alert.isActive) {
-            val hasPhoto = debt.history.any { row ->
-                row.isPayment &&
-                    !row.photoUrl.isNullOrBlank() &&
-                    (alert.orderId.isNullOrBlank() || row.orderId == alert.orderId)
-            }
-            if (hasPhoto) {
-                paymentPhotoAlertStore.clearAlert()
-                return
-            }
+        if (alert.isActive && paymentProofAlreadySaved(debt.history, alert)) {
+            paymentPhotoAlertStore.clearAlert()
+            return
         }
         val signals = debt.history
             .filter {
@@ -134,6 +128,38 @@ class ClientNavigationViewModel @Inject constructor(
                 )
             }
         paymentPhotoAlertStore.ingestRecentPayments(signals)
+    }
+
+    /**
+     * Faqat shu eslatmaga tegishli to‘lovda rasm bo‘lsa yopiladi.
+     * Eski to‘lovlardagi rasm — yangi eslatmani o‘chirmasin.
+     */
+    private fun paymentProofAlreadySaved(
+        history: List<uz.lider.client.presentation.debt.DebtPayment>,
+        alert: uz.lider.client.data.repository.PaymentPhotoAlertState,
+    ): Boolean {
+        fun samePaymentId(rowId: String, wanted: String): Boolean {
+            val a = rowId.removePrefix("pay-")
+            val b = wanted.removePrefix("pay-")
+            return a == b || rowId == wanted
+        }
+
+        val paymentId = alert.paymentId?.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
+        if (paymentId != null) {
+            return history.any { row ->
+                row.isPayment &&
+                    samePaymentId(row.id, paymentId) &&
+                    !row.photoUrl.isNullOrBlank()
+            }
+        }
+
+        val orderId = alert.orderId?.takeIf { it.isNotBlank() } ?: return false
+        val newestForOrder = history
+            .filter { it.isPayment && it.orderId == orderId && it.createdAtMs > 0L }
+            .maxByOrNull { it.createdAtMs }
+            ?: return false
+        // Faqat eng so‘nggi to‘lovda rasm bo‘lsa — eslatma yopiladi
+        return !newestForOrder.photoUrl.isNullOrBlank()
     }
 
     fun logout(onDone: () -> Unit) {
@@ -167,6 +193,25 @@ fun ClientNavHost(
             if (navController.currentDestination?.route == ClientRoutes.LOGIN) return@collectLatest
             navController.navigate(ClientRoutes.LOGIN) {
                 popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
+    // To‘lov push / eslatma — asosiy ekranga qaytarish (bo‘lim ko‘rinsin)
+    LaunchedEffect(Unit) {
+        navViewModel.paymentPhotoModalEvents.collectLatest {
+            val route = navController.currentDestination?.route
+            if (route == null ||
+                route == ClientRoutes.SPLASH ||
+                route == ClientRoutes.LOGIN
+            ) {
+                return@collectLatest
+            }
+            if (route != ClientRoutes.DASHBOARD) {
+                navController.navigate(ClientRoutes.DASHBOARD) {
+                    launchSingleTop = true
+                    restoreState = true
+                }
             }
         }
     }

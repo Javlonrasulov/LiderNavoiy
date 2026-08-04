@@ -34,20 +34,22 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         val type = message.data["type"].orEmpty()
         val orderId = message.data["orderId"]
+        val paymentId = message.data["paymentId"]
         val title = message.notification?.title
             ?: message.data["title"]
             ?: getString(R.string.app_name)
         val body = message.notification?.body ?: message.data["body"] ?: ""
 
-        if (type == PaymentPhotoAlertStore.TYPE_PAYMENT ||
+        val isPayment = type.equals(PaymentPhotoAlertStore.TYPE_PAYMENT, ignoreCase = true) ||
             title.contains("To'lov qabul", ignoreCase = true) ||
             title.contains("Тўлов қабул", ignoreCase = true) ||
             title.contains("Оплата получена", ignoreCase = true) ||
             title.contains("Платёж получен", ignoreCase = true) ||
             title.contains("Payment received", ignoreCase = true)
-        ) {
+
+        if (isPayment) {
             scope.launch {
-                paymentPhotoAlertStore.recordPaymentReceived(orderId)
+                paymentPhotoAlertStore.recordPaymentReceived(orderId, paymentId)
             }
         }
 
@@ -56,8 +58,13 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
                 context = this,
                 title = title,
                 body = body,
-                type = type.ifBlank { null },
+                type = when {
+                    isPayment -> PaymentPhotoAlertStore.TYPE_PAYMENT
+                    type.isNotBlank() -> type
+                    else -> null
+                },
                 orderId = orderId,
+                paymentId = paymentId,
             )
         }
     }

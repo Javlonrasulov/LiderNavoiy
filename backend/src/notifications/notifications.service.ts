@@ -367,6 +367,7 @@ export class NotificationsService {
             defaultVibrateTimings: true,
             sound: 'default',
             visibility: 'public',
+            clickAction: 'OPEN_CLIENT_APP',
           },
         },
         webpush: {

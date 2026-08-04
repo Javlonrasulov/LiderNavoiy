@@ -8,9 +8,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.CollectPaymentRequest
 import uz.distributor.crm.data.remote.dto.CreateReturnRequest
@@ -65,7 +62,7 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoUrl = photoUri?.let { uploadPaymentPhoto(it) }
+        val photoBase64 = photoUri?.let { encodePaymentPhotoBase64(it) }
         api.deliverOrder(
             orderId,
             DeliverOrderRequest(
@@ -73,10 +70,10 @@ class DeliveryRepository @Inject constructor(
                 terminalId = terminalId,
                 amount = amount,
                 dueAt = dueAt,
-                photoUrl = photoUrl,
+                photoBase64 = photoBase64,
             ),
         )
-        return ensurePaymentPhoto(refreshOrder(orderId), photoUrl)
+        return refreshOrder(orderId)
     }
 
     suspend fun collectPayment(
@@ -87,7 +84,7 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoUrl = photoUri?.let { uploadPaymentPhoto(it) }
+        val photoBase64 = photoUri?.let { encodePaymentPhotoBase64(it) }
         api.collectOrderPayment(
             orderId,
             CollectPaymentRequest(
@@ -95,10 +92,10 @@ class DeliveryRepository @Inject constructor(
                 terminalId = terminalId,
                 amount = amount,
                 dueAt = dueAt,
-                photoUrl = photoUrl,
+                photoBase64 = photoBase64,
             ),
         )
-        return ensurePaymentPhoto(refreshOrder(orderId), photoUrl)
+        return refreshOrder(orderId)
     }
 
     suspend fun updateDueAt(orderId: String, dueAt: String): OrderDto {
@@ -130,51 +127,14 @@ class DeliveryRepository @Inject constructor(
             )
     }
 
-    /** Yangi yuklangan rasm API javobida yo‘qolsa ham UI da ko‘rinsin */
-    private fun ensurePaymentPhoto(order: OrderDto, photoUrl: String?): OrderDto {
-        if (photoUrl.isNullOrBlank()) return order
-        val payments = order.payments.toMutableList()
-        if (payments.isEmpty()) {
-            val patched = order.copy(lastPaymentPhotoUrl = photoUrl)
-            cached = cached.map { if (it.id == order.id) patched else it }
-            return patched
-        }
-        val idx = payments.indexOfLast { it.photoUrl.isNullOrBlank() }
-            .takeIf { it >= 0 }
-            ?: payments.lastIndex
-        val current = payments[idx]
-        if (current.photoUrl == photoUrl) {
-            return order.copy(lastPaymentPhotoUrl = order.lastPaymentPhotoUrl ?: photoUrl)
-        }
-        payments[idx] = current.copy(photoUrl = photoUrl)
-        val patched = order.copy(
-            payments = payments,
-            lastPaymentPhotoUrl = order.lastPaymentPhotoUrl ?: photoUrl,
-        )
-        cached = cached.map { if (it.id == order.id) patched else it }
-        return patched
-    }
-
-    private suspend fun uploadPaymentPhoto(uri: Uri): String = withContext(Dispatchers.IO) {
+    private suspend fun encodePaymentPhotoBase64(uri: Uri): String = withContext(Dispatchers.IO) {
         val jpegBytes = prepareJpegBytes(uri)
-        val part = MultipartBody.Part.createFormData(
-            "file",
-            "payment_${System.currentTimeMillis()}.jpg",
-            jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull()),
-        )
-        val uploaded = try {
-            api.uploadPaymentPhoto(part)
-        } catch (e: Exception) {
-            throw IllegalStateException("Photo upload failed: ${e.message ?: e.javaClass.simpleName}", e)
-        }
-        val url = uploaded.url.trim()
-        if (url.isBlank()) throw IllegalStateException("Upload returned empty url")
-        url
+        val b64 = android.util.Base64.encodeToString(jpegBytes, android.util.Base64.NO_WRAP)
+        "data:image/jpeg;base64,$b64"
     }
 
     /**
      * Kameradan/galereyadan URI ni birinchi keshga nusxalaymiz — shundan keyin JPEG.
-     * Bu FileProvider/bo‘sh fayl/HEIC muammolarini bartaraf etadi.
      */
     private suspend fun prepareJpegBytes(uri: Uri): ByteArray {
         var lastError: Exception? = null

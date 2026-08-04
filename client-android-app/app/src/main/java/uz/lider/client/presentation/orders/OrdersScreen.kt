@@ -36,7 +36,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -56,9 +55,10 @@ import uz.lider.client.domain.model.ClientOrder
 import uz.lider.client.domain.model.OrderStatus
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.localization.LocalAppLanguage
+import uz.lider.client.presentation.components.CatalogFilterDropdown
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
-import uz.lider.client.presentation.components.OrgSwitcherChips
+import uz.lider.client.presentation.components.OrgSwitcherDropdown
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.components.orderDisplayLabel
@@ -69,7 +69,6 @@ import uz.lider.client.presentation.dashboard.DashboardDateFilter
 import uz.lider.client.presentation.dashboard.DashboardDateRangeDialog
 import uz.lider.client.presentation.navigation.clientBottomContentPadding
 import uz.lider.client.presentation.navigation.ClientRoutes
-import uz.lider.client.presentation.theme.GlassFilterChip
 import uz.lider.client.presentation.theme.GlassSearchField
 import uz.lider.client.presentation.theme.LiquidBackground
 import uz.lider.client.presentation.theme.LiquidGlass
@@ -187,14 +186,6 @@ fun OrdersScreen(
                                     fontWeight = FontWeight.Medium,
                                 )
                             }
-                            if (state.organizations.size >= 2) {
-                                Spacer(Modifier.height(12.dp))
-                                OrgSwitcherChips(
-                                    organizations = state.organizations,
-                                    selectedCompanyId = state.selectedCompanyId,
-                                    onSelect = viewModel::selectOrganization,
-                                )
-                            }
                             Spacer(Modifier.height(12.dp))
                         }
                     }
@@ -212,16 +203,23 @@ fun OrdersScreen(
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            filters.forEach { (filterKey, label) ->
-                                key(filterKey) {
-                                    GlassFilterChip(
-                                        label = label,
-                                        selected = state.statusFilter == filterKey,
-                                        onClick = { viewModel.onStatusFilterChange(filterKey) },
-                                    )
-                                }
+                            if (state.organizations.size >= 2) {
+                                OrgSwitcherDropdown(
+                                    organizations = state.organizations,
+                                    selectedCompanyId = state.selectedCompanyId,
+                                    onSelect = viewModel::selectOrganization,
+                                )
                             }
+                            CatalogFilterDropdown(
+                                options = filters.map { it.second },
+                                selectedIndex = filters.indexOfFirst { it.first == state.statusFilter }
+                                    .coerceAtLeast(0),
+                                onSelect = { index ->
+                                    viewModel.onStatusFilterChange(filters[index].first)
+                                },
+                            )
                         }
                     }
 

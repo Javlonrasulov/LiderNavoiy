@@ -84,16 +84,34 @@ class MainActivity : ComponentActivity() {
         if (intent == null) return
         val type = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
             ?: intent.getStringExtra("type")
+            ?: intent.getStringExtra("gcm.notification.type")
         val orderId = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
             ?: intent.getStringExtra("orderId")
-        if (type == PaymentPhotoAlertStore.TYPE_PAYMENT) {
+        val paymentId = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID)
+            ?: intent.getStringExtra("paymentId")
+        val title = intent.getStringExtra("title").orEmpty()
+
+        val isPayment = type.equals(PaymentPhotoAlertStore.TYPE_PAYMENT, ignoreCase = true) ||
+            title.contains("To'lov qabul", ignoreCase = true) ||
+            title.contains("Тўлов қабул", ignoreCase = true) ||
+            title.contains("Оплата получена", ignoreCase = true) ||
+            title.contains("Платёж получен", ignoreCase = true) ||
+            title.contains("Payment received", ignoreCase = true)
+
+        if (isPayment) {
             lifecycleScope.launch {
-                paymentPhotoAlertStore.recordPaymentReceived(orderId)
+                paymentPhotoAlertStore.recordPaymentReceived(
+                    orderId = orderId,
+                    paymentId = paymentId,
+                )
             }
             intent.removeExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
             intent.removeExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
+            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID)
             intent.removeExtra("type")
             intent.removeExtra("orderId")
+            intent.removeExtra("paymentId")
+            intent.removeExtra("title")
         }
     }
 

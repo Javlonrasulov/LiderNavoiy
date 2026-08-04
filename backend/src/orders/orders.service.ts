@@ -309,17 +309,6 @@ export class OrdersService {
       const client = clientMap.get(order.clientId)!;
       const due = dueAtByOrder.get(order.id);
       let payments = paymentsByOrder.get(order.id) ?? [];
-      // Agar to‘lov yozuvida rasm bo‘lmasa, order.lastPaymentPhotoUrl dan oxirgi to‘lovga qo‘yamiz
-      if (order.lastPaymentPhotoUrl && payments.length > 0) {
-        const hasAnyPhoto = payments.some((p) => !!p.photoUrl);
-        if (!hasAnyPhoto) {
-          payments = payments.map((p, idx) =>
-            idx === payments.length - 1
-              ? { ...p, photoUrl: order.lastPaymentPhotoUrl }
-              : p,
-          );
-        }
-      }
       return {
         id: order.id,
         clientId: order.clientId,

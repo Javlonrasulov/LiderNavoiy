@@ -383,6 +383,7 @@ data class DeliverOrderRequest(
     val amount: Double? = null,
     val dueAt: String? = null,
     val photoUrl: String? = null,
+    val photoBase64: String? = null,
 )
 
 data class CollectPaymentRequest(
@@ -391,6 +392,7 @@ data class CollectPaymentRequest(
     val amount: Double,
     val dueAt: String? = null,
     val photoUrl: String? = null,
+    val photoBase64: String? = null,
 )
 
 data class UpdateDueAtRequest(

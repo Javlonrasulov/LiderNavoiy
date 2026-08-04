@@ -24,6 +24,7 @@ import { User } from '../auth/entities/user.entity';
 import { UserClientMembership } from '../clients/entities/user-client-membership.entity';
 import { CourierNearbyService } from '../gps/courier-nearby.service';
 import { GpsService } from '../gps/gps.service';
+import { PaymentPhotoUploadService } from './payment-photo-upload.service';
 
 @Injectable()
 export class PaymentsService {
@@ -43,13 +44,28 @@ export class PaymentsService {
     private readonly notifications: NotificationsService,
     private readonly courierNearby: CourierNearbyService,
     private readonly gps: GpsService,
+    private readonly photoUpload: PaymentPhotoUploadService,
   ) {}
+
+  private async resolvePhotoUrl(dto: {
+    photoUrl?: string;
+    photoBase64?: string;
+  }): Promise<string | null> {
+    const existing = dto.photoUrl?.trim();
+    if (existing) return existing;
+    const b64 = dto.photoBase64?.trim();
+    if (!b64) return null;
+    const saved = await this.photoUpload.saveFromBase64(b64);
+    return saved.url;
+  }
 
   async deliver(orderId: string, distributorId: string, dto: DeliverOrderDto) {
     const order = await this.requireCourierOrder(orderId, distributorId);
     if (order.status !== OrderStatus.ON_WAY) {
       throw new BadRequestException('Order is not on the way');
     }
+
+    const photoUrl = await this.resolvePhotoUrl(dto);
 
     const total = Number(order.totalAmount) - Number(order.returnedAmount || 0);
     const alreadyPaid = Number(order.paidAmount || 0);
@@ -109,7 +125,7 @@ export class PaymentsService {
       paidAmount: collectNow,
       status: payStatus,
       dueAt: stillDue > 0.01 ? dueAt : null,
-      photoUrl: dto.photoUrl ?? null,
+      photoUrl,
     });
     await this.paymentRepo.save(payment);
 
@@ -118,10 +134,10 @@ export class PaymentsService {
     order.paidAmount = newPaid;
     order.paymentStatus = orderPayStatus;
     if (!order.deliveredAt) order.deliveredAt = new Date();
-    if (dto.photoUrl) order.lastPaymentPhotoUrl = dto.photoUrl;
+    if (photoUrl) order.lastPaymentPhotoUrl = photoUrl;
     await this.orderRepo.save(order);
 
-    await this.notifyPaymentCollected(order, collectNow, stillDue, !!dto.photoUrl);
+    await this.notifyPaymentCollected(order, collectNow, stillDue, !!photoUrl, payment.id);
     this.recheckNearbyAfterDelivery(distributorId);
 
     return { order, payment };
@@ -132,6 +148,7 @@ export class PaymentsService {
     if (order.status !== OrderStatus.DELIVERED) {
       throw new BadRequestException('Order must be delivered');
     }
+    const photoUrl = await this.resolvePhotoUrl(dto);
     const total = Number(order.totalAmount) - Number(order.returnedAmount || 0);
     const alreadyPaid = Number(order.paidAmount || 0);
     const remaining = Math.max(0, total - alreadyPaid);
@@ -163,14 +180,14 @@ export class PaymentsService {
       paidAmount: collectNow,
       status: PaymentStatus.PAID,
       dueAt: null,
-      photoUrl: dto.photoUrl ?? null,
+      photoUrl,
     });
     await this.paymentRepo.save(payment);
 
     order.paidAmount = newPaid;
     order.paymentStatus =
       stillDue <= 0.01 ? OrderPaymentStatus.PAID : OrderPaymentStatus.PARTIAL;
-    if (dto.photoUrl) order.lastPaymentPhotoUrl = dto.photoUrl;
+    if (photoUrl) order.lastPaymentPhotoUrl = photoUrl;
     await this.orderRepo.save(order);
 
     if (stillDue > 0.01 && dueAt) {
@@ -200,7 +217,7 @@ export class PaymentsService {
       }
     }
 
-    await this.notifyPaymentCollected(order, collectNow, stillDue, !!dto.photoUrl);
+    await this.notifyPaymentCollected(order, collectNow, stillDue, !!photoUrl, payment.id);
     return { order, payment };
   }
 
@@ -366,6 +383,7 @@ export class PaymentsService {
     collected: number,
     stillDue: number,
     hasPhoto: boolean,
+    paymentId?: string | null,
   ) {
     const amount = Math.round(collected).toLocaleString('uz-UZ');
     const remaining =
@@ -391,7 +409,11 @@ export class PaymentsService {
           PushI18n.deliveryCollectedTitle(lang),
           body,
           NType.PAYMENT,
-          { orderId: order.id, type: 'payment' },
+          {
+            orderId: order.id,
+            type: 'payment',
+            ...(paymentId ? { paymentId: String(paymentId) } : {}),
+          },
         );
       }),
     );

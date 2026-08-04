@@ -135,10 +135,23 @@ class PaymentPhotoAlertStore @Inject constructor(
         val now = System.currentTimeMillis()
 
         if (!bootstrapped) {
+            val freshOnBoot = payments.filter { p ->
+                p.id.isNotBlank() && now - p.createdAtMs in 0..TTL_MS
+            }
+            val newest = freshOnBoot.maxByOrNull { it.createdAtMs }
             context.paymentPhotoAlertDataStore.edit { prefs ->
                 prefs[bootstrapDoneKey] = true
                 prefs[handledPaymentIdsKey] = payments.map { it.id }.toSet()
+                if (newest != null) {
+                    prefs[expiresAtKey] = now + TTL_MS
+                    prefs[modalDismissedKey] = false
+                    val oid = newest.orderId
+                    if (!oid.isNullOrBlank()) prefs[orderIdKey] = oid else prefs.remove(orderIdKey)
+                    val pid = newest.id.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
+                    if (pid != null) prefs[paymentIdKey] = pid else prefs.remove(paymentIdKey)
+                }
             }
+            if (newest != null) _modalEvents.tryEmit(Unit)
             return
         }
 
@@ -203,6 +216,7 @@ class PaymentPhotoAlertStore @Inject constructor(
         const val TTL_MS = 30L * 60L * 1000L
         const val EXTRA_TYPE = "push_type"
         const val EXTRA_ORDER_ID = "orderId"
+        const val EXTRA_PAYMENT_ID = "paymentId"
         const val TYPE_PAYMENT = "payment"
 
         fun parseCreatedAtMs(iso: String?): Long? {

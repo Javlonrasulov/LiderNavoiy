@@ -384,10 +384,9 @@ fun DeliveryOrderDetailScreen(
                                     ?.let { formatDueAtDisplay(it) }
                                 val who = payment.collectorName?.takeIf { it.isNotBlank() }
                                 val methodLabel = paymentMethodLabel(payment.method, lang)
-                                val rawPhoto = payment.photoUrl?.takeIf { it.isNotBlank() }
-                                    ?: order.lastPaymentPhotoUrl
-                                        ?.takeIf { it.isNotBlank() && index == order.payments.lastIndex }
-                                val photoUrl = resolvePaymentPhotoUrl(rawPhoto)
+                                val photoUrl = resolvePaymentPhotoUrl(
+                                    payment.photoUrl?.takeIf { it.isNotBlank() },
+                                )
                                 Column(Modifier.padding(vertical = 12.dp)) {
                                     Text(
                                         "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
@@ -747,6 +746,9 @@ private fun PaymentPhotoWide(
     url: String,
     onClick: () -> Unit,
 ) {
+    var visible by remember(url) { mutableStateOf(true) }
+    if (!visible) return
+
     val request = paymentPhotoRequest(url)
     SubcomposeAsyncImage(
         model = request,
@@ -759,7 +761,7 @@ private fun PaymentPhotoWide(
             .clickable(onClick = onClick)
             .background(Color(0xFFE5E7EB)),
     ) {
-        when (painter.state) {
+        when (val state = painter.state) {
             is AsyncImagePainter.State.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
@@ -770,17 +772,54 @@ private fun PaymentPhotoWide(
                 }
             }
             is AsyncImagePainter.State.Error -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.BrokenImage,
-                        null,
-                        tint = Color(0xFF9CA3AF),
-                        modifier = Modifier.size(32.dp),
-                    )
+                // Buzilgan / topilmagan rasm — qora joy ko‘rsatilmasin
+                LaunchedEffect(url) { visible = false }
+            }
+            is AsyncImagePainter.State.Success -> {
+                // Qora / bo‘sh kadrni yashirish
+                val drawable = state.result.drawable
+                val mostlyBlack = remember(url) { isDrawableMostlyBlack(drawable) }
+                if (mostlyBlack) {
+                    LaunchedEffect(url) { visible = false }
+                } else {
+                    SubcomposeAsyncImageContent()
                 }
             }
             else -> SubcomposeAsyncImageContent()
         }
+    }
+}
+
+private fun isDrawableMostlyBlack(drawable: android.graphics.drawable.Drawable): Boolean {
+    return try {
+        val w = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(64)
+        val h = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(64)
+        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        drawable.setBounds(0, 0, w, h)
+        drawable.draw(canvas)
+        var sum = 0L
+        var count = 0
+        val stepX = (w / 8).coerceAtLeast(1)
+        val stepY = (h / 8).coerceAtLeast(1)
+        var y = 0
+        while (y < h) {
+            var x = 0
+            while (x < w) {
+                val c = bmp.getPixel(x, y)
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+                sum += (r + g + b) / 3
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+        bmp.recycle()
+        count > 0 && (sum / count) < 18
+    } catch (_: Exception) {
+        false
     }
 }
 

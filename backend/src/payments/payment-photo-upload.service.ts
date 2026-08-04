@@ -72,4 +72,36 @@ export class PaymentPhotoUploadService {
     this.logger.log(`Payment photo saved ${safeName} (${buffer.length} bytes)`);
     return { url, fullUrl: `${baseUrl}${url}` };
   }
+
+  /** Agent APK: multipart o‘rniga JSON ichida base64 */
+  async saveFromBase64(input: string): Promise<{ url: string; fullUrl: string }> {
+    const raw = (input || '').trim();
+    if (!raw) throw new BadRequestException('photoBase64 required');
+
+    let buffer: Buffer;
+    const dataUrl = raw.match(/^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i);
+    if (dataUrl) {
+      buffer = Buffer.from(dataUrl[2], 'base64');
+    } else {
+      buffer = Buffer.from(raw.replace(/\s/g, ''), 'base64');
+    }
+    if (!buffer.length || buffer.length < 256) {
+      throw new BadRequestException('photoBase64 empty or too small');
+    }
+    if (buffer.length > MAX_UPLOAD) {
+      throw new BadRequestException('File too large (max 8MB)');
+    }
+
+    // Fake multer file for reuse
+    const file = {
+      buffer,
+      size: buffer.length,
+      originalname: 'payment.jpg',
+      mimetype: 'image/jpeg',
+      fieldname: 'file',
+      encoding: '7bit',
+    } as Express.Multer.File;
+
+    return this.saveFile(file);
+  }
 }

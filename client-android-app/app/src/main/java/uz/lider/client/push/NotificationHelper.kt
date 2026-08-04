@@ -36,12 +36,24 @@ object NotificationHelper {
         body: String,
         type: String? = null,
         orderId: String? = null,
+        paymentId: String? = null,
         notificationId: Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt(),
     ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            if (!type.isNullOrBlank()) putExtra(PaymentPhotoAlertStore.EXTRA_TYPE, type)
-            if (!orderId.isNullOrBlank()) putExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, orderId)
+            if (!type.isNullOrBlank()) {
+                putExtra(PaymentPhotoAlertStore.EXTRA_TYPE, type)
+                putExtra("type", type)
+            }
+            if (!orderId.isNullOrBlank()) {
+                putExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, orderId)
+                putExtra("orderId", orderId)
+            }
+            if (!paymentId.isNullOrBlank()) {
+                putExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID, paymentId)
+                putExtra("paymentId", paymentId)
+            }
+            putExtra("title", title)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,

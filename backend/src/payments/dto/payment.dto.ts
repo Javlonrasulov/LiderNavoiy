@@ -38,6 +38,13 @@ export class DeliverOrderDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'JPEG/PNG as data URL or raw base64 (agent fallback when multipart fails)',
+  })
+  @IsOptional()
+  @IsString()
+  photoBase64?: string;
 }
 
 export class CollectPaymentDto {
@@ -64,6 +71,13 @@ export class CollectPaymentDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'JPEG/PNG as data URL or raw base64 (agent fallback when multipart fails)',
+  })
+  @IsOptional()
+  @IsString()
+  photoBase64?: string;
 }
 
 export class UpdateDueAtDto {

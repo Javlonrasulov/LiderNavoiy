@@ -361,6 +361,25 @@ fun DashboardScreen(
                         }
                     }
 
+                    // To‘lov rasmi eslatmasi — yuqorida (push bosilganda darhol ko‘rinsin)
+                    if (paymentPhotoSection.visible) {
+                        item {
+                            PaymentPhotoCaptureSection(
+                                title = t("pay_photo_alert_title"),
+                                body = t("pay_photo_alert_body"),
+                                captureLabel = t("pay_photo_capture"),
+                                savedLabel = t("pay_photo_saved"),
+                                uploading = paymentPhotoSection.uploading,
+                                error = paymentPhotoSection.error?.let { t("pay_photo_upload_error") },
+                                previewUrl = paymentPhotoSection.previewUrl,
+                                onCapture = { viewModel.uploadPaymentProof(it) },
+                                onDismiss = { viewModel.dismissPaymentPhotoSection() },
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+
                     // Hero pastki chegara = birinchi katta karta (yo‘lda yoki jami xaridlar)
                     val measureHeroEnd: Modifier.() -> Modifier = {
                         onGloballyPositioned { cardCoords ->
@@ -406,24 +425,6 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .measureHeroEnd(),
-                            )
-                            Spacer(Modifier.height(20.dp))
-                        }
-                    }
-
-                    if (paymentPhotoSection.visible) {
-                        item {
-                            PaymentPhotoCaptureSection(
-                                title = t("pay_photo_alert_title"),
-                                body = t("pay_photo_alert_body"),
-                                captureLabel = t("pay_photo_capture"),
-                                savedLabel = t("pay_photo_saved"),
-                                uploading = paymentPhotoSection.uploading,
-                                error = paymentPhotoSection.error?.let { t("pay_photo_upload_error") },
-                                previewUrl = paymentPhotoSection.previewUrl,
-                                onCapture = { viewModel.uploadPaymentProof(it) },
-                                onDismiss = { viewModel.dismissPaymentPhotoSection() },
-                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                             Spacer(Modifier.height(20.dp))
                         }
