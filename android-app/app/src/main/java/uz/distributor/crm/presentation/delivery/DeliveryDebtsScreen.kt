@@ -2,6 +2,12 @@ package uz.distributor.crm.presentation.delivery
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +37,11 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -50,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -68,6 +81,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -97,7 +113,15 @@ fun DeliveryDebtsScreen(
     val textPrimary = if (isDark) Color.White else Color.Black
     val textMuted = if (isDark) Color(0xFF8E9BA7) else Color(0xFF6B7280)
     val formatter = remember { DecimalFormat("#,###") }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.load(silent = true)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -146,11 +170,24 @@ fun DeliveryDebtsScreen(
                         mutableStateOf(YearMonth.from(state.selectedDate))
                     }
                     var calendarExpanded by remember { mutableStateOf(false) }
-                    val selectedCount = state.countsByDate[state.selectedDate] ?: 0
-                    val dateLabel = remember(state.selectedDate, lang) {
-                        state.selectedDate.format(
-                            java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"),
-                        )
+                    val listCount = if (state.showAllDates) {
+                        state.debts.size
+                    } else {
+                        state.countsByDate[state.selectedDate] ?: 0
+                    }
+                    val dateLabel = remember(state.selectedDate, state.showAllDates, lang) {
+                        if (state.showAllDates) {
+                            AppStrings.deliveryDebtsAllLabel(lang)
+                        } else {
+                            state.selectedDate.format(
+                                java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+                            )
+                        }
+                    }
+                    val emptyMessage = when {
+                        state.searchQuery.isNotBlank() -> AppStrings.noDeliveryDebtsSearch(lang)
+                        state.showAllDates -> AppStrings.noDeliveryDebtsAny(lang)
+                        else -> AppStrings.noDeliveryDebts(lang)
                     }
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -158,9 +195,19 @@ fun DeliveryDebtsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         item {
+                            DebtsSearchField(
+                                query = state.searchQuery,
+                                hint = AppStrings.deliveryDebtsSearchHint(lang),
+                                isDark = isDark,
+                                textPrimary = textPrimary,
+                                textMuted = textMuted,
+                                onQueryChange = viewModel::onSearchChange,
+                            )
+                        }
+                        item {
                             DebtsDateChip(
                                 dateLabel = dateLabel,
-                                countLabel = AppStrings.deliveryDebtsCount(lang, selectedCount),
+                                countLabel = AppStrings.deliveryDebtsCount(lang, listCount),
                                 expanded = calendarExpanded,
                                 isDark = isDark,
                                 textPrimary = textPrimary,
@@ -177,6 +224,7 @@ fun DeliveryDebtsScreen(
                                 DebtsMonthCalendar(
                                     month = displayMonth,
                                     selected = state.selectedDate,
+                                    showAll = state.showAllDates,
                                     counts = state.countsByDate,
                                     isDark = isDark,
                                     textPrimary = textPrimary,
@@ -186,6 +234,10 @@ fun DeliveryDebtsScreen(
                                     onNext = { displayMonth = displayMonth.plusMonths(1) },
                                     onSelect = { date ->
                                         viewModel.selectDate(date)
+                                        calendarExpanded = false
+                                    },
+                                    onShowAll = {
+                                        viewModel.showAllDates()
                                         calendarExpanded = false
                                     },
                                 )
@@ -206,7 +258,7 @@ fun DeliveryDebtsScreen(
                                         modifier = Modifier.size(48.dp),
                                     )
                                     Spacer(Modifier.height(10.dp))
-                                    Text(AppStrings.noDeliveryDebts(lang), color = textMuted, fontSize = 14.sp)
+                                    Text(emptyMessage, color = textMuted, fontSize = 14.sp)
                                 }
                             }
                         } else {
@@ -262,6 +314,47 @@ internal fun DeliverySectionTabs(
 }
 
 @Composable
+private fun DebtsSearchField(
+    query: String,
+    hint: String,
+    isDark: Boolean,
+    textPrimary: Color,
+    textMuted: Color,
+    onQueryChange: (String) -> Unit,
+) {
+    val border = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, border, RoundedCornerShape(14.dp))
+            .background(if (isDark) Color(0xFF111827) else Color.White)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.Search, null, tint = textMuted, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f)) {
+            if (query.isEmpty()) {
+                Text(hint, color = textMuted, fontSize = 14.sp)
+            }
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = textPrimary,
+                    fontSize = 14.sp,
+                ),
+                cursorBrush = SolidColor(Accent),
+            )
+        }
+    }
+}
+
+@Composable
 private fun DebtsDateChip(
     dateLabel: String,
     countLabel: String,
@@ -300,6 +393,7 @@ private fun DebtsDateChip(
 private fun DebtsMonthCalendar(
     month: YearMonth,
     selected: LocalDate,
+    showAll: Boolean,
     counts: Map<LocalDate, Int>,
     isDark: Boolean,
     textPrimary: Color,
@@ -308,6 +402,7 @@ private fun DebtsMonthCalendar(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onSelect: (LocalDate) -> Unit,
+    onShowAll: () -> Unit,
 ) {
     val glassFill = if (isDark) Color(0xFF111827) else Color.White
     val glassBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.65f)
@@ -321,6 +416,24 @@ private fun DebtsMonthCalendar(
             .border(1.dp, glassBorder, RoundedCornerShape(20.dp))
             .padding(14.dp),
     ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (showAll) Accent else Accent.copy(alpha = 0.12f))
+                .clickable(onClick = onShowAll)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                AppStrings.deliveryDebtsShowAll(lang),
+                color = if (showAll) Color.White else Accent,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -366,7 +479,7 @@ private fun DebtsMonthCalendar(
                         ) {
                             if (date != null) {
                                 val count = counts[date] ?: 0
-                                val isSelected = date == selected
+                                val isSelected = !showAll && date == selected
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
@@ -440,6 +553,12 @@ private fun DebtOrderCard(
     val name = order.clientName ?: AppStrings.clientFallback(lang)
     val phone = order.clientPhone?.takeIf { it.isNotBlank() }
     val address = order.clientAddress?.takeIf { it.isNotBlank() }
+    val overdue = isDueOverdue(order.dueAt)
+    val blinkAlpha = overduePromisedAlpha(overdue)
+    val deliveredLabel = order.deliveredAt
+        ?.takeIf { it.isNotBlank() }
+        ?.let { formatDueAtDisplay(it) }
+        ?: order.loadedAt?.takeIf { it.isNotBlank() }?.let { formatDueAtDisplay(it) }
 
     Card(
         modifier = Modifier
@@ -451,6 +570,15 @@ private fun DebtOrderCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             Text(name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (deliveredLabel != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "${AppStrings.deliveryDeliveredAt(lang)}: $deliveredLabel",
+                    color = textMuted,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 "${AppStrings.deliveryRemaining(lang)}: ${formatter.format(order.remainingBalance)} ${AppStrings.sumCurrency(lang)}",
@@ -463,9 +591,10 @@ private fun DebtOrderCard(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
-                        color = Color(0xFFD97706),
+                        color = if (overdue) Color(0xFFDC2626) else Color(0xFFD97706),
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.alpha(blinkAlpha),
                     )
                 }
             }
@@ -497,6 +626,22 @@ private fun DebtOrderCard(
             }
         }
     }
+}
+
+@Composable
+private fun overduePromisedAlpha(overdue: Boolean): Float {
+    if (!overdue) return 1f
+    val transition = rememberInfiniteTransition(label = "dueBlink")
+    val a by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "dueBlinkAlpha",
+    )
+    return a
 }
 
 private fun weekdayLabels(lang: AppLanguage): List<String> = when (lang) {

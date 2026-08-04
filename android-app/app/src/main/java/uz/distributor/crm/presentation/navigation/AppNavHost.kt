@@ -1,5 +1,6 @@
 package uz.distributor.crm.presentation.navigation
 
+import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,9 +11,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -21,12 +26,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.presentation.auth.LocationRequiredScreen
 import uz.distributor.crm.presentation.auth.LoginScreen
+import uz.distributor.crm.presentation.auth.NotificationRequiredScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
 import uz.distributor.crm.presentation.clients.AddClientScreen
 import uz.distributor.crm.presentation.clients.ClientsScreen
@@ -49,25 +56,34 @@ import uz.distributor.crm.presentation.profile.ProfileScreen
 import uz.distributor.crm.presentation.reconciliation.ReconciliationScreen
 import uz.distributor.crm.presentation.visit.VisitScreen
 import uz.distributor.crm.presentation.visit.VisitsListScreen
+import uz.distributor.crm.util.NotificationAccess
 import javax.inject.Inject
+
+enum class SplashResult {
+    MAIN,
+    LOGIN,
+    LOCATION,
+    NOTIFICATIONS,
+}
 
 @HiltViewModel
 class SplashViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val authRepository: AuthRepository,
     private val deviceLocationProvider: DeviceLocationProvider,
     private val locationTrackingController: uz.distributor.crm.service.LocationTrackingController,
 ) : ViewModel() {
-    /** true = main, false = login, null = location_required (sessiya bor, GPS yo'q) */
-    fun checkAuth(onResult: (Boolean?) -> Unit) {
+    fun checkAuth(onResult: (SplashResult) -> Unit) {
         viewModelScope.launch {
             val loggedIn = authRepository.restoreSession()
             when {
-                !loggedIn -> onResult(false)
-                deviceLocationProvider.isReadyForTracking() -> {
+                !loggedIn -> onResult(SplashResult.LOGIN)
+                !NotificationAccess.areEnabled(context) -> onResult(SplashResult.NOTIFICATIONS)
+                !deviceLocationProvider.isReadyForTracking() -> onResult(SplashResult.LOCATION)
+                else -> {
                     locationTrackingController.startIfReady()
-                    onResult(true)
+                    onResult(SplashResult.MAIN)
                 }
-                else -> onResult(null)
             }
         }
     }
@@ -93,6 +109,27 @@ fun AppNavHost(
     val selectedTab = bottomNavSelectedTab(currentRoute)
     val currentUser by navViewModel.currentUser.collectAsState(initial = null)
     val isDeliveryPerson = currentUser?.isDeliveryPerson() == true
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, currentRoute) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            val route = currentRoute ?: return@LifecycleEventObserver
+            val allowedWithoutNotifications = route in setOf(
+                "splash",
+                "login",
+                "notification_required",
+            )
+            if (!allowedWithoutNotifications && !NotificationAccess.areEnabled(context)) {
+                navController.navigate("notification_required") {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
@@ -155,18 +192,46 @@ fun AppNavHost(
                         popUpTo("splash") { inclusive = true }
                     }
                 },
+                onNotificationRequired = {
+                    navController.navigate("notification_required") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                },
             )
         }
         composable("login") {
-            LoginScreen(onLoginSuccess = {
-                navController.navigate("main") { popUpTo("login") { inclusive = true } }
-            })
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate("main") { popUpTo("login") { inclusive = true } }
+                },
+                onNotificationRequired = {
+                    navController.navigate("notification_required") {
+                        popUpTo("login") { inclusive = true }
+                    }
+                },
+            )
+        }
+        composable("notification_required") {
+            NotificationRequiredScreen(
+                onReady = {
+                    // GPS ham tekshiriladi: splash qayta emas, location_required orqali
+                    navController.navigate("location_required") {
+                        popUpTo("notification_required") { inclusive = true }
+                    }
+                },
+            )
         }
         composable("location_required") {
             LocationRequiredScreen(
                 onReady = {
-                    navController.navigate("main") {
-                        popUpTo("location_required") { inclusive = true }
+                    if (!NotificationAccess.areEnabled(context)) {
+                        navController.navigate("notification_required") {
+                            popUpTo("location_required") { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate("main") {
+                            popUpTo("location_required") { inclusive = true }
+                        }
                     }
                 },
             )
@@ -363,14 +428,16 @@ private fun SplashRoute(
     onLoggedIn: () -> Unit,
     onNotLoggedIn: () -> Unit,
     onLocationRequired: () -> Unit,
+    onNotificationRequired: () -> Unit,
 ) {
     val viewModel: SplashViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
         viewModel.checkAuth { result ->
             when (result) {
-                true -> onLoggedIn()
-                false -> onNotLoggedIn()
-                null -> onLocationRequired()
+                SplashResult.MAIN -> onLoggedIn()
+                SplashResult.LOGIN -> onNotLoggedIn()
+                SplashResult.LOCATION -> onLocationRequired()
+                SplashResult.NOTIFICATIONS -> onNotificationRequired()
             }
         }
     }

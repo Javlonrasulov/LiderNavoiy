@@ -200,7 +200,7 @@ export class OrdersService {
             orderId: In(unpaidIds),
             status: In([PaymentStatus.PENDING, PaymentStatus.PARTIAL]),
           },
-          order: { createdAt: 'DESC' },
+          order: { updatedAt: 'DESC', createdAt: 'DESC' },
         })
       : [];
     const dueAtByOrder = new Map<string, Date>();
@@ -308,6 +308,18 @@ export class OrdersService {
     const mapOrder = (order: Order) => {
       const client = clientMap.get(order.clientId)!;
       const due = dueAtByOrder.get(order.id);
+      let payments = paymentsByOrder.get(order.id) ?? [];
+      // Agar to‘lov yozuvida rasm bo‘lmasa, order.lastPaymentPhotoUrl dan oxirgi to‘lovga qo‘yamiz
+      if (order.lastPaymentPhotoUrl && payments.length > 0) {
+        const hasAnyPhoto = payments.some((p) => !!p.photoUrl);
+        if (!hasAnyPhoto) {
+          payments = payments.map((p, idx) =>
+            idx === payments.length - 1
+              ? { ...p, photoUrl: order.lastPaymentPhotoUrl }
+              : p,
+          );
+        }
+      }
       return {
         id: order.id,
         clientId: order.clientId,
@@ -331,13 +343,19 @@ export class OrdersService {
           : order.status === OrderStatus.ON_WAY && order.createdAt
             ? new Date(order.createdAt).toISOString()
             : null,
+        deliveredAt: order.deliveredAt
+          ? order.deliveredAt.toISOString()
+          : order.status === OrderStatus.DELIVERED
+            ? new Date(order.updatedAt).toISOString()
+            : null,
+        lastPaymentPhotoUrl: order.lastPaymentPhotoUrl ?? null,
         clientName: client.name ?? 'Klient',
         clientCode: client.code ?? '',
         clientAddress: client.address ?? null,
         clientPhone: client.phone ?? null,
         clientLatitude: client.latitude ?? null,
         clientLongitude: client.longitude ?? null,
-        payments: paymentsByOrder.get(order.id) ?? [],
+        payments,
       };
     };
 

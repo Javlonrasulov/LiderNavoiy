@@ -329,10 +329,12 @@ private fun DeliveryOrderCard(
         loadTimeColor(loadAge?.hoursElapsed, order.status == "on_way", textMuted)
     }
     val blinkOverdue = (loadAge?.hoursElapsed ?: 0.0) >= 6.0 && order.status == "on_way"
+    val dueOverdue = isDueOverdue(order.dueAt)
+    val shouldBlink = blinkOverdue || dueOverdue
     val infiniteTransition = rememberInfiniteTransition(label = "loadBlink")
     val blinkAlpha by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (blinkOverdue) 0.25f else 1f,
+        targetValue = if (shouldBlink) 0.25f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(700, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
@@ -432,9 +434,10 @@ private fun DeliveryOrderCard(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
-                            color = Color(0xFFD97706),
+                            color = if (dueOverdue) Color(0xFFDC2626) else Color(0xFFD97706),
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.alpha(if (dueOverdue) blinkAlpha else 1f),
                         )
                     }
                 }

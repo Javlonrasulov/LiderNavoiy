@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import android.net.Uri
+import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.data.remote.dto.OrderItemDto
 import uz.distributor.crm.data.remote.dto.PaymentTerminalDto
@@ -52,7 +53,7 @@ class DeliveryOrderDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.message ?: "Error")
+                    it.copy(isLoading = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }
@@ -92,7 +93,7 @@ class DeliveryOrderDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSubmitting = false, error = e.message ?: "Error")
+                    it.copy(isSubmitting = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }
@@ -126,7 +127,7 @@ class DeliveryOrderDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSubmitting = false, error = e.message ?: "Error")
+                    it.copy(isSubmitting = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }
@@ -142,7 +143,7 @@ class DeliveryOrderDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSubmitting = false, error = e.message ?: "Error")
+                    it.copy(isSubmitting = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }
@@ -158,7 +159,7 @@ class DeliveryOrderDetailViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isSubmitting = false, error = e.message ?: "Error")
+                    it.copy(isSubmitting = false, error = ApiErrorMapper.toKey(e))
                 }
             }
         }

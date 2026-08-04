@@ -230,6 +230,36 @@ object AppStrings {
         "$n та қарз",
         "$n долг.",
     )
+    fun deliveryDebtsShowAll(lang: AppLanguage) = tr(
+        lang,
+        "Barchasini ko'rsatish",
+        "Барчасини кўрсатиш",
+        "Показать все",
+    )
+    fun deliveryDebtsAllLabel(lang: AppLanguage) = tr(
+        lang,
+        "Barchasi",
+        "Барчаси",
+        "Все",
+    )
+    fun noDeliveryDebtsSearch(lang: AppLanguage) = tr(
+        lang,
+        "Qidiruv bo'yicha topilmadi",
+        "Қидирув бўйича топилмади",
+        "Ничего не найдено",
+    )
+    fun noDeliveryDebtsAny(lang: AppLanguage) = tr(
+        lang,
+        "Qarz yo'q",
+        "Қарз йўқ",
+        "Долгов нет",
+    )
+    fun deliveryDebtsSearchHint(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz, telefon yoki manzil...",
+        "Мижоз, телефон ёки манзил...",
+        "Клиент, телефон или адрес...",
+    )
     fun noDeliveryOrders(lang: AppLanguage) = tr(
         lang,
         "Yuklangan buyurtma yo'q",
@@ -281,12 +311,24 @@ object AppStrings {
     fun deliveryPaymentsLabel(lang: AppLanguage) = tr(lang, "To'lovlar", "Тўловлар", "Платежи")
     fun deliveryCollectedBy(lang: AppLanguage) = tr(lang, "Oldi", "Олди", "Принял")
     fun deliveryAmountLabel(lang: AppLanguage) = tr(lang, "Summa", "Сумма", "Сумма")
+    fun deliveryAmountExceeds(lang: AppLanguage) = tr(
+        lang,
+        "Qarzdan oshmasligi kerak",
+        "Қарздан ошмаслиги керак",
+        "Не больше долга",
+    )
     fun deliveryDueAtLabel(lang: AppLanguage) = tr(lang, "To'lov muddati", "Тўлов муддати", "Срок оплаты")
     fun deliveryPromisedUntil(lang: AppLanguage) = tr(
         lang,
         "Vada qilingan",
         "Ваъда қилинган",
         "Обещано до",
+    )
+    fun deliveryDeliveredAt(lang: AppLanguage) = tr(
+        lang,
+        "Yetkazilgan",
+        "Етказилган",
+        "Доставлен",
     )
     fun deliveryTimeLabel(lang: AppLanguage) = tr(lang, "Vaqt", "Вақт", "Время")
     fun deliveryPhotoOptional(lang: AppLanguage) = tr(
@@ -528,7 +570,7 @@ object AppStrings {
     fun openNavigator(lang: AppLanguage) = tr(lang, "Navigator ochish", "Навигатор очиш", "Открыть навигатор")
     fun viewImage(lang: AppLanguage) = tr(lang, "Rasmi", "Расми", "Фото")
 
-    fun loginTitle(lang: AppLanguage) = "Lider Navoiy Agent"
+    fun loginTitle(lang: AppLanguage) = "Lider Navoiy"
     fun loginSubtitle(lang: AppLanguage) = tr(lang, "Agent kirish", "Агент кириш", "Вход агента")
     fun loginField(lang: AppLanguage) = "Login"
     fun password(lang: AppLanguage) = tr(lang, "Parol", "Парол", "Пароль")
@@ -577,6 +619,36 @@ object AppStrings {
         "Текшириш ва давом этиш",
         "Проверить и продолжить",
     )
+    fun notificationRequiredTitle(lang: AppLanguage) = tr(
+        lang,
+        "Bildirishnomalar talab qilinadi",
+        "Билдиришномалар талаб қилинади",
+        "Требуются уведомления",
+    )
+    fun notificationRequiredMessage(lang: AppLanguage) = tr(
+        lang,
+        "Ilovani ochish uchun push bildirishnomalarga ruxsat bering. Ruxsat o‘chirilgan bo‘lsa, ilova ishlamaydi.",
+        "Иловани очиш учун push билдиришномаларга рухсат беринг. Рухсат ўчирилган бўлса, илова ишламайди.",
+        "Чтобы открыть приложение, разрешите push-уведомления. Без разрешения приложение не работает.",
+    )
+    fun notificationRequiredEnable(lang: AppLanguage) = tr(
+        lang,
+        "Bildirishnomalarni yoqish",
+        "Билдиришномаларни ёқиш",
+        "Включить уведомления",
+    )
+    fun notificationRequiredContinue(lang: AppLanguage) = tr(
+        lang,
+        "Tekshirish va davom etish",
+        "Текшириш ва давом этиш",
+        "Проверить и продолжить",
+    )
+    fun notificationPermissionDenied(lang: AppLanguage) = tr(
+        lang,
+        "Bildirishnomalarga ruxsat bering — push xabarlar majburiy",
+        "Билдиришномаларга рухсат беринг — push хабарлар мажбурий",
+        "Разрешите уведомления — push обязательны",
+    )
     fun errorProductsLoadFailed(lang: AppLanguage) = tr(
         lang,
         "Mahsulotlar yuklanmadi. Internet yoki serverni tekshiring",
@@ -619,6 +691,7 @@ object AppStrings {
         "credentials_required" -> errorCredentialsRequired(lang)
         "gps_disabled" -> errorGpsDisabled(lang)
         "location_permission_denied" -> errorLocationPermissionRequired(lang)
+        "notification_permission_denied" -> notificationPermissionDenied(lang)
         "invalid_current_password" -> errorInvalidCurrentPassword(lang)
         "password_mismatch" -> errorPasswordMismatch(lang)
         "password_too_short" -> errorPasswordTooShort(lang)
@@ -630,6 +703,8 @@ object AppStrings {
         "device_compromised" -> errorDeviceCompromised(lang)
         "location_failed" -> errorLocationFailed(lang)
         "save_failed" -> errorSaveFailed(lang)
+        "photo_upload_failed" -> errorPhotoUploadFailed(lang)
+        "invalid_amount" -> deliveryInvalidAmount(lang)
         "inn_client_exists" -> errorInnClientExists(lang)
         "inn_request_exists" -> errorInnRequestExists(lang)
         "lines_load_failed" -> errorLinesLoadFailed(lang)
@@ -915,6 +990,12 @@ object AppStrings {
         "Не удалось определить местоположение — включите GPS",
     )
     fun errorSaveFailed(lang: AppLanguage) = tr(lang, "Saqlashda xatolik", "Сақлашда хатолик", "Ошибка сохранения")
+    fun errorPhotoUploadFailed(lang: AppLanguage) = tr(
+        lang,
+        "Rasm yuklanmadi. Qayta oling yoki galereyadan tanlang",
+        "Расм юкланмади. Қайта олинг ёки галереядан танланг",
+        "Не удалось загрузить фото. Сделайте снова или выберите из галереи",
+    )
     fun errorAgentOnly(lang: AppLanguage) = tr(
         lang,
         "Bu login agent ilovasi uchun emas (mijoz login)",

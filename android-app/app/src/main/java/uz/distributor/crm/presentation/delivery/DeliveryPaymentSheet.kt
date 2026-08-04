@@ -47,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -108,6 +109,7 @@ fun DeliveryPaymentSheet(
     remaining: Double,
     terminals: List<PaymentTerminalDto>,
     isSubmitting: Boolean,
+    initialDueAt: String? = null,
     onDismiss: () -> Unit,
     onSubmit: (
         method: String,
@@ -126,6 +128,7 @@ fun DeliveryPaymentSheet(
     val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
     val formatter = remember { deliveryAmountFormat() }
     val context = LocalContext.current
+    val initialParts = remember(visible, initialDueAt) { parseDueAtParts(initialDueAt) }
 
     var step by remember { mutableStateOf(DeliverSheetStep.TYPE) }
     var method by remember { mutableStateOf<String?>(null) }
@@ -134,13 +137,14 @@ fun DeliveryPaymentSheet(
         // Faqat raqamlar saqlanadi; bo‘shliq VisualTransformation orqali ko‘rsatiladi
         mutableStateOf(if (remaining > 0) remaining.toLong().coerceAtLeast(0).toString() else "")
     }
-    var dueDate by remember { mutableStateOf(LocalDate.now()) }
-    var dueTime by remember { mutableStateOf("18:00") }
+    var dueDate by remember(visible, initialDueAt) { mutableStateOf(initialParts.first) }
+    var dueTime by remember(visible, initialDueAt) { mutableStateOf(initialParts.second) }
     var showCalendar by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var localError by remember { mutableStateOf<String?>(null) }
+    var amountOverLimit by remember { mutableStateOf(false) }
 
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
@@ -166,6 +170,7 @@ fun DeliveryPaymentSheet(
         terminalId = null
         photoUri = null
         localError = null
+        amountOverLimit = false
         showCalendar = false
         showTimePicker = false
         onDismiss()
@@ -348,18 +353,50 @@ fun DeliveryPaymentSheet(
                         onClose = ::resetAndDismiss,
                     )
                     Spacer(Modifier.height(12.dp))
+                    val maxAmount = remaining.toLong().coerceAtLeast(0L)
+                    val amountErrorColor = Color(0xFFDC2626)
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { raw ->
-                            amountText = raw.filter { it in '0'..'9' }.take(12)
+                            val digits = raw.filter { it in '0'..'9' }.take(12)
+                            val parsed = digits.toLongOrNull()
+                            if (parsed != null && parsed > maxAmount) {
+                                amountText = maxAmount.toString()
+                                amountOverLimit = true
+                            } else {
+                                amountText = digits
+                                amountOverLimit = false
+                            }
                         },
                         label = { Text(AppStrings.deliveryAmountLabel(lang)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         visualTransformation = AmountSpaceVisualTransformation,
+                        isError = amountOverLimit,
+                        supportingText = if (amountOverLimit) {
+                            {
+                                Text(
+                                    AppStrings.deliveryAmountExceeds(lang),
+                                    color = amountErrorColor,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        } else null,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (amountOverLimit) amountErrorColor else PayAccent,
+                            unfocusedBorderColor = if (amountOverLimit) amountErrorColor else borderColor,
+                            errorBorderColor = amountErrorColor,
+                            focusedLabelColor = if (amountOverLimit) amountErrorColor else PayAccent,
+                            unfocusedLabelColor = if (amountOverLimit) amountErrorColor else subColor,
+                            errorLabelColor = amountErrorColor,
+                            cursorColor = if (amountOverLimit) amountErrorColor else PayAccent,
+                            focusedTextColor = if (amountOverLimit) amountErrorColor else titleColor,
+                            unfocusedTextColor = if (amountOverLimit) amountErrorColor else titleColor,
+                            errorTextColor = amountErrorColor,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
-                    val entered = parseAmountInput(amountText) ?: remaining
+                    val entered = (parseAmountInput(amountText) ?: remaining).coerceAtMost(remaining)
                     val isFullPayment = entered >= remaining - 0.01
                     val needsDue = method == "deferred" || !isFullPayment
                     if (needsDue) {
@@ -447,7 +484,7 @@ fun DeliveryPaymentSheet(
                         onClick = {
                             localError = null
                             val m = method ?: return@Button
-                            val amt = parseAmountInput(amountText)
+                            val amt = parseAmountInput(amountText)?.coerceAtMost(remaining)
                             if (m != "deferred") {
                                 if (amountText.isNotBlank() && amt == null) {
                                     localError = AppStrings.deliveryInvalidAmount(lang)
@@ -463,8 +500,8 @@ fun DeliveryPaymentSheet(
                                 return@Button
                             }
                             val collectAmt = when {
-                                m == "deferred" -> amt ?: 0.0
-                                else -> amt ?: remaining
+                                m == "deferred" -> (amt ?: 0.0).coerceIn(0.0, remaining)
+                                else -> (amt ?: remaining).coerceAtMost(remaining)
                             }
                             val stillDue = remaining - collectAmt
                             val dueIso = if (stillDue > 0.01 || m == "deferred") {
@@ -1134,7 +1171,11 @@ private fun parseAmountInput(text: String): Double? {
 }
 
 private fun createDeliveryCameraUri(context: android.content.Context): Uri {
-    val file = File(context.cacheDir, "payment_${System.currentTimeMillis()}.jpg")
+    val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
+    val file = File(dir, "payment_${System.currentTimeMillis()}.jpg")
+    if (!file.exists()) {
+        file.createNewFile()
+    }
     return FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",

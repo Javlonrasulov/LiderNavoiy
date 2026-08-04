@@ -70,6 +70,10 @@ export class Order {
   @Column({ type: 'timestamptz', nullable: true })
   loadedAt: Date | null;
 
+  /** Mijozga yetkazilgan vaqt */
+  @Column({ type: 'timestamptz', nullable: true })
+  deliveredAt: Date | null;
+
   @Column({ default: false })
   isOfflineCreated: boolean;
 

@@ -252,6 +252,8 @@ data class OrderDto(
     val dueAt: String? = null,
     val updatedAt: String? = null,
     val loadedAt: String? = null,
+    val deliveredAt: String? = null,
+    val lastPaymentPhotoUrl: String? = null,
     val isUrgent: Boolean = false,
     val payments: List<OrderPaymentDto> = emptyList(),
 ) {

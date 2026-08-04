@@ -19,6 +19,7 @@ import uz.distributor.crm.data.repository.MessagesRealtimeCoordinator
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.security.DeviceIntegrity
+import uz.distributor.crm.util.NotificationAccess
 import javax.inject.Inject
 
 data class LoginUiState(
@@ -72,6 +73,18 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    fun setNotificationError() {
+        _uiState.update {
+            it.copy(
+                errorKey = "notification_permission_denied",
+                isLoading = false,
+                isSuccess = false,
+            )
+        }
+    }
+
+    fun isNotificationReady(): Boolean = NotificationAccess.areEnabled(appContext)
+
     fun clearError() {
         _uiState.update { it.copy(errorKey = null) }
     }
@@ -86,6 +99,11 @@ class LoginViewModel @Inject constructor(
 
         if (DeviceIntegrity.isCompromised(appContext)) {
             _uiState.update { it.copy(errorKey = "device_compromised") }
+            return
+        }
+
+        if (!NotificationAccess.areEnabled(appContext)) {
+            _uiState.update { it.copy(errorKey = "notification_permission_denied") }
             return
         }
 

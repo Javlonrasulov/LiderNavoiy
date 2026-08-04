@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lider Navoiy Agent</string>
-    <string name="channel_location">GPS kuzatuv</string>
-    <string name="channel_location_desc">Agent joylashuvi fon rejimida yuboriladi</string>
-    <string name="channel_location_active">GPS kuzatuv faol</string>
+    <string name="app_name">Lider Navoiy</string>
+    <string name="channel_location">Lider Navoiy</string>
+    <string name="channel_location_desc">Ilova fon rejimida ishlaydi</string>
+    <string name="channel_location_active">Lider Navoiy</string>
 </resources>

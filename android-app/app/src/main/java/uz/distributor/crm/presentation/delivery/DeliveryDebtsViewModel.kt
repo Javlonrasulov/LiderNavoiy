@@ -20,6 +20,8 @@ data class DeliveryDebtsUiState(
     val isLoading: Boolean = true,
     val debts: List<OrderDto> = emptyList(),
     val selectedDate: LocalDate = LocalDate.now(),
+    val showAllDates: Boolean = false,
+    val searchQuery: String = "",
     val error: String? = null,
 ) {
     val countsByDate: Map<LocalDate, Int>
@@ -33,8 +35,29 @@ data class DeliveryDebtsUiState(
         }
 
     val selectedDebts: List<OrderDto>
-        get() = debts.filter { debtDate(it) == selectedDate }
-            .sortedByDescending { it.remainingBalance }
+        get() {
+            val byDate = if (showAllDates) {
+                debts
+            } else {
+                debts.filter { debtDate(it) == selectedDate }
+            }
+            val q = searchQuery.trim().lowercase()
+            val filtered = if (q.isEmpty()) {
+                byDate
+            } else {
+                byDate.filter { order ->
+                    listOfNotNull(
+                        order.clientName,
+                        order.clientPhone,
+                        order.clientAddress,
+                    ).any { it.lowercase().contains(q) }
+                }
+            }
+            return filtered.sortedWith(
+                compareByDescending<OrderDto> { it.deliveredAt ?: it.loadedAt ?: "" }
+                    .thenByDescending { it.remainingBalance },
+            )
+        }
 }
 
 fun debtDate(order: OrderDto): LocalDate? {
@@ -57,13 +80,13 @@ class DeliveryDebtsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DeliveryDebtsUiState())
     val uiState: StateFlow<DeliveryDebtsUiState> = _uiState.asStateFlow()
 
-    init {
-        load()
-    }
-
-    fun load() {
+    fun load(silent: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            if (!silent) {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+            } else {
+                _uiState.update { it.copy(error = null) }
+            }
             try {
                 val debts = repository.getAssignedOrders()
                     .filter { it.needsPaymentFollowUp }
@@ -77,7 +100,15 @@ class DeliveryDebtsViewModel @Inject constructor(
     }
 
     fun selectDate(date: LocalDate) {
-        _uiState.update { it.copy(selectedDate = date) }
+        _uiState.update { it.copy(selectedDate = date, showAllDates = false) }
+    }
+
+    fun showAllDates() {
+        _uiState.update { it.copy(showAllDates = true) }
+    }
+
+    fun onSearchChange(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
     }
 
     fun clearError() {

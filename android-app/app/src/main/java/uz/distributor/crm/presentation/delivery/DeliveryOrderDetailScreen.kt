@@ -3,6 +3,11 @@ package uz.distributor.crm.presentation.delivery
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -55,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -331,12 +337,15 @@ fun DeliveryOrderDetailScreen(
                                 ?.takeIf { it.isNotBlank() && remaining > 0.01 }
                                 ?.let { due ->
                                     formatDueAtDisplay(due)?.let { formatted ->
+                                        val overdue = isDueOverdue(due)
+                                        val blink = overduePromisedBlinkAlpha(overdue)
                                         Spacer(Modifier.height(6.dp))
                                         Text(
                                             "${AppStrings.deliveryPromisedUntil(lang)}: $formatted",
-                                            color = Color(0xFFD97706),
+                                            color = if (overdue) Color(0xFFDC2626) else Color(0xFFD97706),
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.alpha(blink),
                                         )
                                     }
                                 }
@@ -365,43 +374,39 @@ fun DeliveryOrderDetailScreen(
                                     ?.let { formatDueAtDisplay(it) }
                                 val who = payment.collectorName?.takeIf { it.isNotBlank() }
                                 val methodLabel = paymentMethodLabel(payment.method, lang)
-                                val photoUrl = resolvePaymentPhotoUrl(payment.photoUrl)
+                                val rawPhoto = payment.photoUrl?.takeIf { it.isNotBlank() }
+                                    ?: order.lastPaymentPhotoUrl
+                                        ?.takeIf { it.isNotBlank() && index == order.payments.lastIndex }
+                                val photoUrl = resolvePaymentPhotoUrl(rawPhoto)
                                 Column(Modifier.padding(vertical = 12.dp)) {
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.Top,
-                                    ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
-                                                color = textPrimary,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 15.sp,
-                                            )
-                                            if (methodLabel != null) {
-                                                Spacer(Modifier.height(2.dp))
-                                                Text(methodLabel, color = textMuted, fontSize = 12.sp)
-                                            }
-                                            if (who != null) {
-                                                Spacer(Modifier.height(4.dp))
-                                                Text(
-                                                    "${AppStrings.deliveryCollectedBy(lang)}: $who",
-                                                    color = textMuted,
-                                                    fontSize = 13.sp,
-                                                )
-                                            }
-                                            if (whenText != null) {
-                                                Spacer(Modifier.height(2.dp))
-                                                Text(whenText, color = textMuted, fontSize = 12.sp)
-                                            }
-                                        }
-                                        if (photoUrl != null) {
-                                            PaymentPhotoThumbnail(
-                                                url = photoUrl,
-                                                onClick = { previewPhotoUrl = photoUrl },
-                                            )
-                                        }
+                                    Text(
+                                        "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
+                                        color = textPrimary,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 15.sp,
+                                    )
+                                    if (methodLabel != null) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(methodLabel, color = textMuted, fontSize = 12.sp)
+                                    }
+                                    if (who != null) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "${AppStrings.deliveryCollectedBy(lang)}: $who",
+                                            color = textMuted,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
+                                    if (whenText != null) {
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(whenText, color = textMuted, fontSize = 12.sp)
+                                    }
+                                    if (photoUrl != null) {
+                                        Spacer(Modifier.height(10.dp))
+                                        PaymentPhotoWide(
+                                            url = photoUrl,
+                                            onClick = { previewPhotoUrl = photoUrl },
+                                        )
                                     }
                                 }
                                 if (index < order.payments.lastIndex) {
@@ -561,6 +566,7 @@ fun DeliveryOrderDetailScreen(
                     remaining = remaining,
                     terminals = state.terminals,
                     isSubmitting = state.isSubmitting,
+                    initialDueAt = order.dueAt,
                     onDismiss = { showDeliverSheet = false },
                     onSubmit = { method, terminalId, amount, dueAt, photoUri ->
                         viewModel.deliver(method, terminalId, amount, dueAt, photoUri)
@@ -575,6 +581,7 @@ fun DeliveryOrderDetailScreen(
                     remaining = remaining,
                     terminals = state.terminals,
                     isSubmitting = state.isSubmitting,
+                    initialDueAt = order.dueAt,
                     onDismiss = { showCollectSheet = false },
                     onSubmit = { method, terminalId, amount, dueAt, photoUri ->
                         val amt = amount ?: remaining
@@ -674,6 +681,22 @@ private fun paymentMethodLabel(method: String?, lang: AppLanguage): String? = wh
     else -> method?.takeIf { it.isNotBlank() }
 }
 
+@Composable
+private fun overduePromisedBlinkAlpha(overdue: Boolean): Float {
+    if (!overdue) return 1f
+    val transition = rememberInfiniteTransition(label = "detailDueBlink")
+    val a by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "detailDueBlinkAlpha",
+    )
+    return a
+}
+
 private fun resolvePaymentPhotoUrl(path: String?): String? {
     if (path.isNullOrBlank()) return null
     val trimmed = path.trim()
@@ -700,7 +723,7 @@ private fun paymentPhotoRequest(url: String): ImageRequest {
 }
 
 @Composable
-private fun PaymentPhotoThumbnail(
+private fun PaymentPhotoWide(
     url: String,
     onClick: () -> Unit,
 ) {
@@ -710,8 +733,9 @@ private fun PaymentPhotoThumbnail(
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = Modifier
-            .size(56.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .fillMaxWidth()
+            .height(160.dp)
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .background(Color(0xFFE5E7EB)),
     ) {
@@ -719,7 +743,7 @@ private fun PaymentPhotoThumbnail(
             is AsyncImagePainter.State.Loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(28.dp),
                         strokeWidth = 2.dp,
                         color = Accent,
                     )
@@ -731,7 +755,7 @@ private fun PaymentPhotoThumbnail(
                         Icons.Default.BrokenImage,
                         null,
                         tint = Color(0xFF9CA3AF),
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(32.dp),
                     )
                 }
             }

@@ -26,7 +26,7 @@ export class PaymentPhotoUploadService {
     if (file.size > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
-    if (!file.buffer || file.buffer.length < 2048) {
+    if (!file.buffer || file.buffer.length < 512) {
       throw new BadRequestException('File is empty or too small');
     }
     assertAllowedUpload(file, { imagesOnly: true });
@@ -45,7 +45,7 @@ export class PaymentPhotoUploadService {
         });
       }
       buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
-      if (buffer.length < 2048) {
+      if (buffer.length < 512) {
         throw new BadRequestException('Processed image is empty');
       }
     } catch (e) {

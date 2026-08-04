@@ -37,7 +37,8 @@ object AppModule {
         tokenRefreshInterceptor: TokenRefreshInterceptor,
     ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
+            // BODY multipart rasmni sekinlashtiradi / timeout beradi
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS
             else HttpLoggingInterceptor.Level.NONE
         }
         val authInterceptor = Interceptor { chain ->
@@ -52,10 +53,10 @@ object AppModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(35, TimeUnit.SECONDS)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(90, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
         TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
         return builder.build()

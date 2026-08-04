@@ -16,11 +16,12 @@ object ApiErrorMapper {
         is UnknownHostException -> "network_error"
         is HttpException -> mapHttpException(e)
         is IOException -> "network_error"
+        is IllegalArgumentException, is IllegalStateException -> mapLocalMessage(e.message)
         else -> when {
             e.cause is TimeoutCancellationException -> "network_error"
             e.cause is SocketTimeoutException -> "network_error"
             e.cause is IOException -> "network_error"
-            else -> "save_failed"
+            else -> mapLocalMessage(e.message)
         }
     }
 
@@ -49,6 +50,11 @@ object ApiErrorMapper {
         }
     }
 
+    private fun mapLocalMessage(msg: String?): String {
+        if (msg.isNullOrBlank()) return "save_failed"
+        return mapServerMessage(msg)
+    }
+
     private fun mapServerMessage(msg: String): String = when {
         msg.contains("Invalid credentials", ignoreCase = true) ->
             "invalid_credentials"
@@ -58,6 +64,14 @@ object ApiErrorMapper {
             "inn_request_exists"
         msg.contains("mavjud", ignoreCase = true) && msg.contains("INN", ignoreCase = true) ->
             "inn_client_exists"
+        msg.contains("photo", ignoreCase = true) ||
+            msg.contains("image", ignoreCase = true) ||
+            msg.contains("File", ignoreCase = true) ||
+            msg.contains("upload", ignoreCase = true) ||
+            msg.contains("rasm", ignoreCase = true) ->
+            "photo_upload_failed"
+        msg.contains("Invalid amount", ignoreCase = true) ->
+            "invalid_amount"
         else -> "save_failed"
     }
 }

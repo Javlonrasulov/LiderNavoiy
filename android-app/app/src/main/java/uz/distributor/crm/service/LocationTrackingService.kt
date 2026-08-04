@@ -47,7 +47,7 @@ class LocationTrackingService : Service() {
     private lateinit var locationCallback: LocationCallback
 
     companion object {
-        const val CHANNEL_ID = "location_tracking_active"
+        const val CHANNEL_ID = "location_tracking_v2"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
@@ -188,7 +188,7 @@ class LocationTrackingService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.channel_location_active))
+            .setContentText(getString(R.string.app_name))
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(intent)
             .setOngoing(true)

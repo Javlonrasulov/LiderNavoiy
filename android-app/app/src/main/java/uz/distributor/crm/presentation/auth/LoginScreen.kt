@@ -3,6 +3,7 @@ package uz.distributor.crm.presentation.auth
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
 import android.view.View
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,10 +45,12 @@ import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.service.LocationSyncWorker
 import uz.distributor.crm.service.LocationTrackingService
+import uz.distributor.crm.util.NotificationAccess
 
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    onNotificationRequired: () -> Unit = {},
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -57,6 +60,7 @@ fun LoginScreen(
     var showLangMenu by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var pendingLoginAfterPermission by remember { mutableStateOf(false) }
+    var pendingLoginAfterNotification by remember { mutableStateOf(false) }
 
     val loginFieldColors = OutlinedTextFieldDefaults.colors(
         focusedContainerColor = Color.White,
@@ -83,6 +87,10 @@ fun LoginScreen(
     }
 
     fun tryLogin() {
+        if (!NotificationAccess.areEnabled(context)) {
+            viewModel.setNotificationError()
+            return
+        }
         if (!hasLocationPermission()) {
             pendingLoginAfterPermission = true
             return
@@ -92,6 +100,18 @@ fun LoginScreen(
             return
         }
         viewModel.login()
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted && NotificationAccess.areEnabled(context) && pendingLoginAfterNotification) {
+            pendingLoginAfterNotification = false
+            tryLogin()
+        } else {
+            pendingLoginAfterNotification = false
+            viewModel.setNotificationError()
+        }
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -109,6 +129,21 @@ fun LoginScreen(
     }
 
     fun requestLogin() {
+        if (!NotificationAccess.areEnabled(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val granted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+                if (!granted) {
+                    pendingLoginAfterNotification = true
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    return
+                }
+            }
+            viewModel.setNotificationError()
+            return
+        }
         if (!hasLocationPermission()) {
             pendingLoginAfterPermission = true
             locationPermissionLauncher.launch(
@@ -128,11 +163,12 @@ fun LoginScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME &&
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            when {
+                state.errorKey == "notification_permission_denied" &&
+                    viewModel.isNotificationReady() -> viewModel.clearError()
                 state.errorKey in setOf("gps_disabled", "location_permission_denied") &&
-                viewModel.isLocationReady()
-            ) {
-                viewModel.clearError()
+                    viewModel.isLocationReady() -> viewModel.clearError()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -148,6 +184,10 @@ fun LoginScreen(
 
     LaunchedEffect(state.isSuccess) {
         if (state.isSuccess) {
+            if (!viewModel.isNotificationReady()) {
+                onNotificationRequired()
+                return@LaunchedEffect
+            }
             if (!viewModel.isLocationReady()) {
                 viewModel.setLocationError()
                 return@LaunchedEffect
@@ -275,6 +315,22 @@ fun LoginScreen(
                                 },
                             ) {
                                 Text(AppStrings.enableGpsButton(lang), color = SherinColors.Primary)
+                            }
+                        }
+                        if (key == "notification_permission_denied") {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                            },
+                                        )
+                                    }
+                                },
+                            ) {
+                                Text(AppStrings.notificationRequiredEnable(lang), color = SherinColors.Primary)
                             }
                         }
                     }

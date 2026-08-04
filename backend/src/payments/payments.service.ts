@@ -117,6 +117,7 @@ export class PaymentsService {
     order.deliverySequence = null;
     order.paidAmount = newPaid;
     order.paymentStatus = orderPayStatus;
+    if (!order.deliveredAt) order.deliveredAt = new Date();
     if (dto.photoUrl) order.lastPaymentPhotoUrl = dto.photoUrl;
     await this.orderRepo.save(order);
 
@@ -209,18 +210,18 @@ export class PaymentsService {
     if (Number.isNaN(dueAt.getTime())) {
       throw new BadRequestException('Invalid dueAt');
     }
-    let open = await this.paymentRepo.findOne({
+    const openList = await this.paymentRepo.find({
       where: {
         orderId,
         status: In([PaymentStatus.PENDING, PaymentStatus.PARTIAL]),
       },
       order: { createdAt: 'DESC' },
     });
-    if (!open) {
+    if (openList.length === 0) {
       const total = Number(order.totalAmount) - Number(order.returnedAmount || 0);
       const remaining = Math.max(0, total - Number(order.paidAmount || 0));
       if (remaining <= 0) throw new BadRequestException('Nothing due');
-      open = await this.paymentRepo.save(
+      const created = await this.paymentRepo.save(
         this.paymentRepo.create({
           orderId,
           clientId: order.clientId,
@@ -232,14 +233,17 @@ export class PaymentsService {
           dueAt,
         }),
       );
-    } else {
+      return created;
+    }
+    // Barcha ochiq qarz yozuvlarida muddat bir xil bo‘lsin
+    for (const open of openList) {
       open.dueAt = dueAt;
       open.dayReminderSent = false;
       open.hourReminderSent = false;
       open.lastRemindedAt = null;
       await this.paymentRepo.save(open);
     }
-    return open;
+    return openList[0];
   }
 
   async processReminders() {
