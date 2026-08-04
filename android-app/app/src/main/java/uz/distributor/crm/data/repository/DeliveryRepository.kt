@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.util.Base64
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.request.ImageRequest
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.CollectPaymentRequest
 import uz.distributor.crm.data.remote.dto.CreateReturnRequest
@@ -60,8 +62,22 @@ class DeliveryRepository @Inject constructor(
         cached.firstOrNull { it.id == orderId }
 
     suspend fun getOrder(orderId: String): OrderDto? {
-        return getAssignedOrders().firstOrNull { it.id == orderId }
+        val order = getAssignedOrders().firstOrNull { it.id == orderId }
             ?: getCachedOrder(orderId)
+        return order?.let { withVisiblePaymentPhotos(it) }
+    }
+
+    /** Oxirgi to‘lovda photoUrl bo‘sh bo‘lsa — lastPaymentPhotoUrl dan to‘ldiramiz. */
+    private fun withVisiblePaymentPhotos(order: OrderDto): OrderDto {
+        val fallback = order.lastPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: return order
+        val payments = order.payments
+        if (payments.isEmpty()) return order
+        val last = payments.last()
+        if (!last.photoUrl.isNullOrBlank()) return order
+        return order.copy(
+            payments = payments.dropLast(1) + last.copy(photoUrl = fallback),
+        )
     }
 
     suspend fun getMyTerminals(): List<PaymentTerminalDto> =
@@ -75,18 +91,47 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoUrl = photoUri?.let { uploadPaymentPhotoReliably(it) }
-        api.deliverOrder(
-            orderId,
-            DeliverOrderRequest(
-                paymentMethod = paymentMethod,
-                terminalId = terminalId,
-                amount = amount,
-                dueAt = dueAt,
-                photoUrl = photoUrl,
-            ),
+        val savedPhotoUrl = submitWithPhoto(
+            photoUri = photoUri,
+            withUrl = { url ->
+                api.deliverOrder(
+                    orderId,
+                    DeliverOrderRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                        photoUrl = url,
+                    ),
+                )
+            },
+            withBase64 = { b64 ->
+                api.deliverOrder(
+                    orderId,
+                    DeliverOrderRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                        photoBase64 = b64,
+                    ),
+                )
+            },
+            withoutPhoto = {
+                api.deliverOrder(
+                    orderId,
+                    DeliverOrderRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                    ),
+                )
+            },
         )
-        return refreshOrder(orderId)
+        val refreshed = ensurePaymentPhoto(refreshOrder(orderId), savedPhotoUrl)
+        cached = cached.map { if (it.id == refreshed.id) refreshed else it }
+        return refreshed
     }
 
     suspend fun collectPayment(
@@ -97,32 +142,124 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoUrl = photoUri?.let { uploadPaymentPhotoReliably(it) }
-        api.collectOrderPayment(
-            orderId,
-            CollectPaymentRequest(
-                paymentMethod = paymentMethod,
-                terminalId = terminalId,
-                amount = amount,
-                dueAt = dueAt,
-                photoUrl = photoUrl,
-            ),
+        val savedPhotoUrl = submitWithPhoto(
+            photoUri = photoUri,
+            withUrl = { url ->
+                api.collectOrderPayment(
+                    orderId,
+                    CollectPaymentRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                        photoUrl = url,
+                    ),
+                )
+            },
+            withBase64 = { b64 ->
+                api.collectOrderPayment(
+                    orderId,
+                    CollectPaymentRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                        photoBase64 = b64,
+                    ),
+                )
+            },
+            withoutPhoto = {
+                api.collectOrderPayment(
+                    orderId,
+                    CollectPaymentRequest(
+                        paymentMethod = paymentMethod,
+                        terminalId = terminalId,
+                        amount = amount,
+                        dueAt = dueAt,
+                    ),
+                )
+            },
         )
-        return refreshOrder(orderId)
+        val refreshed = ensurePaymentPhoto(refreshOrder(orderId), savedPhotoUrl)
+        cached = cached.map { if (it.id == refreshed.id) refreshed else it }
+        return refreshed
     }
 
     /**
-     * Ishlab chiqarishda ishonchli yo‘l:
-     * 1) JPEG ga aylantirish (Coil)
-     * 2) Avval clients/upload-photo (prod da allaqachon ishlaydi)
-     * 3) Keyin payments/orders upload
+     * @return saqlangan photoUrl (yoki null)
      */
-    private suspend fun uploadPaymentPhotoReliably(uri: Uri): String = withContext(Dispatchers.IO) {
-        val jpegBytes = prepareJpegBytes(uri)
+    private suspend fun submitWithPhoto(
+        photoUri: Uri?,
+        withUrl: suspend (String) -> Any,
+        withBase64: suspend (String) -> Any,
+        withoutPhoto: suspend () -> Any,
+    ): String? {
+        if (photoUri == null) {
+            withoutPhoto()
+            return null
+        }
+        val jpegBytes = prepareJpegBytes(photoUri)
         if (jpegBytes.size < MIN_VALID_BYTES || !isJpeg(jpegBytes)) {
             throw IllegalArgumentException("Cannot read photo")
         }
 
+        var multipartError: Exception? = null
+        try {
+            val url = uploadJpegViaMultipart(jpegBytes)
+            withUrl(url)
+            return url
+        } catch (e: Exception) {
+            multipartError = e
+        }
+
+        val dataUrl = "data:image/jpeg;base64," +
+            Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+        try {
+            withBase64(dataUrl)
+            // base64 serverda faylga aylanadi — URL refresh dan keladi
+            return null
+        } catch (e: HttpException) {
+            val body = runCatching { e.response()?.errorBody()?.string().orEmpty() }.getOrDefault("")
+            val unknownField = body.contains("photoBase64", ignoreCase = true) ||
+                body.contains("should not exist", ignoreCase = true)
+            if (!unknownField) {
+                val msg = parseNestMessage(body) ?: "HTTP ${e.code()}"
+                throw IllegalStateException(msg, e)
+            }
+        }
+
+        throw multipartError ?: IllegalStateException("Photo upload failed")
+    }
+
+    /** API photoUrl qaytarmasa ham, yuborgan URL ni oxirgi to‘lovga yopishtiramiz. */
+    private fun ensurePaymentPhoto(order: OrderDto, uploadedUrl: String?): OrderDto {
+        val url = uploadedUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: order.lastPaymentPhotoUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: return order
+
+        val payments = order.payments
+        if (payments.isEmpty()) {
+            return order.copy(lastPaymentPhotoUrl = order.lastPaymentPhotoUrl ?: url)
+        }
+
+        // createdAt ASC — oxirgi element eng yangi to‘lov
+        val last = payments.last()
+        val patched = if (last.photoUrl.isNullOrBlank()) {
+            payments.dropLast(1) + last.copy(photoUrl = url)
+        } else {
+            payments
+        }
+        return order.copy(
+            payments = patched,
+            lastPaymentPhotoUrl = order.lastPaymentPhotoUrl?.takeIf { it.isNotBlank() } ?: url,
+        )
+    }
+
+    /**
+     * 1) messages/upload — sharp ishlamasa ham originalni saqlaydi (prod)
+     * 2) clients / payments / orders
+     */
+    private suspend fun uploadJpegViaMultipart(jpegBytes: ByteArray): String = withContext(Dispatchers.IO) {
         fun part(): MultipartBody.Part = MultipartBody.Part.createFormData(
             "file",
             "payment_${System.currentTimeMillis()}.jpg",
@@ -131,13 +268,29 @@ class DeliveryRepository @Inject constructor(
 
         val errors = mutableListOf<String>()
 
-        // 1) Agentlar allaqachon ishlatadigan endpoint — prod da bor
+        fun errLabel(e: Exception): String {
+            if (e is HttpException) {
+                val body = runCatching { e.response()?.errorBody()?.string().orEmpty() }.getOrDefault("")
+                val msg = parseNestMessage(body)
+                return if (msg != null) "HTTP ${e.code()} $msg" else "HTTP ${e.code()}"
+            }
+            return e.message ?: e.javaClass.simpleName
+        }
+
+        try {
+            val url = api.uploadChatFile(part()).url.trim()
+            if (url.isNotBlank()) return@withContext url
+            errors += "chat: empty url"
+        } catch (e: Exception) {
+            errors += "chat: ${errLabel(e)}"
+        }
+
         try {
             val url = api.uploadClientPhoto(part()).url.trim()
             if (url.isNotBlank()) return@withContext url
             errors += "clients: empty url"
         } catch (e: Exception) {
-            errors += "clients: ${e.message}"
+            errors += "clients: ${errLabel(e)}"
         }
 
         try {
@@ -145,7 +298,7 @@ class DeliveryRepository @Inject constructor(
             if (url.isNotBlank()) return@withContext url
             errors += "payments: empty url"
         } catch (e: Exception) {
-            errors += "payments: ${e.message}"
+            errors += "payments: ${errLabel(e)}"
         }
 
         try {
@@ -153,12 +306,28 @@ class DeliveryRepository @Inject constructor(
             if (url.isNotBlank()) return@withContext url
             errors += "orders: empty url"
         } catch (e: Exception) {
-            errors += "orders: ${e.message}"
+            errors += "orders: ${errLabel(e)}"
         }
 
         throw IllegalStateException(
             "Photo upload failed: ${errors.joinToString(" | ").ifBlank { "unknown" }}",
         )
+    }
+
+    private fun parseNestMessage(body: String): String? {
+        if (body.isBlank()) return null
+        return try {
+            val json = com.google.gson.JsonParser.parseString(body).asJsonObject
+            if (!json.has("message")) return body.take(120)
+            val message = json.get("message")
+            when {
+                message.isJsonArray -> message.asJsonArray.joinToString("; ") { it.asString }
+                message.isJsonPrimitive -> message.asString
+                else -> body.take(120)
+            }
+        } catch (_: Exception) {
+            body.take(120)
+        }
     }
 
     suspend fun updateDueAt(orderId: String, dueAt: String): OrderDto {
@@ -179,7 +348,7 @@ class DeliveryRepository @Inject constructor(
 
     private suspend fun refreshOrder(orderId: String): OrderDto {
         val list = getAssignedOrders()
-        return list.firstOrNull { it.id == orderId }
+        val order = list.firstOrNull { it.id == orderId }
             ?: getCachedOrder(orderId)
             ?: OrderDto(
                 id = orderId,
@@ -188,6 +357,7 @@ class DeliveryRepository @Inject constructor(
                 status = "delivered",
                 paymentStatus = "paid",
             )
+        return withVisiblePaymentPhotos(order)
     }
 
     private suspend fun prepareJpegBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {

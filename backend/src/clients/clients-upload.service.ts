@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -10,6 +10,7 @@ const MAX_UPLOAD = 8 * 1024 * 1024;
 
 @Injectable()
 export class ClientsUploadService {
+  private readonly logger = new Logger(ClientsUploadService.name);
   private readonly uploadDir: string;
 
   constructor(private readonly config: ConfigService) {
@@ -20,22 +21,29 @@ export class ClientsUploadService {
   }
 
   async savePhoto(file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('File is required');
-    if (file.size > MAX_UPLOAD) {
+    if (!file?.buffer?.length) throw new BadRequestException('File is required');
+    if (file.size > MAX_UPLOAD || file.buffer.length > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
 
     assertAllowedUpload(file, { imagesOnly: true });
 
-    const buffer = await sharp(file.buffer)
-      .rotate()
-      .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 82 })
-      .toBuffer();
+    let buffer = file.buffer;
+    try {
+      buffer = await sharp(file.buffer)
+        .rotate()
+        .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toBuffer();
+    } catch (e) {
+      // sharp Alpine/musl da ba’zan yiqiladi — original JPEG/PNG ni saqlaymiz
+      this.logger.warn(`Client photo compress failed, saving original: ${(e as Error).message}`);
+      buffer = file.buffer;
+    }
 
-    const outExt = '.jpg';
-    const mimeType = 'image/jpeg';
-    const safeName = `${uuidv4()}${outExt}`;
+    if (!buffer.length) throw new BadRequestException('Processed image is empty');
+
+    const safeName = `${uuidv4()}.jpg`;
     writeFileSync(join(this.uploadDir, safeName), buffer);
 
     const url = `/uploads/clients/${safeName}`;
@@ -43,7 +51,7 @@ export class ClientsUploadService {
     return {
       url,
       fullUrl: `${baseUrl}${url}`,
-      mimeType,
+      mimeType: 'image/jpeg',
       fileSize: buffer.length,
     };
   }

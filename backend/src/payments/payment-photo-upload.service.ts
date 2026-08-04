@@ -3,9 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import sharp from 'sharp';
 import { assertAllowedUpload } from '../common/upload-allowlist';
 
 const MAX_UPLOAD = 8 * 1024 * 1024;
+const MAX_DIM = 1280;
 
 @Injectable()
 export class PaymentPhotoUploadService {
@@ -20,64 +22,51 @@ export class PaymentPhotoUploadService {
   }
 
   async saveFile(file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('File is required');
-    if (file.size > MAX_UPLOAD) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+    if (file.size > MAX_UPLOAD || file.buffer.length > MAX_UPLOAD) {
       throw new BadRequestException('File too large (max 8MB)');
     }
-    if (!file.buffer || file.buffer.length < 256) {
+    if (file.buffer.length < 64) {
       throw new BadRequestException('File is empty or too small');
     }
 
+    assertAllowedUpload(file, { imagesOnly: true });
+
     let buffer = file.buffer;
-    // Sharp ixtiyoriy — Alpine/native xato bersa ham rasmni saqlaymiz
     try {
-      const sharp = (await import('sharp')).default;
       let pipeline = sharp(buffer).rotate();
       const meta = await sharp(buffer).metadata();
       if (!meta.width || !meta.height || meta.width < 16 || meta.height < 16) {
         throw new BadRequestException('Invalid image dimensions');
       }
-      const maxDim = 1280;
-      if ((meta.width ?? 0) > maxDim || (meta.height ?? 0) > maxDim) {
-        pipeline = pipeline.resize(maxDim, maxDim, {
+      if ((meta.width ?? 0) > MAX_DIM || (meta.height ?? 0) > MAX_DIM) {
+        pipeline = pipeline.resize(MAX_DIM, MAX_DIM, {
           fit: 'inside',
           withoutEnlargement: true,
         });
       }
-      const out = await pipeline.jpeg({ quality: 80 }).toBuffer();
-      if (out.length >= 256) buffer = out;
+      buffer = await pipeline.jpeg({ quality: 80 }).toBuffer();
+      if (buffer.length < 64) {
+        throw new BadRequestException('Processed image is empty');
+      }
     } catch (e) {
       if (e instanceof BadRequestException) throw e;
-      this.logger.warn(`Payment photo sharp skipped: ${(e as Error)?.message || e}`);
-      try {
-        assertAllowedUpload(file, { imagesOnly: true });
-      } catch {
-        // Magic tekshiruvi ham yiqilsa — JPEG SOI bo‘lsa qabul
-        const b = file.buffer;
-        const isJpeg = b.length > 2 && b[0] === 0xff && b[1] === 0xd8;
-        const isPng =
-          b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
-        if (!isJpeg && !isPng) {
-          throw new BadRequestException('Invalid image file');
-        }
-      }
+      // sharp ishlamasa — allaqachon allowlist dan o‘tgan originalni saqlaymiz
+      this.logger.warn(`Payment photo compress failed, saving original: ${(e as Error).message}`);
       buffer = file.buffer;
     }
 
     const safeName = `${uuidv4()}.jpg`;
-    try {
-      writeFileSync(join(this.uploadDir, safeName), buffer);
-    } catch (e) {
-      this.logger.error(`Failed to write payment photo ${safeName}`, e);
-      throw new BadRequestException('Could not save photo to disk');
-    }
+    writeFileSync(join(this.uploadDir, safeName), buffer);
     const url = `/uploads/payments/${safeName}`;
     const baseUrl = this.config.get('PUBLIC_URL', 'http://localhost:3000');
     this.logger.log(`Payment photo saved ${safeName} (${buffer.length} bytes)`);
     return { url, fullUrl: `${baseUrl}${url}` };
   }
 
-  /** JSON ichida base64 (multipart o‘rniga) */
+  /** Agent APK: multipart o‘rniga JSON ichida base64 */
   async saveFromBase64(input: string): Promise<{ url: string; fullUrl: string }> {
     const raw = (input || '').trim();
     if (!raw) throw new BadRequestException('photoBase64 required');
@@ -89,7 +78,7 @@ export class PaymentPhotoUploadService {
     } else {
       buffer = Buffer.from(raw.replace(/\s/g, ''), 'base64');
     }
-    if (!buffer.length || buffer.length < 256) {
+    if (!buffer.length || buffer.length < 64) {
       throw new BadRequestException('photoBase64 empty or too small');
     }
     if (buffer.length > MAX_UPLOAD) {
