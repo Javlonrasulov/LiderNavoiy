@@ -8,13 +8,28 @@ import {
   Put,
   Query,
   Request,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User } from '../auth/entities/user.entity';
 import { ClientGuard } from '../common/guards/client.guard';
-import { ClientCreateOrderDto, SetProductRatingDto } from './dto/client-portal.dto';
+import { PaymentPhotoUploadService } from '../payments/payment-photo-upload.service';
+import {
+  AttachPaymentPhotoDto,
+  ClientCreateOrderDto,
+  SetProductRatingDto,
+} from './dto/client-portal.dto';
 import { ClientPortalService } from './client-portal.service';
 
 @ApiTags('Client Portal')
@@ -23,7 +38,10 @@ import { ClientPortalService } from './client-portal.service';
 @UseGuards(JwtAuthGuard, ClientGuard)
 @Controller('client-portal')
 export class ClientPortalController {
-  constructor(private readonly service: ClientPortalService) {}
+  constructor(
+    private readonly service: ClientPortalService,
+    private readonly paymentPhotoUpload: PaymentPhotoUploadService,
+  ) {}
 
   private companyId(headers: Record<string, string | undefined>, query?: string): string | null {
     return (
@@ -145,6 +163,34 @@ export class ClientPortalController {
       this.companyId(headers, companyId),
       from,
       to,
+    );
+  }
+
+  @Post('upload-payment-photo')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload payment proof photo (client)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  uploadPaymentPhoto(@UploadedFile() file: Express.Multer.File) {
+    return this.paymentPhotoUpload.saveFile(file);
+  }
+
+  @Post('payments/photo')
+  @ApiOperation({ summary: 'Attach payment proof photo to own payment' })
+  attachPaymentPhoto(
+    @Request() req: { user: User },
+    @Body() dto: AttachPaymentPhotoDto,
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.attachPaymentPhoto(
+      req.user,
+      dto,
+      this.companyId(headers, companyId),
     );
   }
 

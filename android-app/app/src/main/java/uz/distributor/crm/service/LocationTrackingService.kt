@@ -20,8 +20,11 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uz.distributor.crm.R
 import uz.distributor.crm.data.local.AgentLocationHolder
@@ -39,6 +42,7 @@ class LocationTrackingService : Service() {
     @Inject lateinit var trackingSocket: TrackingSocketManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var heartbeatJob: Job? = null
     private lateinit var fusedClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
 
@@ -47,11 +51,13 @@ class LocationTrackingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        /** Batareya: 15s / 25m — hali ham jonli tracking, 2s emas */
-        const val INTERVAL_MS = 15_000L
-        const val MIN_DISTANCE_M = 25f
+        /** Harakatda yangilanish */
+        const val INTERVAL_MS = 10_000L
+        const val MIN_DISTANCE_M = 8f
         /** Soft filter: juda yomon fixni tashlash, lekin jonli holatni o‘ldirmaslik */
         const val MAX_ACCURACY_M = 100f
+        /** Harakatsiz bo‘lsa ham Redis/online TTL yangilansin */
+        const val HEARTBEAT_MS = 45_000L
     }
 
     override fun onCreate() {
@@ -107,10 +113,25 @@ class LocationTrackingService : Service() {
             fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
         } catch (_: SecurityException) {
             stopSelf()
+            return
+        }
+
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch {
+            while (isActive) {
+                delay(HEARTBEAT_MS)
+                val last = agentLocationHolder.location.value ?: continue
+                // Harakatsiz turganda ham server TTL yangilansin (admin xarita miltillamasin)
+                locationRepository.sendRealtime(
+                    last.copy(recordedAt = System.currentTimeMillis()),
+                )
+            }
         }
     }
 
     private fun stopTracking() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
         runCatching { fusedClient.removeLocationUpdates(locationCallback) }
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }

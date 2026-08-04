@@ -1,24 +1,29 @@
 package uz.lider.client.presentation.debt
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.DebtRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
+import uz.lider.client.data.repository.PaymentProofRepository
 import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.localization.AppLanguage
 import uz.lider.client.presentation.components.formatCompactMoney
 import uz.lider.client.presentation.dashboard.DashboardDateFilter
 import uz.lider.client.presentation.dashboard.DashboardDateRange
+import uz.lider.client.presentation.dashboard.PaymentPhotoSectionUi
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -32,6 +37,7 @@ data class DebtPayment(
     val typeKey: String,
     val isPayment: Boolean,
     val orderId: String? = null,
+    val photoUrl: String? = null,
     val createdAtMs: Long = 0L,
 ) {
     fun localDate(): LocalDate? = try {
@@ -65,7 +71,8 @@ class DebtViewModel @Inject constructor(
     private val debtRepository: DebtRepository,
     private val profileRepository: ProfileRepository,
     private val appSettingsRepository: AppSettingsRepository,
-    paymentPhotoAlertStore: PaymentPhotoAlertStore,
+    private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
+    private val paymentProofRepository: PaymentProofRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DebtUiState())
@@ -73,16 +80,62 @@ class DebtViewModel @Inject constructor(
 
     private var language: AppLanguage = AppLanguage.DEFAULT
 
-    /** To‘lov pushdan keyin 30 daqiqa — rasm eslatmasi */
-    val showPayPhotoBanner: StateFlow<Boolean> = paymentPhotoAlertStore.state
-        .map { it.isActive }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+    private val _photoUploading = MutableStateFlow(false)
+    private val _photoError = MutableStateFlow<String?>(null)
+    private val _photoPreview = MutableStateFlow<String?>(null)
+
+    /**
+     * Asosiyda X bosilsa ham — To‘lovlar tarixida 30 daqiqa qoladi.
+     * Muddat tugagach clearIfExpired bilan o‘zi yo‘qoladi.
+     */
+    val paymentPhotoSection: StateFlow<PaymentPhotoSectionUi> = combine(
+        paymentPhotoAlertStore.state,
+        _photoUploading,
+        _photoError,
+        _photoPreview,
+    ) { alert, uploading, error, preview ->
+        PaymentPhotoSectionUi(
+            visible = alert.isActive || uploading || !preview.isNullOrBlank(),
+            orderId = alert.orderId,
+            uploading = uploading,
+            error = error,
+            previewUrl = preview,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentPhotoSectionUi())
 
     init {
         viewModelScope.launch {
             appSettingsRepository.language.collect { language = it }
         }
+        viewModelScope.launch {
+            while (isActive) {
+                paymentPhotoAlertStore.clearIfExpired()
+                delay(15_000)
+            }
+        }
         load()
+    }
+
+    fun uploadPaymentProof(uri: Uri) {
+        viewModelScope.launch {
+            _photoUploading.value = true
+            _photoError.value = null
+            val orderId = paymentPhotoSection.value.orderId
+            val result = paymentProofRepository.captureAndAttach(uri, orderId)
+            _photoUploading.value = false
+            result.fold(
+                onSuccess = { url ->
+                    _photoPreview.value = url
+                    _photoError.value = null
+                    reloadQuiet()
+                    delay(1800)
+                    _photoPreview.value = null
+                },
+                onFailure = {
+                    _photoError.value = it.message ?: "upload_failed"
+                },
+            )
+        }
     }
 
     fun load() {
@@ -94,6 +147,7 @@ class DebtViewModel @Inject constructor(
     }
 
     suspend fun refresh() {
+        paymentPhotoAlertStore.clearIfExpired()
         reloadQuiet()
     }
 

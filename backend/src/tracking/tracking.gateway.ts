@@ -11,7 +11,6 @@ import { Logger, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from '../common/redis/redis.service';
 import { LocationPointDto } from '../gps/dto/gps.dto';
 import { JwtPayload } from '../auth/auth.service';
 import { GpsService } from '../gps/gps.service';
@@ -50,11 +49,13 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   server: Server;
 
   private readonly logger = new Logger(TrackingGateway.name);
+  /** distributorId → ulangan socket id lar (presence) */
+  private readonly presenceSockets = new Map<string, Set<string>>();
+  private readonly offlineTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
-    private readonly redis: RedisService,
     @Inject(forwardRef(() => GpsService))
     private readonly gpsService: GpsService,
   ) {}
@@ -80,6 +81,20 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       if (payload.distributorId) {
         client.join(`distributor:${payload.distributorId}`);
+        this.trackPresence(payload.distributorId, client.id);
+        // GPS kelmasa ham admin xaritada online
+        const last = await this.gpsService.markPresenceOnline(payload.distributorId);
+        this.server.to('admins').emit('distributor:online', {
+          distributorId: payload.distributorId,
+          timestamp: new Date().toISOString(),
+        });
+        if (last) {
+          this.broadcastLocationUpdate(payload.distributorId, {
+            latitude: last.latitude,
+            longitude: last.longitude,
+            recordedAt: last.recordedAt,
+          });
+        }
       }
 
       // Admin panel — agent GPS ni darhol olish uchun
@@ -102,26 +117,92 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   async handleDisconnect(client: Socket) {
-    // Online holat faqat GPS TTL bilan belgilanadi.
-    // Socket qisqa uzilsa ham agent REST orqali GPS yuboraveradi — darhol offline qilmaymiz.
+    const distributorId = client.data?.distributorId as string | undefined;
     this.logger.log(`Client disconnected: ${client.id}`);
+    if (!distributorId) return;
+
+    const set = this.presenceSockets.get(distributorId);
+    set?.delete(client.id);
+    if (set && set.size > 0) return;
+    this.presenceSockets.delete(distributorId);
+
+    // Qisqa uzilishda miltillamasin — 75s kutamiz
+    const prev = this.offlineTimers.get(distributorId);
+    if (prev) clearTimeout(prev);
+    const timer = setTimeout(() => {
+      this.offlineTimers.delete(distributorId);
+      if (this.presenceSockets.has(distributorId)) return;
+      void this.gpsService.markOffline(distributorId).then(() => {
+        this.server.to('admins').emit('distributor:offline', {
+          distributorId,
+          timestamp: new Date().toISOString(),
+        });
+      });
+    }, 75_000);
+    this.offlineTimers.set(distributorId, timer);
+  }
+
+  private trackPresence(distributorId: string, socketId: string) {
+    const pending = this.offlineTimers.get(distributorId);
+    if (pending) {
+      clearTimeout(pending);
+      this.offlineTimers.delete(distributorId);
+    }
+    const set = this.presenceSockets.get(distributorId) ?? new Set<string>();
+    set.add(socketId);
+    this.presenceSockets.set(distributorId, set);
+  }
+
+  @SubscribeMessage('presence:ping')
+  async handlePresencePing(@ConnectedSocket() client: Socket) {
+    const distributorId = client.data?.distributorId as string | undefined;
+    if (!distributorId) return { status: 'skip' };
+    this.trackPresence(distributorId, client.id);
+    await this.gpsService.refreshPresence(distributorId);
+    this.server.to('admins').emit('distributor:online', {
+      distributorId,
+      timestamp: new Date().toISOString(),
+    });
+    return { status: 'ok' };
   }
 
   @SubscribeMessage('location:update')
   async handleLocationUpdate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: LocationPointDto,
+    @MessageBody() data: Record<string, unknown>,
   ) {
     const { distributorId } = client.data;
     if (!distributorId) return;
 
+    // Global ValidationPipe class DTO ni rad etmasin — yumshoq parse
+    const lat = Number(data?.latitude);
+    const lng = Number(data?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { status: 'bad_coords' };
+
+    const rawAt = data?.recordedAt;
+    const recordedAt =
+      typeof rawAt === 'string' && rawAt.trim()
+        ? rawAt
+        : new Date().toISOString();
+
+    const normalized: LocationPointDto = {
+      latitude: lat,
+      longitude: lng,
+      recordedAt,
+      speed: data?.speed != null ? Number(data.speed) : undefined,
+      accuracy: data?.accuracy != null ? Number(data.accuracy) : undefined,
+      altitude: data?.altitude != null ? Number(data.altitude) : undefined,
+      bearing: data?.bearing != null ? Number(data.bearing) : undefined,
+      deviceId: typeof data?.deviceId === 'string' ? data.deviceId : undefined,
+    };
+
     try {
-      await this.gpsService.touchLiveLocation(distributorId, data);
+      await this.gpsService.touchLiveLocation(distributorId, normalized);
     } catch (e) {
       this.logger.warn(`Failed to persist live location for ${distributorId}: ${e}`);
     }
 
-    this.broadcastLocationUpdate(distributorId, data);
+    this.broadcastLocationUpdate(distributorId, normalized);
     return { status: 'ok' };
   }
 

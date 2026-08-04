@@ -38,16 +38,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uz.lider.client.R
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.data.repository.DebtRepository
-import uz.lider.client.data.repository.PaymentPhotoAlertState
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.RecentPaymentSignal
 import uz.lider.client.presentation.analytics.AnalyticsScreen
@@ -55,9 +53,7 @@ import uz.lider.client.presentation.auth.LoginScreen
 import uz.lider.client.presentation.cart.CartScreen
 import uz.lider.client.presentation.catalog.CatalogScreen
 import uz.lider.client.presentation.chat.ChatScreen
-import uz.lider.client.presentation.components.PaymentPhotoAlertModal
 import uz.lider.client.presentation.components.cartBadgeCount
-import uz.lider.client.presentation.components.localized
 import uz.lider.client.presentation.dashboard.DashboardScreen
 import uz.lider.client.presentation.debt.DebtScreen
 import uz.lider.client.presentation.notifications.NotificationsScreen
@@ -91,15 +87,16 @@ class ClientNavigationViewModel @Inject constructor(
     val sessionExpired = authRepository.sessionExpired
     val cartItems = cartRepository.items
     val user = authRepository.getUserFlow()
-    val paymentPhotoAlert = paymentPhotoAlertStore.state
-        .stateIn(viewModelScope, SharingStarted.Eagerly, PaymentPhotoAlertState())
 
     init {
         viewModelScope.launch { paymentPhotoAlertStore.clearIfExpired() }
-        // Push kelmasa ham — to‘lov tarixidan modal
+        // Push kelmasa ham — to‘lov tarixidan asosiydagi rasm eslatmasi
         viewModelScope.launch {
             while (isActive) {
-                runCatching { pollRecentPayments() }
+                runCatching {
+                    paymentPhotoAlertStore.clearIfExpired()
+                    pollRecentPayments()
+                }
                 delay(4_000)
             }
         }
@@ -110,8 +107,25 @@ class ClientNavigationViewModel @Inject constructor(
         // login/parol maydonlarini tozalab yubormasligi uchun so‘rov yuborilmaydi.
         if (authRepository.peekAccessToken().isNullOrBlank()) return
         val debt = debtRepository.getDebt() ?: return
+        val alert = paymentPhotoAlertStore.state.first()
+        if (alert.isActive) {
+            val hasPhoto = debt.history.any { row ->
+                row.isPayment &&
+                    !row.photoUrl.isNullOrBlank() &&
+                    (alert.orderId.isNullOrBlank() || row.orderId == alert.orderId)
+            }
+            if (hasPhoto) {
+                paymentPhotoAlertStore.clearAlert()
+                return
+            }
+        }
         val signals = debt.history
-            .filter { it.isPayment && it.id.isNotBlank() && it.createdAtMs > 0L }
+            .filter {
+                it.isPayment &&
+                    it.id.isNotBlank() &&
+                    it.createdAtMs > 0L &&
+                    it.photoUrl.isNullOrBlank()
+            }
             .map {
                 RecentPaymentSignal(
                     id = it.id,
@@ -120,10 +134,6 @@ class ClientNavigationViewModel @Inject constructor(
                 )
             }
         paymentPhotoAlertStore.ingestRecentPayments(signals)
-    }
-
-    fun dismissPaymentPhotoModal() {
-        viewModelScope.launch { paymentPhotoAlertStore.dismissModal() }
     }
 
     fun logout(onDone: () -> Unit) {
@@ -146,7 +156,6 @@ fun ClientNavHost(
     val selectedTab = clientBottomNavSelectedTab(currentRoute) ?: ClientTab.DASHBOARD
     val cartItems by navViewModel.cartItems.collectAsState()
     val user by navViewModel.user.collectAsState(initial = null)
-    val paymentPhotoAlert by navViewModel.paymentPhotoAlert.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val loggedIn = currentRoute != null &&
@@ -313,15 +322,6 @@ fun ClientNavHost(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .zIndex(100f),
-                )
-            }
-
-            // To‘lov olinganda — login bo‘lgan har qanday ekranda majburiy modal
-            if (loggedIn && paymentPhotoAlert.shouldShowModal) {
-                PaymentPhotoAlertModal(
-                    title = localized("pay_photo_alert_title"),
-                    body = localized("pay_photo_alert_body"),
-                    onDismiss = { navViewModel.dismissPaymentPhotoModal() },
                 )
             }
         }

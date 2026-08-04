@@ -8,12 +8,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import uz.lider.client.data.local.MapRouteStopsHolder
 import uz.lider.client.data.local.SecureAuthStore
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.local.TokenHolder
 import uz.lider.client.data.remote.ApiService
+import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.data.remote.ClientOnlyException
+import uz.lider.client.data.remote.dto.ChangePasswordRequest
 import uz.lider.client.data.remote.dto.LoginDeviceDto
 import uz.lider.client.data.remote.dto.LoginRequest
 import uz.lider.client.data.remote.dto.LogoutRequest
@@ -30,7 +31,6 @@ class AuthRepository @Inject constructor(
     private val tokenHolder: TokenHolder,
     private val secureAuthStore: SecureAuthStore,
     private val selectedOrgHolder: SelectedOrgHolder,
-    private val mapRouteStopsHolder: MapRouteStopsHolder,
     private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
 ) {
     private val refreshMutex = Mutex()
@@ -70,6 +70,15 @@ class AuthRepository @Inject constructor(
         )
         saveTokens(tokens)
         return tokens
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> {
+        return try {
+            api.changePassword(ChangePasswordRequest(currentPassword, newPassword))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception(ApiErrorMapper.toKey(e)))
+        }
     }
 
     suspend fun restoreSession(): Boolean {
@@ -132,7 +141,6 @@ class AuthRepository @Inject constructor(
     private suspend fun clearLocalSession() {
         tokenHolder.setToken(null)
         selectedOrgHolder.clear()
-        mapRouteStopsHolder.clear()
         paymentPhotoAlertStore.clearMapPayHintDismissals()
         secureAuthStore.clear()
     }

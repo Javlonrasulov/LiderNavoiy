@@ -182,10 +182,11 @@ export function EmployeeMapModal({ open, onClose, dark, employees, centerCoord, 
       if (existing) {
         const cur = existing.getLatLng();
         if (Math.abs(cur.lat - emp.lat) > 1e-7 || Math.abs(cur.lng - emp.lng) > 1e-7) {
+          // Real tracking — silliq siljish
           existing.setLatLng([emp.lat, emp.lng]);
         }
         existing.setIcon(makeIcon(emp.role, emp.online, isHL));
-        existing.setZIndexOffset(isHL ? 1000 : 0);
+        existing.setZIndexOffset(isHL ? 1000 : (emp.online ? 200 : 0));
         existing.setPopupContent(popupHtml);
         if (isHL) setTimeout(() => existing.openPopup(), 150);
         return;

@@ -26,7 +26,8 @@ export class PermissionsGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<{ user?: User }>();
     const user = req.user;
-    if (!user) throw new ForbiddenException();
+    // APP_GUARD JwtAuthGuard dan oldin ishlashi mumkin — user bo'lmasa keyingi guardlarga qoldiramiz
+    if (!user) return true;
 
     if (user.role === UserRole.ADMIN) return true;
     if (user.role !== UserRole.MANAGER) {

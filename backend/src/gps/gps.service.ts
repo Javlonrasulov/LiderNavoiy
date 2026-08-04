@@ -8,7 +8,8 @@ import { LocationPointDto, BatchLocationDto, RouteHistoryQueryDto } from './dto/
 import { DistributorStatus } from '../common/enums';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 
-const LIVE_LOCATION_TTL = 180; // 3 daqiqa — qisqa uzilishlarda offline bo'lib qolmasin
+const LIVE_LOCATION_TTL = 600; // 10 daqiqa — qisqa GPS tanaffusda offline miltillamasin
+
 
 @Injectable()
 export class GpsService {
@@ -178,6 +179,87 @@ export class GpsService {
     await this.updateLiveLocation(distributorId, dto);
   }
 
+  /** Tracking socket ulandi — oxirgi GPS bilan online (GPS kelmasa ham). */
+  async markPresenceOnline(distributorId: string): Promise<{
+    latitude: number;
+    longitude: number;
+    recordedAt: string;
+  } | null> {
+    const profile = await this.distributorRepo.findOne({ where: { id: distributorId } });
+    if (!profile) return null;
+
+    try {
+      await this.distributorRepo.update(distributorId, {
+        isOnline: true,
+        status:
+          profile.status === DistributorStatus.OFFLINE
+            ? DistributorStatus.ON_ROUTE
+            : profile.status,
+      });
+    } catch {
+      /* ignore */
+    }
+
+    const ttl = LIVE_LOCATION_TTL;
+    try {
+      await this.redis.setJson(
+        `online:${distributorId}`,
+        { updatedAt: new Date().toISOString(), source: 'presence' },
+        ttl,
+      );
+    } catch {
+      /* ignore */
+    }
+
+    const lat = profile.lastLatitude;
+    const lng = profile.lastLongitude;
+    if (
+      lat == null ||
+      lng == null ||
+      !this.isAcceptableGps(lat, lng)
+    ) {
+      return null;
+    }
+
+    const recordedAt =
+      profile.lastLocationAt?.toISOString() ?? new Date().toISOString();
+
+    // TTL yangilab qo‘yamiz — admin xarita marker saqlansin
+    try {
+      await this.redis.setJson(
+        `location:live:${distributorId}`,
+        { latitude: lat, longitude: lng, recordedAt },
+        ttl,
+      );
+    } catch {
+      /* ignore */
+    }
+
+    return { latitude: lat, longitude: lng, recordedAt };
+  }
+
+  /** Presence ping — online TTL ni yangilash. */
+  async refreshPresence(distributorId: string): Promise<void> {
+    try {
+      await this.redis.setJson(
+        `online:${distributorId}`,
+        { updatedAt: new Date().toISOString(), source: 'presence' },
+        LIVE_LOCATION_TTL,
+      );
+      await this.distributorRepo.update(distributorId, { isOnline: true });
+      const live = await this.redis.getJson(`location:live:${distributorId}`);
+      if (live) {
+        await this.redis.setJson(
+          `location:live:${distributorId}`,
+          live,
+          LIVE_LOCATION_TTL,
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   /** Socket uzilganda — online holatni tozalash (oxirgi nuqta saqlanadi) */
   async markOffline(distributorId: string) {
     try {
@@ -197,7 +279,7 @@ export class GpsService {
   }
 
   /** Redis online yoki oxirgi GPS yangimi */
-  async isLiveOnline(distributorId: string, maxAgeMs = 180_000): Promise<boolean> {
+  async isLiveOnline(distributorId: string, maxAgeMs = 300_000): Promise<boolean> {
     try {
       const online = await this.redis.getJson(`online:${distributorId}`);
       if (online) return true;

@@ -47,8 +47,8 @@ function categoryColor(name: string, index: number): string {
   return CATEGORY_COLORS[key] ?? CATEGORY_FALLBACK_COLORS[index % CATEGORY_FALLBACK_COLORS.length];
 }
 
-/** Oxirgi GPS 90 soniyadan yangi bo'lsa — haqiqiy online */
-const LOCATION_ONLINE_MAX_AGE_MS = 180_000;
+/** Oxirgi GPS 5 daqiqadan yangi bo'lsa — haqiqiy online */
+const LOCATION_ONLINE_MAX_AGE_MS = 300_000;
 
 function formatLastSeen(date: Date | null | undefined): string {
   if (!date) return '—';

@@ -13,6 +13,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductRating } from '../products/entities/product-rating.entity';
 import { PromotionsService } from '../promotions/promotions.service';
 import { OrderPayment } from '../payments/entities/order-payment.entity';
+import { AttachPaymentPhotoDto } from './dto/client-portal.dto';
 import { Client } from './entities/client.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
 import { GpsService } from '../gps/gps.service';
@@ -866,6 +867,7 @@ export class ClientPortalService {
       type: 'payment' | 'debt';
       method: string | null;
       orderId: string | null;
+      photoUrl: string | null;
       createdAt: Date;
     };
 
@@ -882,6 +884,7 @@ export class ClientPortalService {
         type: 'payment',
         method: payment.method ?? null,
         orderId: payment.orderId,
+        photoUrl: payment.photoUrl ?? null,
         createdAt: new Date(payment.createdAt),
       });
     }
@@ -898,6 +901,7 @@ export class ClientPortalService {
         type: 'debt',
         method: null,
         orderId: order.id,
+        photoUrl: null,
         createdAt: new Date(order.createdAt),
       });
     }
@@ -934,6 +938,83 @@ export class ClientPortalService {
         createdAt: createdAt.toISOString(),
       })),
       monthlyDebt,
+    };
+  }
+
+  /** Mijoz o‘zi pul olgan inson rasmini to‘lovga biriktiradi. */
+  async attachPaymentPhoto(
+    user: User,
+    dto: AttachPaymentPhotoDto,
+    companyId?: string | null,
+  ) {
+    const photoUrl = dto.photoUrl?.trim();
+    if (!photoUrl || !photoUrl.startsWith('/uploads/payments/')) {
+      throw new BadRequestException('Invalid photoUrl');
+    }
+
+    const client = await this.resolveActiveClient(user, companyId);
+    const memberships = await this.ensureMemberships(user);
+    const clientIds = [
+      ...new Set([
+        client.id,
+        this.primaryClientId(user),
+        ...memberships.map((m) => m.clientId),
+      ]),
+    ];
+
+    let payment: OrderPayment | null = null;
+    const paymentId = dto.paymentId?.replace(/^pay-/, '').trim();
+    if (paymentId) {
+      payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
+      if (!payment || !clientIds.includes(payment.clientId)) {
+        throw new NotFoundException('Payment not found');
+      }
+    } else if (dto.orderId) {
+      const candidates = await this.paymentRepo.find({
+        where: { orderId: dto.orderId, clientId: In(clientIds) },
+        order: { createdAt: 'DESC' },
+        take: 10,
+      });
+      payment =
+        candidates.find((p) => Number(p.paidAmount) > 0.01 && !p.photoUrl) ??
+        candidates.find((p) => Number(p.paidAmount) > 0.01) ??
+        null;
+      if (!payment) throw new NotFoundException('Payment not found for order');
+    } else {
+      const candidates = await this.paymentRepo.find({
+        where: { clientId: In(clientIds) },
+        order: { createdAt: 'DESC' },
+        take: 20,
+      });
+      payment =
+        candidates.find(
+          (p) =>
+            Number(p.paidAmount) > 0.01 &&
+            p.status !== PaymentStatus.CANCELLED &&
+            !p.photoUrl,
+        ) ??
+        candidates.find(
+          (p) =>
+            Number(p.paidAmount) > 0.01 && p.status !== PaymentStatus.CANCELLED,
+        ) ??
+        null;
+      if (!payment) throw new NotFoundException('No recent payment to attach photo');
+    }
+
+    payment.photoUrl = photoUrl;
+    await this.paymentRepo.save(payment);
+
+    if (payment.orderId) {
+      await this.orderRepo.update(
+        { id: payment.orderId },
+        { lastPaymentPhotoUrl: photoUrl },
+      );
+    }
+
+    return {
+      id: payment.id,
+      orderId: payment.orderId,
+      photoUrl: payment.photoUrl,
     };
   }
 

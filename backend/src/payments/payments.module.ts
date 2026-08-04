@@ -26,6 +26,6 @@ import { PaymentReminderCron } from './payment-reminder.cron';
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService, PaymentPhotoUploadService, PaymentReminderCron],
-  exports: [PaymentsService],
+  exports: [PaymentsService, PaymentPhotoUploadService],
 })
 export class PaymentsModule {}

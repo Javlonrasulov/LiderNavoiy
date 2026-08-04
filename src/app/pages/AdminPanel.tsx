@@ -121,6 +121,8 @@ export default function AdminPanel() {
     name?: string;
     at: number;
   }>>({});
+  const liveLocationsRef = useRef(liveLocations);
+  liveLocationsRef.current = liveLocations;
 
   const companyBtnRef = useRef<HTMLButtonElement>(null);
   const langBtnRef = useRef<HTMLButtonElement>(null);
@@ -224,13 +226,47 @@ export default function AdminPanel() {
         for (const list of lists) {
           for (const d of list) byId.set(d.id, d);
         }
-        setMapDistributors([...byId.values()]);
+        const liveNow = liveLocationsRef.current;
+        const graceMs = 300_000;
+        const now = Date.now();
+        // HTTP poll WS jonli holatni o‘chirmasin — yangiroq GPS/online saqlanadi
+        setMapDistributors(prev => {
+          const prevById = new Map(prev.map(d => [d.id, d]));
+          return [...byId.values()].map(d => {
+            const live = liveNow[d.id];
+            const liveFresh = !!live && live.online && now - live.at < graceMs;
+            const old = prevById.get(d.id);
+            if (liveFresh && isInServiceArea(live.lat, live.lng)) {
+              return {
+                ...d,
+                lastLatitude: live.lat,
+                lastLongitude: live.lng,
+                lastLocationAt: new Date(live.at).toISOString(),
+                isOnline: true,
+              };
+            }
+            const apiAt = d.lastLocationAt ? new Date(d.lastLocationAt).getTime() : 0;
+            const oldAt = old?.lastLocationAt ? new Date(old.lastLocationAt).getTime() : 0;
+            if (old && oldAt > apiAt && isInServiceArea(
+              Number(old.lastLatitude), Number(old.lastLongitude),
+            )) {
+              return {
+                ...d,
+                lastLatitude: old.lastLatitude,
+                lastLongitude: old.lastLongitude,
+                lastLocationAt: old.lastLocationAt,
+                isOnline: !!old.isOnline || !!d.isOnline || isGpsLiveOnline(old.lastLocationAt),
+              };
+            }
+            return d;
+          });
+        });
       });
     };
 
     load();
-    // Jonli online — 2s da HTTP zaxira (WS bo'lmasa ham sekundlarda)
-    const interval = window.setInterval(load, 2_000);
+    // WS asosiy; HTTP zaxira — miltillashni kamaytirish uchun 5s
+    const interval = window.setInterval(load, 5_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -280,8 +316,8 @@ export default function AdminPanel() {
           return {
             ...prev,
             [d.distributorId!]: {
-              lat: cur?.lat ?? 0,
-              lng: cur?.lng ?? 0,
+              lat: cur?.lat ?? Number.NaN,
+              lng: cur?.lng ?? Number.NaN,
               online: true,
               lastSeen: 'hozir',
               at: Date.now(),
@@ -291,7 +327,13 @@ export default function AdminPanel() {
         });
         setMapDistributors(prev =>
           prev.map(x =>
-            x.id === d.distributorId ? { ...x, isOnline: true } : x,
+            x.id === d.distributorId
+              ? {
+                  ...x,
+                  isOnline: true,
+                  lastLocationAt: new Date().toISOString(),
+                }
+              : x,
           ),
         );
       },
@@ -305,6 +347,11 @@ export default function AdminPanel() {
             [d.distributorId!]: { ...cur, online: false, lastSeen: 'hozirgina', at: Date.now() },
           };
         });
+        setMapDistributors(prev =>
+          prev.map(x =>
+            x.id === d.distributorId ? { ...x, isOnline: false } : x,
+          ),
+        );
       },
     }).then(s => {
       if (cancelled) {
@@ -314,21 +361,21 @@ export default function AdminPanel() {
       socket = s;
     });
 
-    // Eski WS nuqtalari — 3 daqiqadan keyin
+    // Eski WS nuqtalari — 5 daqiqadan keyin
     const expire = window.setInterval(() => {
-      const cutoff = Date.now() - 180_000;
+      const cutoff = Date.now() - 300_000;
       setLiveLocations(prev => {
         let changed = false;
         const next = { ...prev };
         for (const [id, live] of Object.entries(next)) {
           if (live.online && live.at < cutoff) {
-            next[id] = { ...live, online: false, lastSeen: '1+ daqiqa oldin' };
+            next[id] = { ...live, online: false, lastSeen: '5+ daqiqa oldin' };
             changed = true;
           }
         }
         return changed ? next : prev;
       });
-    }, 15_000);
+    }, 20_000);
     return () => {
       cancelled = true;
       socket?.disconnect();
@@ -424,6 +471,7 @@ export default function AdminPanel() {
 
   const activeMapEmployees: EmployeeMarker[] = (() => {
     const byDist = new Map<string, EmployeeMarker>();
+    const now = Date.now();
 
     // 1) Distributors API — asosiy manba (online + offline)
     for (const d of mapDistributors) {
@@ -431,39 +479,41 @@ export default function AdminPanel() {
       if (m?.distributorId) byDist.set(m.distributorId, m);
     }
 
-    // 2) Dashboard employeeLocations — qo'shimcha / yangiroq
+    // 2) Dashboard employeeLocations — faqat yangiroq bo‘lsa coords; online pastga tushmaydi
     if (dashData?.employeeLocations) {
       for (const e of dashData.employeeLocations) {
         if (!isInServiceArea(e.lat, e.lng)) continue;
         const prev = byDist.get(e.distributorId);
+        const live = liveLocations[e.distributorId];
+        const liveFresh = !!live && live.online && (now - live.at) < 300_000
+          && isInServiceArea(live.lat, live.lng);
         byDist.set(e.distributorId, {
           id: clientIdHash(e.distributorId),
-          name: e.name,
-          avatar: e.avatar,
-          role: e.role,
-          // Online ni pastga tushirmaymiz — distributors/WS yangiroq bo'lishi mumkin
-          online: e.online || !!prev?.online,
-          lastSeen: e.online ? e.lastSeen : (prev?.lastSeen || e.lastSeen),
-          lat: e.lat,
-          lng: e.lng,
-          orgId: e.orgId,
+          name: e.name || prev?.name || 'Agent',
+          avatar: e.avatar || prev?.avatar || initialsOf(e.name || 'A'),
+          role: e.role || prev?.role || 'agent',
+          online: e.online || !!prev?.online || !!liveFresh,
+          lastSeen: (e.online || liveFresh)
+            ? (liveFresh ? (live.lastSeen || 'hozir') : e.lastSeen)
+            : (prev?.lastSeen || e.lastSeen),
+          lat: liveFresh ? live.lat : (prev?.lat ?? e.lat),
+          lng: liveFresh ? live.lng : (prev?.lng ?? e.lng),
+          orgId: e.orgId || prev?.orgId,
           distributorId: e.distributorId,
         });
       }
     }
 
     // 3) WebSocket jonli yangilanish — online ni kuchaytiradi, HTTP online ni o'chirmaydi
-    const now = Date.now();
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
       const hasCoords = isInServiceArea(live.lat, live.lng);
-      const liveOnline = live.online && (now - live.at) < 180_000;
+      const liveOnline = live.online && (now - live.at) < 300_000;
 
       if (existing) {
         byDist.set(distributorId, {
           ...existing,
           ...(hasCoords ? { lat: live.lat, lng: live.lng } : {}),
-          // WS online → true; aks holda HTTP/dashboard online saqlanadi
           online: liveOnline || existing.online,
           lastSeen: liveOnline ? (live.lastSeen || existing.lastSeen) : existing.lastSeen,
         });

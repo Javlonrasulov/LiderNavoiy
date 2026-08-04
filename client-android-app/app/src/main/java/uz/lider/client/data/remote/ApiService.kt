@@ -13,6 +13,7 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 import uz.lider.client.data.remote.dto.AuthResponseDto
 import uz.lider.client.data.remote.dto.CategoryRowDto
+import uz.lider.client.data.remote.dto.ChangePasswordRequest
 import uz.lider.client.data.remote.dto.ClientAnalyticsDto
 import uz.lider.client.data.remote.dto.ClientOrderDto
 import uz.lider.client.data.remote.dto.OrderTrackingDto
@@ -45,6 +46,9 @@ interface ApiService {
 
     @POST("auth/logout")
     suspend fun logout(@Body body: LogoutRequest = LogoutRequest())
+
+    @POST("auth/change-password")
+    suspend fun changePassword(@Body body: ChangePasswordRequest)
 
     @GET("client-portal/me")
     suspend fun getProfile(
@@ -93,6 +97,18 @@ interface ApiService {
         @Query("from") from: String? = null,
         @Query("to") to: String? = null,
     ): uz.lider.client.data.remote.dto.ClientDebtDto
+
+    @Multipart
+    @POST("client-portal/upload-payment-photo")
+    suspend fun uploadPaymentPhoto(
+        @Part file: MultipartBody.Part,
+    ): uz.lider.client.data.remote.dto.PaymentPhotoUploadDto
+
+    @POST("client-portal/payments/photo")
+    suspend fun attachPaymentPhoto(
+        @Body body: uz.lider.client.data.remote.dto.AttachPaymentPhotoRequest,
+        @Header("X-Company-Id") companyId: String? = null,
+    ): uz.lider.client.data.remote.dto.AttachPaymentPhotoResponseDto
 
     @GET("client-portal/promotions")
     suspend fun getPromotions(): List<PromotionDto>

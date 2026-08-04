@@ -1,5 +1,5 @@
-/** GPS "jonli" deb hisoblanadigan maksimal yosh (backend Redis TTL bilan bir xil — 3 daqiqa). */
-export const GPS_ONLINE_MAX_AGE_MS = 180_000;
+/** GPS "jonli" deb hisoblanadigan maksimal yosh (backend Redis TTL bilan — 5 daqiqa). */
+export const GPS_ONLINE_MAX_AGE_MS = 300_000;
 
 /** O‘zbekiston (+ chegara) — okean / Null Island / emulator AQSh GPS ni rad etish */
 export function isInServiceArea(lat: number, lng: number): boolean {

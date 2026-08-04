@@ -5,7 +5,10 @@ import io.socket.client.IO
 import io.socket.client.Socket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import uz.distributor.crm.BuildConfig
@@ -24,6 +27,7 @@ class TrackingSocketManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var socket: Socket? = null
+    private var presenceJob: Job? = null
     @Volatile private var connected = false
     @Volatile private var pendingPoint: LocationPoint? = null
 
@@ -54,11 +58,15 @@ class TrackingSocketManager @Inject constructor(
                     on(Socket.EVENT_CONNECT) {
                         connected = true
                         Log.d(TAG, "Socket connected")
+                        emitPresencePing()
+                        startPresenceLoop()
                         pendingPoint?.let { flushPending(it) }
                     }
                     on("reconnect") {
                         connected = true
                         Log.d(TAG, "Socket reconnected")
+                        emitPresencePing()
+                        startPresenceLoop()
                         pendingPoint?.let { flushPending(it) }
                     }
                     on(Socket.EVENT_DISCONNECT) {
@@ -85,6 +93,24 @@ class TrackingSocketManager @Inject constructor(
         flushPending(point)
     }
 
+    private fun startPresenceLoop() {
+        presenceJob?.cancel()
+        presenceJob = scope.launch {
+            while (isActive) {
+                delay(PRESENCE_INTERVAL_MS)
+                if (socket?.connected() == true) emitPresencePing()
+            }
+        }
+    }
+
+    private fun emitPresencePing() {
+        try {
+            socket?.emit("presence:ping", JSONObject())
+        } catch (e: Exception) {
+            Log.w(TAG, "presence ping failed", e)
+        }
+    }
+
     private fun flushPending(point: LocationPoint) {
         try {
             val payload = JSONObject().apply {
@@ -109,6 +135,8 @@ class TrackingSocketManager @Inject constructor(
     }
 
     private fun disconnectInternal() {
+        presenceJob?.cancel()
+        presenceJob = null
         connected = false
         socket?.off()
         socket?.disconnect()
@@ -117,5 +145,6 @@ class TrackingSocketManager @Inject constructor(
 
     companion object {
         private const val TAG = "TrackingSocket"
+        private const val PRESENCE_INTERVAL_MS = 30_000L
     }
 }

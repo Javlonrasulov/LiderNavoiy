@@ -25,6 +25,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { ProductsModule } from '../products/products.module';
 import { PromotionsModule } from '../promotions/promotions.module';
 import { GpsModule } from '../gps/gps.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { GpsModule } from '../gps/gps.module';
     ProductsModule,
     PromotionsModule,
     GpsModule,
+    PaymentsModule,
   ],
   controllers: [ClientsController, ClientRequestsController, ClientPortalController],
   providers: [

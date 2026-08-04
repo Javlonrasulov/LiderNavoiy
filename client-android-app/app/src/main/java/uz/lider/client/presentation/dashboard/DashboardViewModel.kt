@@ -1,5 +1,6 @@
 package uz.lider.client.presentation.dashboard
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -23,6 +25,7 @@ import uz.lider.client.data.remote.TrackingSocketManager
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.OrderRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
+import uz.lider.client.data.repository.PaymentProofRepository
 import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.data.repository.RoadRouteService
 import uz.lider.client.domain.model.AuthUser
@@ -37,6 +40,14 @@ import uz.lider.client.map.MapDefaults
 import uz.lider.client.map.RouteTrim
 import java.time.Instant
 import javax.inject.Inject
+
+data class PaymentPhotoSectionUi(
+    val visible: Boolean = false,
+    val orderId: String? = null,
+    val uploading: Boolean = false,
+    val error: String? = null,
+    val previewUrl: String? = null,
+)
 
 data class DashboardUiState(
     val loading: Boolean = true,
@@ -60,16 +71,65 @@ class DashboardViewModel @Inject constructor(
     private val trackingSocket: TrackingSocketManager,
     private val promotionsRepository: uz.lider.client.data.repository.PromotionsRepository,
     private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
+    private val paymentProofRepository: PaymentProofRepository,
     private val mapRouteStopsHolder: MapRouteStopsHolder,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
 
+    private val _photoUploading = MutableStateFlow(false)
+    private val _photoError = MutableStateFlow<String?>(null)
+    private val _photoPreview = MutableStateFlow<String?>(null)
+
+    val paymentPhotoSection: StateFlow<PaymentPhotoSectionUi> = combine(
+        paymentPhotoAlertStore.state,
+        _photoUploading,
+        _photoError,
+        _photoPreview,
+    ) { alert, uploading, error, preview ->
+        PaymentPhotoSectionUi(
+            visible = alert.shouldShowModal || uploading || !preview.isNullOrBlank(),
+            orderId = alert.orderId,
+            uploading = uploading,
+            error = error,
+            previewUrl = preview,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PaymentPhotoSectionUi())
+
+    fun dismissPaymentPhotoSection() {
+        viewModelScope.launch {
+            _photoPreview.value = null
+            _photoError.value = null
+            paymentPhotoAlertStore.dismissModal()
+        }
+    }
+
+    fun uploadPaymentProof(uri: Uri) {
+        viewModelScope.launch {
+            _photoUploading.value = true
+            _photoError.value = null
+            val orderId = paymentPhotoSection.value.orderId
+            val result = paymentProofRepository.captureAndAttach(uri, orderId)
+            _photoUploading.value = false
+            result.fold(
+                onSuccess = { url ->
+                    _photoPreview.value = url
+                    _photoError.value = null
+                    delay(1800)
+                    _photoPreview.value = null
+                },
+                onFailure = {
+                    _photoError.value = it.message ?: "upload_failed"
+                },
+            )
+        }
+    }
+
     val hideStopsCompanyIds: StateFlow<Set<String>> = mapRouteStopsHolder.hideCompanyIds
 
     fun setHideStopsCompanyIds(ids: Set<String>) {
-        mapRouteStopsHolder.setHideCompanyIds(ids)
+        viewModelScope.launch { mapRouteStopsHolder.setHideCompanyIds(ids) }
     }
 
     val mapPayHintDismissedOrderIds: StateFlow<Set<String>> =
@@ -92,6 +152,12 @@ class DashboardViewModel @Inject constructor(
 
     init {
         load()
+        viewModelScope.launch {
+            while (isActive) {
+                paymentPhotoAlertStore.clearIfExpired()
+                delay(15_000)
+            }
+        }
         socketJob = viewModelScope.launch {
             trackingSocket.locations.collect { event ->
                 applyLiveCourierToFleet(event.distributorId, event.latitude, event.longitude, event.recordedAt)
@@ -318,13 +384,14 @@ class DashboardViewModel @Inject constructor(
             .filter { OrderStatus.fromKey(it.status) == OrderStatus.ON_WAY }
             .map { it.id }
             .toSet()
+
+        val keysByOrderId = realOnWayIds.associateWith { orderId ->
+            hideKeysForOrder(orderId, orders, previous)
+        }
+        mapRouteStopsHolder.syncOnWayOrders(realOnWayIds, keysByOrderId)
+
         // Pushsiz: yo‘ldagi buyurtma yetkazilganda modal
         if (onWayTrackReady) {
-            val newlyOnWay = realOnWayIds - trackedOnWayIds
-            if (newlyOnWay.isNotEmpty()) {
-                // Yangi buyurtma keldi — tochkalarni qayta yoqamiz (eski hide qolmasin)
-                mapRouteStopsHolder.clear()
-            }
             val deliveredNow = trackedOnWayIds - realOnWayIds
             for (orderId in deliveredNow) {
                 val status = orders.firstOrNull { it.id == orderId }
@@ -810,6 +877,28 @@ class DashboardViewModel @Inject constructor(
     private fun parseIsoMs(value: String?): Long? {
         if (value.isNullOrBlank()) return null
         return runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
+    }
+
+    private fun hideKeysForOrder(
+        orderId: String,
+        orders: List<ClientOrder>,
+        fleet: LiveFleetUi?,
+    ): Set<String> {
+        val order = orders.firstOrNull { it.id == orderId }
+        val companyId = order?.companyId?.trim()?.takeIf { it.isNotEmpty() }
+        val keys = mutableSetOf<String>()
+        if (companyId != null) keys += companyId
+        fleet?.vehicles?.forEach { vehicle ->
+            val matchesOrder = vehicle.orders.any { it.orderId == orderId }
+            val matchesCompany = companyId != null &&
+                vehicle.companyId?.trim().orEmpty() == companyId
+            if (matchesOrder || matchesCompany) {
+                vehicle.companyId?.trim()?.takeIf { it.isNotEmpty() }?.let { keys += it }
+                vehicle.companyShortName?.trim()?.takeIf { it.isNotEmpty() }?.let { keys += it }
+                vehicle.id.trim().takeIf { it.isNotEmpty() }?.let { keys += it }
+            }
+        }
+        return keys
     }
 
     private fun formatDistance(km: Double): String =

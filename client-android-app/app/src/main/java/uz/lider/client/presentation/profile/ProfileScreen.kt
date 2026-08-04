@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
@@ -90,6 +91,8 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val showChangePassword by viewModel.showChangePassword.collectAsState()
+    val changePasswordState by viewModel.changePasswordState.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -440,6 +443,11 @@ fun ProfileScreen(
                                 LiquidGlass.GradientPrimary,
                             ) { onNavigate(ClientRoutes.SETTINGS) }
                             GlassMenuLink(
+                                Icons.Default.Lock,
+                                localized("prof_change_password"),
+                                Brush.linearGradient(listOf(LiquidGlass.Indigo, LiquidGlass.Cyan)),
+                            ) { viewModel.openChangePassword() }
+                            GlassMenuLink(
                                 Icons.Default.Help,
                                 localized("prof_help"),
                                 Brush.linearGradient(listOf(LiquidGlass.Cyan, LiquidGlass.Emerald)),
@@ -499,6 +507,16 @@ fun ProfileScreen(
             }
         }
     }
+
+    ProfileChangePasswordSheet(
+        visible = showChangePassword,
+        state = changePasswordState,
+        onDismiss = viewModel::closeChangePassword,
+        onCurrentPasswordChange = viewModel::onCurrentPasswordChange,
+        onNewPasswordChange = viewModel::onNewPasswordChange,
+        onConfirmPasswordChange = viewModel::onConfirmPasswordChange,
+        onSubmit = viewModel::submitChangePassword,
+    )
 }
 
 private data class ProfileCategoryStyle(

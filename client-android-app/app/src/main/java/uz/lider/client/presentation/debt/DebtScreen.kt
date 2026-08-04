@@ -35,13 +35,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.ClientStackScaffold
-import uz.lider.client.presentation.components.PaymentPhotoReminderBanner
+import uz.lider.client.presentation.components.FullScreenImageViewer
+import uz.lider.client.presentation.components.PaymentPhotoCaptureSection
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
 import uz.lider.client.presentation.components.localized
@@ -68,7 +71,7 @@ fun DebtScreen(
     viewModel: DebtViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val showPayPhotoBanner by viewModel.showPayPhotoBanner.collectAsState()
+    val paymentPhotoSection by viewModel.paymentPhotoSection.collectAsState()
     val creditLimit = state.creditLimit
     val usedPct = if (creditLimit != null && creditLimit > 0) {
         (state.currentDebt / creditLimit).toFloat().coerceIn(0f, 1f)
@@ -117,10 +120,18 @@ fun DebtScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (showPayPhotoBanner) {
+                    if (paymentPhotoSection.visible) {
                         item {
-                            PaymentPhotoReminderBanner(
-                                text = localized("pay_photo_alert_body"),
+                            PaymentPhotoCaptureSection(
+                                title = localized("pay_photo_alert_title"),
+                                body = localized("pay_photo_alert_body"),
+                                captureLabel = localized("pay_photo_capture"),
+                                savedLabel = localized("pay_photo_saved"),
+                                uploading = paymentPhotoSection.uploading,
+                                error = paymentPhotoSection.error?.let { localized("pay_photo_upload_error") },
+                                previewUrl = paymentPhotoSection.previewUrl,
+                                onCapture = { viewModel.uploadPaymentProof(it) },
+                                onDismiss = null,
                             )
                         }
                     }
@@ -325,6 +336,14 @@ fun DebtScreen(
                         }
                     } else {
                         items(state.filteredPayments) { payment ->
+                            var previewUrl by remember(payment.id) { mutableStateOf<String?>(null) }
+                            if (previewUrl != null) {
+                                FullScreenImageViewer(
+                                    imageUrl = previewUrl!!,
+                                    contentDescription = localized("debt_payment"),
+                                    onDismiss = { previewUrl = null },
+                                )
+                            }
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -336,6 +355,7 @@ fun DebtScreen(
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f),
                                 ) {
                                     Box(
                                         Modifier
@@ -356,12 +376,23 @@ fun DebtScreen(
                                             modifier = Modifier.size(20.dp),
                                         )
                                     }
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(payment.date, color = LiquidTheme.textMuted, fontSize = 12.sp)
                                         Text(
                                             localized(payment.typeKey),
                                             color = LiquidTheme.text,
                                             fontWeight = FontWeight.SemiBold,
+                                        )
+                                    }
+                                    payment.photoUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                        AsyncImage(
+                                            model = url,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { previewUrl = url },
                                         )
                                     }
                                 }

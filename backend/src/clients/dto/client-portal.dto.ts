@@ -1,6 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { OrderItemDto } from '../../orders/dto/order.dto';
 
 export class ClientCreateOrderDto {
@@ -17,4 +26,20 @@ export class SetProductRatingDto {
   @Min(1)
   @Max(5)
   stars: number;
+}
+
+export class AttachPaymentPhotoDto {
+  @ApiProperty({ example: '/uploads/payments/uuid.jpg' })
+  @IsString()
+  photoUrl: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  paymentId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  orderId?: string;
 }

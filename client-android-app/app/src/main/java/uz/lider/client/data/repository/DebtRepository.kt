@@ -1,5 +1,6 @@
 package uz.lider.client.data.repository
 
+import uz.lider.client.BuildConfig
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.ClientDebtDto
@@ -59,8 +60,16 @@ class DebtRepository @Inject constructor(
             typeKey = if (isPayment) "debt_payment" else "debt_added",
             isPayment = isPayment,
             orderId = orderId,
+            photoUrl = resolveMediaUrl(photoUrl),
             createdAtMs = PaymentPhotoAlertStore.parseCreatedAtMs(createdAt) ?: 0L,
         )
+    }
+
+    private fun resolveMediaUrl(path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        if (path.startsWith("http")) return path
+        val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
+        return "$base$path"
     }
 
     private fun formatAmount(value: Double): String {

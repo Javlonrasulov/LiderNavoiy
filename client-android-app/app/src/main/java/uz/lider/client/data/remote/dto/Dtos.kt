@@ -41,6 +41,11 @@ data class LoginRequest(
     val device: LoginDeviceDto? = null,
 )
 
+data class ChangePasswordRequest(
+    val currentPassword: String,
+    val newPassword: String,
+)
+
 data class LoginDeviceDto(
     val id: String? = null,
     val brand: String? = null,
@@ -309,6 +314,7 @@ data class DebtHistoryItemDto(
     val type: String = "payment",
     val method: String? = null,
     val orderId: String? = null,
+    val photoUrl: String? = null,
     val createdAt: String? = null,
 )
 
@@ -370,4 +376,21 @@ data class ProductRatingDto(
 
 data class SetProductRatingRequest(
     val stars: Int,
+)
+
+data class PaymentPhotoUploadDto(
+    val url: String = "",
+    val fullUrl: String? = null,
+)
+
+data class AttachPaymentPhotoRequest(
+    val photoUrl: String,
+    val paymentId: String? = null,
+    val orderId: String? = null,
+)
+
+data class AttachPaymentPhotoResponseDto(
+    val id: String? = null,
+    val orderId: String? = null,
+    val photoUrl: String? = null,
 )

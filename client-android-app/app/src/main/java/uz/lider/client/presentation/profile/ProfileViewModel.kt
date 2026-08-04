@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import uz.lider.client.data.local.SelectedOrgHolder
+import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.domain.model.ClientOrganization
@@ -23,6 +24,15 @@ data class ProfileUiState(
     val selectedCompanyId: String? = null,
 )
 
+data class ChangePasswordUiState(
+    val currentPassword: String = "",
+    val newPassword: String = "",
+    val confirmPassword: String = "",
+    val isLoading: Boolean = false,
+    val errorKey: String? = null,
+    val success: Boolean = false,
+)
+
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val profileRepository: ProfileRepository,
@@ -32,6 +42,12 @@ class ProfileViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
+
+    private val _showChangePassword = MutableStateFlow(false)
+    val showChangePassword: StateFlow<Boolean> = _showChangePassword.asStateFlow()
+
+    private val _changePasswordState = MutableStateFlow(ChangePasswordUiState())
+    val changePasswordState: StateFlow<ChangePasswordUiState> = _changePasswordState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -67,6 +83,63 @@ class ProfileViewModel @Inject constructor(
             _uiState.update { it.copy(loading = true) }
             reloadQuiet()
             _uiState.update { it.copy(loading = false) }
+        }
+    }
+
+    fun openChangePassword() {
+        _changePasswordState.value = ChangePasswordUiState()
+        _showChangePassword.value = true
+    }
+
+    fun closeChangePassword() {
+        _showChangePassword.value = false
+        _changePasswordState.value = ChangePasswordUiState()
+    }
+
+    fun onCurrentPasswordChange(value: String) =
+        _changePasswordState.update { it.copy(currentPassword = value, errorKey = null) }
+
+    fun onNewPasswordChange(value: String) =
+        _changePasswordState.update { it.copy(newPassword = value, errorKey = null) }
+
+    fun onConfirmPasswordChange(value: String) =
+        _changePasswordState.update { it.copy(confirmPassword = value, errorKey = null) }
+
+    fun submitChangePassword() {
+        val state = _changePasswordState.value
+        when {
+            state.currentPassword.isBlank() -> {
+                _changePasswordState.update {
+                    it.copy(errorKey = ApiErrorMapper.CURRENT_PASSWORD_REQUIRED)
+                }
+            }
+            state.newPassword.length < 6 -> {
+                _changePasswordState.update {
+                    it.copy(errorKey = ApiErrorMapper.PASSWORD_TOO_SHORT)
+                }
+            }
+            state.newPassword != state.confirmPassword -> {
+                _changePasswordState.update {
+                    it.copy(errorKey = ApiErrorMapper.PASSWORD_MISMATCH)
+                }
+            }
+            else -> viewModelScope.launch {
+                _changePasswordState.update { it.copy(isLoading = true, errorKey = null) }
+                val result = authRepository.changePassword(state.currentPassword, state.newPassword)
+                result.fold(
+                    onSuccess = {
+                        _changePasswordState.update { ChangePasswordUiState(success = true) }
+                    },
+                    onFailure = { e ->
+                        _changePasswordState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorKey = e.message ?: ApiErrorMapper.SAVE_FAILED,
+                            )
+                        }
+                    },
+                )
+            }
         }
     }
 

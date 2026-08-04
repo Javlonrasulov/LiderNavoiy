@@ -6,7 +6,7 @@ import { RedisService } from '../common/redis/redis.service';
 import { DistributorStatus } from '../common/enums';
 
 /** Redis TTL va dashboard bilan bir xil — sticky DB isOnline emas */
-const LOCATION_ONLINE_MAX_AGE_MS = 180_000;
+const LOCATION_ONLINE_MAX_AGE_MS = 300_000;
 
 @Injectable()
 export class DistributorsService {

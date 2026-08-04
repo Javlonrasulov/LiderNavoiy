@@ -15,6 +15,11 @@ object ApiErrorMapper {
     const val SAVE_FAILED = "save_failed"
     const val NO_AGENT = "cart_no_agent"
     const val DEVICE_COMPROMISED = "device_compromised"
+    const val INVALID_CURRENT_PASSWORD = "invalid_current_password"
+    const val CURRENT_PASSWORD_REQUIRED = "current_password_required"
+    const val PASSWORD_TOO_SHORT = "password_too_short"
+    const val PASSWORD_MISMATCH = "password_mismatch"
+    const val PASSWORD_CHANGED = "password_changed"
 
     fun toKey(e: Throwable): String = when (e) {
         is ClientOnlyException -> CLIENT_ONLY
@@ -58,6 +63,7 @@ object ApiErrorMapper {
     }
 
     private fun mapServerMessage(msg: String): String = when {
+        msg.contains("Invalid current password", ignoreCase = true) -> INVALID_CURRENT_PASSWORD
         msg.contains("Invalid credentials", ignoreCase = true) -> INVALID_CREDENTIALS
         msg.contains("no assigned agent", ignoreCase = true) -> NO_AGENT
         msg.contains("No client linked", ignoreCase = true) -> SAVE_FAILED

@@ -98,6 +98,7 @@ import uz.lider.client.map.OrgMapColors
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
 import uz.lider.client.presentation.components.OrgSwitcherChips
+import uz.lider.client.presentation.components.PaymentPhotoCaptureSection
 import uz.lider.client.presentation.components.PaymentPhotoReminderBanner
 import uz.lider.client.presentation.components.SimpleAreaChart
 import uz.lider.client.presentation.components.formatMoney
@@ -139,6 +140,7 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val hideStopsCompanyIds by viewModel.hideStopsCompanyIds.collectAsState()
+    val paymentPhotoSection by viewModel.paymentPhotoSection.collectAsState()
     val unreadNotificationCount by notificationsViewModel.unreadCount.collectAsState()
     val hasUnreadNotifications = unreadNotificationCount > 0
     val lang = LocalAppLanguage.current
@@ -404,6 +406,24 @@ fun DashboardScreen(
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .measureHeroEnd(),
+                            )
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+
+                    if (paymentPhotoSection.visible) {
+                        item {
+                            PaymentPhotoCaptureSection(
+                                title = t("pay_photo_alert_title"),
+                                body = t("pay_photo_alert_body"),
+                                captureLabel = t("pay_photo_capture"),
+                                savedLabel = t("pay_photo_saved"),
+                                uploading = paymentPhotoSection.uploading,
+                                error = paymentPhotoSection.error?.let { t("pay_photo_upload_error") },
+                                previewUrl = paymentPhotoSection.previewUrl,
+                                onCapture = { viewModel.uploadPaymentProof(it) },
+                                onDismiss = { viewModel.dismissPaymentPhotoSection() },
+                                modifier = Modifier.padding(horizontal = 16.dp),
                             )
                             Spacer(Modifier.height(20.dp))
                         }

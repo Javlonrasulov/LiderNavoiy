@@ -57,13 +57,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
+import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
@@ -354,33 +357,47 @@ fun DeliveryOrderDetailScreen(
                                     ?.let { formatDueAtDisplay(it) }
                                 val who = payment.collectorName?.takeIf { it.isNotBlank() }
                                 val methodLabel = paymentMethodLabel(payment.method, lang)
+                                val photoUrl = resolvePaymentPhotoUrl(payment.photoUrl)
                                 Column(Modifier.padding(vertical = 12.dp)) {
                                     Row(
                                         Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.Top,
                                     ) {
-                                        Text(
-                                            "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
-                                            color = textPrimary,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 15.sp,
-                                        )
-                                        if (methodLabel != null) {
-                                            Text(methodLabel, color = textMuted, fontSize = 12.sp)
+                                        Column(Modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
+                                                color = textPrimary,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 15.sp,
+                                            )
+                                            if (methodLabel != null) {
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(methodLabel, color = textMuted, fontSize = 12.sp)
+                                            }
+                                            if (who != null) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    "${AppStrings.deliveryCollectedBy(lang)}: $who",
+                                                    color = textMuted,
+                                                    fontSize = 13.sp,
+                                                )
+                                            }
+                                            if (whenText != null) {
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(whenText, color = textMuted, fontSize = 12.sp)
+                                            }
                                         }
-                                    }
-                                    if (who != null) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            "${AppStrings.deliveryCollectedBy(lang)}: $who",
-                                            color = textMuted,
-                                            fontSize = 13.sp,
-                                        )
-                                    }
-                                    if (whenText != null) {
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(whenText, color = textMuted, fontSize = 12.sp)
+                                        if (photoUrl != null) {
+                                            AsyncImage(
+                                                model = photoUrl,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(56.dp)
+                                                    .clip(RoundedCornerShape(10.dp)),
+                                            )
+                                        }
                                     }
                                 }
                                 if (index < order.payments.lastIndex) {
@@ -644,4 +661,11 @@ private fun paymentMethodLabel(method: String?, lang: AppLanguage): String? = wh
     "terminal" -> AppStrings.deliveryPayTerminal(lang)
     "deferred" -> AppStrings.deliveryPayLater(lang)
     else -> method?.takeIf { it.isNotBlank() }
+}
+
+private fun resolvePaymentPhotoUrl(path: String?): String? {
+    if (path.isNullOrBlank()) return null
+    if (path.startsWith("http")) return path
+    val base = BuildConfig.API_BASE_URL.trimEnd('/').removeSuffix("/api/v1")
+    return "$base$path"
 }

@@ -25,13 +25,14 @@ private val Context.paymentPhotoAlertDataStore: DataStore<Preferences> by prefer
 )
 
 data class PaymentPhotoAlertState(
-    /** Hali 30 daqiqa ichida — banner / modal asosi */
+    /** Hali 30 daqiqa ichida — To‘lovlar tarixida ko‘rinadi */
     val isActive: Boolean = false,
-    /** Modal X bilan yopilgan — banner To‘lov sahifasida qoladi */
+    /** Asosiydagi (xarita osti) X bilan yopilgan — tarixda 30 daqiqagacha qoladi */
     val modalDismissed: Boolean = false,
     val orderId: String? = null,
     val expiresAtMs: Long = 0L,
 ) {
+    /** Asosiy ekran (xarita osti) — X bosilmaguncha */
     val shouldShowModal: Boolean get() = isActive && !modalDismissed
 }
 
@@ -163,6 +164,15 @@ class PaymentPhotoAlertStore @Inject constructor(
     suspend fun dismissModal() {
         context.paymentPhotoAlertDataStore.edit { prefs ->
             prefs[modalDismissedKey] = true
+        }
+    }
+
+    /** Rasm muvaffaqiyatli yuklangach — eslatmani to‘liq yopish. */
+    suspend fun clearAlert() {
+        context.paymentPhotoAlertDataStore.edit { prefs ->
+            prefs.remove(expiresAtKey)
+            prefs.remove(modalDismissedKey)
+            prefs.remove(orderIdKey)
         }
     }
 
