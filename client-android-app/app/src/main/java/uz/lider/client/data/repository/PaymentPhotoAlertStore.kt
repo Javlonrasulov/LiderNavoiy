@@ -99,20 +99,17 @@ class PaymentPhotoAlertStore @Inject constructor(
         }
     }
 
-    /** Push / FCM / intent — modal majburiy. */
+    /** Push / FCM / intent — modal majburiy (30 daqiqa). */
     suspend fun recordPaymentReceived(orderId: String? = null, paymentId: String? = null) {
         context.paymentPhotoAlertDataStore.edit { prefs ->
             prefs[expiresAtKey] = System.currentTimeMillis() + TTL_MS
             prefs[modalDismissedKey] = false
+            // orderId/paymentId kelmasa — eski qiymatni saqlab qolamiz
             if (!orderId.isNullOrBlank()) {
                 prefs[orderIdKey] = orderId
-            } else {
-                prefs.remove(orderIdKey)
             }
             if (!paymentId.isNullOrBlank() && !paymentId.startsWith("ord-")) {
                 prefs[paymentIdKey] = paymentId
-            } else {
-                prefs.remove(paymentIdKey)
             }
             if (!paymentId.isNullOrBlank()) {
                 val handled = prefs[handledPaymentIdsKey].orEmpty().toMutableSet()
@@ -222,6 +219,31 @@ class PaymentPhotoAlertStore @Inject constructor(
         fun parseCreatedAtMs(iso: String?): Long? {
             if (iso.isNullOrBlank()) return null
             return runCatching { Instant.parse(iso).toEpochMilli() }.getOrNull()
+        }
+
+        /** Intent / FCM extras dan to‘lov pushini aniqlash. */
+        fun isPaymentPushExtras(
+            type: String?,
+            title: String?,
+            body: String?,
+            orderId: String?,
+            paymentId: String?,
+        ): Boolean {
+            if (type.equals(TYPE_PAYMENT, ignoreCase = true)) return true
+            if (!paymentId.isNullOrBlank()) return true
+            val blob = "${title.orEmpty()}\n${body.orEmpty()}"
+            if (blob.contains("To'lov qabul", ignoreCase = true)) return true
+            if (blob.contains("Тўлов қабул", ignoreCase = true)) return true
+            if (blob.contains("Оплата получена", ignoreCase = true)) return true
+            if (blob.contains("Платёж получен", ignoreCase = true)) return true
+            if (blob.contains("Payment received", ignoreCase = true)) return true
+            if (blob.contains("Dostavkachi", ignoreCase = true)) return true
+            if (blob.contains("Доставщик", ignoreCase = true)) return true
+            if (blob.contains("xavfsizlik", ignoreCase = true)) return true
+            if (blob.contains("безопасн", ignoreCase = true)) return true
+            // Ba'zi OEM faqat orderId qoldiradi
+            if (!orderId.isNullOrBlank() && type.isNullOrBlank() && blob.isNotBlank()) return true
+            return false
         }
     }
 }

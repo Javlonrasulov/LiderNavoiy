@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -82,21 +83,36 @@ class MainActivity : ComponentActivity() {
 
     private fun handlePushIntent(intent: Intent?) {
         if (intent == null) return
-        val type = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
-            ?: intent.getStringExtra("type")
-            ?: intent.getStringExtra("gcm.notification.type")
-        val orderId = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
-            ?: intent.getStringExtra("orderId")
-        val paymentId = intent.getStringExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID)
-            ?: intent.getStringExtra("paymentId")
-        val title = intent.getStringExtra("title").orEmpty()
+        val extras = intent.extras
+        val type = firstExtra(
+            extras,
+            PaymentPhotoAlertStore.EXTRA_TYPE,
+            "type",
+            "gcm.notification.type",
+        )
+        val orderId = firstExtra(
+            extras,
+            PaymentPhotoAlertStore.EXTRA_ORDER_ID,
+            "orderId",
+            "order_id",
+        )
+        val paymentId = firstExtra(
+            extras,
+            PaymentPhotoAlertStore.EXTRA_PAYMENT_ID,
+            "paymentId",
+            "payment_id",
+        )
+        val title = firstExtra(extras, "title", "gcm.notification.title").orEmpty()
+        val body = firstExtra(extras, "body", "gcm.notification.body").orEmpty()
 
-        val isPayment = type.equals(PaymentPhotoAlertStore.TYPE_PAYMENT, ignoreCase = true) ||
-            title.contains("To'lov qabul", ignoreCase = true) ||
-            title.contains("Тўлов қабул", ignoreCase = true) ||
-            title.contains("Оплата получена", ignoreCase = true) ||
-            title.contains("Платёж получен", ignoreCase = true) ||
-            title.contains("Payment received", ignoreCase = true)
+        val isPayment = PaymentPhotoAlertStore.isPaymentPushExtras(
+            type, title, body, orderId, paymentId,
+        )
+        Log.d(
+            TAG,
+            "pushIntent action=${intent.action} type=$type orderId=$orderId " +
+                "paymentId=$paymentId isPayment=$isPayment title=$title",
+        )
 
         if (isPayment) {
             lifecycleScope.launch {
@@ -105,14 +121,20 @@ class MainActivity : ComponentActivity() {
                     paymentId = paymentId,
                 )
             }
-            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_TYPE)
-            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_ORDER_ID)
-            intent.removeExtra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID)
-            intent.removeExtra("type")
-            intent.removeExtra("orderId")
-            intent.removeExtra("paymentId")
-            intent.removeExtra("title")
         }
+    }
+
+    private fun firstExtra(extras: Bundle?, vararg keys: String): String? {
+        if (extras == null) return null
+        for (key in keys) {
+            val v = extras.getString(key)?.trim()
+            if (!v.isNullOrBlank()) return v
+        }
+        for (key in keys) {
+            val v = extras.get(key)?.toString()?.trim()
+            if (!v.isNullOrBlank() && v != "null") return v
+        }
+        return null
     }
 
     private fun requestNotificationPermission() {
@@ -133,5 +155,9 @@ class MainActivity : ComponentActivity() {
                 runCatching { pushRepository.registerCurrentToken() }
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "PayPhotoPush"
     }
 }

@@ -42,6 +42,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
+import androidx.activity.ComponentActivity
 import uz.lider.client.R
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
@@ -108,11 +110,17 @@ class ClientNavigationViewModel @Inject constructor(
         // login/parol maydonlarini tozalab yubormasligi uchun so‘rov yuborilmaydi.
         if (authRepository.peekAccessToken().isNullOrBlank()) return
         val debt = debtRepository.getDebt() ?: return
+
+        // Muhim: agent yuklagan photoUrl ≠ mijoz xavfsizlik rasmi.
+        // Shuning uchun poll hech qachon push/eslatmani o‘chirmaydi —
+        // faqat clearAlert (yuklash OK) yoki TTL.
+
         val alert = paymentPhotoAlertStore.state.first()
-        if (alert.isActive && paymentProofAlreadySaved(debt.history, alert)) {
-            paymentPhotoAlertStore.clearAlert()
+        if (alert.isActive) {
+            // Eslatma tirik — yangi signal bilan ustiga yozmaslik kifoya
             return
         }
+
         val signals = debt.history
             .filter {
                 it.isPayment &&
@@ -130,42 +138,26 @@ class ClientNavigationViewModel @Inject constructor(
         paymentPhotoAlertStore.ingestRecentPayments(signals)
     }
 
-    /**
-     * Faqat shu eslatmaga tegishli to‘lovda rasm bo‘lsa yopiladi.
-     * Eski to‘lovlardagi rasm — yangi eslatmani o‘chirmasin.
-     */
-    private fun paymentProofAlreadySaved(
-        history: List<uz.lider.client.presentation.debt.DebtPayment>,
-        alert: uz.lider.client.data.repository.PaymentPhotoAlertState,
-    ): Boolean {
-        fun samePaymentId(rowId: String, wanted: String): Boolean {
-            val a = rowId.removePrefix("pay-")
-            val b = wanted.removePrefix("pay-")
-            return a == b || rowId == wanted
-        }
-
-        val paymentId = alert.paymentId?.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
-        if (paymentId != null) {
-            return history.any { row ->
-                row.isPayment &&
-                    samePaymentId(row.id, paymentId) &&
-                    !row.photoUrl.isNullOrBlank()
-            }
-        }
-
-        val orderId = alert.orderId?.takeIf { it.isNotBlank() } ?: return false
-        val newestForOrder = history
-            .filter { it.isPayment && it.orderId == orderId && it.createdAtMs > 0L }
-            .maxByOrNull { it.createdAtMs }
-            ?: return false
-        // Faqat eng so‘nggi to‘lovda rasm bo‘lsa — eslatma yopiladi
-        return !newestForOrder.photoUrl.isNullOrBlank()
-    }
-
     fun logout(onDone: () -> Unit) {
         viewModelScope.launch {
             authRepository.logout()
             onDone()
+        }
+    }
+
+    /** Splash/login dan keyin intentni qayta o‘qish (cold start race). */
+    fun ensurePaymentAlertFromIntent(
+        type: String?,
+        title: String?,
+        body: String?,
+        orderId: String?,
+        paymentId: String?,
+    ) {
+        if (!PaymentPhotoAlertStore.isPaymentPushExtras(type, title, body, orderId, paymentId)) {
+            return
+        }
+        viewModelScope.launch {
+            paymentPhotoAlertStore.recordPaymentReceived(orderId, paymentId)
         }
     }
 }
@@ -187,12 +179,51 @@ fun ClientNavHost(
     val loggedIn = currentRoute != null &&
         currentRoute != ClientRoutes.SPLASH &&
         currentRoute != ClientRoutes.LOGIN
+    val activity = LocalContext.current as? ComponentActivity
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {
             if (navController.currentDestination?.route == ClientRoutes.LOGIN) return@collectLatest
             navController.navigate(ClientRoutes.LOGIN) {
                 popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
+    // Splash tugagach push intentini qayta qo‘llash — eslatma yo‘qolib qolmasin
+    LaunchedEffect(loggedIn) {
+        if (!loggedIn) return@LaunchedEffect
+        val intent = activity?.intent ?: return@LaunchedEffect
+        val extras = intent.extras
+        fun extra(vararg keys: String): String? {
+            if (extras == null) return null
+            for (k in keys) {
+                val v = extras.getString(k)?.trim()
+                if (!v.isNullOrBlank()) return v
+                val any = extras.get(k)?.toString()?.trim()
+                if (!any.isNullOrBlank() && any != "null") return any
+            }
+            return null
+        }
+        navViewModel.ensurePaymentAlertFromIntent(
+            type = extra(PaymentPhotoAlertStore.EXTRA_TYPE, "type"),
+            title = extra("title", "gcm.notification.title"),
+            body = extra("body", "gcm.notification.body"),
+            orderId = extra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, "orderId"),
+            paymentId = extra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID, "paymentId"),
+        )
+        // Asosiyga o‘tish
+        if (currentRoute != ClientRoutes.DASHBOARD &&
+            PaymentPhotoAlertStore.isPaymentPushExtras(
+                extra(PaymentPhotoAlertStore.EXTRA_TYPE, "type"),
+                extra("title"),
+                extra("body"),
+                extra(PaymentPhotoAlertStore.EXTRA_ORDER_ID, "orderId"),
+                extra(PaymentPhotoAlertStore.EXTRA_PAYMENT_ID, "paymentId"),
+            )
+        ) {
+            navController.navigate(ClientRoutes.DASHBOARD) {
+                launchSingleTop = true
             }
         }
     }
