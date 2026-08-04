@@ -30,6 +30,7 @@ data class PaymentPhotoAlertState(
     /** Asosiydagi (xarita osti) X bilan yopilgan — tarixda 30 daqiqagacha qoladi */
     val modalDismissed: Boolean = false,
     val orderId: String? = null,
+    val paymentId: String? = null,
     val expiresAtMs: Long = 0L,
 ) {
     /** Asosiy ekran (xarita osti) — X bosilmaguncha */
@@ -49,6 +50,7 @@ class PaymentPhotoAlertStore @Inject constructor(
     private val expiresAtKey = longPreferencesKey("expires_at_ms")
     private val modalDismissedKey = booleanPreferencesKey("modal_dismissed")
     private val orderIdKey = stringPreferencesKey("order_id")
+    private val paymentIdKey = stringPreferencesKey("payment_id")
     private val mapHintDismissedOrderIdsKey = stringSetPreferencesKey("map_hint_dismissed_order_ids")
     private val handledPaymentIdsKey = stringSetPreferencesKey("handled_payment_ids")
     private val bootstrapDoneKey = booleanPreferencesKey("payments_bootstrap_done")
@@ -63,6 +65,7 @@ class PaymentPhotoAlertStore @Inject constructor(
             isActive = active,
             modalDismissed = if (active) prefs[modalDismissedKey] == true else false,
             orderId = prefs[orderIdKey],
+            paymentId = prefs[paymentIdKey],
             expiresAtMs = expiresAt,
         )
     }
@@ -105,6 +108,11 @@ class PaymentPhotoAlertStore @Inject constructor(
                 prefs[orderIdKey] = orderId
             } else {
                 prefs.remove(orderIdKey)
+            }
+            if (!paymentId.isNullOrBlank() && !paymentId.startsWith("ord-")) {
+                prefs[paymentIdKey] = paymentId
+            } else {
+                prefs.remove(paymentIdKey)
             }
             if (!paymentId.isNullOrBlank()) {
                 val handled = prefs[handledPaymentIdsKey].orEmpty().toMutableSet()
@@ -149,6 +157,8 @@ class PaymentPhotoAlertStore @Inject constructor(
             prefs[modalDismissedKey] = false
             val oid = newest.orderId
             if (!oid.isNullOrBlank()) prefs[orderIdKey] = oid else prefs.remove(orderIdKey)
+            val pid = newest.id.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
+            if (pid != null) prefs[paymentIdKey] = pid else prefs.remove(paymentIdKey)
         }
         _modalEvents.tryEmit(Unit)
     }
@@ -173,6 +183,7 @@ class PaymentPhotoAlertStore @Inject constructor(
             prefs.remove(expiresAtKey)
             prefs.remove(modalDismissedKey)
             prefs.remove(orderIdKey)
+            prefs.remove(paymentIdKey)
         }
     }
 
@@ -183,6 +194,7 @@ class PaymentPhotoAlertStore @Inject constructor(
                 prefs.remove(expiresAtKey)
                 prefs.remove(modalDismissedKey)
                 prefs.remove(orderIdKey)
+                prefs.remove(paymentIdKey)
             }
         }
     }

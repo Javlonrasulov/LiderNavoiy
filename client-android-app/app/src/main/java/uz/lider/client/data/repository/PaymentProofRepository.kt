@@ -37,7 +37,11 @@ class PaymentProofRepository @Inject constructor(
      * Kameradan olingan rasmni yuklab, to‘lovga biriktiradi.
      * Muvaffaqiyatda eslatmani tozalaydi.
      */
-    suspend fun captureAndAttach(uri: Uri, orderId: String? = null): Result<String> {
+    suspend fun captureAndAttach(
+        uri: Uri,
+        orderId: String? = null,
+        paymentId: String? = null,
+    ): Result<String> {
         return try {
             val photoUrl = uploadPhoto(uri)
             val companyId = selectedOrgHolder.getSelectedCompanyId()
@@ -45,6 +49,7 @@ class PaymentProofRepository @Inject constructor(
                 AttachPaymentPhotoRequest(
                     photoUrl = photoUrl,
                     orderId = orderId?.takeIf { it.isNotBlank() },
+                    paymentId = paymentId?.takeIf { it.isNotBlank() },
                 ),
                 companyId = companyId,
             )

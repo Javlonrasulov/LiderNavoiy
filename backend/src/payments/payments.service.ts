@@ -379,7 +379,7 @@ export class PaymentsService {
       users.map((user) => {
         const lang = normalizePushLang(user.preferredLanguage);
         let body = PushI18n.deliveryCollectedBody(lang, amount, remaining);
-        if (!hasPhoto) {
+        if (!hasPhoto && collected > 0.01) {
           body += PushI18n.paymentPhotoHint(lang);
         }
         return this.notifications.sendToUser(

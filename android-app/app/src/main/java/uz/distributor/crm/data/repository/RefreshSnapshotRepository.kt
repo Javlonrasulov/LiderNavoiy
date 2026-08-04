@@ -21,6 +21,8 @@ data class RefreshSnapshot(
     val productUnits: Map<String, String> = emptyMap(),
     val unreadMessages: Int = 0,
     val unreadNotifications: Int = 0,
+    /** Ko‘rilgan bildirishnoma id lari */
+    val seenNotificationIds: Set<String> = emptySet(),
     val totalClients: Int = 0,
     val visitedClients: Int = 0,
     val totalSales: Double = 0.0,
@@ -36,6 +38,7 @@ private data class RefreshSnapshotPersisted(
     val productUnits: List<NamedEntry> = emptyList(),
     val unreadMessages: Int = 0,
     val unreadNotifications: Int = 0,
+    val seenNotificationIds: List<String> = emptyList(),
     val totalClients: Int = 0,
     val visitedClients: Int = 0,
     val totalSales: Double = 0.0,
@@ -49,6 +52,7 @@ private data class RefreshSnapshotPersisted(
         productUnits = productUnits.associate { it.id to it.value },
         unreadMessages = unreadMessages,
         unreadNotifications = unreadNotifications,
+        seenNotificationIds = seenNotificationIds.toSet(),
         totalClients = totalClients,
         visitedClients = visitedClients,
         totalSales = totalSales,
@@ -64,6 +68,7 @@ private data class RefreshSnapshotPersisted(
             productUnits = snapshot.productUnits.map { NamedEntry(it.key, it.value) },
             unreadMessages = snapshot.unreadMessages,
             unreadNotifications = snapshot.unreadNotifications,
+            seenNotificationIds = snapshot.seenNotificationIds.toList(),
             totalClients = snapshot.totalClients,
             visitedClients = snapshot.visitedClients,
             totalSales = snapshot.totalSales,
@@ -84,8 +89,8 @@ class RefreshSnapshotRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gson: Gson,
 ) {
-    /** v3: productNames/units qo‘shildi */
-    private val snapshotKey = stringPreferencesKey("last_snapshot_v3")
+    /** v4: seenNotificationIds — bildirishnoma mazmuni uchun */
+    private val snapshotKey = stringPreferencesKey("last_snapshot_v4")
 
     suspend fun load(): RefreshSnapshot? {
         val json = context.refreshDataStore.data.first()[snapshotKey] ?: return null

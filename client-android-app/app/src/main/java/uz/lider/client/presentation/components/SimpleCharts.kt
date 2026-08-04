@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import uz.lider.client.localization.LocalAppLanguage
 
 @Composable
 fun SimpleBarChart(
@@ -34,8 +35,9 @@ fun SimpleBarChart(
     valueColor: Color = labelColor,
 ) {
     if (values.isEmpty()) return
+    val lang = LocalAppLanguage.current
     val max = values.maxOrNull()?.coerceAtLeast(1f) ?: 1f
-    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble()) }
+    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble(), lang = lang) }
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -107,7 +109,8 @@ fun SimpleAreaChart(
     showPoints: Boolean = false,
 ) {
     if (values.size < 2) return
-    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble()) }
+    val lang = LocalAppLanguage.current
+    val amounts = valueLabels ?: values.map { formatChartAmount(it.toDouble(), lang = lang) }
     Column(modifier = modifier.fillMaxWidth()) {
         Canvas(
             modifier = Modifier

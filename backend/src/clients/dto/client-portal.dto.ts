@@ -33,9 +33,9 @@ export class AttachPaymentPhotoDto {
   @IsString()
   photoUrl: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Payment id (UUID or pay-<uuid>)' })
   @IsOptional()
-  @IsUUID()
+  @IsString()
   paymentId?: string;
 
   @ApiPropertyOptional()

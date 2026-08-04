@@ -285,6 +285,15 @@ data class BatchOrdersRequest(val orders: List<CreateOrderRequest>)
 
 data class UnreadCountDto(val count: Int)
 
+data class PushNotificationDto(
+    val id: String,
+    val title: String = "",
+    val body: String = "",
+    val type: String = "general",
+    val isRead: Boolean = false,
+    val createdAt: String? = null,
+)
+
 data class ChatContactDto(
     val id: String,
     val fullName: String,

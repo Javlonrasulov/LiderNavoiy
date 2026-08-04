@@ -97,6 +97,7 @@ class DebtViewModel @Inject constructor(
         PaymentPhotoSectionUi(
             visible = alert.isActive || uploading || !preview.isNullOrBlank(),
             orderId = alert.orderId,
+            paymentId = alert.paymentId,
             uploading = uploading,
             error = error,
             previewUrl = preview,
@@ -121,7 +122,8 @@ class DebtViewModel @Inject constructor(
             _photoUploading.value = true
             _photoError.value = null
             val orderId = paymentPhotoSection.value.orderId
-            val result = paymentProofRepository.captureAndAttach(uri, orderId)
+            val paymentId = paymentPhotoSection.value.paymentId
+            val result = paymentProofRepository.captureAndAttach(uri, orderId, paymentId)
             _photoUploading.value = false
             result.fold(
                 onSuccess = { url ->

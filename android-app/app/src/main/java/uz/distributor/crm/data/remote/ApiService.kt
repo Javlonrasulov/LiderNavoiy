@@ -153,6 +153,9 @@ interface ApiService {
     @GET("notifications/unread-count")
     suspend fun getUnreadNotificationCount(): UnreadCountDto
 
+    @GET("notifications")
+    suspend fun getMyNotifications(): List<PushNotificationDto>
+
     @GET("messages/contacts")
     suspend fun getChatContacts(@Query("companyId") companyId: String? = null): List<ChatContactDto>
 

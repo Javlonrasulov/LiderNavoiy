@@ -150,6 +150,24 @@ object AppStrings {
         AppLanguage.UZ_CYRILLIC -> "$count та янги билдиришнома"
         AppLanguage.RUS -> "Новых уведомлений: $count"
     }
+
+    fun notificationUpdateLine(lang: AppLanguage, title: String, body: String): String {
+        val t = title.trim()
+        val b = body.trim()
+        return when {
+            t.isNotEmpty() && b.isNotEmpty() -> "$t — $b"
+            t.isNotEmpty() -> t
+            b.isNotEmpty() -> b
+            else -> newNotificationsReceived(lang, 1)
+        }
+    }
+
+    fun notificationsSectionTitle(lang: AppLanguage) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Yangi bildirishnomalar:"
+        AppLanguage.UZ_CYRILLIC -> "Янги билдиришномалар:"
+        AppLanguage.RUS -> "Новые уведомления:"
+    }
+
     fun visitsUpdated(lang: AppLanguage, count: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "$count ta yangi tashrif qayd etildi"
         AppLanguage.UZ_CYRILLIC -> "$count та янги ташриф қайд етилди"

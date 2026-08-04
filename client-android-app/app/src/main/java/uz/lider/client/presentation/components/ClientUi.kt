@@ -164,8 +164,13 @@ fun formatMoney(value: Double): String {
     return DecimalFormat("#,##0", symbols).format(value)
 }
 
-fun formatChartAmount(value: Double, currency: String = "so'm", lang: AppLanguage = AppLanguage.DEFAULT): String {
-    return "${formatCompactMoney(value, lang)} $currency"
+fun formatChartAmount(
+    value: Double,
+    currency: String? = null,
+    lang: AppLanguage = AppLanguage.DEFAULT,
+): String {
+    val cur = currency ?: AppStrings.t(lang, "com_som")
+    return "${formatCompactMoney(value, lang)} $cur"
 }
 
 /**

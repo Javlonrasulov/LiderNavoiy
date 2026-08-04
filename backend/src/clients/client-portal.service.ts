@@ -2,7 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus, OrderSource, PaymentStatus, UserRole } from '../common/enums';
+import {
+  OrderStatus,
+  OrderSource,
+  PaymentMethod,
+  PaymentStatus,
+  UserRole,
+} from '../common/enums';
 import { Company } from '../companies/entities/company.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Order, OrderItem } from '../orders/entities/order.entity';
@@ -958,11 +964,11 @@ export class ClientPortalService {
     const client = await this.resolveActiveClient(user, companyId);
     const memberships = await this.ensureMemberships(user);
     const clientIds = [
-      ...new Set([
-        client.id,
-        this.primaryClientId(user),
-        ...memberships.map((m) => m.clientId),
-      ]),
+      ...new Set(
+        [client.id, this.primaryClientId(user), ...memberships.map((m) => m.clientId)].filter(
+          Boolean,
+        ),
+      ),
     ];
 
     let payment: OrderPayment | null = null;
@@ -976,31 +982,22 @@ export class ClientPortalService {
       const candidates = await this.paymentRepo.find({
         where: { orderId: dto.orderId, clientId: In(clientIds) },
         order: { createdAt: 'DESC' },
-        take: 10,
+        take: 20,
       });
-      payment =
-        candidates.find((p) => Number(p.paidAmount) > 0.01 && !p.photoUrl) ??
-        candidates.find((p) => Number(p.paidAmount) > 0.01) ??
-        null;
-      if (!payment) throw new NotFoundException('Payment not found for order');
+      payment = this.pickPaymentForPhoto(candidates);
+      if (!payment) {
+        // To‘lov qatori yo‘q (masalan, kechiktirilgan / sync kechikishi) — buyurtma bo‘yicha yaratamiz
+        payment = await this.createPhotoPaymentStub(dto.orderId, clientIds, photoUrl);
+      }
     } else {
       const candidates = await this.paymentRepo.find({
         where: { clientId: In(clientIds) },
         order: { createdAt: 'DESC' },
-        take: 20,
+        take: 30,
       });
-      payment =
-        candidates.find(
-          (p) =>
-            Number(p.paidAmount) > 0.01 &&
-            p.status !== PaymentStatus.CANCELLED &&
-            !p.photoUrl,
-        ) ??
-        candidates.find(
-          (p) =>
-            Number(p.paidAmount) > 0.01 && p.status !== PaymentStatus.CANCELLED,
-        ) ??
-        null;
+      payment = this.pickPaymentForPhoto(
+        candidates.filter((p) => p.status !== PaymentStatus.CANCELLED),
+      );
       if (!payment) throw new NotFoundException('No recent payment to attach photo');
     }
 
@@ -1019,6 +1016,41 @@ export class ClientPortalService {
       orderId: payment.orderId,
       photoUrl: payment.photoUrl,
     };
+  }
+
+  private pickPaymentForPhoto(candidates: OrderPayment[]): OrderPayment | null {
+    if (!candidates.length) return null;
+    return (
+      candidates.find((p) => Number(p.paidAmount) > 0.01 && !p.photoUrl) ??
+      candidates.find((p) => Number(p.paidAmount) > 0.01) ??
+      candidates.find((p) => !p.photoUrl) ??
+      candidates[0] ??
+      null
+    );
+  }
+
+  private async createPhotoPaymentStub(
+    orderId: string,
+    clientIds: string[],
+    photoUrl: string,
+  ): Promise<OrderPayment> {
+    const order = await this.orderRepo.findOne({
+      where: { id: orderId, clientId: In(clientIds) },
+    });
+    if (!order) throw new NotFoundException('Payment not found for order');
+    const paid = Number(order.paidAmount) || 0;
+    const payment = this.paymentRepo.create({
+      orderId: order.id,
+      clientId: order.clientId,
+      collectorDistributorId: order.deliveryDistributorId ?? null,
+      method: PaymentMethod.CASH,
+      amount: paid > 0 ? paid : Number(order.totalAmount) || 0,
+      paidAmount: paid,
+      status: paid > 0.01 ? PaymentStatus.PAID : PaymentStatus.PENDING,
+      dueAt: null,
+      photoUrl,
+    });
+    return this.paymentRepo.save(payment);
   }
 
   private fmtDebtDate(d: Date): string {

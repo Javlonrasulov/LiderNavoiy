@@ -319,9 +319,9 @@ fun AnalyticsScreen(
                                 ChartPoint(
                                     value = it.amount.toFloat(),
                                     label = monthShortName(lang, it.month),
-                                    amountLabel = formatChartAmount(it.amount, som),
+                                    amountLabel = formatChartAmount(it.amount, som, lang),
                                 )
-                            }.ifEmpty { listOf(ChartPoint(0f, "-", formatChartAmount(0.0, som))) }
+                            }.ifEmpty { listOf(ChartPoint(0f, "-", formatChartAmount(0.0, som, lang))) }
                             val segmentColors = listOf(
                                 LiquidGlass.Indigo, LiquidGlass.Violet, LiquidGlass.Cyan,
                                 LiquidGlass.Emerald, LiquidGlass.Amber, LiquidGlass.Rose,
@@ -364,12 +364,12 @@ fun AnalyticsScreen(
                                 ChartPoint(
                                     value = it.amount.toFloat(),
                                     label = dayShortName(lang, it.date),
-                                    amountLabel = formatChartAmount(it.amount, weeklySom),
+                                    amountLabel = formatChartAmount(it.amount, weeklySom, lang),
                                 )
                             }.ifEmpty {
                                 listOf(
-                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom)),
-                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom)),
+                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom, lang)),
+                                    ChartPoint(0f, "-", formatChartAmount(0.0, weeklySom, lang)),
                                 )
                             }
                             AnalyticsTrendChart(

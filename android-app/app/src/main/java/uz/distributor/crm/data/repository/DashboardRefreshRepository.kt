@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.first
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.ConversationDto
 import uz.distributor.crm.data.remote.dto.ProductDto
+import uz.distributor.crm.data.remote.dto.PushNotificationDto
 import uz.distributor.crm.domain.model.DashboardStats
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -45,13 +46,28 @@ class DashboardRefreshRepository @Inject constructor(
         val clients = runCatching { api.getClients() }.getOrDefault(emptyList())
         val products = runCatching { api.getProducts() }.getOrDefault(emptyList())
         val conversations = runCatching { api.getConversations() }.getOrDefault(emptyList())
-        val unreadNotifs = runCatching {
-            api.getUnreadNotificationCount().count
-        }.getOrDefault(0)
+        val notifications = runCatching { api.getMyNotifications() }.getOrDefault(emptyList())
+        val unreadNotifs = notifications.count { !it.isRead }.takeIf { it > 0 }
+            ?: runCatching { api.getUnreadNotificationCount().count }.getOrDefault(0)
         val userId = authRepository.getUserFlow().first()?.id
 
-        val current = snapshotFrom(products, clients, conversations, stats, unreadNotifs)
-        val updates = buildUpdates(previous, current, products, conversations, userId, lang)
+        val current = snapshotFrom(
+            products = products,
+            clients = clients,
+            conversations = conversations,
+            stats = stats,
+            unreadNotifs = unreadNotifs,
+            notifications = notifications,
+        )
+        val updates = buildUpdates(
+            before = previous,
+            after = current,
+            products = products,
+            conversations = conversations,
+            notifications = notifications,
+            userId = userId,
+            lang = lang,
+        )
         snapshotRepository.save(current)
 
         return RefreshResult(
@@ -67,10 +83,17 @@ class DashboardRefreshRepository @Inject constructor(
         val clients = runCatching { api.getClients() }.getOrDefault(emptyList())
         val products = runCatching { api.getProducts() }.getOrDefault(emptyList())
         val conversations = runCatching { api.getConversations() }.getOrDefault(emptyList())
-        val unreadNotifs = runCatching {
-            api.getUnreadNotificationCount().count
-        }.getOrDefault(0)
-        return snapshotFrom(products, clients, conversations, stats, unreadNotifs)
+        val notifications = runCatching { api.getMyNotifications() }.getOrDefault(emptyList())
+        val unreadNotifs = notifications.count { !it.isRead }.takeIf { it > 0 }
+            ?: runCatching { api.getUnreadNotificationCount().count }.getOrDefault(0)
+        return snapshotFrom(
+            products = products,
+            clients = clients,
+            conversations = conversations,
+            stats = stats,
+            unreadNotifs = unreadNotifs,
+            notifications = notifications,
+        )
     }
 
     private fun snapshotFrom(
@@ -79,6 +102,7 @@ class DashboardRefreshRepository @Inject constructor(
         conversations: List<ConversationDto>,
         stats: DashboardStats,
         unreadNotifs: Int,
+        notifications: List<PushNotificationDto>,
     ) = RefreshSnapshot(
         clientIds = clients.map { it.id }.toSet(),
         productStock = products.associate { it.id to it.stockBalance },
@@ -86,6 +110,7 @@ class DashboardRefreshRepository @Inject constructor(
         productUnits = products.associate { it.id to it.unit },
         unreadMessages = conversations.sumOf { it.unreadCount },
         unreadNotifications = unreadNotifs,
+        seenNotificationIds = notifications.map { it.id }.toSet(),
         totalClients = stats.totalClients,
         visitedClients = stats.visitedClients,
         totalSales = stats.totalSales,
@@ -103,6 +128,7 @@ class DashboardRefreshRepository @Inject constructor(
         after: RefreshSnapshot,
         products: List<ProductDto>,
         conversations: List<ConversationDto>,
+        notifications: List<PushNotificationDto>,
         userId: String?,
         lang: AppLanguage,
     ): List<String> {
@@ -130,7 +156,6 @@ class DashboardRefreshRepository @Inject constructor(
             updates.add(AppStrings.newClientsAdded(lang, newClients.size))
         }
 
-        // Yangi mahsulotlar
         val newProductIds = after.productStock.keys - before.productStock.keys
         for (id in newProductIds) {
             val qty = after.productStock[id] ?: 0.0
@@ -139,7 +164,6 @@ class DashboardRefreshRepository @Inject constructor(
             )
         }
 
-        // Qoldiq oshgan — har bir tovar alohida: "Coca Cola: +50 dona"
         val stockIncreases = after.productStock.mapNotNull { (id, stock) ->
             val prev = before.productStock[id] ?: return@mapNotNull null
             val delta = stock - prev
@@ -167,9 +191,23 @@ class DashboardRefreshRepository @Inject constructor(
             }
         }
 
-        val newNotifs = after.unreadNotifications - before.unreadNotifications
-        if (newNotifs > 0) {
-            updates.add(AppStrings.newNotificationsReceived(lang, newNotifs))
+        // Bildirishnomalar — title + body aniq ko‘rinsin
+        val newNotifs = notifications
+            .filter { it.id !in before.seenNotificationIds }
+            .sortedByDescending { it.createdAt.orEmpty() }
+        if (newNotifs.isNotEmpty()) {
+            updates.add(AppStrings.notificationsSectionTitle(lang))
+            newNotifs.take(10).forEach { n ->
+                updates.add(AppStrings.notificationUpdateLine(lang, n.title, n.body))
+            }
+            if (newNotifs.size > 10) {
+                updates.add("+${newNotifs.size - 10}")
+            }
+        } else {
+            val unreadDelta = after.unreadNotifications - before.unreadNotifications
+            if (unreadDelta > 0) {
+                updates.add(AppStrings.newNotificationsReceived(lang, unreadDelta))
+            }
         }
 
         if (after.visitedClients > before.visitedClients) {

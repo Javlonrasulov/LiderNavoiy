@@ -49,7 +49,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +85,7 @@ import java.io.File
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -134,6 +137,7 @@ fun DeliveryPaymentSheet(
     var dueDate by remember { mutableStateOf(LocalDate.now()) }
     var dueTime by remember { mutableStateOf("18:00") }
     var showCalendar by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -163,6 +167,7 @@ fun DeliveryPaymentSheet(
         photoUri = null
         localError = null
         showCalendar = false
+        showTimePicker = false
         onDismiss()
     }
 
@@ -177,6 +182,18 @@ fun DeliveryPaymentSheet(
             onSelect = {
                 dueDate = it
                 showCalendar = false
+            },
+        )
+    }
+    if (showTimePicker) {
+        DeliveryTimePickerDialog(
+            initialTime = dueTime,
+            isDark = isDark,
+            lang = lang,
+            onDismiss = { showTimePicker = false },
+            onConfirm = { h, m ->
+                dueTime = "%02d:%02d".format(h, m)
+                showTimePicker = false
             },
         )
     }
@@ -370,9 +387,8 @@ fun DeliveryPaymentSheet(
                             )
                             DueTimeField(
                                 value = dueTime,
-                                onValueChange = { raw ->
-                                    dueTime = raw.filter { it.isDigit() || it == ':' }.take(5)
-                                },
+                                onValueChange = { dueTime = sanitizeDueTimeInput(it) },
+                                onOpenPicker = { showTimePicker = true },
                                 hint = AppStrings.deliveryTimeLabel(lang),
                                 modifier = Modifier.weight(0.85f),
                                 isDark = isDark,
@@ -514,6 +530,7 @@ fun DeliveryDueAtSheet(
     var dueDate by remember(visible, initialDueAt) { mutableStateOf(initialParts.first) }
     var dueTime by remember(visible, initialDueAt) { mutableStateOf(initialParts.second) }
     var showCalendar by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -526,6 +543,18 @@ fun DeliveryDueAtSheet(
             onSelect = {
                 dueDate = it
                 showCalendar = false
+            },
+        )
+    }
+    if (showTimePicker) {
+        DeliveryTimePickerDialog(
+            initialTime = dueTime,
+            isDark = isDark,
+            lang = lang,
+            onDismiss = { showTimePicker = false },
+            onConfirm = { h, m ->
+                dueTime = "%02d:%02d".format(h, m)
+                showTimePicker = false
             },
         )
     }
@@ -559,9 +588,8 @@ fun DeliveryDueAtSheet(
                 )
                 DueTimeField(
                     value = dueTime,
-                    onValueChange = { raw ->
-                        dueTime = raw.filter { it.isDigit() || it == ':' }.take(5)
-                    },
+                    onValueChange = { dueTime = sanitizeDueTimeInput(it) },
+                    onOpenPicker = { showTimePicker = true },
                     hint = AppStrings.deliveryTimeLabel(lang),
                     modifier = Modifier.weight(0.85f),
                     isDark = isDark,
@@ -637,6 +665,7 @@ private fun DueDateField(
 private fun DueTimeField(
     value: String,
     onValueChange: (String) -> Unit,
+    onOpenPicker: () -> Unit,
     hint: String,
     modifier: Modifier = Modifier,
     isDark: Boolean,
@@ -650,16 +679,20 @@ private fun DueTimeField(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .background(if (isDark) Color(0xFF1F2937) else Color.White)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.Schedule, null, tint = PayAccent, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
+        IconButton(
+            onClick = onOpenPicker,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(Icons.Default.Schedule, null, tint = PayAccent, modifier = Modifier.size(20.dp))
+        }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             textStyle = TextStyle(
                 color = titleColor,
                 fontWeight = FontWeight.Medium,
@@ -675,6 +708,79 @@ private fun DueTimeField(
                 }
             },
         )
+        IconButton(
+            onClick = onOpenPicker,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null,
+                tint = subColor,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeliveryTimePickerDialog(
+    initialTime: String,
+    isDark: Boolean,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit,
+) {
+    val parsed = normalizeDueTime(initialTime)
+    val seed = parsed?.let {
+        runCatching { LocalTime.parse(it) }.getOrNull()
+    } ?: LocalTime.of(18, 0)
+    val state = rememberTimePickerState(
+        initialHour = seed.hour,
+        initialMinute = seed.minute,
+        is24Hour = true,
+    )
+    val sheetBg = if (isDark) Color(0xFF1C1C1E) else Color.White
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .shadow(16.dp, RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(20.dp))
+                .background(sheetBg)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                AppStrings.deliveryTimeLabel(lang),
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                color = textColor,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(16.dp))
+            TimePicker(state = state)
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text(AppStrings.msgCancel(lang))
+                }
+                TextButton(
+                    onClick = { onConfirm(state.hour, state.minute) },
+                ) {
+                    Text(AppStrings.confirm(lang), color = PayAccent, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 }
 
@@ -905,12 +1011,13 @@ private fun PayOption(
 }
 
 internal fun buildDueAtIso(date: String, time: String): String? {
+    val normalizedTime = normalizeDueTime(time) ?: return null
     return try {
         val local = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).apply {
             isLenient = false
             timeZone = TimeZone.getDefault()
         }
-        val parsed = local.parse("$date $time") ?: return null
+        val parsed = local.parse("$date $normalizedTime") ?: return null
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
             timeZone = TimeZone.getDefault()
         }.format(parsed)
@@ -918,6 +1025,41 @@ internal fun buildDueAtIso(date: String, time: String): String? {
         null
     }
 }
+
+/** "18:00", "12.30", "11 28", "1230" → "HH:mm" */
+internal fun normalizeDueTime(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+
+    val parts = trimmed.split(Regex("[.:\\s]+")).filter { it.isNotBlank() }
+    if (parts.size == 2) {
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].padStart(2, '0').take(2).toIntOrNull() ?: return null
+        if (h !in 0..23 || m !in 0..59) return null
+        return "%02d:%02d".format(h, m)
+    }
+
+    val digits = trimmed.filter { it.isDigit() }
+    return when (digits.length) {
+        3 -> {
+            val h = digits.substring(0, 1).toIntOrNull() ?: return null
+            val m = digits.substring(1, 3).toIntOrNull() ?: return null
+            if (h !in 0..23 || m !in 0..59) return null
+            "%02d:%02d".format(h, m)
+        }
+        4 -> {
+            val h = digits.substring(0, 2).toIntOrNull() ?: return null
+            val m = digits.substring(2, 4).toIntOrNull() ?: return null
+            if (h !in 0..23 || m !in 0..59) return null
+            "%02d:%02d".format(h, m)
+        }
+        else -> null
+    }
+}
+
+/** Yozishda: 12.30, 11 28, 18:00 — ruxsat etiladi */
+internal fun sanitizeDueTimeInput(raw: String): String =
+    raw.filter { it.isDigit() || it == ':' || it == '.' || it == ' ' }.take(8)
 
 /** Mavjud dueAt ISO dan sana + vaqt (HH:mm). */
 internal fun parseDueAtParts(iso: String?): Pair<LocalDate, String> {

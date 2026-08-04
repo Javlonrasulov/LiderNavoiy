@@ -44,6 +44,7 @@ import javax.inject.Inject
 data class PaymentPhotoSectionUi(
     val visible: Boolean = false,
     val orderId: String? = null,
+    val paymentId: String? = null,
     val uploading: Boolean = false,
     val error: String? = null,
     val previewUrl: String? = null,
@@ -91,6 +92,7 @@ class DashboardViewModel @Inject constructor(
         PaymentPhotoSectionUi(
             visible = alert.shouldShowModal || uploading || !preview.isNullOrBlank(),
             orderId = alert.orderId,
+            paymentId = alert.paymentId,
             uploading = uploading,
             error = error,
             previewUrl = preview,
@@ -110,7 +112,8 @@ class DashboardViewModel @Inject constructor(
             _photoUploading.value = true
             _photoError.value = null
             val orderId = paymentPhotoSection.value.orderId
-            val result = paymentProofRepository.captureAndAttach(uri, orderId)
+            val paymentId = paymentPhotoSection.value.paymentId
+            val result = paymentProofRepository.captureAndAttach(uri, orderId, paymentId)
             _photoUploading.value = false
             result.fold(
                 onSuccess = { url ->
