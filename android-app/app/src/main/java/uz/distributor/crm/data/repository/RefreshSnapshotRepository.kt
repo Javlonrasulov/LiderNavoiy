@@ -15,6 +15,10 @@ private val Context.refreshDataStore by preferencesDataStore("refresh_snapshot")
 data class RefreshSnapshot(
     val clientIds: Set<String> = emptySet(),
     val productStock: Map<String, Double> = emptyMap(),
+    /** productId -> name (import natijasida ko‘rsatish uchun) */
+    val productNames: Map<String, String> = emptyMap(),
+    /** productId -> unit */
+    val productUnits: Map<String, String> = emptyMap(),
     val unreadMessages: Int = 0,
     val unreadNotifications: Int = 0,
     val totalClients: Int = 0,
@@ -28,6 +32,8 @@ data class RefreshSnapshot(
 private data class RefreshSnapshotPersisted(
     val clientIds: List<String> = emptyList(),
     val productStock: List<StockEntry> = emptyList(),
+    val productNames: List<NamedEntry> = emptyList(),
+    val productUnits: List<NamedEntry> = emptyList(),
     val unreadMessages: Int = 0,
     val unreadNotifications: Int = 0,
     val totalClients: Int = 0,
@@ -39,6 +45,8 @@ private data class RefreshSnapshotPersisted(
     fun toSnapshot() = RefreshSnapshot(
         clientIds = clientIds.toSet(),
         productStock = productStock.associate { it.id to it.stock },
+        productNames = productNames.associate { it.id to it.value },
+        productUnits = productUnits.associate { it.id to it.value },
         unreadMessages = unreadMessages,
         unreadNotifications = unreadNotifications,
         totalClients = totalClients,
@@ -52,6 +60,8 @@ private data class RefreshSnapshotPersisted(
         fun from(snapshot: RefreshSnapshot) = RefreshSnapshotPersisted(
             clientIds = snapshot.clientIds.toList(),
             productStock = snapshot.productStock.map { StockEntry(it.key, it.value) },
+            productNames = snapshot.productNames.map { NamedEntry(it.key, it.value) },
+            productUnits = snapshot.productUnits.map { NamedEntry(it.key, it.value) },
             unreadMessages = snapshot.unreadMessages,
             unreadNotifications = snapshot.unreadNotifications,
             totalClients = snapshot.totalClients,
@@ -66,6 +76,7 @@ private data class RefreshSnapshotPersisted(
 }
 
 private data class StockEntry(val id: String, val stock: Double)
+private data class NamedEntry(val id: String, val value: String)
 private data class ConversationMessageEntry(val conversationId: String, val lastMessageId: String)
 
 @Singleton
@@ -73,7 +84,8 @@ class RefreshSnapshotRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gson: Gson,
 ) {
-    private val snapshotKey = stringPreferencesKey("last_snapshot_v2")
+    /** v3: productNames/units qo‘shildi */
+    private val snapshotKey = stringPreferencesKey("last_snapshot_v3")
 
     suspend fun load(): RefreshSnapshot? {
         val json = context.refreshDataStore.data.first()[snapshotKey] ?: return null

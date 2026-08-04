@@ -48,7 +48,10 @@ class ProductsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ProductsUiState())
     val uiState = _uiState.asStateFlow()
 
-    init { loadProducts() }
+    init {
+        // Avval kesh, keyin API — admin yangi mahsulot qo'shsa darhol ko'rinsin
+        loadProducts(forceRefresh = false, syncInBackground = true)
+    }
 
     fun onSearchChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -69,30 +72,52 @@ class ProductsViewModel @Inject constructor(
         }
     }
 
-    fun refresh() = loadProducts(forceRefresh = true)
+    fun refresh() = loadProducts(forceRefresh = true, syncInBackground = false)
 
-    private fun loadProducts(forceRefresh: Boolean = false) {
+    private fun loadProducts(forceRefresh: Boolean = false, syncInBackground: Boolean = false) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val products = productRepository.getProducts(forceRefresh)
-                val categories = products
-                    .map { it.categoryFilterKey() }
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .sorted()
-                _uiState.update {
-                    it.copy(
-                        products = products,
-                        categories = categories,
-                        isLoading = false,
-                    )
+                if (!forceRefresh) {
+                    val cached = productRepository.getProducts(forceRefresh = false)
+                    if (cached.isNotEmpty()) {
+                        applyProducts(cached)
+                    } else {
+                        _uiState.update { it.copy(isLoading = true, error = null) }
+                    }
+                } else {
+                    _uiState.update { it.copy(isLoading = true, error = null) }
+                }
+
+                if (forceRefresh || syncInBackground) {
+                    val ok = productRepository.refreshFromApi()
+                    if (ok || forceRefresh) {
+                        val products = productRepository.getProducts(forceRefresh = false)
+                        applyProducts(products)
+                    } else if (_uiState.value.products.isEmpty()) {
+                        _uiState.update { it.copy(isLoading = false) }
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = ApiErrorMapper.toKey(e))
                 }
             }
+        }
+    }
+
+    private fun applyProducts(products: List<Product>) {
+        val categories = products
+            .map { it.categoryFilterKey() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        _uiState.update {
+            it.copy(
+                products = products,
+                categories = categories,
+                isLoading = false,
+                error = null,
+            )
         }
     }
 }

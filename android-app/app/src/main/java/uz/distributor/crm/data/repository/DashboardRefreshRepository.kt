@@ -3,6 +3,7 @@ package uz.distributor.crm.data.repository
 import kotlinx.coroutines.flow.first
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.ConversationDto
+import uz.distributor.crm.data.remote.dto.ProductDto
 import uz.distributor.crm.domain.model.DashboardStats
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -24,8 +25,15 @@ class DashboardRefreshRepository @Inject constructor(
     private val snapshotRepository: RefreshSnapshotRepository,
 ) {
 
-    /** Har safar ilova ochilganda joriy holatni bazaga yozadi (o'zgarishsiz). */
+    /**
+     * Faqat birinchi marta (snapshot yo‘q) joriy holatni yozadi.
+     * Har resume/load da qayta yozilmasin — aks holda importdan keyin farq yo‘qoladi.
+     */
     suspend fun syncSessionBaseline(): Int {
+        val existing = snapshotRepository.load()
+        if (existing != null) {
+            return existing.productCount
+        }
         val snapshot = fetchCurrentSnapshot()
         snapshotRepository.save(snapshot)
         return snapshot.productCount
@@ -42,19 +50,8 @@ class DashboardRefreshRepository @Inject constructor(
         }.getOrDefault(0)
         val userId = authRepository.getUserFlow().first()?.id
 
-        val current = RefreshSnapshot(
-            clientIds = clients.map { it.id }.toSet(),
-            productStock = products.associate { it.id to it.stockBalance },
-            unreadMessages = conversations.sumOf { it.unreadCount },
-            unreadNotifications = unreadNotifs,
-            totalClients = stats.totalClients,
-            visitedClients = stats.visitedClients,
-            totalSales = stats.totalSales,
-            productCount = products.size,
-            conversationLastMessages = conversations.lastMessageMap(),
-        )
-
-        val updates = buildUpdates(previous, current, conversations, userId, lang)
+        val current = snapshotFrom(products, clients, conversations, stats, unreadNotifs)
+        val updates = buildUpdates(previous, current, products, conversations, userId, lang)
         snapshotRepository.save(current)
 
         return RefreshResult(
@@ -73,19 +70,28 @@ class DashboardRefreshRepository @Inject constructor(
         val unreadNotifs = runCatching {
             api.getUnreadNotificationCount().count
         }.getOrDefault(0)
-
-        return RefreshSnapshot(
-            clientIds = clients.map { it.id }.toSet(),
-            productStock = products.associate { it.id to it.stockBalance },
-            unreadMessages = conversations.sumOf { it.unreadCount },
-            unreadNotifications = unreadNotifs,
-            totalClients = stats.totalClients,
-            visitedClients = stats.visitedClients,
-            totalSales = stats.totalSales,
-            productCount = products.size,
-            conversationLastMessages = conversations.lastMessageMap(),
-        )
+        return snapshotFrom(products, clients, conversations, stats, unreadNotifs)
     }
+
+    private fun snapshotFrom(
+        products: List<ProductDto>,
+        clients: List<uz.distributor.crm.data.remote.dto.ClientDto>,
+        conversations: List<ConversationDto>,
+        stats: DashboardStats,
+        unreadNotifs: Int,
+    ) = RefreshSnapshot(
+        clientIds = clients.map { it.id }.toSet(),
+        productStock = products.associate { it.id to it.stockBalance },
+        productNames = products.associate { it.id to it.name },
+        productUnits = products.associate { it.id to it.unit },
+        unreadMessages = conversations.sumOf { it.unreadCount },
+        unreadNotifications = unreadNotifs,
+        totalClients = stats.totalClients,
+        visitedClients = stats.visitedClients,
+        totalSales = stats.totalSales,
+        productCount = products.size,
+        conversationLastMessages = conversations.lastMessageMap(),
+    )
 
     private fun List<ConversationDto>.lastMessageMap(): Map<String, String> =
         mapNotNull { conv ->
@@ -95,6 +101,7 @@ class DashboardRefreshRepository @Inject constructor(
     private fun buildUpdates(
         before: RefreshSnapshot?,
         after: RefreshSnapshot,
+        products: List<ProductDto>,
         conversations: List<ConversationDto>,
         userId: String?,
         lang: AppLanguage,
@@ -104,23 +111,50 @@ class DashboardRefreshRepository @Inject constructor(
         }
 
         val updates = mutableListOf<String>()
+        val byId = products.associateBy { it.id }
+
+        fun nameOf(id: String): String =
+            byId[id]?.name
+                ?: after.productNames[id]
+                ?: before.productNames[id]
+                ?: id
+
+        fun unitOf(id: String): String =
+            byId[id]?.unit
+                ?: after.productUnits[id]
+                ?: before.productUnits[id]
+                ?: ""
 
         val newClients = after.clientIds - before.clientIds
         if (newClients.isNotEmpty()) {
             updates.add(AppStrings.newClientsAdded(lang, newClients.size))
         }
 
+        // Yangi mahsulotlar
         val newProductIds = after.productStock.keys - before.productStock.keys
-        if (newProductIds.isNotEmpty()) {
-            updates.add(AppStrings.newProductsInWarehouse(lang, newProductIds.size))
+        for (id in newProductIds) {
+            val qty = after.productStock[id] ?: 0.0
+            updates.add(
+                AppStrings.newProductImportedLine(lang, nameOf(id), qty, unitOf(id)),
+            )
         }
 
-        val stockIncreased = after.productStock.count { (id, stock) ->
-            val prev = before.productStock[id] ?: return@count false
-            stock > prev
-        }
-        if (stockIncreased > 0) {
-            updates.add(AppStrings.productsStockIncreased(lang, stockIncreased))
+        // Qoldiq oshgan — har bir tovar alohida: "Coca Cola: +50 dona"
+        val stockIncreases = after.productStock.mapNotNull { (id, stock) ->
+            val prev = before.productStock[id] ?: return@mapNotNull null
+            val delta = stock - prev
+            if (delta <= 0.0001) return@mapNotNull null
+            Triple(nameOf(id), delta, unitOf(id))
+        }.sortedByDescending { it.second }
+
+        if (stockIncreases.isNotEmpty()) {
+            updates.add(AppStrings.productsImportedTitle(lang))
+            stockIncreases.take(30).forEach { (name, qty, unit) ->
+                updates.add(AppStrings.productStockImportLine(lang, name, qty, unit))
+            }
+            if (stockIncreases.size > 30) {
+                updates.add("+${stockIncreases.size - 30}")
+            }
         }
 
         val incomingMessages = countIncomingMessages(before, conversations, userId)

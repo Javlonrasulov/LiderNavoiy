@@ -107,6 +107,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 
 @Dao interface ProductDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(products: List<ProductEntity>)
+    @Query("DELETE FROM products_cache") suspend fun clearAll()
     @Query("SELECT * FROM products_cache ORDER BY category, name") suspend fun getAll(): List<ProductEntity>
     @Query("SELECT DISTINCT category FROM products_cache WHERE category IS NOT NULL") suspend fun getCategories(): List<String>
     @Query("SELECT * FROM products_cache WHERE category = :cat") suspend fun getByCategory(cat: String): List<ProductEntity>

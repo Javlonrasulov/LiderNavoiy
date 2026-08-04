@@ -45,6 +45,58 @@ object AppStrings {
         AppLanguage.RUS -> "У $count товаров увеличился остаток"
     }
 
+    /** Masalan: "Coca Cola: +50 dona" yoki "Farxod: +18 kg" */
+    fun productStockImportLine(lang: AppLanguage, name: String, qty: Double, unit: String): String {
+        val qtyText = formatQty(qty)
+        val unitRaw = unit.trim().lowercase()
+        val unitText = when {
+            unitRaw.isBlank() -> when (lang) {
+                AppLanguage.UZ_LATIN -> "dona"
+                AppLanguage.UZ_CYRILLIC -> "дона"
+                AppLanguage.RUS -> "шт"
+            }
+            unitRaw == "dona" || unitRaw == "шт" || unitRaw == "sht" || unitRaw == "pcs" -> when (lang) {
+                AppLanguage.UZ_LATIN -> "dona"
+                AppLanguage.UZ_CYRILLIC -> "дона"
+                AppLanguage.RUS -> "шт"
+            }
+            unitRaw == "kg" || unitRaw == "кг" -> "kg"
+            else -> unit.trim()
+        }
+        return "$name: +$qtyText $unitText"
+    }
+
+    fun productsImportedTitle(lang: AppLanguage) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Omborga kirim bo'ldi:"
+        AppLanguage.UZ_CYRILLIC -> "Омборга кирим бўлди:"
+        AppLanguage.RUS -> "Поступление на склад:"
+    }
+
+    fun newProductImportedLine(lang: AppLanguage, name: String, qty: Double, unit: String): String {
+        val qtyText = formatQty(qty)
+        val unitText = unit.trim().ifBlank {
+            when (lang) {
+                AppLanguage.UZ_LATIN -> "dona"
+                AppLanguage.UZ_CYRILLIC -> "дона"
+                AppLanguage.RUS -> "шт"
+            }
+        }
+        return when (lang) {
+            AppLanguage.UZ_LATIN -> "Yangi: $name ($qtyText $unitText)"
+            AppLanguage.UZ_CYRILLIC -> "Янги: $name ($qtyText $unitText)"
+            AppLanguage.RUS -> "Новый: $name ($qtyText $unitText)"
+        }
+    }
+
+    private fun formatQty(qty: Double): String {
+        val rounded = kotlin.math.round(qty * 1000.0) / 1000.0
+        return if (rounded == rounded.toLong().toDouble()) {
+            rounded.toLong().toString()
+        } else {
+            rounded.toString().trimEnd('0').trimEnd('.')
+        }
+    }
+
     fun productsAddedNames(lang: AppLanguage, names: List<String>) = when (lang) {
         AppLanguage.UZ_LATIN -> "Yangi mahsulotlar qo'shildi: ${formatProductNames(names)}"
         AppLanguage.UZ_CYRILLIC -> "Янги маҳсулотлар қўшилди: ${formatProductNames(names)}"

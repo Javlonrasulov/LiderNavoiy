@@ -564,7 +564,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   }, [products, viewOrg, activeIds]);
 
   const brends = useMemo(() =>
-    Array.from(new Set(orgFilteredProducts.map(p => p.brend))), [orgFilteredProducts]);
+    Array.from(new Set(
+      orgFilteredProducts
+        .map(p => p.brend?.trim())
+        .filter((b): b is string => !!b),
+    )), [orgFilteredProducts]);
 
   const prevViewOrg = useRef(viewOrg);
   useEffect(() => {
@@ -575,6 +579,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     }
     setPage(1);
   }, [viewOrg]);
+
+  useEffect(() => {
+    setSelectedBrends(prev => {
+      const next = new Set([...prev].filter(b => brends.includes(b)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [brends]);
 
   useEffect(() => { setPage(1); }, [search, stockOnly, selectedBrends, selectedCatId]);
 
@@ -945,7 +956,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         <td className={`${tdCls} font-mono font-semibold ${D ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ position:'sticky', left:32, zIndex:1, background: stickyBg }}>{p.kod}</td>
                         <td className={tdCls}><p className={`${text} text-xs leading-snug`} style={{ maxWidth: 200 }}>{p.ismi}</p></td>
                         <td className={tdCls}>
-                          <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>{p.brend.slice(0, 10)}</span>
+                          {p.brend?.trim() ? (
+                            <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>{p.brend.slice(0, 10)}</span>
+                          ) : (
+                            <span className={sub}>—</span>
+                          )}
                         </td>
                         <td className={tdCls}>
                           <div className="relative">
@@ -1306,6 +1321,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       </div>
 
       {/* Brend filter */}
+      {brends.length > 0 && (
       <div className="flex items-center gap-2 flex-wrap">
         {selectedBrends.size > 0 && (
           <button onClick={() => setSelectedBrends(new Set())}
@@ -1327,6 +1343,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           );
         })}
       </div>
+      )}
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
       {filtered.length > 0 ? (
@@ -1391,9 +1408,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                           <p className={`${text} text-xs leading-snug`} style={{ maxWidth: 200 }}>{p.ismi}</p>
                         </td>
                         <td className={tdCls}>
-                          <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>
-                            {p.brend.slice(0, 10)}
-                          </span>
+                          {p.brend?.trim() ? (
+                            <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>
+                              {p.brend.slice(0, 10)}
+                            </span>
+                          ) : (
+                            <span className={sub}>—</span>
+                          )}
                         </td>
                         {/* Category cell */}
                         <td className={tdCls}>
@@ -1504,7 +1525,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <div className="p-3 flex flex-col gap-2 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold tracking-wide" style={{ background: bc }}>
-                          {p.brend}
+                          {p.brend?.trim() || '—'}
                         </span>
                         <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button onClick={() => openEditProduct(p)}

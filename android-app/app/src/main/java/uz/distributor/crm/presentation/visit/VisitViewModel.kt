@@ -439,22 +439,43 @@ class VisitViewModel @Inject constructor(
         val beforeMap = before.associateBy { it.id }
         val afterIds = after.map { it.id }.toSet()
 
-        val added = after.filter { it.id !in beforeMap }.map { it.name }
+        val updates = mutableListOf<String>()
+
+        val added = after.filter { it.id !in beforeMap }
+        for (p in added) {
+            updates.add(AppStrings.newProductImportedLine(lang, p.name, p.stockBalance, p.unit))
+        }
+
         val removed = before.filter { it.id !in afterIds }.map { it.name }
-        val stockUp = after.filter { product ->
-            val prev = beforeMap[product.id] ?: return@filter false
-            product.stockBalance > prev.stockBalance
-        }.map { it.name }
+        if (removed.isNotEmpty()) {
+            updates.add(AppStrings.productsRemovedNames(lang, removed))
+        }
+
+        val stockUp = after.mapNotNull { product ->
+            val prev = beforeMap[product.id] ?: return@mapNotNull null
+            val delta = product.stockBalance - prev.stockBalance
+            if (delta <= 0.0001) return@mapNotNull null
+            Triple(product.name, delta, product.unit)
+        }.sortedByDescending { it.second }
+
+        if (stockUp.isNotEmpty()) {
+            updates.add(AppStrings.productsImportedTitle(lang))
+            stockUp.take(20).forEach { (name, qty, unit) ->
+                updates.add(AppStrings.productStockImportLine(lang, name, qty, unit))
+            }
+            if (stockUp.size > 20) {
+                updates.add("+${stockUp.size - 20}")
+            }
+        }
+
         val stockDown = after.filter { product ->
             val prev = beforeMap[product.id] ?: return@filter false
             product.stockBalance < prev.stockBalance
         }.map { it.name }
+        if (stockDown.isNotEmpty()) {
+            updates.add(AppStrings.productsStockDecreasedNames(lang, stockDown))
+        }
 
-        val updates = mutableListOf<String>()
-        if (added.isNotEmpty()) updates.add(AppStrings.productsAddedNames(lang, added))
-        if (removed.isNotEmpty()) updates.add(AppStrings.productsRemovedNames(lang, removed))
-        if (stockUp.isNotEmpty()) updates.add(AppStrings.productsStockIncreasedNames(lang, stockUp))
-        if (stockDown.isNotEmpty()) updates.add(AppStrings.productsStockDecreasedNames(lang, stockDown))
         if (updates.isEmpty()) updates.add(AppStrings.noNewUpdates(lang))
         return updates
     }

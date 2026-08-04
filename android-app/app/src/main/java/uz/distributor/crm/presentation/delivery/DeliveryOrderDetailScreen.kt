@@ -364,7 +364,7 @@ fun DeliveryOrderDetailScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.Top,
                                     ) {
-                                        Column(Modifier = Modifier.weight(1f)) {
+                                        Column(Modifier.weight(1f)) {
                                             Text(
                                                 "${formatter.format(payment.amount)} ${AppStrings.sumCurrency(lang)}",
                                                 color = textPrimary,

@@ -16,6 +16,7 @@ class ProductRepository @Inject constructor(
     suspend fun refreshFromApi(): Boolean {
         return try {
             val dtos = api.getProducts()
+            db.productDao().clearAll()
             db.productDao().insertAll(dtos.map { it.toEntity() })
             true
         } catch (_: Exception) {
@@ -23,8 +24,17 @@ class ProductRepository @Inject constructor(
         }
     }
 
+    /** API dan kelgan ro'yxatni to'g'ridan-to'g'ri keshga yozadi */
+    suspend fun replaceCache(dtos: List<ProductDto>) {
+        db.productDao().clearAll()
+        db.productDao().insertAll(dtos.map { it.toEntity() })
+    }
+
     suspend fun getProducts(forceRefresh: Boolean = false): List<Product> {
-        if (forceRefresh) refreshFromApi()
+        if (forceRefresh) {
+            refreshFromApi()
+            return db.productDao().getAll().map { it.toDomain() }
+        }
         val cached = db.productDao().getAll()
         if (cached.isNotEmpty()) return cached.map { it.toDomain() }
         refreshFromApi()
