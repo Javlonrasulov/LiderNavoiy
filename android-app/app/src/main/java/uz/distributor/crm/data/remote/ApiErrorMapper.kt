@@ -27,7 +27,15 @@ object ApiErrorMapper {
 
     private fun mapHttpException(e: HttpException): String {
         val serverMsg = e.response()?.errorBody()?.use { it.string() }?.let(::parseMessage)
-        if (serverMsg != null) return mapServerMessage(serverMsg)
+        if (serverMsg != null) {
+            // UI da aniq server xabari chiqsin (kalit emas)
+            val mapped = mapServerMessage(serverMsg)
+            return if (mapped == "save_failed" || mapped == "photo_upload_failed") {
+                "raw:$serverMsg"
+            } else {
+                mapped
+            }
+        }
         return when (e.code()) {
             in 500..599 -> "server_error"
             401, 403 -> "unauthorized"
@@ -52,6 +60,14 @@ object ApiErrorMapper {
 
     private fun mapLocalMessage(msg: String?): String {
         if (msg.isNullOrBlank()) return "save_failed"
+        // Lokal aniq xabar — UI da ko‘rinsin
+        if (msg.contains("Cannot read", ignoreCase = true) ||
+            msg.contains("Photo", ignoreCase = true) ||
+            msg.contains("decode", ignoreCase = true) ||
+            msg.contains("empty", ignoreCase = true)
+        ) {
+            return "raw:$msg"
+        }
         return mapServerMessage(msg)
     }
 

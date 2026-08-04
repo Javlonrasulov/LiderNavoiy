@@ -1,7 +1,10 @@
 package uz.distributor.crm.presentation.delivery
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,6 +41,10 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Schedule
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.FileOutputStream
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -59,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
@@ -146,10 +154,10 @@ fun DeliveryPaymentSheet(
     var showCalendar by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
-    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var localError by remember { mutableStateOf<String?>(null) }
     var amountOverLimit by remember { mutableStateOf(false) }
     var amountWarningTick by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(submitError) {
         if (!submitError.isNullOrBlank()) {
@@ -157,22 +165,46 @@ fun DeliveryPaymentSheet(
         }
     }
 
+    // Galereya: content:// URI keyin yopilishi mumkin — darhol lokal JPEG
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
-    ) { uri -> if (uri != null) photoUri = uri }
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val local = withContext(Dispatchers.IO) {
+                materializePaymentPhotoUri(context, uri)
+            }
+            if (local != null) {
+                photoUri = local
+                localError = null
+            } else {
+                localError = AppStrings.errorPhotoUploadFailed(lang)
+            }
+        }
+    }
 
+    // Kamera: xotiradagi bitmap → lokal JPEG (FileProvider bo‘sh fayl muammosi yo‘q)
     val cameraLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture(),
-    ) { ok -> if (ok) pendingCameraUri?.let { photoUri = it } }
+        ActivityResultContracts.TakePicturePreview(),
+    ) { bitmap ->
+        if (bitmap == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val local = withContext(Dispatchers.IO) {
+                savePaymentBitmapToCache(context, bitmap)
+            }
+            if (local != null) {
+                photoUri = local
+                localError = null
+            } else {
+                localError = AppStrings.errorPhotoUploadFailed(lang)
+            }
+        }
+    }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) {
-            val uri = createDeliveryCameraUri(context)
-            pendingCameraUri = uri
-            cameraLauncher.launch(uri)
-        }
+        if (granted) cameraLauncher.launch(null)
     }
 
     fun resetAndDismiss() {
@@ -472,9 +504,7 @@ fun DeliveryPaymentSheet(
                                     Manifest.permission.CAMERA,
                                 ) == PackageManager.PERMISSION_GRANTED
                                 if (granted) {
-                                    val uri = createDeliveryCameraUri(context)
-                                    pendingCameraUri = uri
-                                    cameraLauncher.launch(uri)
+                                    cameraLauncher.launch(null)
                                 } else {
                                     cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                 }
@@ -1187,15 +1217,86 @@ private fun parseAmountInput(text: String): Double? {
     return digits.toDoubleOrNull()
 }
 
-private fun createDeliveryCameraUri(context: android.content.Context): Uri {
-    val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
-    val file = File.createTempFile("payment_", ".jpg", dir)
-    // Kamera yozishi uchun bo‘sh fayl kerak; FileProvider path=cache
-    return FileProvider.getUriForFile(
-        context,
-        "${context.packageName}.fileprovider",
-        file,
-    )
+/** Galereya URI ni darhol cache JPEG ga ko‘chiradi (ruxsat yo‘qolmasin). */
+private fun materializePaymentPhotoUri(context: Context, source: Uri): Uri? {
+    return try {
+        val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
+        val outFile = File(dir, "gallery_${System.currentTimeMillis()}.jpg")
+        // Avval decode → JPEG (HEIC/WebP ham)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(source)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
+        if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+            var sample = 1
+            while (bounds.outWidth / sample > 1600 || bounds.outHeight / sample > 1600) {
+                sample *= 2
+            }
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bitmap = context.contentResolver.openInputStream(source)?.use {
+                BitmapFactory.decodeStream(it, null, opts)
+            } ?: return null
+            FileOutputStream(outFile).use { fos ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 88, fos)) {
+                    bitmap.recycle()
+                    return null
+                }
+            }
+            bitmap.recycle()
+        } else {
+            // Decode bo‘lmasa — raw nusxa
+            context.contentResolver.openInputStream(source)?.use { input ->
+                FileOutputStream(outFile).use { output -> input.copyTo(output) }
+            } ?: return null
+            if (outFile.length() < 256) {
+                outFile.delete()
+                return null
+            }
+        }
+        FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            outFile,
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun savePaymentBitmapToCache(context: Context, bitmap: Bitmap): Uri? {
+    return try {
+        val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
+        val outFile = File(dir, "camera_${System.currentTimeMillis()}.jpg")
+        val scaled = scalePaymentBitmap(bitmap, 1280)
+        FileOutputStream(outFile).use { fos ->
+            if (!scaled.compress(Bitmap.CompressFormat.JPEG, 88, fos)) {
+                if (scaled !== bitmap) scaled.recycle()
+                return null
+            }
+        }
+        if (scaled !== bitmap) scaled.recycle()
+        if (outFile.length() < 256) {
+            outFile.delete()
+            return null
+        }
+        FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            outFile,
+        )
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun scalePaymentBitmap(src: Bitmap, maxDim: Int): Bitmap {
+    val w = src.width
+    val h = src.height
+    if (w <= maxDim && h <= maxDim) return src
+    val scale = maxDim.toFloat() / maxOf(w, h).toFloat()
+    val nw = (w * scale).toInt().coerceAtLeast(1)
+    val nh = (h * scale).toInt().coerceAtLeast(1)
+    return Bitmap.createScaledBitmap(src, nw, nh, true)
 }
 
 private fun formatDisplayDate(date: LocalDate, lang: AppLanguage): String {

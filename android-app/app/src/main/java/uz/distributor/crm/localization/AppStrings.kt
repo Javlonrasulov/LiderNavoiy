@@ -686,7 +686,11 @@ object AppStrings {
         "Повторить",
     )
 
-    fun apiError(lang: AppLanguage, key: String): String = when (key) {
+    fun apiError(lang: AppLanguage, key: String): String {
+        if (key.startsWith("raw:")) {
+            return key.removePrefix("raw:").ifBlank { errorSaveFailed(lang) }
+        }
+        return when (key) {
         "invalid_credentials" -> errorInvalidCredentials(lang)
         "credentials_required" -> errorCredentialsRequired(lang)
         "gps_disabled" -> errorGpsDisabled(lang)
@@ -711,6 +715,7 @@ object AppStrings {
         "products_load_failed" -> errorProductsLoadFailed(lang)
         "products_not_found" -> errorProductsNotFound(lang)
         else -> errorSaveFailed(lang)
+        }
     }
 
     fun profileError(lang: AppLanguage, key: String): String = apiError(lang, key)

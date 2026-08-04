@@ -384,7 +384,8 @@ data class PaymentPhotoUploadDto(
 )
 
 data class AttachPaymentPhotoRequest(
-    val photoUrl: String,
+    val photoUrl: String? = null,
+    val photoBase64: String? = null,
     val paymentId: String? = null,
     val orderId: String? = null,
 )

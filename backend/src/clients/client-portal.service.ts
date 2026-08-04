@@ -19,6 +19,7 @@ import { Product } from '../products/entities/product.entity';
 import { ProductRating } from '../products/entities/product-rating.entity';
 import { PromotionsService } from '../promotions/promotions.service';
 import { OrderPayment } from '../payments/entities/order-payment.entity';
+import { PaymentPhotoUploadService } from '../payments/payment-photo-upload.service';
 import { AttachPaymentPhotoDto } from './dto/client-portal.dto';
 import { Client } from './entities/client.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
@@ -54,6 +55,7 @@ export class ClientPortalService {
     private readonly productsService: ProductsService,
     private readonly promotionsService: PromotionsService,
     private readonly gpsService: GpsService,
+    private readonly paymentPhotoUpload: PaymentPhotoUploadService,
   ) {}
 
   private primaryClientId(user: User): string {
@@ -956,9 +958,14 @@ export class ClientPortalService {
     dto: AttachPaymentPhotoDto,
     companyId?: string | null,
   ) {
-    const photoUrl = dto.photoUrl?.trim();
+    let photoUrl = dto.photoUrl?.trim() || '';
+    const b64 = dto.photoBase64?.trim();
+    if (b64) {
+      const saved = await this.paymentPhotoUpload.saveFromBase64(b64);
+      photoUrl = saved.url;
+    }
     if (!photoUrl || !photoUrl.startsWith('/uploads/payments/')) {
-      throw new BadRequestException('Invalid photoUrl');
+      throw new BadRequestException('photoUrl or photoBase64 required');
     }
 
     const client = await this.resolveActiveClient(user, companyId);
@@ -974,11 +981,13 @@ export class ClientPortalService {
     let payment: OrderPayment | null = null;
     const paymentId = dto.paymentId?.replace(/^pay-/, '').trim();
     if (paymentId) {
-      payment = await this.paymentRepo.findOne({ where: { id: paymentId } });
-      if (!payment || !clientIds.includes(payment.clientId)) {
-        throw new NotFoundException('Payment not found');
+      const byId = await this.paymentRepo.findOne({ where: { id: paymentId } });
+      if (byId && clientIds.includes(byId.clientId)) {
+        payment = byId;
       }
-    } else if (dto.orderId) {
+      // Noto‘g‘ri paymentId — orderId / so‘nggi to‘lovga fallback
+    }
+    if (!payment && dto.orderId) {
       const candidates = await this.paymentRepo.find({
         where: { orderId: dto.orderId, clientId: In(clientIds) },
         order: { createdAt: 'DESC' },
@@ -986,10 +995,10 @@ export class ClientPortalService {
       });
       payment = this.pickPaymentForPhoto(candidates);
       if (!payment) {
-        // To‘lov qatori yo‘q (masalan, kechiktirilgan / sync kechikishi) — buyurtma bo‘yicha yaratamiz
         payment = await this.createPhotoPaymentStub(dto.orderId, clientIds, photoUrl);
       }
-    } else {
+    }
+    if (!payment) {
       const candidates = await this.paymentRepo.find({
         where: { clientId: In(clientIds) },
         order: { createdAt: 'DESC' },
@@ -998,7 +1007,9 @@ export class ClientPortalService {
       payment = this.pickPaymentForPhoto(
         candidates.filter((p) => p.status !== PaymentStatus.CANCELLED),
       );
-      if (!payment) throw new NotFoundException('No recent payment to attach photo');
+    }
+    if (!payment) {
+      throw new NotFoundException('No recent payment to attach photo');
     }
 
     payment.photoUrl = photoUrl;
@@ -1034,10 +1045,16 @@ export class ClientPortalService {
     clientIds: string[],
     photoUrl: string,
   ): Promise<OrderPayment> {
-    const order = await this.orderRepo.findOne({
+    let order = await this.orderRepo.findOne({
       where: { id: orderId, clientId: In(clientIds) },
     });
-    if (!order) throw new NotFoundException('Payment not found for order');
+    if (!order) {
+      // Membership sync kechiksa ham buyurtmani topib, clientId ni tekshiramiz
+      order = await this.orderRepo.findOne({ where: { id: orderId } });
+      if (!order || !clientIds.includes(order.clientId)) {
+        throw new NotFoundException('Payment not found for order');
+      }
+    }
     const paid = Number(order.paidAmount) || 0;
     const payment = this.paymentRepo.create({
       orderId: order.id,

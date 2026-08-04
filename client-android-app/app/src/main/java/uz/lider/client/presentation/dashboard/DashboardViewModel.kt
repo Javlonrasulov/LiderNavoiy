@@ -122,8 +122,9 @@ class DashboardViewModel @Inject constructor(
                     delay(1800)
                     _photoPreview.value = null
                 },
-                onFailure = {
-                    _photoError.value = it.message ?: "upload_failed"
+                onFailure = { err ->
+                    android.util.Log.e("PayPhoto", "upload failed", err)
+                    _photoError.value = err.message ?: "upload_failed"
                 },
             )
         }

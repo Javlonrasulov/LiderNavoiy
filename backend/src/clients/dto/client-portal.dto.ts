@@ -29,9 +29,17 @@ export class SetProductRatingDto {
 }
 
 export class AttachPaymentPhotoDto {
-  @ApiProperty({ example: '/uploads/payments/uuid.jpg' })
+  @ApiPropertyOptional({ example: '/uploads/payments/uuid.jpg' })
+  @IsOptional()
   @IsString()
-  photoUrl: string;
+  photoUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'JPEG/PNG as data URL or raw base64 (preferred over multipart)',
+  })
+  @IsOptional()
+  @IsString()
+  photoBase64?: string;
 
   @ApiPropertyOptional({ description: 'Payment id (UUID or pay-<uuid>)' })
   @IsOptional()

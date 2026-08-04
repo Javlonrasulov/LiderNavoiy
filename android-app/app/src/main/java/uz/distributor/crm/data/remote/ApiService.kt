@@ -120,6 +120,10 @@ interface ApiService {
     @POST("payments/upload-photo")
     suspend fun uploadPaymentPhoto(@Part file: MultipartBody.Part): PaymentPhotoUploadDto
 
+    @Multipart
+    @POST("orders/upload-payment-photo")
+    suspend fun uploadPaymentPhotoLegacy(@Part file: MultipartBody.Part): PaymentPhotoUploadDto
+
     @POST("orders/{id}/returns")
     suspend fun createOrderReturn(
         @Path("id") id: String,

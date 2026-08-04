@@ -81,12 +81,12 @@ fun PaymentPhotoCaptureSection(
             context.contentResolver.openInputStream(uri)?.use { input ->
                 var total = 0
                 val buf = ByteArray(4096)
-                while (total < 2_049) {
+                while (total < 513) {
                     val n = input.read(buf)
                     if (n <= 0) break
                     total += n
                 }
-                total > 2_048
+                total > 512
             } ?: false
         } catch (_: Exception) {
             false

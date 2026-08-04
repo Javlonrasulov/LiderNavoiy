@@ -3,11 +3,19 @@ package uz.distributor.crm.data.repository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import androidx.core.graphics.drawable.toBitmap
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.CollectPaymentRequest
 import uz.distributor.crm.data.remote.dto.CreateReturnRequest
@@ -30,6 +38,12 @@ class DeliveryRepository @Inject constructor(
     @Volatile
     private var cached: List<OrderDto> = emptyList()
 
+    private val imageLoader by lazy {
+        ImageLoader.Builder(context)
+            .allowHardware(false)
+            .build()
+    }
+
     suspend fun getAssignedOrders(): List<OrderDto> {
         val orders = api.getDeliveryOrders()
         cached = orders
@@ -46,7 +60,6 @@ class DeliveryRepository @Inject constructor(
         cached.firstOrNull { it.id == orderId }
 
     suspend fun getOrder(orderId: String): OrderDto? {
-        // Har doim tarmoqdan — cache eski dueAt qoldirmasin
         return getAssignedOrders().firstOrNull { it.id == orderId }
             ?: getCachedOrder(orderId)
     }
@@ -62,7 +75,7 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoBase64 = photoUri?.let { encodePaymentPhotoBase64(it) }
+        val photoUrl = photoUri?.let { uploadPaymentPhotoReliably(it) }
         api.deliverOrder(
             orderId,
             DeliverOrderRequest(
@@ -70,7 +83,7 @@ class DeliveryRepository @Inject constructor(
                 terminalId = terminalId,
                 amount = amount,
                 dueAt = dueAt,
-                photoBase64 = photoBase64,
+                photoUrl = photoUrl,
             ),
         )
         return refreshOrder(orderId)
@@ -84,7 +97,7 @@ class DeliveryRepository @Inject constructor(
         dueAt: String?,
         photoUri: Uri?,
     ): OrderDto {
-        val photoBase64 = photoUri?.let { encodePaymentPhotoBase64(it) }
+        val photoUrl = photoUri?.let { uploadPaymentPhotoReliably(it) }
         api.collectOrderPayment(
             orderId,
             CollectPaymentRequest(
@@ -92,10 +105,60 @@ class DeliveryRepository @Inject constructor(
                 terminalId = terminalId,
                 amount = amount,
                 dueAt = dueAt,
-                photoBase64 = photoBase64,
+                photoUrl = photoUrl,
             ),
         )
         return refreshOrder(orderId)
+    }
+
+    /**
+     * Ishlab chiqarishda ishonchli yo‘l:
+     * 1) JPEG ga aylantirish (Coil)
+     * 2) Avval clients/upload-photo (prod da allaqachon ishlaydi)
+     * 3) Keyin payments/orders upload
+     */
+    private suspend fun uploadPaymentPhotoReliably(uri: Uri): String = withContext(Dispatchers.IO) {
+        val jpegBytes = prepareJpegBytes(uri)
+        if (jpegBytes.size < MIN_VALID_BYTES || !isJpeg(jpegBytes)) {
+            throw IllegalArgumentException("Cannot read photo")
+        }
+
+        fun part(): MultipartBody.Part = MultipartBody.Part.createFormData(
+            "file",
+            "payment_${System.currentTimeMillis()}.jpg",
+            jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull()),
+        )
+
+        val errors = mutableListOf<String>()
+
+        // 1) Agentlar allaqachon ishlatadigan endpoint — prod da bor
+        try {
+            val url = api.uploadClientPhoto(part()).url.trim()
+            if (url.isNotBlank()) return@withContext url
+            errors += "clients: empty url"
+        } catch (e: Exception) {
+            errors += "clients: ${e.message}"
+        }
+
+        try {
+            val url = api.uploadPaymentPhoto(part()).url.trim()
+            if (url.isNotBlank()) return@withContext url
+            errors += "payments: empty url"
+        } catch (e: Exception) {
+            errors += "payments: ${e.message}"
+        }
+
+        try {
+            val url = api.uploadPaymentPhotoLegacy(part()).url.trim()
+            if (url.isNotBlank()) return@withContext url
+            errors += "orders: empty url"
+        } catch (e: Exception) {
+            errors += "orders: ${e.message}"
+        }
+
+        throw IllegalStateException(
+            "Photo upload failed: ${errors.joinToString(" | ").ifBlank { "unknown" }}",
+        )
     }
 
     suspend fun updateDueAt(orderId: String, dueAt: String): OrderDto {
@@ -127,38 +190,22 @@ class DeliveryRepository @Inject constructor(
             )
     }
 
-    private suspend fun encodePaymentPhotoBase64(uri: Uri): String = withContext(Dispatchers.IO) {
-        val jpegBytes = prepareJpegBytes(uri)
-        val b64 = android.util.Base64.encodeToString(jpegBytes, android.util.Base64.NO_WRAP)
-        "data:image/jpeg;base64,$b64"
-    }
+    private suspend fun prepareJpegBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+        // 1) Coil — galereya/kamera URI lar uchun eng ishonchli
+        decodeWithCoil(uri)?.let { return@withContext it }
 
-    /**
-     * Kameradan/galereyadan URI ni birinchi keshga nusxalaymiz — shundan keyin JPEG.
-     */
-    private suspend fun prepareJpegBytes(uri: Uri): ByteArray {
         var lastError: Exception? = null
-        repeat(5) { attempt ->
+        repeat(4) { attempt ->
             try {
                 val cached = copyUriToCacheFile(uri)
                 try {
-                    if (cached.length() < 256) {
-                        throw IllegalArgumentException("Photo file is empty")
-                    }
-                    val fromFile = compressFileToJpeg(cached)
-                    if (fromFile != null && fromFile.size >= MIN_VALID_BYTES && isJpeg(fromFile)) {
-                        return fromFile
-                    }
+                    compressFileToJpeg(cached)?.let { return@withContext it }
                     val raw = cached.readBytes()
-                    if (raw.size >= MIN_VALID_BYTES && isJpeg(raw)) {
-                        val reencoded = reencodeJpeg(raw)
-                        if (reencoded != null && reencoded.size >= MIN_VALID_BYTES) return reencoded
-                        return raw
+                    if (raw.size >= 256 && isJpeg(raw)) {
+                        reencodeJpeg(raw)?.let { return@withContext it }
+                        if (raw.size >= MIN_VALID_BYTES) return@withContext raw
                     }
-                    val reencoded = reencodeJpeg(raw)
-                    if (reencoded != null && reencoded.size >= MIN_VALID_BYTES && isJpeg(reencoded)) {
-                        return reencoded
-                    }
+                    reencodeJpeg(raw)?.let { return@withContext it }
                     throw IllegalArgumentException("Photo decode failed")
                 } finally {
                     cached.delete()
@@ -166,16 +213,59 @@ class DeliveryRepository @Inject constructor(
             } catch (e: Exception) {
                 lastError = e
             }
-            if (attempt < 4) delay(250L * (attempt + 1))
+            if (attempt < 3) delay(200L * (attempt + 1))
         }
         throw lastError ?: IllegalArgumentException("Cannot read photo")
+    }
+
+    private suspend fun decodeWithCoil(uri: Uri): ByteArray? {
+        return try {
+            val request = ImageRequest.Builder(context)
+                .data(uri)
+                .allowHardware(false)
+                .size(1280)
+                .build()
+            val result = imageLoader.execute(request)
+            if (result !is SuccessResult) return null
+            val drawable = result.drawable
+            val bitmap = when (drawable) {
+                is BitmapDrawable -> drawable.bitmap
+                else -> drawable.toBitmap(
+                    width = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(1280),
+                    height = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(1280),
+                )
+            }
+            val scaled = scaleBitmap(bitmap, 1280)
+            val out = ByteArrayOutputStream()
+            val ok = scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            if (scaled !== bitmap && !bitmap.isRecycled) {
+                // coil managed bitmap — don't recycle source aggressively
+            }
+            if (scaled !== bitmap) scaled.recycle()
+            if (!ok) return null
+            out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun scaleBitmap(bitmap: Bitmap, maxSide: Int): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= maxSide && h <= maxSide) return bitmap
+        val ratio = maxSide.toFloat() / maxOf(w, h)
+        return Bitmap.createScaledBitmap(
+            bitmap,
+            (w * ratio).toInt().coerceAtLeast(1),
+            (h * ratio).toInt().coerceAtLeast(1),
+            true,
+        )
     }
 
     private fun copyUriToCacheFile(uri: Uri): File {
         val dir = File(context.cacheDir, "payment_upload").apply { mkdirs() }
         val out = File(dir, "src_${System.currentTimeMillis()}.bin")
 
-        // To‘g‘ridan-to‘g‘ri fayl yo‘li (FileProvider)
         if (uri.scheme == "file") {
             val path = uri.path
             if (path != null) {
@@ -257,6 +347,6 @@ class DeliveryRepository @Inject constructor(
         bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
 
     companion object {
-        private const val MIN_VALID_BYTES = 1_024
+        private const val MIN_VALID_BYTES = 512
     }
 }

@@ -5,17 +5,21 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
+import android.util.Base64
+import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.HttpException
 import uz.lider.client.BuildConfig
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiService
 import uz.lider.client.data.remote.dto.AttachPaymentPhotoRequest
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,7 +39,9 @@ class PaymentProofRepository @Inject constructor(
 
     /**
      * Kameradan olingan rasmni yuklab, to‘lovga biriktiradi.
-     * Muvaffaqiyatda eslatmani tozalaydi.
+     * 1) JSON base64 (yangi backend)
+     * 2) multipart + photoUrl (eski backend)
+     * paymentId o‘rniga orderId afzal — eski serverda "Payment not found" dan qochish.
      */
     suspend fun captureAndAttach(
         uri: Uri,
@@ -43,65 +49,151 @@ class PaymentProofRepository @Inject constructor(
         paymentId: String? = null,
     ): Result<String> {
         return try {
-            val photoUrl = uploadPhoto(uri)
+            val jpeg = prepareJpegBytes(uri)
+            if (jpeg.size < MIN_VALID_BYTES || !isJpeg(jpeg)) {
+                throw IllegalArgumentException("Photo is empty or unreadable")
+            }
+            val probe = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, probe)
+            if (probe.outWidth < 16 || probe.outHeight < 16) {
+                throw IllegalArgumentException("Photo decode failed")
+            }
+
             val companyId = selectedOrgHolder.getSelectedCompanyId()
-            api.attachPaymentPhoto(
-                AttachPaymentPhotoRequest(
-                    photoUrl = photoUrl,
-                    orderId = orderId?.takeIf { it.isNotBlank() },
-                    paymentId = paymentId?.takeIf { it.isNotBlank() },
-                ),
-                companyId = companyId,
-            )
+            val oid = orderId?.takeIf { it.isNotBlank() }
+            val pid = paymentId?.takeIf { it.isNotBlank() && !it.startsWith("ord-") }
+            val photoUrl = attachPreferBase64(jpeg, oid, pid, companyId)
             paymentPhotoAlertStore.clearAlert()
             Result.success(resolvePhotoUrl(photoUrl))
         } catch (e: Exception) {
+            Log.e(TAG, "captureAndAttach failed", e)
             Result.failure(e)
         }
     }
 
-    private suspend fun uploadPhoto(uri: Uri): String {
-        val bytes = prepareJpegBytes(uri)
-        if (bytes.size < MIN_VALID_BYTES) {
-            throw IllegalArgumentException("Photo is empty or unreadable")
+    private suspend fun attachPreferBase64(
+        jpeg: ByteArray,
+        orderId: String?,
+        paymentId: String?,
+        companyId: String?,
+    ): String {
+        val dataUrl = "data:image/jpeg;base64," +
+            Base64.encodeToString(jpeg, Base64.NO_WRAP)
+
+        try {
+            val res = api.attachPaymentPhoto(
+                AttachPaymentPhotoRequest(
+                    photoBase64 = dataUrl,
+                    orderId = orderId,
+                    // Yangi backendda paymentId OK; eski backendda orderId yo‘li ishonchli
+                    paymentId = null,
+                ),
+                companyId = companyId,
+            )
+            val url = res.photoUrl?.trim().orEmpty()
+            if (url.isNotBlank()) return url
+        } catch (e: HttpException) {
+            when (e.code()) {
+                401, 403 -> throw e
+                in 400..499 -> Log.w(TAG, "base64 attach ${e.code()}, fallback multipart")
+                else -> throw e
+            }
         }
-        // Decode tekshiruvi — qora/buzilgan faylni darhol rad etamiz
-        val probe = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, probe)
-        if (probe.outWidth < 16 || probe.outHeight < 16) {
-            throw IllegalArgumentException("Photo decode failed")
+
+        val uploaded = uploadMultipart(jpeg)
+
+        // Eski backend: faqat orderId — stub yaratadi; paymentId "not found" bermasin
+        try {
+            val res = api.attachPaymentPhoto(
+                AttachPaymentPhotoRequest(
+                    photoUrl = uploaded,
+                    orderId = orderId,
+                    paymentId = null,
+                ),
+                companyId = companyId,
+            )
+            return res.photoUrl?.takeIf { it.isNotBlank() } ?: uploaded
+        } catch (e: HttpException) {
+            if (paymentId == null || e.code() !in 400..404) throw e
+            val res = api.attachPaymentPhoto(
+                AttachPaymentPhotoRequest(
+                    photoUrl = uploaded,
+                    orderId = orderId,
+                    paymentId = paymentId,
+                ),
+                companyId = companyId,
+            )
+            return res.photoUrl?.takeIf { it.isNotBlank() } ?: uploaded
         }
+    }
+
+    private suspend fun uploadMultipart(bytes: ByteArray): String {
         val part = MultipartBody.Part.createFormData(
             "file",
             "payment_${System.currentTimeMillis()}.jpg",
             bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()),
         )
-        val uploaded = api.uploadPaymentPhoto(part).url
+        val uploaded = api.uploadPaymentPhoto(part).url.trim()
         if (uploaded.isBlank()) throw IllegalStateException("Upload returned empty url")
         return uploaded
     }
 
-    /** Kameradan kelgan URI → EXIF-rotated, siqilgan JPEG. */
+    /** Kameradan URI → ishonchli JPEG (dostavkachi ilovasidagi usul). */
     private fun prepareJpegBytes(uri: Uri): ByteArray {
-        val compressed = compressImage(uri)
-        if (compressed != null && compressed.size >= MIN_VALID_BYTES) return compressed
-        val raw = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw IllegalArgumentException("Cannot read photo")
-        if (raw.size < MIN_VALID_BYTES) {
-            throw IllegalArgumentException("Photo file is empty")
+        val cacheFile = copyUriToCacheFile(uri)
+        try {
+            compressFileToJpeg(cacheFile)?.let { return it }
+            val raw = cacheFile.readBytes()
+            if (raw.size >= MIN_VALID_BYTES && isJpeg(raw)) {
+                return reencodeWithExif(raw) ?: raw
+            }
+            throw IllegalArgumentException("Cannot read photo")
+        } finally {
+            cacheFile.delete()
         }
-        // Raw JPEG bo‘lsa EXIF bilan qayta encode
-        return reencodeWithExif(raw) ?: raw
     }
 
-    private fun compressImage(uri: Uri): ByteArray? {
+    private fun copyUriToCacheFile(uri: Uri): File {
+        val dir = File(context.cacheDir, "payment_upload").apply { mkdirs() }
+        val out = File(dir, "src_${System.currentTimeMillis()}.bin")
+
+        if (uri.scheme == "file") {
+            val path = uri.path
+            if (path != null) {
+                val src = File(path)
+                if (src.exists() && src.length() > 0) {
+                    src.copyTo(out, overwrite = true)
+                    return out
+                }
+            }
+        }
+
         val resolver = context.contentResolver
+        resolver.openInputStream(uri)?.use { input ->
+            out.outputStream().use { output -> input.copyTo(output) }
+        }
+
+        if (!out.exists() || out.length() <= 0L) {
+            val pfd = resolver.openFileDescriptor(uri, "r")
+            if (pfd != null) {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                    out.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+        }
+        if (!out.exists() || out.length() <= 0L) {
+            throw IllegalArgumentException("Photo file is empty")
+        }
+        return out
+    }
+
+    private fun compressFileToJpeg(file: File): ByteArray? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var sample = 1
-        val maxSide = 1600
+        val maxSide = 1280
         while (bounds.outWidth / sample > maxSide || bounds.outHeight / sample > maxSide) {
             sample *= 2
         }
@@ -109,42 +201,27 @@ class PaymentProofRepository @Inject constructor(
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val decoded = resolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, opts)
-        } ?: return null
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
 
-        val orientation = resolver.openInputStream(uri)?.use { input ->
-            ExifInterface(input).getAttributeInt(
+        val orientation = try {
+            ExifInterface(file.absolutePath).getAttributeInt(
                 ExifInterface.TAG_ORIENTATION,
                 ExifInterface.ORIENTATION_NORMAL,
             )
-        } ?: ExifInterface.ORIENTATION_NORMAL
+        } catch (_: Exception) {
+            ExifInterface.ORIENTATION_NORMAL
+        }
 
         val bitmap = applyExifRotation(decoded, orientation).also {
             if (it !== decoded) decoded.recycle()
         }
 
-        val scaled = if (bitmap.width > maxSide || bitmap.height > maxSide) {
-            val ratio = maxSide.toFloat() / maxOf(bitmap.width, bitmap.height)
-            Bitmap.createScaledBitmap(
-                bitmap,
-                (bitmap.width * ratio).toInt().coerceAtLeast(1),
-                (bitmap.height * ratio).toInt().coerceAtLeast(1),
-                true,
-            ).also { if (it !== bitmap) bitmap.recycle() }
-        } else {
-            bitmap
-        }
-
-        if (isMostlyBlack(scaled)) {
-            scaled.recycle()
-            return null
-        }
-
-        return ByteArrayOutputStream().use { out ->
-            val ok = scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
-            scaled.recycle()
-            if (!ok) null else out.toByteArray()
+        return try {
+            val out = ByteArrayOutputStream()
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)) return null
+            out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+        } finally {
+            bitmap.recycle()
         }
     }
 
@@ -153,7 +230,7 @@ class PaymentProofRepository @Inject constructor(
         BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
         if (bounds.outWidth <= 0) return null
         var sample = 1
-        val maxSide = 1600
+        val maxSide = 1280
         while (bounds.outWidth / sample > maxSide || bounds.outHeight / sample > maxSide) {
             sample *= 2
         }
@@ -173,14 +250,12 @@ class PaymentProofRepository @Inject constructor(
         val bitmap = applyExifRotation(decoded, orientation).also {
             if (it !== decoded) decoded.recycle()
         }
-        if (isMostlyBlack(bitmap)) {
+        return try {
+            val out = ByteArrayOutputStream()
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)) return null
+            out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+        } finally {
             bitmap.recycle()
-            return null
-        }
-        return ByteArrayOutputStream().use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
-            bitmap.recycle()
-            out.toByteArray()
         }
     }
 
@@ -195,34 +270,11 @@ class PaymentProofRepository @Inject constructor(
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    /** Kameradan bo‘sh / qora kadr kelganini aniqlash. */
-    private fun isMostlyBlack(bitmap: Bitmap): Boolean {
-        val w = bitmap.width
-        val h = bitmap.height
-        if (w < 8 || h < 8) return true
-        val stepX = (w / 8).coerceAtLeast(1)
-        val stepY = (h / 8).coerceAtLeast(1)
-        var sum = 0L
-        var count = 0
-        var y = 0
-        while (y < h) {
-            var x = 0
-            while (x < w) {
-                val c = bitmap.getPixel(x, y)
-                val r = (c shr 16) and 0xFF
-                val g = (c shr 8) and 0xFF
-                val b = c and 0xFF
-                sum += (r + g + b) / 3
-                count++
-                x += stepX
-            }
-            y += stepY
-        }
-        if (count == 0) return true
-        return (sum / count) < 12
-    }
+    private fun isJpeg(bytes: ByteArray): Boolean =
+        bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
 
     companion object {
-        private const val MIN_VALID_BYTES = 2_048
+        private const val TAG = "PaymentProof"
+        private const val MIN_VALID_BYTES = 512
     }
 }
