@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.DebtRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
@@ -145,14 +146,19 @@ class DebtViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            try {
+                withTimeout(25_000) { reloadQuiet() }
+            } catch (_: Exception) {
+                // Spinner qotib qolmasin
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
     suspend fun refresh() {
         paymentPhotoAlertStore.clearIfExpired()
-        reloadQuiet()
+        runCatching { withTimeout(45_000) { reloadQuiet() } }
     }
 
     private suspend fun reloadQuiet() {

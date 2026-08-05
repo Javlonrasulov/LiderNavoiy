@@ -93,6 +93,7 @@ import androidx.core.content.FileProvider
 import uz.distributor.crm.data.remote.dto.PaymentTerminalDto
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.util.JpegOrientation
 import java.io.File
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
@@ -1227,12 +1228,13 @@ private fun parseAmountInput(text: String): Double? {
     return digits.toDoubleOrNull()
 }
 
-/** Galereya/kamera URI ni server uchun ixcham JPEG ga yozadi. */
+/** Galereya/kamera URI ni server uchun ixcham JPEG ga yozadi (EXIF orientatsiya bilan). */
 private fun materializePaymentPhotoUri(context: Context, source: Uri): Uri? {
     return try {
         val dir = File(context.cacheDir, "payment_photos").apply { mkdirs() }
         val outFile = File(dir, "photo_${System.currentTimeMillis()}.jpg")
         val maxDim = 1280
+        val orientation = JpegOrientation.fromUri(context, source)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(source)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
@@ -1246,19 +1248,21 @@ private fun materializePaymentPhotoUri(context: Context, source: Uri): Uri? {
                 inSampleSize = sample
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
-            val bitmap = context.contentResolver.openInputStream(source)?.use {
+            val decoded = context.contentResolver.openInputStream(source)?.use {
                 BitmapFactory.decodeStream(it, null, opts)
             } ?: return null
-            val scaled = scalePaymentBitmap(bitmap, maxDim)
-            FileOutputStream(outFile).use { fos ->
-                if (!scaled.compress(Bitmap.CompressFormat.JPEG, 78, fos)) {
-                    if (scaled !== bitmap) scaled.recycle()
-                    bitmap.recycle()
-                    return null
+            val oriented = JpegOrientation.apply(decoded, orientation)
+            val scaled = scalePaymentBitmap(oriented, maxDim)
+            try {
+                FileOutputStream(outFile).use { fos ->
+                    if (!scaled.compress(Bitmap.CompressFormat.JPEG, 78, fos)) {
+                        return null
+                    }
                 }
+            } finally {
+                if (scaled !== oriented) scaled.recycle()
+                if (!oriented.isRecycled) oriented.recycle()
             }
-            if (scaled !== bitmap) scaled.recycle()
-            bitmap.recycle()
         } else {
             context.contentResolver.openInputStream(source)?.use { input ->
                 FileOutputStream(outFile).use { output -> input.copyTo(output) }

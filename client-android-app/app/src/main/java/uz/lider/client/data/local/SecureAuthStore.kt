@@ -54,10 +54,16 @@ class SecureAuthStore @Inject constructor(
     suspend fun ensureMigrated() = migrateMutex.withLock {
         if (migrated) return
         withContext(Dispatchers.IO) {
-            if (prefs.getString(KEY_ACCESS, null) == null) {
-                migrateFromLegacy()
+            runCatching {
+                if (prefs.getString(KEY_ACCESS, null) == null) {
+                    migrateFromLegacy()
+                }
+                reloadFromPrefs()
+            }.onFailure {
+                _accessToken.value = null
+                _refreshToken.value = null
+                _userJson.value = null
             }
-            reloadFromPrefs()
             migrated = true
         }
     }

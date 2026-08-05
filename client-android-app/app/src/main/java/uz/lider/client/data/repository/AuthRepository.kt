@@ -47,6 +47,9 @@ class AuthRepository @Inject constructor(
         os = "Android ${Build.VERSION.RELEASE}",
     )
 
+    /** Interceptor tokeni tayyor — splash/login paytida false. */
+    fun hasInMemoryAccessToken(): Boolean = tokenHolder.peekToken() != null
+
     suspend fun peekAccessToken(): String? =
         tokenHolder.getToken() ?: secureAuthStore.peekAccessToken()
 
@@ -82,16 +85,21 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun restoreSession(): Boolean {
-        secureAuthStore.ensureMigrated()
-        val token = secureAuthStore.peekAccessToken()
-        val userJson = secureAuthStore.peekUserJson()
-        val user = userJson?.let { gson.fromJson(it, AuthUser::class.java) }
-        if (token == null || user?.role != "client") {
-            if (token != null) logout()
-            return false
+        return try {
+            secureAuthStore.ensureMigrated()
+            val token = secureAuthStore.peekAccessToken()
+            val user = runCatching {
+                secureAuthStore.peekUserJson()?.let { gson.fromJson(it, AuthUser::class.java) }
+            }.getOrNull()
+            if (token == null || user?.role != "client") {
+                if (token != null) logout()
+                return false
+            }
+            tokenHolder.setToken(token)
+            true
+        } catch (_: Exception) {
+            false
         }
-        tokenHolder.setToken(token)
-        return true
     }
 
     suspend fun refreshAccessToken(): Boolean = refreshMutex.withLock {
@@ -145,8 +153,8 @@ class AuthRepository @Inject constructor(
         secureAuthStore.clear()
     }
 
-    fun getUserFlow(): Flow<AuthUser?> = secureAuthStore.userJson.map { prefs ->
-        prefs?.let { gson.fromJson(it, AuthUser::class.java) }
+    fun getUserFlow(): Flow<AuthUser?> = secureAuthStore.userJson.map { json ->
+        json?.let { runCatching { gson.fromJson(it, AuthUser::class.java) }.getOrNull() }
     }
 
     private suspend fun saveTokens(tokens: AuthTokens) {

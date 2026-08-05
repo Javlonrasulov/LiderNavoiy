@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.repository.AppSettingsRepository
 import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
@@ -165,7 +166,10 @@ class MainActivity : ComponentActivity() {
 
     private fun registerFcmIfLoggedIn() {
         lifecycleScope.launch {
-            if (authRepository.restoreSession()) {
+            val ok = runCatching {
+                withTimeout(8_000) { authRepository.restoreSession() }
+            }.getOrDefault(false)
+            if (ok) {
                 runCatching { pushRepository.registerCurrentToken() }
             }
         }

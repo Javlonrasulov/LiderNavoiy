@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import androidx.compose.ui.platform.LocalContext
 import androidx.activity.ComponentActivity
 import uz.lider.client.R
@@ -74,7 +75,10 @@ class SplashViewModel @Inject constructor(
 ) : ViewModel() {
     fun checkAuth(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            onResult(authRepository.restoreSession())
+            val ok = runCatching {
+                withTimeout(8_000) { authRepository.restoreSession() }
+            }.getOrDefault(false)
+            onResult(ok)
         }
     }
 }
@@ -91,9 +95,17 @@ class ClientNavigationViewModel @Inject constructor(
     val user = authRepository.getUserFlow()
     val paymentPhotoModalEvents = paymentPhotoAlertStore.modalEvents
 
+    @Volatile
+    private var paymentPollStarted = false
+
     init {
         viewModelScope.launch { paymentPhotoAlertStore.clearIfExpired() }
-        // Push kelmasa ham — to‘lov tarixidan asosiydagi rasm eslatmasi
+    }
+
+    /** Faqat login/splash dan keyin — aks holda 401/refresh splashni qotkazadi. */
+    fun startPaymentPollingIfNeeded() {
+        if (paymentPollStarted) return
+        paymentPollStarted = true
         viewModelScope.launch {
             while (isActive) {
                 runCatching {
@@ -106,9 +118,8 @@ class ClientNavigationViewModel @Inject constructor(
     }
 
     private suspend fun pollRecentPayments() {
-        // Login/splash da token yo‘q — 401 → sessionExpired → ekran qayta ochilib
-        // login/parol maydonlarini tozalab yubormasligi uchun so‘rov yuborilmaydi.
-        if (authRepository.peekAccessToken().isNullOrBlank()) return
+        // Faqat memory token — prefs fallback interceptorga tushmaydi, 401 race ochilmasin
+        if (!authRepository.hasInMemoryAccessToken()) return
         val debt = debtRepository.getDebt() ?: return
 
         // Muhim: agent yuklagan photoUrl ≠ mijoz xavfsizlik rasmi.
@@ -210,6 +221,10 @@ fun ClientNavHost(
         currentRoute != ClientRoutes.SPLASH &&
         currentRoute != ClientRoutes.LOGIN
     val activity = LocalContext.current as? ComponentActivity
+
+    LaunchedEffect(loggedIn) {
+        if (loggedIn) navViewModel.startPaymentPollingIfNeeded()
+    }
 
     LaunchedEffect(Unit) {
         navViewModel.sessionExpired.collectLatest {

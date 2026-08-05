@@ -131,6 +131,7 @@ dependencies {
 
     // Images
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // Drag-and-drop reorder (LazyColumn)
     implementation("sh.calvin.reorderable:reorderable:3.1.0")

@@ -27,6 +27,7 @@ import uz.distributor.crm.data.remote.dto.OrderItemDto
 import uz.distributor.crm.data.remote.dto.PaymentTerminalDto
 import uz.distributor.crm.data.remote.dto.ReorderDeliveryRequest
 import uz.distributor.crm.data.remote.dto.UpdateDueAtRequest
+import uz.distributor.crm.util.JpegOrientation
 import java.io.ByteArrayOutputStream
 import java.io.File
 import javax.inject.Inject
@@ -366,17 +367,9 @@ class DeliveryRepository @Inject constructor(
             try {
                 val cached = copyUriToCacheFile(uri)
                 try {
-                    val raw = cached.readBytes()
-                    // Allaqachon yaxshi JPEG bo‘lsa — qayta siqmaslik (sifat saqlanadi)
-                    if (isJpeg(raw) && raw.size >= MIN_VALID_BYTES && raw.size <= MAX_KEEP_BYTES) {
-                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
-                        if (bounds.outWidth in 1..MAX_SIDE && bounds.outHeight in 1..MAX_SIDE) {
-                            return@withContext raw
-                        }
-                        reencodeJpeg(raw)?.let { return@withContext it }
-                    }
+                    // Har doim EXIF bilan normalizatsiya — aks holda portret albom bo‘lib qoladi
                     compressFileToJpeg(cached)?.let { return@withContext it }
+                    val raw = cached.readBytes()
                     if (isJpeg(raw) && raw.size >= MIN_VALID_BYTES) {
                         reencodeJpeg(raw)?.let { return@withContext it }
                     }
@@ -473,6 +466,7 @@ class DeliveryRepository @Inject constructor(
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
+        val orientation = JpegOrientation.fromFile(file)
         var sample = 1
         while (bounds.outWidth / sample > MAX_SIDE || bounds.outHeight / sample > MAX_SIDE) {
             sample *= 2
@@ -481,13 +475,19 @@ class DeliveryRepository @Inject constructor(
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+        val bitmap = JpegOrientation.apply(decoded, orientation)
         return try {
-            val out = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
-            out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+            val scaled = scaleBitmap(bitmap, MAX_SIDE)
+            try {
+                val out = ByteArrayOutputStream()
+                if (!scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
+                out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+            } finally {
+                if (scaled !== bitmap) scaled.recycle()
+            }
         } finally {
-            bitmap.recycle()
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
@@ -495,6 +495,7 @@ class DeliveryRepository @Inject constructor(
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val orientation = JpegOrientation.fromBytes(raw)
         var sample = 1
         while (bounds.outWidth / sample > MAX_SIDE || bounds.outHeight / sample > MAX_SIDE) {
             sample *= 2
@@ -503,13 +504,19 @@ class DeliveryRepository @Inject constructor(
             inSampleSize = sample
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, opts) ?: return null
+        val decoded = BitmapFactory.decodeByteArray(raw, 0, raw.size, opts) ?: return null
+        val bitmap = JpegOrientation.apply(decoded, orientation)
         return try {
-            val out = ByteArrayOutputStream()
-            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
-            out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+            val scaled = scaleBitmap(bitmap, MAX_SIDE)
+            try {
+                val out = ByteArrayOutputStream()
+                if (!scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) return null
+                out.toByteArray().takeIf { it.size >= MIN_VALID_BYTES && isJpeg(it) }
+            } finally {
+                if (scaled !== bitmap) scaled.recycle()
+            }
         } finally {
-            bitmap.recycle()
+            if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
@@ -521,6 +528,5 @@ class DeliveryRepository @Inject constructor(
         /** Server joyi: ~1280px, sifat ~78 — o‘qiladi, lekin katta emas */
         private const val MAX_SIDE = 1280
         private const val JPEG_QUALITY = 78
-        private const val MAX_KEEP_BYTES = 350 * 1024
     }
 }
