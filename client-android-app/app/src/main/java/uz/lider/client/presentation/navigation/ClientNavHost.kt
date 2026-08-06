@@ -107,20 +107,27 @@ class ClientNavigationViewModel @Inject constructor(
         if (paymentPollStarted) return
         paymentPollStarted = true
         viewModelScope.launch {
+            var backoffMs = 4_000L
             while (isActive) {
-                runCatching {
+                val ok = runCatching {
                     paymentPhotoAlertStore.clearIfExpired()
                     pollRecentPayments()
+                }.getOrDefault(false)
+                if (ok) {
+                    backoffMs = 4_000L
+                } else {
+                    backoffMs = (backoffMs * 2).coerceAtMost(60_000L)
                 }
-                delay(4_000)
+                delay(backoffMs)
             }
         }
     }
 
-    private suspend fun pollRecentPayments() {
+    /** @return false agar token bor lekin debt API ishlamasa (backoff uchun). */
+    private suspend fun pollRecentPayments(): Boolean {
         // Faqat memory token — prefs fallback interceptorga tushmaydi, 401 race ochilmasin
-        if (!authRepository.hasInMemoryAccessToken()) return
-        val debt = debtRepository.getDebt() ?: return
+        if (!authRepository.hasInMemoryAccessToken()) return true
+        val debt = debtRepository.getDebt() ?: return false
 
         // Muhim: agent yuklagan photoUrl ≠ mijoz xavfsizlik rasmi.
         // Shuning uchun poll hech qachon push/eslatmani o‘chirmaydi —
@@ -151,7 +158,7 @@ class ClientNavigationViewModel @Inject constructor(
                     )
                 }
             }
-            return
+            return true
         }
 
         val signals = debt.history
@@ -170,6 +177,7 @@ class ClientNavigationViewModel @Inject constructor(
                 )
             }
         paymentPhotoAlertStore.ingestRecentPayments(signals)
+        return true
     }
 
     fun logout(onDone: () -> Unit) {

@@ -63,6 +63,9 @@ data class DashboardUiState(
     val purchasesCompanyId: String? = null,
     val filtered: DashboardFiltered = DashboardFiltered(0.0, 0, emptyList(), listOf(0f, 0f)),
     val liveFleet: LiveFleetUi? = null,
+    /** Serverga ulanib bo‘lmadi — nollar “haqiqiy” emas */
+    val loadError: Boolean = false,
+    val lastFetchOk: Boolean = false,
 )
 
 @HiltViewModel
@@ -186,25 +189,37 @@ class DashboardViewModel @Inject constructor(
             }.getOrNull()
             _uiState.update {
                 it.copy(
-                    clientName = resolveClientName(null, authUser),
+                    clientName = "",
                     loading = true,
+                    loadError = false,
                 )
             }
+            var ok = false
             try {
-                withTimeout(25_000) {
+                ok = withTimeout(25_000) {
                     reloadQuiet(authUser)
                 }
             } catch (_: Exception) {
-                // Spinnerni ushlab qolmaslik — fonida qayta urinish
+                _uiState.update { it.copy(clientName = "", loadError = true, lastFetchOk = false) }
             } finally {
                 _uiState.update { it.copy(loading = false) }
             }
-            ensureLiveDeliveryPolling(reuseOrdersOnce = true)
-            if (_uiState.value.data == null) {
+            if (ok) {
+                ensureLiveDeliveryPolling(reuseOrdersOnce = true)
+            } else {
+                // Qayta urinish — nollarni “success” deb qoldirmaslik
                 launch {
-                    delay(2_000)
-                    runCatching {
-                        withTimeout(25_000) { reloadQuiet(authUser) }
+                    var attempt = 0
+                    while (isActive && !_uiState.value.lastFetchOk && attempt < 4) {
+                        delay(2_000L * (attempt + 1))
+                        val retryOk = runCatching {
+                            withTimeout(25_000) { reloadQuiet(authUser) }
+                        }.getOrDefault(false)
+                        if (retryOk) {
+                            ensureLiveDeliveryPolling(reuseOrdersOnce = true)
+                            break
+                        }
+                        attempt++
                     }
                 }
             }
@@ -212,34 +227,66 @@ class DashboardViewModel @Inject constructor(
     }
 
     suspend fun refresh() {
-        try {
+        val ok = try {
             withTimeout(45_000) {
                 reloadQuiet()
             }
         } catch (_: Exception) {
-            // Oldingi UI saqlanadi; pull-to-refresh spinner qotib qolmasin
+            _uiState.update { it.copy(clientName = "", loadError = true, lastFetchOk = false) }
+            false
         }
-        ensureLiveDeliveryPolling(reuseOrdersOnce = true)
+        if (ok) {
+            ensureLiveDeliveryPolling(reuseOrdersOnce = true)
+        }
     }
 
-    private suspend fun reloadQuiet(authUserHint: AuthUser? = null) = coroutineScope {
+    fun dismissLoadError() {
+        _uiState.update { it.copy(loadError = false) }
+    }
+
+    fun retryLoad() {
+        load()
+    }
+
+    /**
+     * @return true agar kamida bitta portal API muvaffaqiyatli bo‘lsa.
+     * Hammasi yiqilsa eski data saqlanadi — soxta 0 yozilmaydi.
+     */
+    private suspend fun reloadQuiet(authUserHint: AuthUser? = null): Boolean = coroutineScope {
         val authUser = authUserHint ?: runCatching {
             withTimeout(5_000) { authRepository.getUserFlow().first() }
         }.getOrNull()
-        val profileDeferred = async { runCatching { profileRepository.getProfile() }.getOrNull() }
-        val ordersDeferred = async {
-            runCatching { profileRepository.getAllOrders() }.getOrElse { emptyList() }
-        }
+        val profileDeferred = async { runCatching { profileRepository.getProfileStrict() } }
+        val ordersDeferred = async { runCatching { orderRepository.getOrdersStrict(companyId = null) } }
         val promotionsDeferred = async {
             runCatching { promotionsRepository.getPromotions() }.getOrElse { emptyList() }
         }
-        val apiDashDeferred = async {
-            runCatching { profileRepository.fetchDashboardSummary() }.getOrNull()
-        }
-        val profile = profileDeferred.await()
-        val allOrders = ordersDeferred.await()
+        val apiDashDeferred = async { runCatching { profileRepository.fetchDashboardSummaryStrict() } }
+        val profileR = profileDeferred.await()
+        val ordersR = ordersDeferred.await()
         val promotions = promotionsDeferred.await()
-        val apiDash = apiDashDeferred.await()
+        val apiDashR = apiDashDeferred.await()
+
+        val anyOk = profileR.isSuccess || ordersR.isSuccess || apiDashR.isSuccess
+        if (!anyOk) {
+            android.util.Log.w(
+                "DashboardVM",
+                "all portal calls failed p=${profileR.exceptionOrNull()?.message} " +
+                    "o=${ordersR.exceptionOrNull()?.message} d=${apiDashR.exceptionOrNull()?.message}",
+            )
+            _uiState.update {
+                it.copy(
+                    clientName = "",
+                    loadError = true,
+                    lastFetchOk = false,
+                )
+            }
+            return@coroutineScope false
+        }
+
+        val profile = profileR.getOrNull()
+        val allOrders = ordersR.getOrElse { emptyList() }
+        val apiDash = apiDashR.getOrNull()
         val local = profileRepository.buildDashboardFromProfileOrders(profile, allOrders)
         val data = if (apiDash != null) {
             local.copy(
@@ -282,21 +329,27 @@ class DashboardViewModel @Inject constructor(
         } else {
             filtered
         }
+        val apiProfile = profile ?: apiDash?.profile
         _uiState.update {
             it.copy(
                 data = data,
-                clientName = resolveClientName(profile, authUser),
+                clientName = resolveClientName(apiProfile),
                 allOrders = allOrders,
                 promotions = promotions,
                 dateRange = range,
                 purchasesCompanyId = companyId,
                 filtered = displayFiltered,
+                loadError = false,
+                lastFetchOk = true,
             )
         }
+        true
     }
 
     fun onDashboardVisible() {
-        ensureLiveDeliveryPolling()
+        if (_uiState.value.lastFetchOk) {
+            ensureLiveDeliveryPolling()
+        }
     }
 
     fun setDateRange(startMillis: Long, endMillis: Long) {
@@ -354,16 +407,26 @@ class DashboardViewModel @Inject constructor(
         _uiState.value.dateRange?.let { DashboardDateFilter.formatRange(it) }.orEmpty()
 
     private fun ensureLiveDeliveryPolling(reuseOrdersOnce: Boolean = false) {
+        if (!_uiState.value.lastFetchOk) return
         if (livePollJob?.isActive == true) {
             viewModelScope.launch { syncLiveDeliveryOnce(reuseOrders = reuseOrdersOnce) }
             return
         }
         livePollJob = viewModelScope.launch {
             var first = reuseOrdersOnce
+            var failStreak = 0
             while (isActive) {
+                if (!_uiState.value.lastFetchOk) {
+                    delay(5_000)
+                    continue
+                }
+                val before = _uiState.value.allOrders
                 syncLiveDeliveryOnce(reuseOrders = first)
                 first = false
-                delay(3_000)
+                // Tarmoq yomon bo‘lsa — pollni sekinlashtiramiz (boshqa sahifalar qotmasin)
+                val afterFailed = _uiState.value.allOrders === before && before.isEmpty()
+                failStreak = if (afterFailed) (failStreak + 1).coerceAtMost(6) else 0
+                delay(3_000L * (1 + failStreak))
             }
         }
     }
@@ -643,7 +706,7 @@ class DashboardViewModel @Inject constructor(
                     }
 
                     val storeName = _uiState.value.clientName.trim()
-                        .takeIf { it.isNotEmpty() && it != "—" }
+                        .takeIf { it.isNotEmpty() }
                         ?: tracking.deliveryAddress?.trim()?.takeIf { it.isNotEmpty() }
                         ?: "Magazin"
 
@@ -912,13 +975,11 @@ class DashboardViewModel @Inject constructor(
     private fun formatDistance(km: Double): String =
         if (km < 1.0) "${(km * 1000).toInt()} m" else String.format("%.1f km", km)
 
-    private fun resolveClientName(profile: ClientProfile?, authUser: AuthUser?): String {
+    /** Faqat API profilidan — lokal login ismi ishlatilmaydi. */
+    private fun resolveClientName(profile: ClientProfile?): String {
         profile?.fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         profile?.name?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        authUser?.fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        authUser?.clientName?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        authUser?.username?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        return "—"
+        return ""
     }
 
     override fun onCleared() {

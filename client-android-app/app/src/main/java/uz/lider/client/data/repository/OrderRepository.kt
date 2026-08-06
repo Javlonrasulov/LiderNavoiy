@@ -24,16 +24,26 @@ class OrderRepository @Inject constructor(
     /** companyId=null — barcha membership org buyurtmalari (dashboard fleet). */
     suspend fun getOrders(companyId: String? = null): List<ClientOrder> {
         return try {
-            api.getOrders(companyId = companyId).map { it.toDomain() }
-        } catch (_: Exception) {
+            getOrdersStrict(companyId)
+        } catch (e: Exception) {
+            android.util.Log.w("OrderRepo", "getOrders failed: ${e.javaClass.simpleName}: ${e.message}")
             emptyList()
         }
+    }
+
+    suspend fun getOrdersStrict(companyId: String? = null): List<ClientOrder> {
+        return api.getOrders(companyId = companyId).map { it.toDomain() }
     }
 
     /** Tanlangan org bo‘yicha buyurtmalar (katalog/buyurtmalar ekrani). */
     suspend fun getOrdersForSelectedOrg(): List<ClientOrder> {
         val companyId = selectedOrgHolder.getSelectedCompanyId()
         return getOrders(companyId = companyId)
+    }
+
+    suspend fun getOrdersForSelectedOrgStrict(): List<ClientOrder> {
+        val companyId = selectedOrgHolder.getSelectedCompanyId()
+        return getOrdersStrict(companyId = companyId)
     }
 
     suspend fun createOrder(cartItems: List<CartItem>): Result<ClientOrder> {

@@ -29,21 +29,33 @@ class ProfileRepository @Inject constructor(
 ) {
     suspend fun getProfile(): ClientProfile? {
         return try {
-            val companyId = selectedOrgHolder.getSelectedCompanyId()
-            api.getProfile(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
-        } catch (_: Exception) {
+            getProfileStrict()
+        } catch (e: Exception) {
+            android.util.Log.w("ProfileRepo", "getProfile failed: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
+    }
+
+    /** Xatoda throw — ViewModel muvaffaqiyat/xatoni ajratishi uchun. */
+    suspend fun getProfileStrict(): ClientProfile {
+        val companyId = selectedOrgHolder.getSelectedCompanyId()
+        return api.getProfile(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
     }
 
     suspend fun getAllOrders() = orderRepository.getOrders(companyId = null)
 
     /** Faqat `/client-portal/dashboard` — null agar xato. */
     suspend fun fetchDashboardSummary(): DashboardData? =
-        runCatching {
-            val companyId = selectedOrgHolder.getSelectedCompanyId()
-            api.getClientDashboard(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
-        }.getOrNull()
+        runCatching { fetchDashboardSummaryStrict() }
+            .onFailure { e ->
+                android.util.Log.w("ProfileRepo", "dashboard failed: ${e.javaClass.simpleName}: ${e.message}")
+            }
+            .getOrNull()
+
+    suspend fun fetchDashboardSummaryStrict(): DashboardData {
+        val companyId = selectedOrgHolder.getSelectedCompanyId()
+        return api.getClientDashboard(companyId = companyId).toDomain().also { rememberOrgs(it.organizations) }
+    }
 
     suspend fun getDashboardData(): DashboardData {
         fetchDashboardSummary()?.let { return it }

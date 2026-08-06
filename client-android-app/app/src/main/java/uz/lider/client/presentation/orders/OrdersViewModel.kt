@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.repository.OrderRepository
 import uz.lider.client.data.repository.ProfileRepository
@@ -21,6 +22,7 @@ import javax.inject.Inject
 
 data class OrdersUiState(
     val loading: Boolean = true,
+    val loadError: Boolean = false,
     val orders: List<ClientOrder> = emptyList(),
     val visibleOrders: List<ClientOrder> = emptyList(),
     val search: String = "",
@@ -58,39 +60,58 @@ class OrdersViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
-            ensureOrgs()
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = true, loadError = false) }
+            try {
+                withTimeout(25_000) {
+                    ensureOrgs()
+                    reloadQuiet()
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(loadError = true) }
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
     suspend fun refresh() {
-        ensureOrgs()
-        reloadQuiet()
+        try {
+            withTimeout(45_000) {
+                ensureOrgs()
+                reloadQuiet()
+            }
+        } catch (_: Exception) {
+            _uiState.update { it.copy(loadError = true) }
+        }
     }
 
     fun selectOrganization(companyId: String) {
         if (companyId == selectedOrgHolder.selectedCompanyId.value) return
         selectedOrgHolder.select(companyId)
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = true, loadError = false) }
+            try {
+                withTimeout(25_000) { reloadQuiet() }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(loadError = true) }
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
     private suspend fun ensureOrgs() {
         if (selectedOrgHolder.organizations.value.isEmpty()) {
-            profileRepository.getProfile()
+            runCatching { profileRepository.getProfileStrict() }
         }
     }
 
     private suspend fun reloadQuiet() {
-        val orders = orderRepository.getOrdersForSelectedOrg()
+        val orders = orderRepository.getOrdersForSelectedOrgStrict()
         _uiState.update {
             it.copy(
                 orders = orders,
+                loadError = false,
                 organizations = selectedOrgHolder.organizations.value,
                 selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
             ).withVisibleOrders()

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import uz.lider.client.data.local.SelectedOrgHolder
 import uz.lider.client.data.remote.ApiErrorMapper
 import uz.lider.client.data.repository.AuthRepository
@@ -19,6 +20,7 @@ import javax.inject.Inject
 
 data class ProfileUiState(
     val loading: Boolean = true,
+    val loadError: Boolean = false,
     val profile: ClientProfile? = null,
     val organizations: List<ClientOrganization> = emptyList(),
     val selectedCompanyId: String? = null,
@@ -66,23 +68,37 @@ class ProfileViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = true, loadError = false) }
+            try {
+                withTimeout(25_000) { reloadQuiet() }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(loadError = true) }
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
     suspend fun refresh() {
-        reloadQuiet()
+        try {
+            withTimeout(45_000) { reloadQuiet() }
+        } catch (_: Exception) {
+            _uiState.update { it.copy(loadError = true) }
+        }
     }
 
     fun selectOrganization(companyId: String) {
         if (companyId == selectedOrgHolder.selectedCompanyId.value) return
         selectedOrgHolder.select(companyId)
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true) }
-            reloadQuiet()
-            _uiState.update { it.copy(loading = false) }
+            _uiState.update { it.copy(loading = true, loadError = false) }
+            try {
+                withTimeout(25_000) { reloadQuiet() }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(loadError = true) }
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
         }
     }
 
@@ -144,12 +160,13 @@ class ProfileViewModel @Inject constructor(
     }
 
     private suspend fun reloadQuiet() {
-        val profile = profileRepository.getProfile()
+        val profile = profileRepository.getProfileStrict()
         _uiState.update {
             it.copy(
                 profile = profile,
+                loadError = false,
                 organizations = selectedOrgHolder.organizations.value
-                    .ifEmpty { profile?.organizations.orEmpty() },
+                    .ifEmpty { profile.organizations },
                 selectedCompanyId = selectedOrgHolder.selectedCompanyId.value,
             )
         }

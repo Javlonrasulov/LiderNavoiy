@@ -97,6 +97,7 @@ import uz.lider.client.map.MapTileSources
 import uz.lider.client.map.OrgMapColors
 import uz.lider.client.presentation.components.ClientPalette
 import uz.lider.client.presentation.components.ClientPullToRefresh
+import uz.lider.client.presentation.components.GlassTopErrorBanner
 import uz.lider.client.presentation.components.OrgSwitcherChips
 import uz.lider.client.presentation.components.PaymentPhotoCaptureSection
 import uz.lider.client.presentation.components.PaymentPhotoReminderBanner
@@ -278,6 +279,28 @@ fun DashboardScreen(
                     contentPadding = PaddingValues(bottom = ClientBottomNavHeight + 16.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
+                    if (state.loadError) {
+                        item(key = "load_error") {
+                            Box(
+                                Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(top = 8.dp, bottom = 12.dp)
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color(0xFFFFF1F2))
+                                    .border(1.dp, Color(0xFFFECACA), RoundedCornerShape(16.dp))
+                                    .clickable { viewModel.retryLoad() }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                            ) {
+                                Text(
+                                    t("dash_load_error"),
+                                    color = Color(0xFFE11D48),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
                     item {
                         Column(
                             Modifier
@@ -326,15 +349,17 @@ fun DashboardScreen(
                                 fontSize = 15.sp,
                                 lineHeight = 22.sp,
                             )
-                            Text(
-                                state.clientName,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 28.sp,
-                                lineHeight = 34.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            if (state.clientName.isNotBlank()) {
+                                Text(
+                                    state.clientName,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 28.sp,
+                                    lineHeight = 34.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                             Spacer(Modifier.height(20.dp))
                         }
                     }
@@ -673,6 +698,12 @@ fun DashboardScreen(
                         .padding(bottom = 48.dp),
                 )
             }
+            GlassTopErrorBanner(
+                message = if (state.loadError) t("dash_load_error") else null,
+                onDismiss = { viewModel.dismissLoadError() },
+                autoDismissMs = 8_000L,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }

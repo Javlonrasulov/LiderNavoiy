@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -174,6 +175,24 @@ fun ProfileScreen(
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = LiquidGlass.Indigo)
+            }
+            return@LiquidBackground
+        }
+
+        if (state.loadError && state.profile == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    localized("dash_load_error"),
+                    color = Color(0xFFE11D48),
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFF1F2))
+                        .clickable { viewModel.load() }
+                        .padding(16.dp),
+                )
             }
             return@LiquidBackground
         }

@@ -138,6 +138,22 @@ fun OrdersScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    if (state.loadError) {
+                        item(key = "load_error") {
+                            Text(
+                                localized("dash_load_error"),
+                                color = Color(0xFFE11D48),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color(0xFFFFF1F2))
+                                    .clickable { viewModel.load() }
+                                    .padding(14.dp),
+                            )
+                        }
+                    }
                     item(key = "header") {
                         Column(
                             Modifier
