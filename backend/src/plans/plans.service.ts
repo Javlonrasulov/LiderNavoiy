@@ -67,6 +67,13 @@ function toKey(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '_');
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 function monthRange(year: number, month: number) {
   const lastDay = new Date(year, month, 0).getDate();
   const start = makeTashkentDate(year, month, 1, 0, 0, 0);
@@ -314,7 +321,8 @@ export class PlansService {
     const productIds = new Set<string>();
     for (const o of orders) {
       for (const item of o.items ?? []) {
-        if (item.productId) productIds.add(item.productId);
+        // Seed/demo yozuvlarida productId "demo-seed" bo‘lishi mumkin — UUID emas
+        if (item.productId && isUuid(item.productId)) productIds.add(item.productId);
       }
     }
 
@@ -326,7 +334,10 @@ export class PlansService {
     const done = new Map<string, number>();
     for (const order of orders) {
       for (const item of order.items ?? []) {
-        const catName = productCategory.get(item.productId) ?? '';
+        const catName =
+          (item.productId && isUuid(item.productId)
+            ? productCategory.get(item.productId)
+            : undefined) ?? '';
         const key = toKey(catName || 'OTHER');
         const amount = Number(item.price) * Number(item.quantity);
         done.set(key, (done.get(key) ?? 0) + amount);
