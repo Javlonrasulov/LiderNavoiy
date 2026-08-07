@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -6,8 +7,22 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+export class ClientExtraPhoneDto {
+  @ApiProperty({ example: '+998901234567' })
+  @IsString()
+  @MinLength(1)
+  phone: string;
+
+  @ApiPropertyOptional({ example: 'Direktor' })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
 
 export class CreateClientDto {
   @ApiPropertyOptional({ example: 'C001' })
@@ -35,6 +50,13 @@ export class CreateClientDto {
   @IsString()
   phone?: string;
 
+  @ApiPropertyOptional({ type: [ClientExtraPhoneDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ClientExtraPhoneDto)
+  extraPhones?: ClientExtraPhoneDto[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -59,6 +81,12 @@ export class CreateClientDto {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @ApiPropertyOptional({ description: 'Agent buyurtma olish radiusi (metr)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(10)
+  orderRadiusMeters?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -141,6 +169,13 @@ export class UpdateClientDto {
   @IsString()
   phone?: string;
 
+  @ApiPropertyOptional({ type: [ClientExtraPhoneDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ClientExtraPhoneDto)
+  extraPhones?: ClientExtraPhoneDto[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -160,6 +195,12 @@ export class UpdateClientDto {
   @IsOptional()
   @IsNumber()
   longitude?: number;
+
+  @ApiPropertyOptional({ description: 'Agent buyurtma olish radiusi (metr)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(10)
+  orderRadiusMeters?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

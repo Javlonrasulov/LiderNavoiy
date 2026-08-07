@@ -335,6 +335,7 @@ export class AuthService {
             : false,
         permissions: user.permissions,
         distributorId: profile?.id,
+        companyId: profile?.companyId ?? undefined,
         companyName: profile?.companyName ?? undefined,
         clientId: user.clientId ?? undefined,
         clientName: user.client?.name ?? undefined,

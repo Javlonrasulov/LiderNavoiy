@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { X, Package, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
-import type { BackendOrderItem } from '../../../api/client';
-import { formatDisplayDate } from '../../../../utils/dateFormat';
+import type { BackendOrderItem, BackendOrderAudit, BackendOrderItemChange } from '../../../api/client';
+import { formatDisplayDate, formatDisplayDateTime } from '../../../../utils/dateFormat';
 
 /* ─── Types ─────────────────────────────────────────────── */
 export interface ZayavkaInfo {
@@ -25,6 +25,7 @@ export interface ZayavkaInfo {
   code: string;
   konsDate: string;
   items?: BackendOrderItem[];
+  audit?: BackendOrderAudit[];
 }
 
 interface ZProduct {
@@ -90,6 +91,17 @@ function itemsToProducts(items: BackendOrderItem[]): ZProduct[] {
 }
 function fmtN(n: number) { return n.toLocaleString('ru-RU'); }
 function fmtS(n: number) { return n ? n.toLocaleString('ru-RU') : '—'; }
+
+function formatItemChange(ch: BackendOrderItemChange): string {
+  const name = ch.productName || ch.productCode || '—';
+  if (ch.change === 'added') {
+    return `+ ${name} × ${Math.round(Number(ch.afterQty) || 0)}`;
+  }
+  if (ch.change === 'removed') {
+    return `− ${name} × ${Math.round(Number(ch.beforeQty) || 0)}`;
+  }
+  return `${name}: ${Math.round(Number(ch.beforeQty) || 0)} → ${Math.round(Number(ch.afterQty) || 0)}`;
+}
 
 /* ─── Props ─────────────────────────────────────────────── */
 interface Props {
@@ -419,6 +431,55 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
               ))}
             </div>
           </div>
+
+          {/* ── AUDIT / KIMDAN KELGANI ── */}
+          {Array.isArray(zayavka.audit) && zayavka.audit.length > 0 && (
+            <div style={{
+              background: bg2, borderBottom: `1px solid ${bdr}`,
+              padding: '10px 12px', flexShrink: 0, maxHeight: 220, overflowY: 'auto',
+            }}>
+              <div style={{
+                fontSize: 11, fontWeight: 700, color: sub, textTransform: 'uppercase',
+                letterSpacing: 0.4, marginBottom: 8,
+              }}>
+                {t.zAudit ?? 'Kim qilgani / o‘zgarishlar'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {zayavka.audit.map((ev) => (
+                  <div key={ev.id} style={{
+                    background: D ? '#1c1c1e' : '#f3f4f6',
+                    border: `1px solid ${bdr}`,
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: txt, lineHeight: 1.35 }}>
+                        {ev.summary || `${ev.actorName} · ${ev.action}`}
+                      </span>
+                      <span style={{ fontSize: 10, color: sub, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        {formatDisplayDateTime(ev.createdAt)}
+                      </span>
+                    </div>
+                    {Array.isArray(ev.itemChanges) && ev.itemChanges.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                        {ev.itemChanges.map((ch, i) => (
+                          <div key={`${ev.id}-ch-${i}`} style={{
+                            fontSize: 11,
+                            color: ch.change === 'added' ? '#10b981'
+                              : ch.change === 'removed' ? '#ef4444'
+                              : sub,
+                            fontWeight: 600,
+                          }}>
+                            {formatItemChange(ch)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── TABS + SCROLL BTNS ── */}
           <div style={{

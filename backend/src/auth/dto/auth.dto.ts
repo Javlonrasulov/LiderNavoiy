@@ -88,6 +88,7 @@ export class AuthResponseDto {
     isDelivery?: boolean;
     permissions?: string[] | null;
     distributorId?: string;
+    companyId?: string;
     companyName?: string;
     clientId?: string;
     clientName?: string;

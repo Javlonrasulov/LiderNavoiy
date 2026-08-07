@@ -1,4 +1,4 @@
-import type { BackendOrder, BackendOrderItem } from '../api/client';
+import type { BackendOrder, BackendOrderItem, BackendOrderAudit } from '../api/client';
 
 export type ZayavkaStatus = 'pri' | 'otr' | 'cancelled';
 
@@ -27,6 +27,7 @@ export interface ZayavkaRow {
   processed: boolean;
   isUrgent?: boolean;
   items?: BackendOrderItem[];
+  audit?: BackendOrderAudit[];
 }
 
 /** Tarozi chap ro'yxat statusi */
@@ -147,6 +148,7 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
     processed,
     isUrgent: !!o.isUrgent,
     items: o.items ?? [],
+    audit: o.audit ?? [],
   };
 }
 

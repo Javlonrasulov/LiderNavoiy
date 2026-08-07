@@ -33,19 +33,24 @@ export default function BottomNav({ active, onChange, dark, tr }: Props) {
       WebkitBackdropFilter: 'blur(24px)',
       borderTop: `1px solid ${border}`,
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-end',
       justifyContent: 'space-around',
-      paddingTop: 8,
+      paddingTop: 10,
       paddingBottom: 'var(--bottom-nav-pad)',
       paddingLeft: 'var(--safe-left)',
       paddingRight: 'var(--safe-right)',
       zIndex: 50,
+      boxSizing: 'border-box',
     }}>
       {tabs.map(tab => {
         const isActive = active === tab.id
         return (
           <button key={tab.id} onClick={() => onChange(tab.id)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1, position: 'relative', background: 'none', border: 'none', cursor: 'pointer', transition: 'all 0.2s ease', minWidth: 0 }}>
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flex: 1,
+              position: 'relative', background: 'none', border: 'none', cursor: 'pointer',
+              transition: 'all 0.2s ease', minWidth: 0, paddingBottom: 2,
+            }}>
             <div style={{
               width: isActive ? 50 : 40, height: 36, borderRadius: 13,
               background: isActive ? 'rgba(108,92,231,0.15)' : 'transparent',
@@ -54,7 +59,12 @@ export default function BottomNav({ active, onChange, dark, tr }: Props) {
             }}>
               <tab.icon size={20} color={isActive ? '#6C5CE7' : dark ? '#6B6B9A' : '#9CA3AF'} strokeWidth={isActive ? 2.5 : 1.8} />
             </div>
-            <span style={{ fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? '#6C5CE7' : dark ? '#6B6B9A' : '#9CA3AF', transition: 'all 0.2s ease', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', padding: '0 2px' }}>
+            <span style={{
+              fontSize: 10, fontWeight: isActive ? 700 : 400,
+              color: isActive ? '#6C5CE7' : dark ? '#6B6B9A' : '#9CA3AF',
+              transition: 'all 0.2s ease', whiteSpace: 'nowrap', overflow: 'hidden',
+              textOverflow: 'ellipsis', maxWidth: '100%', padding: '0 2px', lineHeight: 1.2,
+            }}>
               {tab.label}
             </span>
           </button>

@@ -227,6 +227,28 @@ export interface BackendOrderItem {
   unit: string;
 }
 
+export interface BackendOrderItemChange {
+  productId: string;
+  productCode?: string;
+  productName: string;
+  change: 'added' | 'removed' | 'qty_changed';
+  beforeQty?: number;
+  afterQty?: number;
+  beforePrice?: number;
+  afterPrice?: number;
+}
+
+export interface BackendOrderAudit {
+  id: string;
+  action: string;
+  actorName: string;
+  actorRole: string;
+  summary?: string | null;
+  itemChanges?: BackendOrderItemChange[];
+  meta?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface BackendOrder {
   id: string;
   clientId: string;
@@ -257,6 +279,7 @@ export interface BackendOrder {
   agentName?: string | null;
   deliveryName?: string | null;
   companyName?: string | null;
+  audit?: BackendOrderAudit[];
 }
 
 export interface BankUsdRate {

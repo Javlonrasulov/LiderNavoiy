@@ -103,7 +103,7 @@ export default function App() {
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
           <div style={{
             position: 'absolute', inset: 0,
-            opacity: overlay ? 0 : 1,
+            opacity: overlay && overlay !== 'clientOrders' ? 0 : 1,
             transition: 'opacity 0.2s ease',
             pointerEvents: overlay ? 'none' : 'auto',
           }}>
@@ -140,18 +140,31 @@ export default function App() {
                 onLogout={() => void handleLogout()}
               />
             )}
+          </div>
+
+          {overlay === 'clientOrders' && (
+            <ClientOrdersScreen
+              dark={dark}
+              lang={lang}
+              tr={tr}
+              onBack={() => setOverlay(null)}
+            />
+          )}
+
+          {(overlay === null || overlay === 'clientOrders' || overlay === 'products') && (
             <BottomNav
               active={activeTab}
               onChange={tab => { setActiveTab(tab); setOverlay(null) }}
               dark={dark}
               tr={tr}
             />
-          </div>
+          )}
 
           {overlay === 'addClient' && (
             <AddClientScreen
               dark={dark}
               tr={tr}
+              user={user}
               onBack={() => setOverlay(null)}
               onCreated={() => {
                 setClientsKey(k => k + 1)
@@ -163,15 +176,6 @@ export default function App() {
 
           {overlay === 'products' && (
             <ProductsScreen
-              dark={dark}
-              lang={lang}
-              tr={tr}
-              onBack={() => setOverlay(null)}
-            />
-          )}
-
-          {overlay === 'clientOrders' && (
-            <ClientOrdersScreen
               dark={dark}
               lang={lang}
               tr={tr}

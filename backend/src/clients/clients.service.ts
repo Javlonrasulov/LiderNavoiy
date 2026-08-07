@@ -160,11 +160,23 @@ export class ClientsService {
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
       phone: dto.phone ?? null,
+      extraPhones: Array.isArray(dto.extraPhones)
+        ? dto.extraPhones
+            .filter((p) => p?.phone?.trim())
+            .map((p) => ({
+              phone: p.phone.trim(),
+              note: p.note?.trim() || undefined,
+            }))
+        : [],
       address: dto.address ?? null,
       companyId: dto.companyId ?? null,
       lineCode: dto.lineCode ?? null,
       latitude: dto.latitude ?? null,
       longitude: dto.longitude ?? null,
+      orderRadiusMeters:
+        dto.orderRadiusMeters != null && Number(dto.orderRadiusMeters) >= 10
+          ? Math.round(Number(dto.orderRadiusMeters))
+          : 100,
       locationUpdatedAt: hasLocation ? new Date() : null,
       locationUpdatedById: hasLocation ? actor?.id ?? null : null,
       locationUpdatedByName: hasLocation
@@ -191,6 +203,16 @@ export class ClientsService {
     if (dto.name !== undefined) client.name = dto.name;
     if (dto.fullName !== undefined) client.fullName = dto.fullName;
     if (dto.phone !== undefined) client.phone = dto.phone;
+    if (dto.extraPhones !== undefined) {
+      client.extraPhones = Array.isArray(dto.extraPhones)
+        ? dto.extraPhones
+            .filter((p) => p?.phone?.trim())
+            .map((p) => ({
+              phone: p.phone.trim(),
+              note: p.note?.trim() || undefined,
+            }))
+        : [];
+    }
     if (dto.address !== undefined) client.address = dto.address;
     if (dto.lineCode !== undefined) client.lineCode = dto.lineCode;
 
@@ -198,6 +220,12 @@ export class ClientsService {
     const prevLng = client.longitude;
     if (dto.latitude !== undefined) client.latitude = dto.latitude;
     if (dto.longitude !== undefined) client.longitude = dto.longitude;
+    if (dto.orderRadiusMeters !== undefined) {
+      client.orderRadiusMeters =
+        dto.orderRadiusMeters != null && Number(dto.orderRadiusMeters) >= 10
+          ? Math.round(Number(dto.orderRadiusMeters))
+          : null;
+    }
     const locationChanged =
       (dto.latitude !== undefined && !sameCoord(prevLat, dto.latitude)) ||
       (dto.longitude !== undefined && !sameCoord(prevLng, dto.longitude));

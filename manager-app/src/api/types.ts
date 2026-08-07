@@ -7,6 +7,9 @@ export interface AuthUser {
   role: UserRole
   position?: string | null
   permissions?: string[] | null
+  distributorId?: string
+  companyId?: string | null
+  companyName?: string | null
 }
 
 export interface AuthResponse {
@@ -79,6 +82,7 @@ export interface Distributor {
   isOnline?: boolean
   lastLatitude?: number | null
   lastLongitude?: number | null
+  lastLocationAt?: string | Date | null
 }
 
 export interface Product {
@@ -126,11 +130,14 @@ export interface CreateClientBody {
   name: string
   fullName?: string
   phone?: string
+  extraPhones?: { phone: string; note?: string }[]
   address?: string
   companyId?: string
   lineCode?: string
   category?: string
   latitude?: number
   longitude?: number
+  orderRadiusMeters?: number
+  inn?: string
   contactPerson?: string
 }

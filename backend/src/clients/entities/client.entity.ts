@@ -31,6 +31,10 @@ export class Client {
   @Column({ type: 'varchar', nullable: true })
   phone: string | null;
 
+  /** Qo'shimcha telefonlar: [{ phone, note }] */
+  @Column({ type: 'jsonb', default: [] })
+  extraPhones: ClientExtraPhone[];
+
   @Column({ type: 'varchar', nullable: true })
   address: string | null;
 
@@ -45,6 +49,13 @@ export class Client {
 
   @Column({ type: 'double precision', nullable: true })
   longitude: number | null;
+
+  /**
+   * Agent shu radius (metr) ichida bo‘lsa buyurtma/vizit olishi mumkin.
+   * Admin tomonda shu radius bo‘yicha belgilash uchun.
+   */
+  @Column({ type: 'int', nullable: true, default: 100 })
+  orderRadiusMeters: number | null;
 
   /** Oxirgi marta lokatsiya o'zgartirilgan vaqt */
   @Column({ type: 'timestamptz', nullable: true })
@@ -97,4 +108,9 @@ export class Client {
 
   @UpdateDateColumn()
   updatedAt: Date;
+}
+
+export interface ClientExtraPhone {
+  phone: string;
+  note?: string;
 }

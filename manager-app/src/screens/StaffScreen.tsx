@@ -18,6 +18,18 @@ function isDelivery(d: Distributor, loc?: EmployeeLocation) {
   return p.includes('dostav') || p.includes('delivery') || p.includes('yetkaz') || p.includes('курьер')
 }
 
+function formatLastSeen(date: string | Date | null | undefined): string {
+  if (!date) return '—'
+  const d = typeof date === 'string' ? new Date(date) : date
+  if (Number.isNaN(d.getTime())) return '—'
+  const mins = Math.floor((Date.now() - d.getTime()) / 60_000)
+  if (mins < 1) return 'hozir'
+  if (mins < 60) return `${mins} daqiqa oldin`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} soat oldin`
+  return d.toLocaleString('uz-UZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 export default function StaffScreen({ dark, tr }: Props) {
   const c = theme(dark)
   const [list, setList] = useState<Distributor[]>([])
@@ -137,11 +149,11 @@ export default function StaffScreen({ dark, tr }: Props) {
                   {online ? tr.online : tr.offline}
                 </span>
               </div>
-              {(d.phone || loc?.lat) && (
+              {(d.phone || loc?.lastSeen || d.lastLocationAt) && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 12, color: c.mutedText }}>{d.phone || '—'}</span>
                   <span style={{ fontSize: 11, color: c.mutedText, fontWeight: 600 }}>
-                    {loc?.lat != null ? `${loc.lat.toFixed(4)}, ${loc.lng?.toFixed(4)}` : tr.noLocation}
+                    {loc?.lastSeen || formatLastSeen(d.lastLocationAt)}
                   </span>
                 </div>
               )}

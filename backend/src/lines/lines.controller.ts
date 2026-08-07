@@ -42,8 +42,12 @@ export class LinesController {
 
   @Post()
   @ApiOperation({ summary: 'Create line' })
-  create(@Body() dto: CreateLineDto) {
-    return this.service.create(dto);
+  create(@Request() req: { user: User }, @Body() dto: CreateLineDto) {
+    const companyId =
+      dto.companyId?.trim() ||
+      req.user.distributorProfile?.companyId ||
+      undefined;
+    return this.service.create({ ...dto, companyId });
   }
 
   @Patch(':id')

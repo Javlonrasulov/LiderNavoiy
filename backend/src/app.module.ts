@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { UsersModule } from './users/users.module';
 import { LinesModule } from './lines/lines.module';
+import { ClientCategoriesModule } from './client-categories/client-categories.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
 import { PlansModule } from './plans/plans.module';
@@ -93,6 +94,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     MessagesModule,
     UsersModule,
     LinesModule,
+    ClientCategoriesModule,
     ExchangeRatesModule,
     CompaniesModule,
     PlansModule,

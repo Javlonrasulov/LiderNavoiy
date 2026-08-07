@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#080812',
     allowMixedContent: true,
+    // Insetlarni o'zimiz CSS (--safe-bottom) orqali boshqaramiz
+    adjustMarginsForEdgeToEdge: 'disable',
   },
   server: {
     androidScheme: 'https',

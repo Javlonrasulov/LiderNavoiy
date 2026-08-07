@@ -5,7 +5,6 @@ export type LayerId = 'standard' | 'satellite'
 
 type LayerDef = {
   id: LayerId
-  label: string
   url: string
   options: L.TileLayerOptions
 }
@@ -13,13 +12,11 @@ type LayerDef = {
 const LAYERS: LayerDef[] = [
   {
     id: 'standard',
-    label: 'OSM',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: { maxZoom: 19, subdomains: ['a', 'b', 'c'], attribution: '&copy; OpenStreetMap' },
   },
   {
     id: 'satellite',
-    label: 'Sat',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     options: { maxZoom: 19, attribution: '&copy; Esri' },
   },
@@ -42,11 +39,24 @@ interface Props {
   activeLayer: LayerId
   onChange: (id: LayerId) => void
   dark: boolean
+  labels: { standard: string; satellite: string }
   bottom?: number
   left?: number
 }
 
-export function MapLayerSwitcher({ activeLayer, onChange, dark, bottom = 12, left = 8 }: Props) {
+export function MapLayerSwitcher({
+  activeLayer,
+  onChange,
+  dark,
+  labels,
+  bottom = 10,
+  left = 8,
+}: Props) {
+  const items: { id: LayerId; label: string }[] = [
+    { id: 'standard', label: labels.standard },
+    { id: 'satellite', label: labels.satellite },
+  ]
+
   return (
     <div
       style={{
@@ -65,7 +75,7 @@ export function MapLayerSwitcher({ activeLayer, onChange, dark, bottom = 12, lef
       onMouseDown={e => e.stopPropagation()}
       onTouchStart={e => e.stopPropagation()}
     >
-      {LAYERS.map(l => {
+      {items.map(l => {
         const active = l.id === activeLayer
         return (
           <button
@@ -75,7 +85,7 @@ export function MapLayerSwitcher({ activeLayer, onChange, dark, bottom = 12, lef
             style={{
               border: 'none',
               cursor: 'pointer',
-              padding: '5px 8px',
+              padding: '5px 9px',
               borderRadius: 7,
               fontSize: 10,
               fontWeight: 700,

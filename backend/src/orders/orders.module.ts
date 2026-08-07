@@ -4,6 +4,7 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { ClientOrderStaleCron } from './client-order-stale.cron';
 import { Order } from './entities/order.entity';
+import { OrderAuditEvent } from './entities/order-audit-event.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VisitsModule } from '../visits/visits.module';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
@@ -15,7 +16,14 @@ import { OrderPayment } from '../payments/entities/order-payment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, DistributorProfile, Client, User, OrderPayment]),
+    TypeOrmModule.forFeature([
+      Order,
+      OrderAuditEvent,
+      DistributorProfile,
+      Client,
+      User,
+      OrderPayment,
+    ]),
     NotificationsModule,
     VisitsModule,
     PromotionsModule,

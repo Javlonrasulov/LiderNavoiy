@@ -214,6 +214,10 @@ export class ClientsController {
     const client = await this.service.create(
       {
         ...clientDto,
+        companyId:
+          clientDto.companyId ??
+          req.user.distributorProfile?.companyId ??
+          undefined,
         distributorId: clientDto.distributorId ?? distributorId,
       },
       req.user,

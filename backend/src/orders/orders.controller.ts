@@ -108,37 +108,52 @@ export class OrdersController {
   }
 
   @Patch(':id/items')
-  @ApiOperation({ summary: 'Agent updates pending client order items (qty / add / remove)' })
+  @ApiOperation({ summary: 'Agent/manager updates pending client order items' })
   updateClientOrderItems(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Body() dto: UpdateOrderItemsDto,
   ) {
+    const asAdmin =
+      req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER;
     return this.service.updateClientOrderItems(
       id,
-      req.user.distributorProfile!.id,
+      asAdmin ? null : req.user.distributorProfile!.id,
       dto.items,
+      asAdmin,
+      req.user,
     );
   }
 
   @Patch(':id/send-to-warehouse')
-  @ApiOperation({ summary: 'Agent confirms client order and sends to warehouse' })
+  @ApiOperation({ summary: 'Agent/manager confirms client order and sends to warehouse' })
   sendToWarehouse(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Body() dto: SendToWarehouseDto,
   ) {
+    const asAdmin =
+      req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER;
     return this.service.sendToWarehouse(
       id,
-      req.user.distributorProfile!.id,
+      asAdmin ? null : req.user.distributorProfile!.id,
       dto?.isUrgent === true,
+      asAdmin,
+      req.user,
     );
   }
 
   @Patch(':id/reject')
-  @ApiOperation({ summary: 'Agent rejects a pending client order' })
+  @ApiOperation({ summary: 'Agent/manager rejects a pending client order' })
   rejectClientOrder(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.service.rejectClientOrder(id, req.user.distributorProfile!.id);
+    const asAdmin =
+      req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER;
+    return this.service.rejectClientOrder(
+      id,
+      asAdmin ? null : req.user.distributorProfile!.id,
+      asAdmin,
+      req.user,
+    );
   }
 
   @Patch(':id')

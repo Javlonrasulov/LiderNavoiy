@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, Users, Wallet } from '../icons'
-import { fetchAdminDashboard, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
+import { fetchAdminDashboard, fetchClientOrders, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
 import type { AdminDashboard, AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, formatPct, formatTrend, theme } from '../theme'
@@ -46,8 +46,19 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const [refreshState, setRefreshState] = useState<RefreshBtnState>('idle')
   const [refreshUpdates, setRefreshUpdates] = useState<string[]>([])
   const [showRefreshResult, setShowRefreshResult] = useState(false)
+  const [hasStaleOrders, setHasStaleOrders] = useState(false)
   const snapshotRef = useRef<HomeRefreshSnapshot | null>(null)
   const successTimerRef = useRef<number | null>(null)
+
+  const checkStaleOrders = async () => {
+    try {
+      const list = await fetchClientOrders('pending')
+      const rows = Array.isArray(list) ? list : []
+      setHasStaleOrders(rows.some(o => o.stale || (o.waitingMinutes ?? 0) >= 60))
+    } catch {
+      /* ignore */
+    }
+  }
 
   const loadInitial = async () => {
     setLoading(true)
@@ -90,6 +101,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
       setRefreshUpdates(updates)
       setShowRefreshResult(true)
       setRefreshState('success')
+      void checkStaleOrders()
       successTimerRef.current = window.setTimeout(() => {
         setRefreshState(prev => (prev === 'success' ? 'idle' : prev))
         successTimerRef.current = null
@@ -102,8 +114,11 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
 
   useEffect(() => {
     void loadInitial()
+    void checkStaleOrders()
+    const poll = window.setInterval(() => void checkStaleOrders(), 60_000)
     return () => {
       if (successTimerRef.current) window.clearTimeout(successTimerRef.current)
+      window.clearInterval(poll)
     }
   }, [])
 
@@ -135,7 +150,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const showLoadingValues = loading && !data
 
   return (
-    <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(90px + var(--safe-bottom))' }} className="no-scrollbar">
+    <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(100px + var(--safe-bottom))' }} className="no-scrollbar">
       <div style={{
         position: 'sticky', top: 0, zIndex: 20,
         padding: 'var(--header-pad-top) max(16px, var(--safe-left)) 12px max(16px, var(--safe-right))',
@@ -246,15 +261,39 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
         <div>
           <p style={{ fontSize: 14, fontWeight: 800, color: c.text, marginBottom: 10 }}>{tr.quickActions}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {actions.map(a => (
-              <button key={a.screen} type="button" className="card-hover" onClick={() => onNavigate(a.screen)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 6px', borderRadius: 18, background: c.card, border: `1px solid ${c.border}`, cursor: 'pointer' }}>
-                <div style={{ width: 42, height: 42, borderRadius: 14, background: a.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <a.icon size={18} color={a.color} />
-                </div>
-                <span style={{ fontSize: 10, fontWeight: 700, color: c.text, textAlign: 'center', lineHeight: 1.2 }}>{a.label}</span>
-              </button>
-            ))}
+            {actions.map(a => {
+              const alert = a.screen === 'clientOrders' && hasStaleOrders
+              return (
+                <button
+                  key={a.screen}
+                  type="button"
+                  className={`card-hover${alert ? ' qa-stale-blink' : ''}`}
+                  onClick={() => onNavigate(a.screen)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                    padding: '14px 6px', borderRadius: 18, background: c.card,
+                    border: `1px solid ${alert ? 'rgba(244,67,54,0.55)' : c.border}`,
+                    cursor: 'pointer',
+                    position: 'relative',
+                  }}
+                >
+                  <div style={{
+                    width: 42, height: 42, borderRadius: 14,
+                    background: alert ? 'rgba(244,67,54,0.18)' : a.color + '20',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <a.icon size={18} color={alert ? '#F44336' : a.color} />
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: alert ? '#F44336' : c.text,
+                    textAlign: 'center', lineHeight: 1.2,
+                  }}>
+                    {a.label}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

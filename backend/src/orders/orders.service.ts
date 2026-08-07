@@ -2,8 +2,13 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
+import {
+  OrderAuditEvent,
+  OrderAuditAction,
+  OrderItemChange,
+} from './entities/order-audit-event.entity';
 import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
-import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus, PaymentStatus } from '../common/enums';
+import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus, PaymentStatus, UserRole } from '../common/enums';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { PushI18n, normalizePushLang, PushLang } from '../notifications/push-i18n';
@@ -24,6 +29,8 @@ export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly repo: Repository<Order>,
+    @InjectRepository(OrderAuditEvent)
+    private readonly auditRepo: Repository<OrderAuditEvent>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
     @InjectRepository(Client)
@@ -63,6 +70,16 @@ export class OrdersService {
     if (source === OrderSource.CLIENT) {
       this.notifyAgentClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
       this.notifyManagersClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
+      this.recordAudit({
+        orderId: saved.id,
+        actorUserId: null,
+        actorName: client?.name?.trim() || client?.fullName?.trim() || 'Mijoz',
+        actorRole: UserRole.CLIENT,
+        action: 'client_submitted',
+        afterItems: Array.isArray(dto.items) ? (dto.items as OrderItem[]) : [],
+        itemChanges: [],
+        summary: `Mijoz ${(client?.name ?? client?.fullName ?? '').trim() || '—'} tomonidan buyurtma yuborildi`,
+      }).catch(() => {});
     } else {
       this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
     }
@@ -676,15 +693,17 @@ export class OrdersService {
     return { checked: due.length, notified };
   }
 
-  /** Agent: pending klient buyurtmasi mahsulotlarini o'zgartirish (miqdor / qo'shish / o'chirish) */
+  /** Agent / manager: pending klient buyurtmasi mahsulotlarini o'zgartirish */
   async updateClientOrderItems(
     orderId: string,
-    distributorId: string,
+    distributorId: string | null,
     items: OrderItemDto[],
+    asAdmin = false,
+    actor?: User | null,
   ) {
     const order = await this.repo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.distributorId !== distributorId) {
+    if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
     if (order.source !== OrderSource.CLIENT) {
@@ -696,6 +715,10 @@ export class OrdersService {
     if (!items?.length) {
       throw new BadRequestException('Order must have at least one item');
     }
+
+    const beforeItems: OrderItem[] = Array.isArray(order.items)
+      ? order.items.map((it) => ({ ...it }))
+      : [];
 
     const normalized: OrderItem[] = items.map((it) => ({
       productId: it.productId,
@@ -714,19 +737,55 @@ export class OrdersService {
       }
     }
 
+    const itemChanges = this.diffOrderItems(beforeItems, normalized);
     order.items = normalized;
     order.totalAmount = normalized.reduce(
       (sum, it) => sum + Number(it.price) * Number(it.quantity),
       0,
     );
-    return this.repo.save(order);
+    const saved = await this.repo.save(order);
+
+    const agentName = await this.resolveAgentName(order.distributorId);
+    const actorName = this.actorDisplayName(actor);
+    const actorRole = actor?.role ?? (asAdmin ? UserRole.MANAGER : UserRole.DISTRIBUTOR);
+    const agentSilent =
+      (actorRole === UserRole.MANAGER || actorRole === UserRole.ADMIN) &&
+      !(await this.agentActedOnOrder(orderId));
+    const roleLabel = this.roleLabel(actorRole);
+    const summary = agentSilent
+      ? `Agent ${agentName} tomonidan ko‘rib chiqilmagan. ${roleLabel} ${actorName} buyurtmani o‘zgartirdi`
+      : `${roleLabel} ${actorName} buyurtmani o‘zgartirdi`;
+
+    await this.recordAudit({
+      orderId: order.id,
+      actorUserId: actor?.id ?? null,
+      actorName,
+      actorRole,
+      action: 'items_updated',
+      beforeItems,
+      afterItems: normalized,
+      itemChanges,
+      summary,
+      meta: {
+        agentDidNotRespond: agentSilent,
+        agentName,
+      },
+    });
+
+    return saved;
   }
 
-  /** Agent: klient buyurtmasini omborga (confirmed) yuboradi — tashrif sifatida ham qayd etiladi */
-  async sendToWarehouse(orderId: string, distributorId: string, isUrgent = false) {
+  /** Agent / manager: klient buyurtmasini omborga (confirmed) yuboradi */
+  async sendToWarehouse(
+    orderId: string,
+    distributorId: string | null,
+    isUrgent = false,
+    asAdmin = false,
+    actor?: User | null,
+  ) {
     const order = await this.repo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.distributorId !== distributorId) {
+    if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
     if (order.source !== OrderSource.CLIENT) {
@@ -735,6 +794,10 @@ export class OrdersService {
     if (order.status !== OrderStatus.PENDING) {
       throw new BadRequestException('Order is not pending');
     }
+
+    const beforeItems: OrderItem[] = Array.isArray(order.items)
+      ? order.items.map((it) => ({ ...it }))
+      : [];
 
     // 1) Buy X get Y free qoidalarini hisoblab order items'ga bepul line qo‘shamiz
     const originalItems: OrderItem[] = Array.isArray(order.items) ? order.items : [];
@@ -805,6 +868,9 @@ export class OrdersService {
       0,
     );
 
+    // Use the order's agent for visit/stock — manager ham shu agent nomidan yuboradi
+    const actingDistributorId = order.distributorId;
+
     // 2) Ombor(stock)ni ham bepul miqdor bo‘yicha kamaytiramiz + visit/order’ni saqlaymiz
     const queryRunner = this.repo.manager.connection.createQueryRunner();
     await queryRunner.connect();
@@ -839,7 +905,7 @@ export class OrdersService {
 
       const visitRepo = queryRunner.manager.getRepository(Visit);
       const visit = visitRepo.create({
-        distributorId,
+        distributorId: actingDistributorId,
         clientId: order.clientId,
         visitedAt: new Date(),
         status: VisitStatus.COMPLETED,
@@ -862,6 +928,47 @@ export class OrdersService {
       await queryRunner.release();
     }
 
+    const agentName = await this.resolveAgentName(order.distributorId);
+    const actorName = this.actorDisplayName(actor);
+    const actorRole = actor?.role ?? (asAdmin ? UserRole.MANAGER : UserRole.DISTRIBUTOR);
+    const agentSilent =
+      (actorRole === UserRole.MANAGER || actorRole === UserRole.ADMIN) &&
+      !(await this.agentActedOnOrder(orderId));
+    const roleLabel = this.roleLabel(actorRole);
+    const hadEditByActor = actor?.id
+      ? (await this.auditRepo.count({
+          where: { orderId, action: 'items_updated', actorUserId: actor.id },
+        })) > 0
+      : false;
+    let summary: string;
+    if (agentSilent) {
+      summary = hadEditByActor
+        ? `Agent ${agentName} tomonidan ko‘rib chiqilmagan. ${roleLabel} ${actorName} o‘zgartirib omborga yubordi`
+        : `Agent ${agentName} tomonidan ko‘rib chiqilmagan. ${roleLabel} ${actorName} buyurtmani omborga yubordi`;
+    } else if (hadEditByActor) {
+      summary = `${roleLabel} ${actorName} o‘zgartirib omborga yubordi`;
+    } else {
+      summary = `${roleLabel} ${actorName} buyurtmani omborga yubordi`;
+    }
+
+    await this.recordAudit({
+      orderId: order.id,
+      actorUserId: actor?.id ?? null,
+      actorName,
+      actorRole,
+      action: 'sent_to_warehouse',
+      beforeItems,
+      afterItems: expandedItems,
+      itemChanges: this.diffOrderItems(beforeItems, expandedItems),
+      summary,
+      meta: {
+        agentDidNotRespond: agentSilent,
+        agentName,
+        isUrgent,
+        hadEditByActor,
+      },
+    });
+
     this.notifyClientOrderStatus(
       order.clientId,
       (lang) => PushI18n.orderAccepted(lang),
@@ -871,11 +978,16 @@ export class OrdersService {
     return saved;
   }
 
-  /** Agent: klient buyurtmasini rad etadi (cancelled) */
-  async rejectClientOrder(orderId: string, distributorId: string) {
+  /** Agent / manager: klient buyurtmasini rad etadi (cancelled) */
+  async rejectClientOrder(
+    orderId: string,
+    distributorId: string | null,
+    asAdmin = false,
+    actor?: User | null,
+  ) {
     const order = await this.repo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.distributorId !== distributorId) {
+    if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
     if (order.source !== OrderSource.CLIENT) {
@@ -884,14 +996,215 @@ export class OrdersService {
     if (order.status !== OrderStatus.PENDING) {
       throw new BadRequestException('Order is not pending');
     }
+    const beforeItems: OrderItem[] = Array.isArray(order.items)
+      ? order.items.map((it) => ({ ...it }))
+      : [];
     order.status = OrderStatus.CANCELLED;
     const saved = await this.repo.save(order);
+
+    const agentName = await this.resolveAgentName(order.distributorId);
+    const actorName = this.actorDisplayName(actor);
+    const actorRole = actor?.role ?? (asAdmin ? UserRole.MANAGER : UserRole.DISTRIBUTOR);
+    const agentSilent =
+      (actorRole === UserRole.MANAGER || actorRole === UserRole.ADMIN) &&
+      !(await this.agentActedOnOrder(orderId));
+    const roleLabel = this.roleLabel(actorRole);
+    const summary = agentSilent
+      ? `Agent ${agentName} tomonidan ko‘rib chiqilmagan. ${roleLabel} ${actorName} buyurtmani bekor qildi`
+      : `${roleLabel} ${actorName} buyurtmani bekor qildi`;
+
+    await this.recordAudit({
+      orderId: order.id,
+      actorUserId: actor?.id ?? null,
+      actorName,
+      actorRole,
+      action: 'rejected',
+      beforeItems,
+      afterItems: beforeItems,
+      itemChanges: [],
+      summary,
+      meta: { agentDidNotRespond: agentSilent, agentName },
+    });
+
     this.notifyClientOrderStatus(
       order.clientId,
       (lang) => PushI18n.orderRejected(lang),
       order.id,
     ).catch(() => {});
     return saved;
+  }
+
+  private actorDisplayName(actor?: User | null): string {
+    if (!actor) return '—';
+    return actor.fullName?.trim() || actor.username?.trim() || '—';
+  }
+
+  private roleLabel(role: string): string {
+    switch (role) {
+      case UserRole.ADMIN:
+        return 'Admin';
+      case UserRole.MANAGER:
+        return 'Manager';
+      case UserRole.DISTRIBUTOR:
+        return 'Agent';
+      case UserRole.CLIENT:
+        return 'Mijoz';
+      default:
+        return role;
+    }
+  }
+
+  private async resolveAgentName(distributorId: string): Promise<string> {
+    const profile = await this.profileRepo.findOne({
+      where: { id: distributorId },
+      relations: ['user'],
+    });
+    return (
+      profile?.user?.fullName?.trim() ||
+      profile?.user?.username?.trim() ||
+      profile?.companyName?.trim() ||
+      'Agent'
+    );
+  }
+
+  private async agentActedOnOrder(orderId: string): Promise<boolean> {
+    const count = await this.auditRepo.count({
+      where: {
+        orderId,
+        actorRole: UserRole.DISTRIBUTOR,
+        action: In(['items_updated', 'sent_to_warehouse', 'rejected']),
+      },
+    });
+    return count > 0;
+  }
+
+  private diffOrderItems(before: OrderItem[], after: OrderItem[]): OrderItemChange[] {
+    const beforeMap = new Map<string, { qty: number; price: number; name: string; code: string }>();
+    for (const it of before) {
+      if (!it.productId || it.isFree === true) continue;
+      const prev = beforeMap.get(it.productId);
+      if (prev) {
+        prev.qty += Number(it.quantity) || 0;
+      } else {
+        beforeMap.set(it.productId, {
+          qty: Number(it.quantity) || 0,
+          price: Number(it.price) || 0,
+          name: it.productName,
+          code: it.productCode,
+        });
+      }
+    }
+    const afterMap = new Map<string, { qty: number; price: number; name: string; code: string }>();
+    for (const it of after) {
+      if (!it.productId || it.isFree === true) continue;
+      const prev = afterMap.get(it.productId);
+      if (prev) {
+        prev.qty += Number(it.quantity) || 0;
+      } else {
+        afterMap.set(it.productId, {
+          qty: Number(it.quantity) || 0,
+          price: Number(it.price) || 0,
+          name: it.productName,
+          code: it.productCode,
+        });
+      }
+    }
+
+    const changes: OrderItemChange[] = [];
+    for (const [productId, b] of beforeMap) {
+      const a = afterMap.get(productId);
+      if (!a) {
+        changes.push({
+          productId,
+          productCode: b.code,
+          productName: b.name,
+          change: 'removed',
+          beforeQty: b.qty,
+          beforePrice: b.price,
+        });
+      } else if (a.qty !== b.qty) {
+        changes.push({
+          productId,
+          productCode: a.code || b.code,
+          productName: a.name || b.name,
+          change: 'qty_changed',
+          beforeQty: b.qty,
+          afterQty: a.qty,
+          beforePrice: b.price,
+          afterPrice: a.price,
+        });
+      }
+    }
+    for (const [productId, a] of afterMap) {
+      if (!beforeMap.has(productId)) {
+        changes.push({
+          productId,
+          productCode: a.code,
+          productName: a.name,
+          change: 'added',
+          afterQty: a.qty,
+          afterPrice: a.price,
+        });
+      }
+    }
+    return changes;
+  }
+
+  private async recordAudit(input: {
+    orderId: string;
+    actorUserId: string | null;
+    actorName: string;
+    actorRole: string;
+    action: OrderAuditAction;
+    beforeItems?: OrderItem[] | null;
+    afterItems?: OrderItem[] | null;
+    itemChanges?: OrderItemChange[];
+    summary?: string | null;
+    meta?: Record<string, unknown> | null;
+  }) {
+    const row = this.auditRepo.create({
+      orderId: input.orderId,
+      actorUserId: input.actorUserId,
+      actorName: input.actorName,
+      actorRole: input.actorRole,
+      action: input.action,
+      beforeItems: input.beforeItems ?? null,
+      afterItems: input.afterItems ?? null,
+      itemChanges: input.itemChanges ?? [],
+      summary: input.summary ?? null,
+      meta: input.meta ?? null,
+    });
+    return this.auditRepo.save(row);
+  }
+
+  private mapAudit(ev: OrderAuditEvent) {
+    return {
+      id: ev.id,
+      action: ev.action,
+      actorName: ev.actorName,
+      actorRole: ev.actorRole,
+      summary: ev.summary,
+      itemChanges: ev.itemChanges ?? [],
+      meta: ev.meta ?? null,
+      createdAt: ev.createdAt,
+    };
+  }
+
+  private async loadAuditsByOrderIds(orderIds: string[]) {
+    if (!orderIds.length) {
+      return new Map<string, Array<ReturnType<OrdersService['mapAudit']>>>();
+    }
+    const rows = await this.auditRepo.find({
+      where: { orderId: In(orderIds) },
+      order: { createdAt: 'ASC' },
+    });
+    const map = new Map<string, Array<ReturnType<OrdersService['mapAudit']>>>();
+    for (const row of rows) {
+      const list = map.get(row.orderId) ?? [];
+      list.push(this.mapAudit(row));
+      map.set(row.orderId, list);
+    }
+    return map;
   }
 
   private async notifyClientOrderStatus(
@@ -968,6 +1281,7 @@ export class OrdersService {
 
     const clientMap = new Map(clients.map((c) => [c.id, c]));
     const profileMap = new Map(profiles.map((p) => [p.id, p]));
+    const auditMap = await this.loadAuditsByOrderIds(orders.map((o) => o.id));
 
     return orders
       .map((order) => {
@@ -1010,6 +1324,7 @@ export class OrdersService {
           deliveryName: deliveryProfile?.user?.fullName ?? null,
           companyName: profile?.companyName ?? null,
           agentCompanyId,
+          audit: auditMap.get(order.id) ?? [],
         };
       })
       .filter((o) => {
@@ -1022,8 +1337,14 @@ export class OrdersService {
       });
   }
 
-  findOne(id: string) {
-    return this.repo.findOne({ where: { id } });
+  async findOne(id: string) {
+    const order = await this.repo.findOne({ where: { id } });
+    if (!order) return null;
+    const auditMap = await this.loadAuditsByOrderIds([id]);
+    return {
+      ...order,
+      audit: auditMap.get(id) ?? [],
+    };
   }
 
   async update(id: string, dto: UpdateOrderDto) {

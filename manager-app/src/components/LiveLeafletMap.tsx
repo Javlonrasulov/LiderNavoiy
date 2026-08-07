@@ -243,7 +243,8 @@ export default function LiveLeafletMap({
           activeLayer={activeLayer}
           onChange={setActiveLayer}
           dark={dark}
-          bottom={44}
+          labels={{ standard: tr.mapLayerOsm, satellite: tr.mapLayerSat }}
+          bottom={10}
           left={8}
         />
       )}

@@ -45,7 +45,8 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --header-pad-top: calc(12px + var(--safe-top));
-  --bottom-nav-pad: calc(10px + var(--safe-bottom));
+  /* Pastki menyu: telefon navigation / gestura bari ustiga chiqmasin */
+  --bottom-nav-pad: calc(12px + var(--safe-bottom));
   --screen-pad-x: max(16px, var(--safe-left), var(--safe-right));
 }
 
@@ -150,6 +151,28 @@ body::-webkit-scrollbar { display: none; }
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes qa-stale-blink {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.55);
+    border-color: rgba(244, 67, 54, 0.55);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(244, 67, 54, 0);
+    border-color: rgba(244, 67, 54, 0.95);
+    opacity: 0.72;
+  }
+}
+
+.qa-stale-blink {
+  animation: qa-stale-blink 1.1s ease-in-out infinite;
+}
+
+@keyframes stale-badge-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.98); }
 }
 @keyframes progress-bar {
   from { width: 0%; }

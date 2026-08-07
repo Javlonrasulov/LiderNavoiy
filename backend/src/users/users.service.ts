@@ -116,6 +116,7 @@ export class UsersService {
 
     const hasProfileData =
       data.companyName !== undefined ||
+      data.companyId !== undefined ||
       data.phone !== undefined ||
       data.position !== undefined ||
       user.role === UserRole.DISTRIBUTOR;
@@ -134,6 +135,7 @@ export class UsersService {
         isOnline: false,
       });
     } else {
+      if (data.companyId !== undefined) profile.companyId = data.companyId;
       if (data.companyName !== undefined) profile.companyName = data.companyName;
       if (data.phone !== undefined) profile.phone = data.phone.trim() || null;
       if (data.position !== undefined) profile.position = data.position.trim() || null;
