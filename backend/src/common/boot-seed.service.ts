@@ -153,6 +153,17 @@ export class BootSeedService implements OnModuleInit {
       permissions: null,
     });
 
+    // Demo menejer (ilova login) — har restart da parol 123456
+    await this.ensureUser({
+      username: 'manager',
+      passwordHash,
+      fullName: 'Demo Manager',
+      role: UserRole.MANAGER,
+      position: 'Menejer',
+      permissions: null,
+      resetPassword: true,
+    });
+
     const agent = await this.ensureUser({
       username: 'agent',
       passwordHash,
@@ -591,6 +602,8 @@ export class BootSeedService implements OnModuleInit {
     position: string | null;
     permissions: string[] | null;
     clientId?: string;
+    /** Demo hisoblar uchun — parolni qayta yozadi */
+    resetPassword?: boolean;
   }): Promise<User> {
     let user = await this.users.findOne({ where: { username: data.username } });
     if (!user) {
@@ -609,12 +622,19 @@ export class BootSeedService implements OnModuleInit {
       return user;
     }
 
-    // Mavjud user parolini qayta yozmaslik (xavfsizlik)
+    // Mavjud user parolini qayta yozmaslik (xavfsizlik), demo hisoblar bundan mustasno
     user.isActive = true;
     user.role = data.role;
+    user.fullName = data.fullName;
+    if (data.resetPassword) {
+      user.passwordHash = data.passwordHash;
+    }
     if (data.clientId) user.clientId = data.clientId;
     if (data.position !== undefined) user.position = data.position;
     await this.users.save(user);
+    if (data.resetPassword) {
+      this.logger.log(`Boot seed: ${data.username} paroli yangilandi`);
+    }
     return user;
   }
 }

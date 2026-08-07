@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { Client } from '../clients/entities/client.entity';
 import { Visit } from '../visits/entities/visit.entity';
 import { Order } from '../orders/entities/order.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { User } from '../auth/entities/user.entity';
-import { OrderStatus, OrderSource, UserRole } from '../common/enums';
+import { AgentPlan } from '../plans/entities/agent-plan.entity';
+import { OrderPayment } from '../payments/entities/order-payment.entity';
+import { OrderStatus, OrderSource, UserRole, PaymentStatus } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
 import { detectStaffRole as detectRole } from '../common/staff-role.util';
+import {
+  addCalendarMonth,
+  getTashkentYearMonth,
+  makeTashkentDate,
+} from '../common/time/tashkent-time';
 
 const DEFAULT_AGENT_MONTHLY_PLAN = 15_000_000;
 const CATEGORY_COLORS: Record<string, string> = {
@@ -20,12 +27,19 @@ const CATEGORY_FALLBACK_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#10b981', '#
 
 const EXCLUDED_ORDER_STATUSES = [OrderStatus.CANCELLED, OrderStatus.DRAFT];
 const PAID_ORDER_STATUSES = [OrderStatus.DELIVERED, OrderStatus.CONFIRMED];
+const COLLECTED_PAYMENT_STATUSES = [PaymentStatus.PAID, PaymentStatus.PARTIAL];
 
+/** Joriy (yoki offset) oy — Toshkent vaqti bo‘yicha */
 function monthRange(offset = 0) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0, 23, 59, 59, 999);
-  return { start, end };
+  const current = getTashkentYearMonth();
+  const { year, month } = addCalendarMonth(current.year, current.month, offset);
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    year,
+    month,
+    start: makeTashkentDate(year, month, 1, 0, 0, 0),
+    end: makeTashkentDate(year, month, lastDay, 23, 59, 59),
+  };
 }
 
 function pctChange(current: number, previous: number): number {
@@ -117,6 +131,8 @@ export class DashboardService {
     @InjectRepository(Visit) private readonly visitRepo: Repository<Visit>,
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     @InjectRepository(DistributorProfile) private readonly profileRepo: Repository<DistributorProfile>,
+    @InjectRepository(AgentPlan) private readonly planRepo: Repository<AgentPlan>,
+    @InjectRepository(OrderPayment) private readonly paymentRepo: Repository<OrderPayment>,
     private readonly redis: RedisService,
   ) {}
 
@@ -208,11 +224,18 @@ export class DashboardService {
     return Number(row?.total ?? 0);
   }
 
-  private async sumDebt(companyIds: string[] | undefined): Promise<number> {
-    const qb = this.clientRepo
-      .createQueryBuilder('c')
-      .select('COALESCE(SUM(CASE WHEN c.balance > 0 THEN c.balance ELSE 0 END), 0)', 'total')
-      .where('c.isActive = true');
+  /** Shu oyda yig‘ilgan to‘lovlar (order_payments.paidAmount) */
+  private async sumCollectedPayments(
+    range: { start: Date; end: Date },
+    companyIds: string[] | undefined,
+  ): Promise<number> {
+    const qb = this.paymentRepo
+      .createQueryBuilder('p')
+      .innerJoin(Client, 'c', 'c.id = p.clientId')
+      .select('COALESCE(SUM(p.paidAmount), 0)', 'total')
+      .where('p.createdAt BETWEEN :start AND :end', range)
+      .andWhere('p.status IN (:...statuses)', { statuses: COLLECTED_PAYMENT_STATUSES })
+      .andWhere('p.paidAmount > 0');
 
     if (companyIds?.length) {
       qb.andWhere('c.companyId IN (:...companyIds)', { companyIds });
@@ -220,6 +243,65 @@ export class DashboardService {
 
     const row = await qb.getRawOne<{ total: string }>();
     return Number(row?.total ?? 0);
+  }
+
+  /** Shu oy buyurtmalaridan qolgan qarzdorlik */
+  private async sumMonthDebt(
+    range: { start: Date; end: Date },
+    companyIds: string[] | undefined,
+  ): Promise<number> {
+    const qb = this.orderRepo
+      .createQueryBuilder('o')
+      .innerJoin(Client, 'c', 'c.id = o.clientId')
+      .select(
+        `COALESCE(SUM(GREATEST(
+          o.totalAmount - COALESCE(o.paidAmount, 0) - COALESCE(o.returnedAmount, 0),
+          0
+        )), 0)`,
+        'total',
+      )
+      .where('o.createdAt BETWEEN :start AND :end', range)
+      .andWhere('o.status NOT IN (:...excluded)', { excluded: EXCLUDED_ORDER_STATUSES });
+
+    this.applyClientCompanyFilter(qb, companyIds);
+    const row = await qb.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0);
+  }
+
+  private async sumMonthPlan(
+    year: number,
+    month: number,
+    companyIds: string[] | undefined,
+  ): Promise<number> {
+    const qb = this.planRepo
+      .createQueryBuilder('p')
+      .select('COALESCE(SUM(p.totalAmount), 0)', 'total')
+      .where('p.year = :year AND p.month = :month', { year, month });
+
+    if (companyIds?.length) {
+      qb.innerJoin(DistributorProfile, 'd', 'd.id = p.distributorId')
+        .andWhere('d.companyId IN (:...companyIds)', { companyIds });
+    }
+
+    const row = await qb.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0);
+  }
+
+  private async getPlansByDistributor(
+    year: number,
+    month: number,
+    distributorIds: string[],
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (!distributorIds.length) return map;
+    const rows = await this.planRepo.find({
+      where: { year, month, distributorId: In(distributorIds) },
+      select: ['distributorId', 'totalAmount'],
+    });
+    for (const row of rows) {
+      map.set(row.distributorId, Number(row.totalAmount) || 0);
+    }
+    return map;
   }
 
   private async countAgents(companyIds: string[] | undefined): Promise<number> {
@@ -291,26 +373,43 @@ export class DashboardService {
     const [
       sales,
       prevSales,
-      payments,
-      prevPayments,
+      paymentsRaw,
+      prevPaymentsRaw,
       debt,
       prevDebt,
+      planFromDb,
+      prevPlanFromDb,
       agentCount,
       salesChart,
     ] = await Promise.all([
       this.sumOrders(currentMonth, companyIds),
       this.sumOrders(previousMonth, companyIds),
-      this.sumOrders(currentMonth, companyIds, PAID_ORDER_STATUSES),
-      this.sumOrders(previousMonth, companyIds, PAID_ORDER_STATUSES),
-      this.sumDebt(companyIds),
-      this.sumDebt(companyIds),
+      this.sumCollectedPayments(currentMonth, companyIds),
+      this.sumCollectedPayments(previousMonth, companyIds),
+      this.sumMonthDebt(currentMonth, companyIds),
+      this.sumMonthDebt(previousMonth, companyIds),
+      this.sumMonthPlan(currentMonth.year, currentMonth.month, companyIds),
+      this.sumMonthPlan(previousMonth.year, previousMonth.month, companyIds),
       this.countAgents(companyIds),
       this.getSalesChart(companyIds),
     ]);
 
-    const plan = Math.max(agentCount, 1) * DEFAULT_AGENT_MONTHLY_PLAN;
+    const [paymentsFallback, prevPaymentsFallback] = await Promise.all([
+      paymentsRaw > 0
+        ? Promise.resolve(paymentsRaw)
+        : this.sumOrders(currentMonth, companyIds, PAID_ORDER_STATUSES),
+      prevPaymentsRaw > 0
+        ? Promise.resolve(prevPaymentsRaw)
+        : this.sumOrders(previousMonth, companyIds, PAID_ORDER_STATUSES),
+    ]);
+    const payments = paymentsFallback;
+    const prevPayments = prevPaymentsFallback;
+
+    const fallbackPlan = Math.max(agentCount, 1) * DEFAULT_AGENT_MONTHLY_PLAN;
+    const plan = planFromDb > 0 ? planFromDb : fallbackPlan;
+    const prevPlan = prevPlanFromDb > 0 ? prevPlanFromDb : fallbackPlan;
     const planPct = plan > 0 ? Math.round((sales / plan) * 100) : 0;
-    const prevPlanPct = plan > 0 ? Math.round((prevSales / plan) * 100) : 0;
+    const prevPlanPct = prevPlan > 0 ? Math.round((prevSales / prevPlan) * 100) : 0;
 
     const catQb = this.clientRepo
       .createQueryBuilder('c')
@@ -342,7 +441,10 @@ export class DashboardService {
       .addSelect('d.status', 'status')
       .addSelect('COALESCE(u.fullName, u.username, d.companyName, \'Agent\')', 'fullName')
       .addSelect('COALESCE(SUM(o.totalAmount), 0)', 'sales')
-      .where('o.createdAt BETWEEN :start AND :end', currentMonth)
+      .where('o.createdAt BETWEEN :start AND :end', {
+        start: currentMonth.start,
+        end: currentMonth.end,
+      })
       .andWhere('o.status NOT IN (:...excluded)', { excluded: EXCLUDED_ORDER_STATUSES });
 
     this.applyClientCompanyFilter(agentsQb, companyIds);
@@ -357,9 +459,15 @@ export class DashboardService {
       .limit(5)
       .getRawMany<{ distributorId: string; companyId: string | null; status: string; fullName: string; sales: string }>();
 
+    const agentPlanMap = await this.getPlansByDistributor(
+      currentMonth.year,
+      currentMonth.month,
+      agentRows.map(r => r.distributorId),
+    );
+
     const topAgents = agentRows.map(row => {
       const agentSales = Number(row.sales);
-      const agentPlan = DEFAULT_AGENT_MONTHLY_PLAN;
+      const agentPlan = agentPlanMap.get(row.distributorId) || DEFAULT_AGENT_MONTHLY_PLAN;
       return {
         distributorId: row.distributorId,
         name: row.fullName,
@@ -468,6 +576,10 @@ export class DashboardService {
     }).filter((e): e is NonNullable<typeof e> => e != null);
 
     return {
+      period: {
+        year: currentMonth.year,
+        month: currentMonth.month,
+      },
       kpi: {
         sales,
         payments,
