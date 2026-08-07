@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Plus, X } from '../icons'
 import {
@@ -15,6 +15,7 @@ import type { AuthUser } from '../api/types'
 import type { Translations } from '../i18n'
 import { theme } from '../theme'
 import ClientPinMap from '../components/ClientPinMap'
+import { showToast } from '../components/Toast'
 
 interface Props {
   dark: boolean
@@ -76,11 +77,9 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
   const [radius, setRadius] = useState(100)
-  const [geoError, setGeoError] = useState<string | null>(null)
   const [geoLoading, setGeoLoading] = useState(false)
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const [lines, setLines] = useState<SalesLine[]>([])
   const [linesLoading, setLinesLoading] = useState(true)
@@ -90,7 +89,6 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   const [modal, setModal] = useState<ModalKind>(null)
   const [modalName, setModalName] = useState('')
   const [modalSaving, setModalSaving] = useState(false)
-  const [modalError, setModalError] = useState<string | null>(null)
   const [picker, setPicker] = useState<PickerKind>(null)
   const modalSheetRef = useRef<HTMLDivElement>(null)
   const modalInputRef = useRef<HTMLInputElement>(null)
@@ -155,17 +153,15 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
     setMapFullscreen(false)
     setModal(kind)
     setModalName('')
-    setModalError(null)
   }
 
   const saveModal = async () => {
     const value = modalName.trim()
     if (!value) {
-      setModalError(modal === 'line' ? tr.lineName : tr.categoryName)
+      showToast(modal === 'line' ? tr.lineName : tr.categoryName)
       return
     }
     setModalSaving(true)
-    setModalError(null)
     try {
       if (modal === 'line') {
         const created = await createLine({
@@ -179,6 +175,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           return next
         })
         setLineCode(created.code)
+        showToast(tr.lineSaved, 'success')
       } else if (modal === 'category') {
         const created = await createClientCategory({ name: value, companyId })
         setCategories(prev => {
@@ -187,20 +184,20 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           return next
         })
         setCategory(created.name)
+        showToast(tr.categorySaved, 'success')
       }
       setModal(null)
       setModalName('')
     } catch (e) {
-      setModalError(e instanceof ApiError ? e.message : tr.loginError)
+      showToast(e instanceof ApiError ? e.message : tr.loginError)
     } finally {
       setModalSaving(false)
     }
   }
 
   const useMyLocation = () => {
-    setGeoError(null)
     if (!navigator.geolocation) {
-      setGeoError(tr.locationOff)
+      showToast(tr.locationOff)
       return
     }
     setGeoLoading(true)
@@ -212,45 +209,71 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
       },
       (err) => {
         setGeoLoading(false)
-        if (err.code === err.PERMISSION_DENIED) setGeoError(tr.locationDenied)
-        else setGeoError(tr.locationOff)
+        showToast(err.code === err.PERMISSION_DENIED ? tr.locationDenied : tr.locationOff)
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     )
   }
 
+  const reqMsg = (field: string) => tr.fieldRequired.replace('{field}', field)
+
   const submit = async () => {
     if (!name.trim()) {
-      setError(tr.name)
+      showToast(reqMsg(tr.name))
+      return
+    }
+    if (!fullName.trim()) {
+      showToast(reqMsg(tr.fullName))
+      return
+    }
+    const phoneClean = phoneToStorage(phone)
+    if (!phoneClean || phoneClean.length < 13) {
+      showToast(tr.phoneInvalid)
+      return
+    }
+    if (!address.trim()) {
+      showToast(reqMsg(tr.address))
+      return
+    }
+    if (!lineCode.trim()) {
+      showToast(reqMsg(tr.line))
+      return
+    }
+    if (!category.trim()) {
+      showToast(reqMsg(tr.category))
+      return
+    }
+    if (lat == null || lng == null) {
+      showToast(tr.locationRequired)
       return
     }
     setLoading(true)
-    setError(null)
     try {
-      const phoneClean = phoneToStorage(phone)
       const extras = extraPhones
         .map(p => ({
           phone: phoneToStorage(p.phone) || '',
           note: p.note.trim() || undefined,
         }))
         .filter(p => !!p.phone)
-      await createClient({
+      const created = await createClient({
         name: name.trim(),
-        fullName: fullName.trim() || undefined,
+        fullName: fullName.trim(),
         inn: inn.trim() || undefined,
         phone: phoneClean,
         extraPhones: extras.length ? extras : undefined,
-        address: address.trim() || undefined,
+        address: address.trim(),
         companyId,
-        lineCode: lineCode.trim() || undefined,
-        category: category.trim() || undefined,
-        latitude: lat ?? undefined,
-        longitude: lng ?? undefined,
+        lineCode: lineCode.trim(),
+        category: category.trim(),
+        latitude: lat,
+        longitude: lng,
         orderRadiusMeters: radius,
       })
+      const pending = created.status === 'pending'
+      showToast(pending ? tr.clientRequestSubmitted : tr.clientCreated, 'success')
       onCreated()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : tr.loginError)
+      showToast(e instanceof ApiError ? e.message : tr.loginError)
     } finally {
       setLoading(false)
     }
@@ -289,10 +312,11 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
     placeholder: string,
     loading: boolean,
     onOpen: () => void,
+    required = false,
   ) => (
     <div style={{ marginBottom: 12 }}>
       <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
-        {label}
+        {label}{required ? ' *' : ''}
       </label>
       <button
         type="button"
@@ -341,14 +365,26 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
         </div>
       </div>
 
-      <div style={{ padding: '8px 20px calc(40px + var(--safe-bottom))' }}>
+      <div style={{ padding: '8px 20px calc(28px + max(28px, var(--safe-bottom)))' }}>
         {field(tr.name, name, setName, true)}
-        {field(tr.fullName, fullName, setFullName)}
-        {field(tr.inn, inn, setInn)}
+        {field(tr.fullName, fullName, setFullName, true)}
 
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
-            {tr.phone}
+            {tr.inn}
+          </label>
+          <input
+            value={inn}
+            onChange={e => setInn(e.target.value.replace(/\D/g, '').slice(0, 14))}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            style={inputStyle}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
+            {tr.phone} *
           </label>
           <input
             value={phone}
@@ -415,15 +451,15 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           ))}
         </div>
 
-        {field(tr.address, address, setAddress)}
+        {field(tr.address, address, setAddress, true)}
 
-        {pickerField(tr.line, lineLabel, tr.lineSelect, linesLoading, () => setPicker('line'))}
-        {pickerField(tr.category, category, tr.categorySelect, categoriesLoading, () => setPicker('category'))}
+        {pickerField(tr.line, lineLabel, tr.lineSelect, linesLoading, () => setPicker('line'), true)}
+        {pickerField(tr.category, category, tr.categorySelect, categoriesLoading, () => setPicker('category'), true)}
 
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: c.mutedText }}>{tr.mapTitle}</p>
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: c.mutedText }}>{tr.mapTitle} *</p>
               <p style={{ margin: '2px 0 0', fontSize: 11, color: c.mutedText }}>{tr.clientMapHint}</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -456,12 +492,6 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
             </div>
           </div>
 
-          {geoError && (
-            <div style={{ marginBottom: 8, padding: 10, borderRadius: 12, background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 12, fontWeight: 600 }}>
-              {geoError}
-            </div>
-          )}
-
           {!mapFullscreen && !modal && !picker && (
             <div style={{ position: 'relative', zIndex: 0, isolation: 'isolate' }}>
               <ClientPinMap
@@ -469,7 +499,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
                 lng={lng}
                 radiusMeters={radius}
                 dark={dark}
-                onPick={(a, b) => { setLat(a); setLng(b); setGeoError(null) }}
+                onPick={(a, b) => { setLat(a); setLng(b) }}
               />
             </div>
           )}
@@ -491,12 +521,6 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           </div>
         </div>
 
-        {error && (
-          <div style={{ marginBottom: 12, padding: 12, borderRadius: 14, background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 13, fontWeight: 600 }}>
-            {error}
-          </div>
-        )}
-
         <button type="button" className="btn-primary" disabled={loading} onClick={() => void submit()}
           style={{ width: '100%', height: 52, border: 'none', cursor: 'pointer', fontSize: 15, opacity: loading ? 0.7 : 1, marginTop: 8 }}>
           {loading ? tr.loading : tr.save}
@@ -507,7 +531,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
         </button>
       </div>
 
-      {mapFullscreen && (
+      {mapFullscreen && createPortal(
         <div style={{
           position: 'fixed', inset: 0, zIndex: 90, background: c.bg,
           display: 'flex', flexDirection: 'column',
@@ -547,13 +571,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
             </button>
           </div>
 
-          {geoError && (
-            <div style={{ margin: '8px 16px 0', padding: 10, borderRadius: 12, background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 12, fontWeight: 600 }}>
-              {geoError}
-            </div>
-          )}
-
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', zIndex: 0, isolation: 'isolate' }}>
             <ClientPinMap
               lat={lat}
               lng={lng}
@@ -561,14 +579,17 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               dark={dark}
               height="100%"
               borderRadius={0}
-              onPick={(a, b) => { setLat(a); setLng(b); setGeoError(null) }}
+              onPick={(a, b) => { setLat(a); setLng(b) }}
             />
           </div>
 
           <div style={{
-            padding: '12px 16px calc(16px + var(--safe-bottom))',
+            padding: '14px 16px calc(20px + max(28px, var(--safe-bottom)))',
+            paddingLeft: 'max(16px, var(--safe-left))',
+            paddingRight: 'max(16px, var(--safe-right))',
             borderTop: `1px solid ${c.border}`,
             background: c.card,
+            flexShrink: 0,
           }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
               {tr.orderRadius}: {radius} m
@@ -593,10 +614,11 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               {tr.save}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {picker && (
+      {picker && createPortal(
         <div style={{
           position: 'fixed', inset: 0, zIndex: 2000,
           background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
@@ -715,10 +737,11 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               {picker === 'line' ? tr.addLine : tr.addCategory}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {modal && (
+      {modal && createPortal(
         <div style={{
           position: 'fixed', inset: 0, zIndex: 2000,
           background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
@@ -779,12 +802,6 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               style={{ ...inputStyle, fontSize: 16 }}
             />
 
-            {modalError && (
-              <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 12, fontWeight: 600 }}>
-                {modalError}
-              </div>
-            )}
-
             <button
               type="button"
               disabled={modalSaving}
@@ -798,7 +815,8 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               {modalSaving ? tr.loading : tr.save}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

@@ -28,6 +28,8 @@ function mapApiRow(r: ClientRequestItem & Record<string, unknown>): ClientReques
   return {
     id: r.id,
     status: (r.status as ClientRequestItem['status']) ?? 'pending',
+    requestType: (r.requestType as ClientRequestItem['requestType']) ?? 'create',
+    targetClientId: (r.targetClientId as string | null | undefined) ?? null,
     name: r.name,
     fullName: r.fullName ?? r.name,
     phone: r.phone ?? null,
@@ -55,7 +57,12 @@ interface ClientRequestContextValue {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  checkInn: (inn: string | null | undefined, requestId?: string, existingClients?: ClientRow[]) => InnCheckResult;
+  checkInn: (
+    inn: string | null | undefined,
+    requestId?: string,
+    existingClients?: ClientRow[],
+    excludeClientId?: string | null,
+  ) => InnCheckResult;
   approve: (id: string, companyId?: string, existingClients?: ClientRow[]) => Promise<boolean>;
   reject: (id: string) => Promise<void>;
 }
@@ -109,6 +116,7 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
     inn: string | null | undefined,
     requestId?: string,
     existingClients: ClientRow[] = [],
+    excludeClientId?: string | null,
   ): InnCheckResult => {
     const normalized = normalizeInn(inn);
     if (!normalized) {
@@ -116,7 +124,9 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
     }
 
     const existingClient = existingClients.find(
-      c => normalizeInn(c.inn) === normalized,
+      c =>
+        normalizeInn(c.inn) === normalized &&
+        String(c.id) !== String(excludeClientId ?? ''),
     );
     if (existingClient) {
       return {
@@ -163,7 +173,12 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
     const item = pending.find(r => r.id === id);
     if (!item) return false;
 
-    const dup = checkInn(item.inn, id, existingClients);
+    const dup = checkInn(
+      item.inn,
+      id,
+      existingClients,
+      item.requestType === 'update' ? item.targetClientId : null,
+    );
     if (dup.duplicate) return false;
 
     await api.approveClientRequest(id);

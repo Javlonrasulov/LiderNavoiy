@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, Users, Wallet } from '../icons'
+import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, User, Users, Wallet } from '../icons'
 import { fetchAdminDashboard, fetchClientOrders, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
 import type { AdminDashboard, AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
@@ -7,6 +7,7 @@ import { formatMoney, formatPct, formatTrend, theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
 import EmployeeMap from '../components/EmployeeMap'
 import RefreshResultCard from '../components/RefreshResultCard'
+import { showToast } from '../components/Toast'
 import {
   buildHomeRefreshUpdates,
   snapshotFromDashboard,
@@ -42,7 +43,6 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const c = theme(dark)
   const [data, setData] = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [refreshState, setRefreshState] = useState<RefreshBtnState>('idle')
   const [refreshUpdates, setRefreshUpdates] = useState<string[]>([])
   const [showRefreshResult, setShowRefreshResult] = useState(false)
@@ -62,7 +62,6 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
 
   const loadInitial = async () => {
     setLoading(true)
-    setError(null)
     try {
       const [dash, extras] = await Promise.all([
         fetchAdminDashboard(),
@@ -71,7 +70,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
       setData(dash)
       snapshotRef.current = snapshotFromDashboard(dash, extras)
     } catch {
-      setError(tr.noData)
+      showToast(tr.noData)
     } finally {
       setLoading(false)
     }
@@ -86,7 +85,6 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
 
     setRefreshState('loading')
     setShowRefreshResult(false)
-    setError(null)
 
     try {
       const before = snapshotRef.current
@@ -107,7 +105,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
         successTimerRef.current = null
       }, 2500)
     } catch {
-      setError(tr.noData)
+      showToast(tr.noData)
       setRefreshState('idle')
     }
   }
@@ -144,6 +142,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
     { icon: Package, label: tr.productsNav, color: '#E6963C', screen: 'products' },
     { icon: Truck, label: tr.clientOrdersTitle, color: '#00C853', screen: 'clientOrders' },
     { icon: Plus, label: tr.addClient, color: '#7C4DFF', screen: 'addClient' },
+    { icon: User, label: tr.profileNav, color: '#3B82F6', screen: 'profile' },
   ]
 
   const refreshing = refreshState === 'loading'
@@ -260,7 +259,23 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
 
         <div>
           <p style={{ fontSize: 14, fontWeight: 800, color: c.text, marginBottom: 10 }}>{tr.quickActions}</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          <div
+            className="no-scrollbar"
+            style={{
+              display: 'flex',
+              gap: 10,
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              scrollSnapType: 'x mandatory',
+              // overflow-x:auto y=visible qilib bo'lmaydi — soyani kesmaslik uchun vertikal pad
+              paddingTop: 8,
+              paddingBottom: 8,
+              marginTop: -8,
+              marginBottom: -6,
+              marginRight: -16,
+              paddingRight: 16,
+            }}
+          >
             {actions.map(a => {
               const alert = a.screen === 'clientOrders' && hasStaleOrders
               return (
@@ -275,6 +290,9 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
                     border: `1px solid ${alert ? 'rgba(244,67,54,0.55)' : c.border}`,
                     cursor: 'pointer',
                     position: 'relative',
+                    flex: '0 0 76px',
+                    width: 76,
+                    scrollSnapAlign: 'start',
                   }}
                 >
                   <div style={{
@@ -296,12 +314,6 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
             })}
           </div>
         </div>
-
-        {error && (
-          <button type="button" onClick={() => void refresh()} style={{ border: 'none', background: 'rgba(244,67,54,0.1)', color: c.red, padding: 12, borderRadius: 14, fontWeight: 700, cursor: 'pointer' }}>
-            {error} — {tr.retry}
-          </button>
-        )}
 
         <EmployeeMap dark={dark} tr={tr} employees={data?.employeeLocations ?? []} />
 

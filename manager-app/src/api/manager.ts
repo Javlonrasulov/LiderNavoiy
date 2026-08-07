@@ -3,9 +3,11 @@ import type {
   AdminDashboard,
   Client,
   CreateClientBody,
+  DailyRouteResponse,
   Distributor,
   PlanRow,
   Product,
+  VisitAdminRow,
 } from './types'
 
 export function fetchAdminDashboard(companyId?: string) {
@@ -16,6 +18,19 @@ export function fetchAdminDashboard(companyId?: string) {
 export function fetchDistributors(companyId?: string) {
   const q = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
   return api<Distributor[]>(`distributors${q}`)
+}
+
+/** Admin bilan bir xil: kunlik tashriflar (telefon / ilova zakazlari ham) */
+export function fetchVisitsForDistributor(distributorId: string, date: string) {
+  return api<VisitAdminRow[]>(
+    `visits/admin?distributorId=${encodeURIComponent(distributorId)}&date=${encodeURIComponent(date)}`,
+  )
+}
+
+export function fetchDailyRoute(distributorId: string, date: string) {
+  return api<DailyRouteResponse>(
+    `routes/${encodeURIComponent(distributorId)}/daily?date=${encodeURIComponent(date)}`,
+  )
 }
 
 export function fetchProducts(companyId?: string) {

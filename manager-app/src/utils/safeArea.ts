@@ -14,13 +14,13 @@ export function initSafeAreaInsets() {
   const ensureMinBottom = () => {
     if (!isNative) return
     const n = parseFloat(getComputedStyle(root).getPropertyValue('--safe-bottom')) || 0
-    // MainActivity real inset bersa — 0/juda kichik bo'lsa gestura bari uchun zaxira
+    // MainActivity real inset bersa — 0/juda kichik bo'lsa gestura / 3-tugma uchun zaxira
     if (root.getAttribute('data-native-insets') === '1') {
-      if (n < 16) root.style.setProperty('--safe-bottom', '24px')
+      if (n < 20) root.style.setProperty('--safe-bottom', '28px')
       return
     }
     // Android WebView ko'pincha 0 qaytaradi — pastki tizim tugmalari uchun zaxira
-    if (n < 16) root.style.setProperty('--safe-bottom', '28px')
+    if (n < 20) root.style.setProperty('--safe-bottom', '32px')
   }
 
   /** Fallback: visualViewport orqali klaviatura balandligi (native IME inset bo'lmasa). */

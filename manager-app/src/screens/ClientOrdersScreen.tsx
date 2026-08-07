@@ -13,6 +13,7 @@ import type { Product } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import RefreshResultCard from '../components/RefreshResultCard'
+import { showToast } from '../components/Toast'
 
 interface Props {
   dark: boolean
@@ -65,7 +66,6 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const c = theme(dark)
   const [orders, setOrders] = useState<ClientOrderRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [actionId, setActionId] = useState<string | null>(null)
   const [urgentIds, setUrgentIds] = useState<Record<string, boolean>>({})
   const [editOrder, setEditOrder] = useState<ClientOrderRow | null>(null)
@@ -95,7 +95,6 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
     } else {
       setLoading(true)
     }
-    setError(null)
     try {
       const data = await fetchClientOrders('pending')
       const list = Array.isArray(data) ? data : []
@@ -124,7 +123,7 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
       }
     } catch {
       setOrders([])
-      setError(tr.noData)
+      showToast(tr.noData)
       if (manual) setRefreshState('idle')
     } finally {
       setLoading(false)
@@ -143,14 +142,13 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const send = async (order: ClientOrderRow) => {
     if (actionId) return
     setActionId(order.id)
-    setError(null)
     try {
       await sendClientOrderToWarehouse(order.id, !!urgentIds[order.id])
       setOrders(prev => prev.filter(o => o.id !== order.id))
       setRefreshUpdates([tr.clientOrderSent, `${order.clientName} · ${order.agentName}`])
       setShowRefreshResult(true)
     } catch {
-      setError(tr.noData)
+      showToast(tr.noData)
     } finally {
       setActionId(null)
     }
@@ -159,7 +157,6 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const reject = async (order: ClientOrderRow) => {
     if (actionId) return
     setActionId(order.id)
-    setError(null)
     setRejectOrder(null)
     try {
       await rejectClientOrder(order.id)
@@ -167,7 +164,7 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
       setRefreshUpdates([tr.clientOrderRejected, `${order.clientName} · ${order.agentName}`])
       setShowRefreshResult(true)
     } catch {
-      setError(tr.noData)
+      showToast(tr.noData)
     } finally {
       setActionId(null)
     }
@@ -294,7 +291,7 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
       setRefreshUpdates([tr.clientOrderSaved, editOrder.clientName])
       setShowRefreshResult(true)
     } catch {
-      setError(tr.noData)
+      showToast(tr.noData)
     } finally {
       setActionId(null)
     }
@@ -365,25 +362,11 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
           </div>
         )}
 
-        {error && (
-          <button
-            type="button"
-            onClick={() => void load(true)}
-            style={{
-              width: '100%', border: 'none', marginBottom: 12,
-              background: 'rgba(244,67,54,0.1)', color: c.red,
-              padding: 12, borderRadius: 14, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            {error} — {tr.retry}
-          </button>
-        )}
-
         {loading && orders.length === 0 && (
           <p style={{ textAlign: 'center', color: c.mutedText, padding: 40 }}>{tr.loading}</p>
         )}
 
-        {!loading && orders.length === 0 && !error && (
+        {!loading && orders.length === 0 && (
           <div style={{ textAlign: 'center', padding: '48px 20px' }}>
             <Truck size={40} color={c.mutedText} />
             <p style={{ marginTop: 12, color: c.mutedText, fontSize: 14, fontWeight: 600 }}>{tr.noClientOrders}</p>

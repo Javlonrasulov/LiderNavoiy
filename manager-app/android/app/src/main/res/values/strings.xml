@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Lider Manager</string>
     <string name="title_activity_main">Lider Manager</string>
-    <string name="package_name">com.milliy.libos</string>
-    <string name="custom_url_scheme">com.milliy.libos</string>
+    <string name="package_name">uz.lider.manager</string>
+    <string name="custom_url_scheme">uz.lider.manager</string>
 </resources>

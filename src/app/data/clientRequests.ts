@@ -1,10 +1,13 @@
 import type { ClientRow } from './adminData';
 
 export type ClientRequestStatus = 'pending' | 'approved' | 'rejected';
+export type ClientRequestType = 'create' | 'update';
 
 export interface ClientRequestItem {
   id: string;
   status: ClientRequestStatus;
+  requestType?: ClientRequestType;
+  targetClientId?: string | null;
   name: string;
   fullName?: string | null;
   phone?: string | null;

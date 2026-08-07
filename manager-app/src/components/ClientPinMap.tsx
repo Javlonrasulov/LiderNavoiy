@@ -160,6 +160,9 @@ export default function ClientPinMap({
         overflow: 'hidden',
         border: borderRadius ? `1px solid ${dark ? '#2a2a3e' : '#e5e7eb'}` : 'none',
         background: dark ? '#111118' : '#f3f4f6',
+        position: 'relative',
+        zIndex: 0,
+        isolation: 'isolate',
       }}
     />
   )

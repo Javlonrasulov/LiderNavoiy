@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "6609188812",
+    "project_id": "lider-navoiy",
+    "storage_bucket": "lider-navoiy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:6609188812:android:d06856b1b82f4a4c2f4f69",
+        "android_client_info": {
+          "package_name": "uz.distributor.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBU5UMyqg20E3q_2G82Z6qkD1yPn2enmD0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:6609188812:android:2985dbcbc54fce502f4f69",
+        "android_client_info": {
+          "package_name": "uz.lider.client"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBU5UMyqg20E3q_2G82Z6qkD1yPn2enmD0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:6609188812:android:f541bf80827e65082f4f69",
+        "android_client_info": {
+          "package_name": "uz.lider.manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBU5UMyqg20E3q_2G82Z6qkD1yPn2enmD0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

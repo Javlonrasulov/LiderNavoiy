@@ -27,6 +27,10 @@ public class MainActivity extends BridgeActivity {
     }
 
     WebView webView = getBridge().getWebView();
+    // Debug/update da eski JS cache qolib ketmasin
+    webView.clearCache(true);
+    webView.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
+
     ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
       Insets bars = windowInsets.getInsets(
         WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()

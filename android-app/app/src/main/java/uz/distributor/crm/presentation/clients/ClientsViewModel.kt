@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.remote.ApiErrorMapper
+import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.domain.model.Client
 import java.util.Calendar
@@ -22,11 +23,13 @@ data class ClientsUiState(
     val activeTab: ClientsListTab = ClientsListTab.SCHEDULE,
     /** 0=Yakshanba … 6=Shanba — kun bo‘yicha klientlar soni */
     val dayClientCounts: Map<Int, Int> = emptyMap(),
+    val canAddClients: Boolean = false,
 )
 
 @HiltViewModel
 class ClientsViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
+    authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ClientsUiState())
@@ -34,7 +37,14 @@ class ClientsViewModel @Inject constructor(
 
     private var allClients: List<Client> = emptyList()
 
-    init { loadClients(force = true) }
+    init {
+        viewModelScope.launch {
+            authRepository.getUserFlow().collect { user ->
+                _uiState.update { it.copy(canAddClients = user?.canAddClients() == true) }
+            }
+        }
+        loadClients(force = true)
+    }
 
     fun onSearchChange(q: String) {
         _uiState.update { it.copy(searchQuery = q) }

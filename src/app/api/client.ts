@@ -96,6 +96,8 @@ export interface BackendCompany {
   description: string | null;
   productType?: 'kg_dona' | 'dona' | 'kg' | null;
   warehouseName?: string | null;
+  agentsCanAddClients?: boolean;
+  clientsAddWithoutApproval?: boolean;
   agents: number;
   clients: number;
 }
@@ -458,6 +460,8 @@ export const api = {
     color?: string;
     description?: string;
     productType?: 'kg_dona' | 'dona' | 'kg';
+    agentsCanAddClients?: boolean;
+    clientsAddWithoutApproval?: boolean;
   }) =>
     request<BackendCompany>('/companies', {
       method: 'POST',
@@ -474,6 +478,8 @@ export const api = {
       description?: string;
       productType?: 'kg_dona' | 'dona' | 'kg';
       warehouseName?: string | null;
+      agentsCanAddClients?: boolean;
+      clientsAddWithoutApproval?: boolean;
     },
   ) =>
     request<BackendCompany>(`/companies/${encodeURIComponent(id)}`, {

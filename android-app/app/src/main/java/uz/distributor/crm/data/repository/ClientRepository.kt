@@ -34,6 +34,11 @@ data class CreateClientResult(
     val pendingRequest: Boolean,
 )
 
+data class UpdateClientResult(
+    val client: Client?,
+    val pendingRequest: Boolean,
+)
+
 @Singleton
 class ClientRepository @Inject constructor(
     private val api: ApiService,
@@ -152,14 +157,18 @@ class ClientRepository @Inject constructor(
         clientId: String,
         latitude: Double,
         longitude: Double,
-    ): Client {
+    ): UpdateClientResult {
         val updated = api.updateClient(
             clientId,
             UpdateClientLocationRequest(latitude = latitude, longitude = longitude),
         )
+        val pendingRequest = updated.status == "pending" || updated.code.isNullOrBlank()
+        if (pendingRequest) {
+            return UpdateClientResult(client = null, pendingRequest = true)
+        }
         val entity = updated.toEntity()
         db.clientDao().insertAll(listOf(entity))
-        return entity.toDomain()
+        return UpdateClientResult(client = entity.toDomain(), pendingRequest = false)
     }
 
     suspend fun clearCache() {

@@ -45,6 +45,8 @@ data class UserDto(
     val companyName: String?,
     val position: String? = null,
     val isDelivery: Boolean? = null,
+    /** Kompaniya sozlamasi — default false / null = ruxsat yo‘q */
+    val agentsCanAddClients: Boolean? = null,
 )
 
 data class DashboardStatsDto(

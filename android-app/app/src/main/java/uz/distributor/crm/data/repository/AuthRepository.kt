@@ -171,4 +171,5 @@ private fun uz.distributor.crm.data.remote.dto.UserDto.toAuthUser() = AuthUser(
     companyName = companyName,
     position = position,
     isDelivery = isDelivery,
+    agentsCanAddClients = agentsCanAddClients,
 )

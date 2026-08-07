@@ -24,6 +24,7 @@ data class ClientDetailUiState(
     val isSavingLocation: Boolean = false,
     val isLocating: Boolean = false,
     val locationSaved: Boolean = false,
+    val locationPendingApproval: Boolean = false,
     val locationError: String? = null,
 )
 
@@ -122,13 +123,14 @@ class ClientDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSavingLocation = true, locationError = null) }
             try {
-                val updated = clientRepository.updateClientLocation(client.id, lat, lng)
+                val result = clientRepository.updateClientLocation(client.id, lat, lng)
                 _uiState.update {
                     it.copy(
-                        client = updated,
+                        client = result.client ?: it.client,
                         isSavingLocation = false,
                         showLocationEditor = false,
-                        locationSaved = true,
+                        locationSaved = !result.pendingRequest,
+                        locationPendingApproval = result.pendingRequest,
                     )
                 }
             } catch (e: Exception) {
@@ -143,6 +145,6 @@ class ClientDetailViewModel @Inject constructor(
     }
 
     fun consumeLocationSaved() {
-        _uiState.update { it.copy(locationSaved = false) }
+        _uiState.update { it.copy(locationSaved = false, locationPendingApproval = false) }
     }
 }

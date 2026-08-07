@@ -3,6 +3,7 @@
 Push bildirishnomalar **Firebase Cloud Messaging** orqali:
 - Agent APK (`uz.distributor.crm`)
 - Mijoz APK (`uz.lider.client`)
+- Manager APK (`uz.lider.manager`)
 - Admin panel (brauzer web push)
 
 ## 1. Firebase loyiha yaratish
@@ -22,6 +23,11 @@ Push bildirishnomalar **Firebase Cloud Messaging** orqali:
 1. **Add app** → Android (xuddi shu loyihaga)
 2. Package: `uz.lider.client`
 3. `google-services.json` → `client-android-app/app/google-services.json`
+
+### Manager
+1. **Add app** → Android (xuddi shu loyihaga)
+2. Package: `uz.lider.manager`
+3. `google-services.json` → `manager-app/android/app/google-services.json`
 
 > Har bir app uchun Firebase dan yuklab olingan haqiqiy fayl bilan placeholder ni almashtiring.
 
@@ -60,7 +66,7 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 
 | Qadam | Kim | Nima |
 |-------|-----|------|
-| Login | Agent / Mijoz APK | FCM token → `POST /notifications/fcm-token` |
+| Login | Agent / Mijoz / Manager APK | FCM token → `POST /notifications/fcm-token` |
 | Login | Admin (brauzer) | Web push token → xuddi shu endpoint |
 | Broadcast | Admin → Push bo‘limi | Agentlar / mijozlar / adminlar / hammaga |
 | Tarix | Har bir user | `GET /notifications` |

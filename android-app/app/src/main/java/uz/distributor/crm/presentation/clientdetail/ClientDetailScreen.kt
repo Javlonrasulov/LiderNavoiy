@@ -70,6 +70,13 @@ fun ClientDetailScreen(
         }
     }
 
+    LaunchedEffect(state.locationPendingApproval) {
+        if (state.locationPendingApproval) {
+            snackbarHostState.showSnackbar(AppStrings.clientRequestSubmitted(lang))
+            viewModel.consumeLocationSaved()
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = pageBg,

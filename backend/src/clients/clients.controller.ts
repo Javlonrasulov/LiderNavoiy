@@ -21,6 +21,7 @@ import { ClientRequestsService } from './client-requests.service';
 import { ClientReconciliationService } from './client-reconciliation.service';
 import { ClientCredentialsService } from './client-credentials.service';
 import { ClientStatsService } from './client-stats.service';
+import { CompaniesService } from '../companies/companies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateClientDto, UpdateClientDto, TransferClientsDto } from './dto/client.dto';
 import { SetClientCredentialsDto } from './dto/client-credentials.dto';
@@ -40,6 +41,7 @@ export class ClientsController {
     private readonly reconciliationService: ClientReconciliationService,
     private readonly credentialsService: ClientCredentialsService,
     private readonly statsService: ClientStatsService,
+    private readonly companiesService: CompaniesService,
   ) {}
 
   private scopeDistributorId(user: User): string | undefined {
@@ -190,14 +192,31 @@ export class ClientsController {
   async create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
     const { appUsername, appPassword, ...clientDto } = dto;
     const distributorId = this.scopeDistributorId(req.user);
+    const companyId =
+      clientDto.companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+
     if (req.user.role === UserRole.DISTRIBUTOR) {
+      await this.companiesService.assertAgentsCanAddClients(companyId);
+    }
+
+    const isAdmin = req.user.role === UserRole.ADMIN;
+    const skipApproval =
+      isAdmin ||
+      (await this.companiesService.getClientsAddWithoutApproval(companyId));
+
+    const requiresApproval =
+      !skipApproval &&
+      (req.user.role === UserRole.DISTRIBUTOR ||
+        req.user.role === UserRole.MANAGER);
+
+    if (requiresApproval) {
       const agentName = req.user.fullName ?? req.user.username;
       const requestDto: CreateClientRequestDto = {
         name: clientDto.name,
         fullName: clientDto.fullName,
         phone: clientDto.phone,
         address: clientDto.address,
-        companyId: clientDto.companyId ?? req.user.distributorProfile?.companyId ?? undefined,
+        companyId,
         lineCode: clientDto.lineCode,
         latitude: clientDto.latitude,
         longitude: clientDto.longitude,
@@ -211,13 +230,11 @@ export class ClientsController {
       };
       return this.requestsService.create(requestDto, distributorId, agentName);
     }
+
     const client = await this.service.create(
       {
         ...clientDto,
-        companyId:
-          clientDto.companyId ??
-          req.user.distributorProfile?.companyId ??
-          undefined,
+        companyId,
         distributorId: clientDto.distributorId ?? distributorId,
       },
       req.user,
@@ -234,6 +251,32 @@ export class ClientsController {
     @Body() dto: UpdateClientDto,
   ) {
     const { appUsername, appPassword, ...clientDto } = dto;
+    const distributorId = this.scopeDistributorId(req.user);
+
+    const existing = await this.service.findOne(id, distributorId);
+    const companyId =
+      existing.companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+
+    const isAdmin = req.user.role === UserRole.ADMIN;
+    const skipApproval =
+      isAdmin ||
+      (await this.companiesService.getClientsAddWithoutApproval(companyId));
+
+    const requiresApproval =
+      !skipApproval &&
+      (req.user.role === UserRole.DISTRIBUTOR ||
+        req.user.role === UserRole.MANAGER);
+
+    if (requiresApproval) {
+      const agentName = req.user.fullName ?? req.user.username;
+      return this.requestsService.createUpdate(
+        id,
+        clientDto,
+        distributorId,
+        agentName,
+      );
+    }
+
     const client = await this.service.update(id, clientDto, req.user);
     await this.applyAppCredentials(id, { appUsername, appPassword }, req.user);
     return client;

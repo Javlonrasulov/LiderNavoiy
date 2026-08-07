@@ -3,10 +3,10 @@ export type PushLang = 'uz' | 'uz_cyr' | 'ru' | 'en';
 
 export function normalizePushLang(code?: string | null): PushLang {
   const c = (code ?? '').trim().toLowerCase();
-  if (c === 'uz_cyr' || c === 'uz_cyrl' || c === 'uz_kril') return 'uz_cyr';
+  if (c === 'uz_cyr' || c === 'uz_cyrl' || c === 'uz_kril' || c === 'uzc') return 'uz_cyr';
   if (c === 'ru') return 'ru';
   if (c === 'en') return 'en';
-  if (c === 'uz' || c === 'uz_latn') return 'uz';
+  if (c === 'uz' || c === 'uz_latn' || c === 'uzl') return 'uz';
   return 'uz_cyr';
 }
 

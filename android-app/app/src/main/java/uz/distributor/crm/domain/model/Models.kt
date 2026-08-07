@@ -10,12 +10,16 @@ data class AuthUser(
     val position: String? = null,
     /** Backend `isDelivery` (login/refresh); null = eski sessiya → position fallback */
     val isDelivery: Boolean? = null,
+    /** Backend kompaniya flagi; null/false = mijoz qo‘shish taqiqlangan */
+    val agentsCanAddClients: Boolean? = null,
 ) {
     /** Agent va dostavkachi ikkalasi ham role=distributor; farq backend position/isDelivery. */
     fun isDeliveryPerson(): Boolean {
         isDelivery?.let { return it }
         return isDeliveryPosition(position)
     }
+
+    fun canAddClients(): Boolean = agentsCanAddClients == true
 }
 
 /** Backend `staff-role.util.ts` bilan bir xil markerlar. */

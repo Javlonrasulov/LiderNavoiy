@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
 import { UserLoginDevice } from './entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { Company } from '../companies/entities/company.entity';
 import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 import { isDeliveryPosition } from '../common/staff-role.util';
@@ -48,6 +49,8 @@ export class AuthService {
     private readonly deviceRepo: Repository<UserLoginDevice>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly sessions: SessionStoreService,
@@ -319,6 +322,15 @@ export class AuthService {
     const effectivePosition =
       profile?.position?.trim() || user.position?.trim() || null;
 
+    let agentsCanAddClients = false;
+    if (profile?.companyId) {
+      const company = await this.companyRepo.findOne({
+        where: { id: profile.companyId, isActive: true },
+        select: ['id', 'agentsCanAddClients'],
+      });
+      agentsCanAddClients = !!company?.agentsCanAddClients;
+    }
+
     return {
       accessToken,
       refreshToken,
@@ -337,6 +349,7 @@ export class AuthService {
         distributorId: profile?.id,
         companyId: profile?.companyId ?? undefined,
         companyName: profile?.companyName ?? undefined,
+        agentsCanAddClients,
         clientId: user.clientId ?? undefined,
         clientName: user.client?.name ?? undefined,
       },

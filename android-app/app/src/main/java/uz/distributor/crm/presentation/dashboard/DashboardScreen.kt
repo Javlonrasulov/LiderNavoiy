@@ -69,11 +69,31 @@ fun DashboardScreen(
     var showLangMenu by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     var toastIdSeq by remember { mutableIntStateOf(0) }
-    var activeToasts by remember { mutableStateOf<List<ComingSoonToast>>(emptyList()) }
+    var activeToasts by remember { mutableStateOf<List<InfoToast>>(emptyList()) }
+
+    fun showInfoToast(title: String, detail: String? = null) {
+        toastIdSeq += 1
+        activeToasts = activeToasts + InfoToast(
+            id = toastIdSeq,
+            visible = true,
+            title = title,
+            detail = detail,
+        )
+    }
 
     fun showComingSoon() {
-        toastIdSeq += 1
-        activeToasts = activeToasts + ComingSoonToast(id = toastIdSeq, visible = true)
+        showInfoToast(AppStrings.comingSoon(lang), AppStrings.comingSoonDetail(lang))
+    }
+
+    fun onAddClientPressed() {
+        if (state.user?.canAddClients() == true) {
+            onAddClientClick()
+        } else {
+            showInfoToast(
+                AppStrings.addClientDeniedTitle(lang),
+                AppStrings.addClientDeniedDetail(lang),
+            )
+        }
     }
 
     // Ko‘rsatish → plavniy yashirish → listdan olib tashlash
@@ -216,7 +236,7 @@ fun DashboardScreen(
                         SherinQuickAction(
                             icon = Icons.Default.Add,
                             label = AppStrings.add(lang),
-                            onClick = onAddClientClick,
+                            onClick = { onAddClientPressed() },
                         )
                         SherinRefreshAction(
                             label = when (state.refreshButtonState) {
@@ -311,8 +331,8 @@ fun DashboardScreen(
                             slideOutVertically(tween(TOAST_EXIT_MS)) { -it },
                     ) {
                         NavGlassInfoToast(
-                            title = AppStrings.comingSoon(lang),
-                            detail = AppStrings.comingSoonDetail(lang),
+                            title = toast.title,
+                            detail = toast.detail,
                             isDark = isDark,
                         )
                     }
@@ -325,9 +345,11 @@ fun DashboardScreen(
 private const val TOAST_ENTER_MS = 320
 private const val TOAST_EXIT_MS = 380
 
-private data class ComingSoonToast(
+private data class InfoToast(
     val id: Int,
     val visible: Boolean,
+    val title: String,
+    val detail: String? = null,
 )
 
 private data class StatItem(

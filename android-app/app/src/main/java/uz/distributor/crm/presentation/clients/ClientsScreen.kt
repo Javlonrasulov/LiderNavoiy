@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
@@ -44,6 +45,7 @@ fun ClientsScreen(
     val fmt = remember { DecimalFormat("#,##0.00") }
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val scope = rememberCoroutineScope()
 
     val pageBg = sherinPageBackground(isDark)
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
@@ -53,6 +55,7 @@ fun ClientsScreen(
     val tabInactiveBg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
 
     var showDayMenu by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val dayOptions = (0..6).map { day ->
         val count = state.dayClientCounts[day] ?: 0
         day to "${AppStrings.dayName(day, lang)} ($count)"
@@ -65,7 +68,7 @@ fun ClientsScreen(
             .fillMaxSize()
             .background(pageBg),
     ) {
-        Column(Modifier.fillMaxSize()) {
+        Column(modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
                 Column(
                     Modifier
@@ -91,7 +94,17 @@ fun ClientsScreen(
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                         SherinGlassIconButton(
-                            onClick = onAddClientClick,
+                            onClick = {
+                                if (state.canAddClients) {
+                                    onAddClientClick()
+                                } else {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = AppStrings.addClientDeniedDetail(lang),
+                                        )
+                                    }
+                                }
+                            },
                             icon = Icons.Default.Add,
                             size = 40.dp,
                         )
@@ -217,6 +230,13 @@ fun ClientsScreen(
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp),
+        )
     }
 }
 

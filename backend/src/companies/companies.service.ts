@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
@@ -18,6 +18,8 @@ export interface CompanyListItem {
   description: string | null;
   productType: string;
   warehouseName: string | null;
+  agentsCanAddClients: boolean;
+  clientsAddWithoutApproval: boolean;
   agents: number;
   clients: number;
 }
@@ -33,6 +35,8 @@ export class CompaniesService implements OnModuleInit {
       color: 'from-red-600 to-rose-700',
       description: 'Savdo va distribyutsiya',
       productType: 'kg_dona',
+      agentsCanAddClients: false,
+      clientsAddWithoutApproval: false,
     },
     {
       id: 'zarafshon',
@@ -42,6 +46,8 @@ export class CompaniesService implements OnModuleInit {
       color: 'from-blue-500 to-cyan-600',
       description: 'Oziq-ovqat mahsulotlari',
       productType: 'kg_dona',
+      agentsCanAddClients: false,
+      clientsAddWithoutApproval: false,
     },
   ];
 
@@ -62,6 +68,27 @@ export class CompaniesService implements OnModuleInit {
         this.companyRepo.create({ ...item, isActive: true }),
       ),
     );
+  }
+
+  private toListItem(
+    company: Company,
+    agents: number,
+    clients: number,
+  ): CompanyListItem {
+    return {
+      id: company.id,
+      name: company.name,
+      shortName: company.shortName,
+      icon: company.icon,
+      color: company.color,
+      description: company.description,
+      productType: company.productType || 'kg_dona',
+      warehouseName: company.warehouseName ?? null,
+      agentsCanAddClients: !!company.agentsCanAddClients,
+      clientsAddWithoutApproval: !!company.clientsAddWithoutApproval,
+      agents,
+      clients,
+    };
   }
 
   async findAll(): Promise<CompanyListItem[]> {
@@ -85,22 +112,40 @@ export class CompaniesService implements OnModuleInit {
           }),
         ]);
 
-        return {
-          id: company.id,
-          name: company.name,
-          shortName: company.shortName,
-          icon: company.icon,
-          color: company.color,
-          description: company.description,
-          productType: company.productType || 'kg_dona',
-          warehouseName: company.warehouseName ?? null,
-          agents,
-          clients,
-        };
+        return this.toListItem(company, agents, clients);
       }),
     );
 
     return items;
+  }
+
+  async getAgentsCanAddClients(companyId: string | null | undefined): Promise<boolean> {
+    if (!companyId) return false;
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId, isActive: true },
+      select: ['id', 'agentsCanAddClients'],
+    });
+    return !!company?.agentsCanAddClients;
+  }
+
+  async assertAgentsCanAddClients(companyId: string | null | undefined): Promise<void> {
+    const allowed = await this.getAgentsCanAddClients(companyId);
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Mijoz qo‘shish admin tomonidan ruxsat etilmagan',
+      );
+    }
+  }
+
+  async getClientsAddWithoutApproval(
+    companyId: string | null | undefined,
+  ): Promise<boolean> {
+    if (!companyId) return false;
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId, isActive: true },
+      select: ['id', 'clientsAddWithoutApproval'],
+    });
+    return !!company?.clientsAddWithoutApproval;
   }
 
   async create(dto: CreateCompanyDto): Promise<CompanyListItem> {
@@ -118,21 +163,12 @@ export class CompaniesService implements OnModuleInit {
         color: dto.color ?? 'from-indigo-500 to-blue-600',
         description: dto.description?.trim() || null,
         productType: dto.productType ?? 'kg_dona',
+        agentsCanAddClients: dto.agentsCanAddClients ?? false,
+        clientsAddWithoutApproval: dto.clientsAddWithoutApproval ?? false,
         isActive: true,
       }),
     );
-    return {
-      id: saved.id,
-      name: saved.name,
-      shortName: saved.shortName,
-      icon: saved.icon,
-      color: saved.color,
-      description: saved.description,
-      productType: saved.productType || 'kg_dona',
-      warehouseName: saved.warehouseName ?? null,
-      agents: 0,
-      clients: 0,
-    };
+    return this.toListItem(saved, 0, 0);
   }
 
   async update(id: string, dto: UpdateCompanyDto): Promise<CompanyListItem> {
@@ -146,6 +182,12 @@ export class CompaniesService implements OnModuleInit {
     if (dto.description !== undefined) company.description = dto.description.trim() || null;
     if (dto.productType !== undefined) company.productType = dto.productType;
     if (dto.warehouseName !== undefined) company.warehouseName = dto.warehouseName.trim() || null;
+    if (dto.agentsCanAddClients !== undefined) {
+      company.agentsCanAddClients = dto.agentsCanAddClients;
+    }
+    if (dto.clientsAddWithoutApproval !== undefined) {
+      company.clientsAddWithoutApproval = dto.clientsAddWithoutApproval;
+    }
 
     await this.companyRepo.save(company);
     const found = (await this.findAll()).find((c) => c.id === id);

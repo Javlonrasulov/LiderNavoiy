@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { PRODUCT_TYPES, type ProductType } from './create-company.dto';
 
 export class UpdateCompanyDto {
@@ -44,4 +44,14 @@ export class UpdateCompanyDto {
   @IsString()
   @MaxLength(200)
   warehouseName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  agentsCanAddClients?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  clientsAddWithoutApproval?: boolean;
 }

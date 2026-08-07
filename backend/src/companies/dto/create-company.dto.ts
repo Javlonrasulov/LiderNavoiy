@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export const PRODUCT_TYPES = ['kg_dona', 'dona', 'kg'] as const;
 export type ProductType = (typeof PRODUCT_TYPES)[number];
@@ -39,4 +39,14 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsIn(PRODUCT_TYPES)
   productType?: ProductType;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  agentsCanAddClients?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  clientsAddWithoutApproval?: boolean;
 }

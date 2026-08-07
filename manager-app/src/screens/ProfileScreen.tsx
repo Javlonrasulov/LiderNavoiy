@@ -5,8 +5,9 @@ import type { AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
+import { showToast } from '../components/Toast'
 import {
-  ChevronRight, Eye, EyeOff, Globe, Lock, LogOut, Moon, Shield, User, X,
+  ChevronRight, Eye, EyeOff, Globe, Lock, LogOut, Moon, Shield, User, X, ArrowLeft,
 } from '../icons'
 
 interface Props {
@@ -17,20 +18,43 @@ interface Props {
   onToggleDark: () => void
   onChangeLang: (l: Lang) => void
   onLogout: () => void
+  onBack?: () => void
 }
 
-export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onChangeLang, onLogout }: Props) {
+export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onChangeLang, onLogout, onBack }: Props) {
   const c = theme(dark)
   const [pwOpen, setPwOpen] = useState(false)
 
   return (
-    <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(100px + var(--safe-bottom))' }} className="no-scrollbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 'var(--header-pad-top) max(20px, var(--safe-left)) 16px max(20px, var(--safe-right))' }}>
+    <div style={{
+      width: '100%', height: '100%', display: 'flex', flexDirection: 'column',
+      background: c.bg, overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 'var(--header-pad-top) max(20px, var(--safe-left)) 16px max(20px, var(--safe-right))', flexShrink: 0 }}>
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <ArrowLeft size={18} color={c.text} />
+          </button>
+        )}
         <h1 style={{ fontSize: 22, fontWeight: 800, color: c.text, flex: 1 }}>{tr.profile}</h1>
         <LangDropdown lang={lang} dark={dark} onChange={onChangeLang} />
       </div>
 
-      <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div
+        style={{
+          flex: 1, minHeight: 0, overflowY: 'auto',
+          padding: '0 max(20px, var(--safe-left), var(--safe-right)) 16px',
+          display: 'flex', flexDirection: 'column', gap: 16,
+        }}
+        className="no-scrollbar"
+      >
         <div style={{
           borderRadius: 28, padding: 22, position: 'relative', overflow: 'hidden',
           background: c.hero, boxShadow: '0 16px 48px rgba(108,92,231,0.35)',
@@ -113,8 +137,15 @@ export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onCh
             </div>
           </button>
         </Section>
+      </div>
 
+      <div style={{
+        flexShrink: 0,
+        padding: '12px max(20px, var(--safe-left), var(--safe-right)) calc(16px + max(28px, var(--safe-bottom)))',
+        background: c.bg,
+      }}>
         <button type="button" onClick={onLogout} style={{
+          width: '100%',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           height: 52, borderRadius: 16, border: 'none', cursor: 'pointer',
           background: 'rgba(244,67,54,0.12)', color: c.red, fontWeight: 800, fontSize: 15,
@@ -146,7 +177,6 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNext, setShowNext] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const sheetRef = useRef<HTMLDivElement>(null)
 
@@ -174,29 +204,29 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
   }
 
   async function submit() {
-    setError('')
     if (!current || !next || !confirm) return
     if (next.length < 6) {
-      setError(tr.passwordTooShort)
+      showToast(tr.passwordTooShort)
       return
     }
     if (next !== confirm) {
-      setError(tr.passwordMismatch)
+      showToast(tr.passwordMismatch)
       return
     }
     setLoading(true)
     try {
       await changePassword(current, next)
       setDone(true)
+      showToast(tr.passwordChanged, 'success')
       setTimeout(() => {
         onClose()
         onSuccess()
       }, 1000)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        setError(tr.wrongCurrentPassword)
+        showToast(tr.wrongCurrentPassword)
       } else {
-        setError(e instanceof Error ? e.message : tr.loginError)
+        showToast(e instanceof Error ? e.message : tr.loginError)
       }
     } finally {
       setLoading(false)
@@ -278,16 +308,6 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
               onEnter={submit}
               onFocusField={focusField}
             />
-
-            {error && (
-              <div style={{
-                marginBottom: 14, padding: '12px 14px', borderRadius: 14,
-                background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 13, fontWeight: 600,
-                textAlign: 'center',
-              }}>
-                {error}
-              </div>
-            )}
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button type="button" onClick={onClose} style={{

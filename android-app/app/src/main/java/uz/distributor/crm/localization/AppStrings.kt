@@ -798,6 +798,18 @@ object AppStrings {
         "Бу бўлим тез орада қўшилади",
         "Этот раздел скоро будет доступен",
     )
+    fun addClientDeniedTitle(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz qo'shish yopiq",
+        "Мижоз қўшиш ёпиқ",
+        "Добавление клиентов закрыто",
+    )
+    fun addClientDeniedDetail(lang: AppLanguage) = tr(
+        lang,
+        "Admin tomonidan ruxsat berilmagan. Administratorga murojaat qiling.",
+        "Админ томонидан рухсат берилмаган. Администраторга мурожаат қилинг.",
+        "Администратор не дал разрешение. Обратитесь к администратору.",
+    )
     fun paymentTransferSoon(lang: AppLanguage) = tr(
         lang,
         "Pul ko'chirish tez orada ishga tushadi",

@@ -70,7 +70,11 @@ export interface AdminDashboard {
 export interface Distributor {
   id: string
   userId?: string
-  user?: { fullName?: string; username?: string } | null
+  user?: {
+    fullName?: string
+    username?: string
+    lastLoginAt?: string | null
+  } | null
   fullName?: string
   name?: string
   companyName?: string | null
@@ -83,6 +87,51 @@ export interface Distributor {
   lastLatitude?: number | null
   lastLongitude?: number | null
   lastLocationAt?: string | Date | null
+}
+
+export type PointStatus =
+  | 'ordered'
+  | 'visited'
+  | 'missed'
+  | 'remote_ordered'
+  | 'client_ordered'
+
+export interface VisitAdminRow {
+  id: string
+  distributorId: string
+  clientId: string
+  visitedAt: string
+  checkInLatitude: number | null
+  checkInLongitude: number | null
+  orderTotal: number
+  notes: string | null
+  status: string
+  clientName: string
+  clientCode: string
+  clientAddress: string | null
+  clientLatitude: number | null
+  clientLongitude: number | null
+  fromClientOrder: boolean
+  orderSource?: string | null
+}
+
+export interface DailyRouteResponse {
+  date: string
+  distributorId: string
+  pointCount: number
+  stats: {
+    totalDistanceKm: number
+    avgSpeed: number
+    maxSpeed: number
+    durationMinutes: number
+  }
+  points: {
+    latitude: number
+    longitude: number
+    speed?: number | null
+    accuracy?: number | null
+    recordedAt: string
+  }[]
 }
 
 export interface Product {
@@ -113,6 +162,8 @@ export interface Client {
   longitude?: number | null
   debt?: number | null
   balance?: number | null
+  /** Client request status when awaiting admin approval */
+  status?: string | null
 }
 
 export interface PlanRow {

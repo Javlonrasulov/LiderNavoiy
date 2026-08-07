@@ -16,15 +16,29 @@ export enum ClientRequestStatus {
   REJECTED = 'rejected',
 }
 
+export enum ClientRequestType {
+  CREATE = 'create',
+  UPDATE = 'update',
+}
+
 @Entity('client_requests')
 @Index(['status'])
 @Index(['inn'])
+@Index(['targetClientId'])
 export class ClientRequest {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'varchar', default: ClientRequestStatus.PENDING })
   status: ClientRequestStatus;
+
+  /** create — yangi mijoz; update — mavjud mijozni tahrirlash */
+  @Column({ type: 'varchar', default: ClientRequestType.CREATE })
+  requestType: ClientRequestType;
+
+  /** update so‘rovida tahrirlanayotgan mijoz id */
+  @Column({ type: 'uuid', nullable: true })
+  targetClientId: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   distributorId: string | null;

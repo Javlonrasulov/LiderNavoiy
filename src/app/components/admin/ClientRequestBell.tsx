@@ -36,7 +36,13 @@ function RequestCard({
   const { checkInn, approve, reject } = useClientRequests();
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const dup = checkInn(item.inn, item.id, existingClients);
+  const isUpdate = item.requestType === 'update';
+  const dup = checkInn(
+    item.inn,
+    item.id,
+    existingClients,
+    isUpdate ? item.targetClientId : null,
+  );
 
   const handleApprove = async () => {
     if (dup.duplicate) return;
@@ -76,6 +82,23 @@ function RequestCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span
+              className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+              style={{
+                background: isUpdate
+                  ? (D ? 'rgba(59,130,246,0.2)' : '#eff6ff')
+                  : (D ? 'rgba(16,185,129,0.2)' : '#ecfdf5'),
+                color: isUpdate
+                  ? (D ? '#93c5fd' : '#1d4ed8')
+                  : (D ? '#6ee7b7' : '#047857'),
+              }}
+            >
+              {isUpdate
+                ? (t.notifTypeEdit ?? 'Tahrirlash')
+                : (t.notifTypeNew ?? 'Yangi')}
+            </span>
+          </div>
           <p className="font-semibold text-sm truncate" style={{ color: text }}>{item.name}</p>
           {item.fullName && item.fullName !== item.name && (
             <p className="text-xs truncate" style={{ color: sub }}>{item.fullName}</p>
@@ -249,7 +272,7 @@ function ClientRequestBellInner({ D, sub, text, t, existingClients = [], company
               {t.notifTitle ?? 'Bildirishnomalar'}
             </p>
             <p className={`text-xs mt-0.5 ${sub}`}>
-              {t.notifSubtitle ?? 'Agent yangi mijoz qo\'shganda shu yerda ko\'rinadi'}
+              {t.notifSubtitle ?? 'Yangi mijoz yoki tahrirlash so\'rovlari shu yerda ko\'rinadi'}
             </p>
           </div>
 

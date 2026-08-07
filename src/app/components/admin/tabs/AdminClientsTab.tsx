@@ -169,6 +169,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           }),
         },
       );
+      if ((updated as { status?: string }).status === 'pending') {
+        setSaveError(
+          'So\'rov yuborildi — admin tasdigidan keyin o\'zgarishlar qo\'llanadi',
+        );
+        return data.id;
+      }
       const row = apiClientToRow(updated);
       setClients(prev => prev.map(c => c.id === row.id ? row : c));
       setActiveClient(prev => prev?.id === row.id ? row : prev);
@@ -192,6 +198,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         ...formToCreatePayload({ ...rest, distributorId }, companyId),
         ...appCredentialsPayload(appUsername, appPassword),
       });
+      if ((created as { status?: string }).status === 'pending') {
+        setSaveError(
+          'So\'rov yuborildi — admin tasdigidan keyin mijozlar ro\'yxatiga qo\'shiladi',
+        );
+        return created.id;
+      }
       const row = apiClientToRow(created);
       setClients(prev => [...prev, row]);
       return row.id;

@@ -6,6 +6,7 @@ import type { AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
+import { showToast } from '../components/Toast'
 
 interface Props {
   dark: boolean
@@ -22,21 +23,19 @@ export default function LoginScreen({ dark, tr, lang, onChangeLang, onToggleDark
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const submit = async () => {
     if (!username.trim() || !password) return
     setLoading(true)
-    setError(null)
     try {
       const res = await login(username, password)
       onSuccess(res.user)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       const status = e instanceof ApiError ? e.status : Number((e as { status?: number })?.status)
-      if (msg === 'manager_only') setError(tr.managerOnly)
-      else if (status === 401 || /invalid credentials/i.test(msg)) setError(tr.invalidCredentials)
-      else setError(`${tr.loginError}: ${msg.slice(0, 80)}`)
+      if (msg === 'manager_only') showToast(tr.managerOnly)
+      else if (status === 401 || /invalid credentials/i.test(msg)) showToast(tr.invalidCredentials)
+      else showToast(`${tr.loginError}: ${msg.slice(0, 80)}`)
     } finally {
       setLoading(false)
     }
@@ -120,16 +119,6 @@ export default function LoginScreen({ dark, tr, lang, onChangeLang, onToggleDark
                 {showPw ? <EyeOff size={18} color={c.mutedText} /> : <Eye size={18} color={c.mutedText} />}
               </button>
             </div>
-
-            {error && (
-              <div style={{
-                marginBottom: 14, padding: '12px 14px', borderRadius: 14,
-                background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 13, fontWeight: 600,
-                textAlign: 'center',
-              }}>
-                {error}
-              </div>
-            )}
 
             <button
               type="button"

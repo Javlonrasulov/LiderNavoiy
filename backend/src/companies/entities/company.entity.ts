@@ -34,6 +34,17 @@ export class Company {
   @Column({ type: 'varchar', nullable: true })
   warehouseName: string | null;
 
+  /** Agent/dostavkachi mijoz qo‘shishi mumkinmi — default o‘chirilgan */
+  @Column({ default: false })
+  agentsCanAddClients: boolean;
+
+  /**
+   * true — manager/agent mijozni admin tasdigisiz tizimga qo‘shadi
+   * false — so‘rov xabarnomaga tushadi, admin tasdiqlagach qo‘shiladi
+   */
+  @Column({ default: false })
+  clientsAddWithoutApproval: boolean;
+
   @Column({ default: true })
   isActive: boolean;
 

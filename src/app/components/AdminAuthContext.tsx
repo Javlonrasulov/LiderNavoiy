@@ -18,6 +18,10 @@ export interface Company {
   productType: ProductType;
   /** Ombor sahifasida kiritiladigan sklad nomi */
   warehouseName?: string | null;
+  /** Agent/dostavkachi mijoz qo‘sha oladimi (default false) */
+  agentsCanAddClients?: boolean;
+  /** true — manager/agent tasdiqsiz qo‘shadi; false — admin tasdigi kerak */
+  clientsAddWithoutApproval?: boolean;
 }
 
 export function companyShowsTarozi(productType?: ProductType | string | null): boolean {
@@ -174,6 +178,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     const withType: Company = {
       ...company,
       productType: company.productType ?? 'kg_dona',
+      agentsCanAddClients: !!company.agentsCanAddClients,
+      clientsAddWithoutApproval: !!company.clientsAddWithoutApproval,
     };
     setSelectedCompany(withType);
     localStorage.setItem('admin_company', withType.id);

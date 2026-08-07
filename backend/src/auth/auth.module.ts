@@ -10,6 +10,7 @@ import { User } from './entities/user.entity';
 import { UserLoginDevice } from './entities/user-login-device.entity';
 import { LoginAttempt } from './entities/login-attempt.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { Company } from '../companies/entities/company.entity';
 import { RedisModule } from '../common/redis/redis.module';
 import { SessionStoreService } from './session-store.service';
 import { LoginSecurityService } from './login-security.service';
@@ -26,7 +27,7 @@ function jwtSecret(config: ConfigService): string {
 @Module({
   imports: [
     RedisModule,
-    TypeOrmModule.forFeature([User, UserLoginDevice, LoginAttempt, DistributorProfile]),
+    TypeOrmModule.forFeature([User, UserLoginDevice, LoginAttempt, DistributorProfile, Company]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
