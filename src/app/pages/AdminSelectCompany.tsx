@@ -49,11 +49,6 @@ const T: Record<Lang, Record<string, string>> = {
     agentsCanAddClientsOn: 'Ruxsat berilgan',
     agentsCanAddClientsOff: 'O‘chirilgan',
     agentsCanAddClientsHint: 'Agent va dostavkachilar APK orqali yangi mijoz qo‘sha oladi',
-    clientsAddWithoutApproval: 'Tekshirishsiz qo‘shilsin',
-    clientsAddWithoutApprovalOn: 'Yoqilgan',
-    clientsAddWithoutApprovalOff: 'O‘chirilgan',
-    clientsAddWithoutApprovalHint:
-      'Yoqilsa manager/agent mijozni qo‘shish va tahrirlashni darhol qo‘llaydi. O‘chirilsa so‘rov xabarnomaga tushadi va admin tasdiqlagach qo‘llanadi',
     saveError: 'Saqlashda xatolik',
   },
   cy: {
@@ -76,11 +71,6 @@ const T: Record<Lang, Record<string, string>> = {
     agentsCanAddClientsOn: 'Рухсат берилган',
     agentsCanAddClientsOff: 'Ўчирилган',
     agentsCanAddClientsHint: 'Агент ва доставкачилар APK орқали янги мижоз қўша олади',
-    clientsAddWithoutApproval: 'Текширувсиз қўшилсин',
-    clientsAddWithoutApprovalOn: 'Ёқилган',
-    clientsAddWithoutApprovalOff: 'Ўчирилган',
-    clientsAddWithoutApprovalHint:
-      'Ёқилса менежер/агент мижозни қўшиш ва таҳрирлашни дарҳол қўллайди. Ўчирилса сўров хабарномага тушади ва админ тасдиқлагач қўлланади',
     saveError: 'Сақлашда хатолик',
   },
   ru: {
@@ -103,11 +93,6 @@ const T: Record<Lang, Record<string, string>> = {
     agentsCanAddClientsOn: 'Разрешено',
     agentsCanAddClientsOff: 'Выключено',
     agentsCanAddClientsHint: 'Агенты и доставщики могут добавлять клиентов через APK',
-    clientsAddWithoutApproval: 'Добавлять без проверки',
-    clientsAddWithoutApprovalOn: 'Включено',
-    clientsAddWithoutApprovalOff: 'Выключено',
-    clientsAddWithoutApprovalHint:
-      'Если включено — менеджер/агент сразу добавляет и правит клиента. Если выключено — заявка попадает в уведомления и применяется после одобрения админом',
     saveError: 'Ошибка сохранения',
   },
 };
@@ -152,7 +137,6 @@ const blankForm = () => ({
   color: 'from-indigo-500 to-blue-600', imageUrl: '',
   productType: 'kg_dona' as ProductType,
   agentsCanAddClients: false,
-  clientsAddWithoutApproval: false,
 });
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -210,7 +194,6 @@ export default function AdminSelectCompany() {
       imageUrl: company.imageUrl ?? '',
       productType: company.productType ?? 'kg_dona',
       agentsCanAddClients: !!company.agentsCanAddClients,
-      clientsAddWithoutApproval: !!company.clientsAddWithoutApproval,
     });
     setIconTab(company.imageUrl ? 'image' : 'icon');
     setEditingId(company.id);
@@ -232,7 +215,6 @@ export default function AdminSelectCompany() {
       color: form.color,
       productType: form.productType,
       agentsCanAddClients: form.agentsCanAddClients,
-      clientsAddWithoutApproval: form.clientsAddWithoutApproval,
     };
     const hasToken = !!localStorage.getItem('api_access_token');
     try {
@@ -268,7 +250,6 @@ export default function AdminSelectCompany() {
                     color: payload.color,
                     productType: payload.productType,
                     agentsCanAddClients: payload.agentsCanAddClients,
-                    clientsAddWithoutApproval: payload.clientsAddWithoutApproval,
                     imageUrl: form.imageUrl || undefined,
                   }
                 : c
@@ -286,7 +267,6 @@ export default function AdminSelectCompany() {
                   color: payload.color,
                   productType: payload.productType,
                   agentsCanAddClients: payload.agentsCanAddClients,
-                  clientsAddWithoutApproval: payload.clientsAddWithoutApproval,
                   imageUrl: form.imageUrl || undefined,
                 }
               : c
@@ -624,51 +604,6 @@ export default function AdminSelectCompany() {
                 </button>
                 <p className={`text-[11px] mt-2 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
                   {t.agentsCanAddClientsHint}
-                </p>
-              </div>
-
-              {/* Add clients without admin approval */}
-              <div>
-                <label className={`text-xs font-semibold mb-1.5 block ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t.clientsAddWithoutApproval}
-                </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm(f => ({
-                      ...f,
-                      clientsAddWithoutApproval: !f.clientsAddWithoutApproval,
-                    }))
-                  }
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-sm font-semibold transition-all ${
-                    form.clientsAddWithoutApproval
-                      ? D
-                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                        : 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                      : D
-                        ? 'border-white/10 bg-white/5 text-gray-400'
-                        : 'border-gray-200 bg-gray-50 text-gray-500'
-                  }`}
-                >
-                  <span>
-                    {form.clientsAddWithoutApproval
-                      ? t.clientsAddWithoutApprovalOn
-                      : t.clientsAddWithoutApprovalOff}
-                  </span>
-                  <span className={`w-11 h-6 rounded-full p-0.5 transition-colors ${
-                    form.clientsAddWithoutApproval
-                      ? 'bg-emerald-500'
-                      : D
-                        ? 'bg-white/15'
-                        : 'bg-gray-300'
-                  }`}>
-                    <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                      form.clientsAddWithoutApproval ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </span>
-                </button>
-                <p className={`text-[11px] mt-2 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {t.clientsAddWithoutApprovalHint}
                 </p>
               </div>
 

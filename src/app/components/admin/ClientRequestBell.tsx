@@ -4,6 +4,9 @@ import {
   Bell, Check, X, MapPin, Phone, User, Building2, AlertTriangle,
 } from 'lucide-react';
 import { useClientRequests, ClientRequestProvider } from '../ClientRequestContext';
+import { useCompanies } from '../CompaniesContext';
+import { useAdminAuth } from '../AdminAuthContext';
+import { api } from '../../api/client';
 import type { ClientRequestItem } from '../../data/clientRequests';
 import type { ClientRow } from '../../data/adminData';
 
@@ -214,10 +217,43 @@ export function ClientRequestBell({ D, sub, text, t, existingClients = [], compa
 
 function ClientRequestBellInner({ D, sub, text, t, existingClients = [], companyId }: Props) {
   const { pending, loading, error } = useClientRequests();
+  const { companies, refresh: refreshCompanies } = useCompanies();
+  const { selectedCompany, selectCompany } = useAdminAuth();
   const [open, setOpen] = useState(false);
+  const [savingSkip, setSavingSkip] = useState(false);
+  const [skipError, setSkipError] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const count = pending.length;
+
+  const effectiveCompanyId =
+    companyId ?? selectedCompany?.id ?? undefined;
+  const company = companies.find(c => c.id === effectiveCompanyId)
+    ?? (selectedCompany?.id === effectiveCompanyId ? selectedCompany : null);
+  const skipApproval = !!company?.clientsAddWithoutApproval;
+
+  const toggleSkipApproval = async () => {
+    if (!effectiveCompanyId || savingSkip) return;
+    setSavingSkip(true);
+    setSkipError(null);
+    const next = !skipApproval;
+    try {
+      const updated = await api.updateCompany(effectiveCompanyId, {
+        clientsAddWithoutApproval: next,
+      });
+      await refreshCompanies();
+      if (selectedCompany?.id === effectiveCompanyId) {
+        selectCompany({
+          ...selectedCompany,
+          clientsAddWithoutApproval: !!updated.clientsAddWithoutApproval,
+        });
+      }
+    } catch (e) {
+      setSkipError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+    } finally {
+      setSavingSkip(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -274,6 +310,51 @@ function ClientRequestBellInner({ D, sub, text, t, existingClients = [], company
             <p className={`text-xs mt-0.5 ${sub}`}>
               {t.notifSubtitle ?? 'Yangi mijoz yoki tahrirlash so\'rovlari shu yerda ko\'rinadi'}
             </p>
+
+            {effectiveCompanyId ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  disabled={savingSkip}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleSkipApproval();
+                  }}
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 ${
+                    skipApproval
+                      ? D
+                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                        : 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                      : D
+                        ? 'border-white/10 bg-white/5 text-gray-300'
+                        : 'border-gray-200 bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <span className="text-left leading-snug">
+                    {t.notifSkipApproval ?? 'Tekshirishsiz qo\'shilsin'}
+                  </span>
+                  <span className={`w-10 h-5 rounded-full p-0.5 flex-shrink-0 transition-colors ${
+                    skipApproval ? 'bg-emerald-500' : D ? 'bg-white/15' : 'bg-gray-300'
+                  }`}>
+                    <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                      skipApproval ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </span>
+                </button>
+                <p className={`text-[10px] mt-1.5 leading-snug ${sub}`}>
+                  {skipApproval
+                    ? (t.notifSkipApprovalOnHint ?? 'Yoqilgan: manager/agent darhol qo\'shadi/tahrirlaydi')
+                    : (t.notifSkipApprovalOffHint ?? 'O\'chirilgan: so\'rov shu yerda chiqadi, admin tasdiqlagach qo\'llanadi')}
+                </p>
+                {skipError && (
+                  <p className="text-[10px] mt-1 text-red-500">{skipError}</p>
+                )}
+              </div>
+            ) : (
+              <p className={`text-[10px] mt-2 ${sub}`}>
+                {t.notifSelectOneOrg ?? 'Sozlamani o\'zgartirish uchun bitta tashkilot tanlang'}
+              </p>
+            )}
           </div>
 
             <div className="overflow-y-auto p-3 space-y-3 flex-1">
