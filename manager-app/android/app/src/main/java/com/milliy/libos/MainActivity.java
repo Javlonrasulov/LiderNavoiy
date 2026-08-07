@@ -31,11 +31,14 @@ public class MainActivity extends BridgeActivity {
       Insets bars = windowInsets.getInsets(
         WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
       );
+      Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
       float d = getResources().getDisplayMetrics().density;
       float top = bars.top / d;
       float bottom = bars.bottom / d;
       float left = bars.left / d;
       float right = bars.right / d;
+      // Klaviatura balandligi (edge-to-edge da WebView o'zi qisqarmaydi)
+      float imeBottom = ime.bottom / d;
 
       // Pastki tizim navigatsiyasi (gestura / 3 tugma) — 0 bo'lsa ham minimal bo'shliq
       float safeBottom = bottom > 0f ? bottom : 24f;
@@ -48,9 +51,10 @@ public class MainActivity extends BridgeActivity {
           "r.style.setProperty('--safe-bottom','%.2fpx');" +
           "r.style.setProperty('--safe-left','%.2fpx');" +
           "r.style.setProperty('--safe-right','%.2fpx');" +
+          "r.style.setProperty('--ime-bottom','%.2fpx');" +
           "r.setAttribute('data-native-insets','1');" +
         "})();",
-        top, safeBottom, left, right
+        top, safeBottom, left, right, imeBottom
       );
       webView.evaluateJavascript(js, null);
       return windowInsets;

@@ -44,6 +44,8 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  /* Soft keyboard (MainActivity / visualViewport) */
+  --ime-bottom: 0px;
   --header-pad-top: calc(12px + var(--safe-top));
   /* Pastki menyu: telefon navigation / gestura bari ustiga chiqmasin */
   --bottom-nav-pad: calc(12px + var(--safe-bottom));

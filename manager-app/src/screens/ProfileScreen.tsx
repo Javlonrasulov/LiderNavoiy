@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { changePassword } from '../api/auth'
 import type { AuthUser } from '../api/types'
@@ -148,11 +148,29 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const sheetRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   const fieldStyle: CSSProperties = {
     width: '100%', height: 48, borderRadius: 14, border: `1px solid ${c.border}`,
-    background: c.muted, color: c.text, padding: '0 14px', fontSize: 15, outline: 'none',
+    background: c.muted, color: c.text, padding: '0 14px', fontSize: 16, outline: 'none',
     boxSizing: 'border-box',
+  }
+
+  function focusField(el: HTMLElement) {
+    // Klaviatura ochilguncha kutib, maydonni ko‘rinadigan joyga suramiz
+    window.setTimeout(() => {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      sheetRef.current?.scrollTo({
+        top: Math.max(0, el.offsetTop - 24),
+        behavior: 'smooth',
+      })
+    }, 280)
   }
 
   async function submit() {
@@ -191,13 +209,19 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
         position: 'fixed', inset: 0, zIndex: 80,
         background: 'rgba(8,8,18,0.55)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        paddingBottom: 'var(--ime-bottom, 0px)',
+        transition: 'padding-bottom 160ms ease-out',
       }}
       onClick={onClose}
     >
       <div
+        ref={sheetRef}
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 480,
+          maxHeight: 'calc(100% - 12px)',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
           background: c.card,
           borderRadius: '28px 28px 0 0',
           padding: '20px 20px calc(20px + var(--safe-bottom))',
@@ -231,6 +255,7 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
               onToggle={() => setShowCurrent(v => !v)}
               fieldStyle={fieldStyle}
               mutedText={c.mutedText}
+              onFocusField={focusField}
             />
             <PwField
               label={tr.newPassword}
@@ -240,6 +265,7 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
               onToggle={() => setShowNext(v => !v)}
               fieldStyle={fieldStyle}
               mutedText={c.mutedText}
+              onFocusField={focusField}
             />
             <PwField
               label={tr.confirmPassword}
@@ -250,6 +276,7 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
               fieldStyle={fieldStyle}
               mutedText={c.mutedText}
               onEnter={submit}
+              onFocusField={focusField}
             />
 
             {error && (
@@ -290,7 +317,7 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
   )
 }
 
-function PwField({ label, value, onChange, show, onToggle, fieldStyle, mutedText, onEnter }: {
+function PwField({ label, value, onChange, show, onToggle, fieldStyle, mutedText, onEnter, onFocusField }: {
   label: string
   value: string
   onChange: (v: string) => void
@@ -299,6 +326,7 @@ function PwField({ label, value, onChange, show, onToggle, fieldStyle, mutedText
   fieldStyle: CSSProperties
   mutedText: string
   onEnter?: () => void
+  onFocusField?: (el: HTMLElement) => void
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -309,8 +337,10 @@ function PwField({ label, value, onChange, show, onToggle, fieldStyle, mutedText
           value={value}
           onChange={e => onChange(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onEnter?.()}
+          onFocus={e => onFocusField?.(e.currentTarget)}
           autoCapitalize="none"
           autoCorrect="off"
+          autoComplete="new-password"
           style={{ ...fieldStyle, paddingRight: 48 }}
         />
         <button type="button" onClick={onToggle}

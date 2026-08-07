@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Plus, X } from '../icons'
 import {
   createClient,
@@ -91,6 +92,8 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   const [modalSaving, setModalSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
   const [picker, setPicker] = useState<PickerKind>(null)
+  const modalSheetRef = useRef<HTMLDivElement>(null)
+  const modalInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void (async () => {
@@ -113,6 +116,24 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
     })()
   }, [companyId])
 
+  // Modal/picker ochiqda fon scroll qulflansin; klaviatura ochilganda input ko‘rinsin
+  useEffect(() => {
+    if (!modal && !picker) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    if (modal) {
+      const t = window.setTimeout(() => {
+        modalInputRef.current?.focus()
+        modalInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 280)
+      return () => {
+        window.clearTimeout(t)
+        document.body.style.overflow = prev
+      }
+    }
+    return () => { document.body.style.overflow = prev }
+  }, [modal, picker])
+
   const field = (label: string, value: string, set: (v: string) => void, required = false) => (
     <div style={{ marginBottom: 12 }}>
       <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
@@ -130,6 +151,8 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   )
 
   const openModal = (kind: ModalKind) => {
+    setPicker(null)
+    setMapFullscreen(false)
     setModal(kind)
     setModalName('')
     setModalError(null)
@@ -297,7 +320,8 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   return (
     <div style={{
       position: 'absolute', inset: 0, zIndex: 60, background: c.bg,
-      overflowY: 'auto', animation: 'slideUp 0.35s ease both',
+      overflowY: 'auto', animation: 'slideUp 0.35s ease',
+      paddingBottom: 'var(--ime-bottom, 0px)',
     }} className="no-scrollbar">
       <div style={{
         padding: 'var(--header-pad-top) max(16px, var(--safe-left)) 10px max(16px, var(--safe-right))',
@@ -438,14 +462,16 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
             </div>
           )}
 
-          {!mapFullscreen && (
-            <ClientPinMap
-              lat={lat}
-              lng={lng}
-              radiusMeters={radius}
-              dark={dark}
-              onPick={(a, b) => { setLat(a); setLng(b); setGeoError(null) }}
-            />
+          {!mapFullscreen && !modal && !picker && (
+            <div style={{ position: 'relative', zIndex: 0, isolation: 'isolate' }}>
+              <ClientPinMap
+                lat={lat}
+                lng={lng}
+                radiusMeters={radius}
+                dark={dark}
+                onPick={(a, b) => { setLat(a); setLng(b); setGeoError(null) }}
+              />
+            </div>
           )}
 
           <div style={{ marginTop: 10 }}>
@@ -483,7 +509,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
 
       {mapFullscreen && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 80, background: c.bg,
+          position: 'fixed', inset: 0, zIndex: 90, background: c.bg,
           display: 'flex', flexDirection: 'column',
         }}>
           <div style={{
@@ -572,13 +598,17 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
 
       {picker && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 70,
+          position: 'fixed', inset: 0, zIndex: 2000,
           background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
+          paddingBottom: 'var(--ime-bottom, 0px)',
+          transition: 'padding-bottom 160ms ease-out',
         }}>
           <div style={{
-            width: '100%', maxHeight: '70%', display: 'flex', flexDirection: 'column',
+            width: '100%', maxHeight: 'min(70%, calc(100% - 12px))',
+            display: 'flex', flexDirection: 'column',
             background: c.card, borderRadius: '24px 24px 0 0',
             padding: '16px 16px calc(20px + var(--safe-bottom))',
+            boxShadow: '0 -12px 40px rgba(0,0,0,0.25)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: c.text }}>
@@ -690,13 +720,21 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
 
       {modal && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 70,
+          position: 'fixed', inset: 0, zIndex: 2000,
           background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
+          paddingBottom: 'var(--ime-bottom, 0px)',
+          transition: 'padding-bottom 160ms ease-out',
         }}>
-          <div style={{
-            width: '100%', background: c.card, borderRadius: '24px 24px 0 0',
-            padding: '16px 16px calc(20px + var(--safe-bottom))',
-          }}>
+          <div
+            ref={modalSheetRef}
+            style={{
+              width: '100%', maxHeight: 'calc(100% - 12px)',
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+              background: c.card, borderRadius: '24px 24px 0 0',
+              padding: '16px 16px calc(20px + var(--safe-bottom))',
+              boxShadow: '0 -12px 40px rgba(0,0,0,0.25)',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: c.text }}>
                 {modal === 'line' ? tr.addLine : tr.addCategory}
@@ -723,11 +761,22 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
               {(modal === 'line' ? tr.lineName : tr.categoryName)} *
             </label>
             <input
+              ref={modalInputRef}
               value={modalName}
               onChange={e => setModalName(e.target.value)}
-              autoFocus
+              onFocus={e => {
+                const el = e.currentTarget
+                window.setTimeout(() => {
+                  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                  modalSheetRef.current?.scrollTo({
+                    top: Math.max(0, el.offsetTop - 24),
+                    behavior: 'smooth',
+                  })
+                }, 280)
+              }}
               placeholder={modal === 'line' ? tr.lineName : tr.categoryName}
-              style={inputStyle}
+              enterKeyHint="done"
+              style={{ ...inputStyle, fontSize: 16 }}
             />
 
             {modalError && (
