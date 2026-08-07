@@ -256,6 +256,54 @@ export class NotificationsService {
     return { sent, total: admins.length };
   }
 
+  /** Mijoz agentga buyurtma yuborganida — manager/admin push */
+  async notifyAdminsClientOrder(
+    agentName: string,
+    orderTotal: number,
+    clientName?: string,
+    extras?: { orderId?: string; stale?: boolean; hoursWaiting?: number },
+  ) {
+    const admins = await this.userRepo.find({
+      where: {
+        role: In([UserRole.ADMIN, UserRole.MANAGER]),
+        isActive: true,
+      },
+    });
+
+    const agent = (agentName || 'Agent').trim() || 'Agent';
+    const client = (clientName || 'Mijoz').trim() || 'Mijoz';
+    const sum = Math.round(orderTotal).toLocaleString('uz-UZ');
+    const hours = extras?.hoursWaiting ?? 1;
+    const data: Record<string, string> = {
+      type: NotificationType.ORDER,
+      screen: 'client_orders',
+      subtype: extras?.stale ? 'client_order_stale' : 'client_order',
+      agentName: agent,
+      clientName: client,
+    };
+    if (extras?.orderId) data.orderId = extras.orderId;
+
+    let sent = 0;
+    for (const admin of admins) {
+      const lang = normalizePushLang(admin.preferredLanguage);
+      const title = extras?.stale
+        ? PushI18n.adminClientOrderStaleTitle(lang, agent)
+        : PushI18n.adminClientOrderTitle(lang, agent);
+      const body = extras?.stale
+        ? PushI18n.adminClientOrderStaleBody(lang, agent, client, hours)
+        : PushI18n.adminClientOrderBody(lang, agent, client, sum);
+      const result = await this.sendToUser(
+        admin.id,
+        title,
+        body,
+        NotificationType.ORDER,
+        data,
+      );
+      if (result.sent) sent++;
+    }
+    return { sent, total: admins.length };
+  }
+
   /** Notify agent */
   async notifyAgent(
     userId: string,

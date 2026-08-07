@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { CreateOrderDto, UpdateOrderDto, OrderItemDto } from './dto/order.dto';
 import { OrderStatus, OrderSource, VisitStatus, OrderPaymentStatus, PaymentStatus } from '../common/enums';
@@ -62,6 +62,7 @@ export class OrdersService {
 
     if (source === OrderSource.CLIENT) {
       this.notifyAgentClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
+      this.notifyManagersClientOrder(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
     } else {
       this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
     }
@@ -85,6 +86,35 @@ export class OrdersService {
       PushI18n.clientOrderBody(lang, name, amount),
       NotificationType.ORDER,
       { orderId, type: 'client_order' },
+    );
+  }
+
+  private async notifyManagersClientOrder(
+    distributorId: string,
+    clientId: string,
+    totalAmount: number,
+    orderId: string,
+    opts?: { stale?: boolean; hoursWaiting?: number },
+  ) {
+    const profile = await this.profileRepo.findOne({
+      where: { id: distributorId },
+      relations: ['user'],
+    });
+    const agentName =
+      profile?.user?.fullName?.trim() ||
+      profile?.user?.username?.trim() ||
+      profile?.companyName?.trim() ||
+      'Agent';
+    const client = await this.clientRepo.findOne({ where: { id: clientId } });
+    await this.notifications.notifyAdminsClientOrder(
+      agentName,
+      totalAmount,
+      client?.name ?? client?.fullName ?? undefined,
+      {
+        orderId,
+        stale: opts?.stale,
+        hoursWaiting: opts?.hoursWaiting,
+      },
     );
   }
 
@@ -536,6 +566,114 @@ export class OrdersService {
         status: OrderStatus.PENDING,
       },
     });
+  }
+
+  /** Manager/admin: barcha agentlarga kelgan klient buyurtmalari */
+  async findClientOrdersForAdmin(opts?: {
+    companyId?: string;
+    status?: OrderStatus;
+    limit?: number;
+  }) {
+    const take = Math.min(Math.max(opts?.limit ?? 200, 1), 500);
+    const qb = this.repo
+      .createQueryBuilder('o')
+      .where('o.source = :source', { source: OrderSource.CLIENT })
+      .orderBy('o.createdAt', 'DESC')
+      .take(take);
+
+    if (opts?.status) {
+      qb.andWhere('o.status = :status', { status: opts.status });
+    }
+
+    const orders = await qb.getMany();
+    if (orders.length === 0) return [];
+
+    const clientIds = [...new Set(orders.map(o => o.clientId))];
+    const distributorIds = [...new Set(orders.map(o => o.distributorId))];
+    const [clients, profiles] = await Promise.all([
+      this.clientRepo.find({ where: { id: In(clientIds) } }),
+      this.profileRepo.find({
+        where: { id: In(distributorIds) },
+        relations: ['user'],
+      }),
+    ]);
+    const clientMap = new Map(clients.map(c => [c.id, c]));
+    const profileMap = new Map(profiles.map(p => [p.id, p]));
+    const now = Date.now();
+
+    return orders
+      .map(order => {
+        const client = clientMap.get(order.clientId);
+        const profile = profileMap.get(order.distributorId);
+        const agentCompanyId = profile?.companyId ?? client?.companyId ?? null;
+        const waitingMs = now - new Date(order.createdAt).getTime();
+        return {
+          id: order.id,
+          clientId: order.clientId,
+          distributorId: order.distributorId,
+          status: order.status,
+          source: order.source,
+          totalAmount: Number(order.totalAmount),
+          items: order.items,
+          isUrgent: !!order.isUrgent,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          waitingMinutes: Math.max(0, Math.floor(waitingMs / 60_000)),
+          stale: order.status === OrderStatus.PENDING && waitingMs >= 60 * 60 * 1000,
+          clientName: client?.name ?? 'Klient',
+          clientCode: client?.code ?? '',
+          clientAddress: client?.address ?? null,
+          clientPhone: client?.phone ?? null,
+          agentName:
+            profile?.user?.fullName?.trim() ||
+            profile?.user?.username?.trim() ||
+            profile?.companyName?.trim() ||
+            'Agent',
+          agentCompanyId,
+        };
+      })
+      .filter(o => {
+        if (!opts?.companyId) return true;
+        return o.agentCompanyId === opts.companyId;
+      });
+  }
+
+  /** 1 soatdan ortiq PENDING klient buyurtmalari — managerga push */
+  async processStaleClientOrderAlerts() {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    const stale = await this.repo.find({
+      where: {
+        source: OrderSource.CLIENT,
+        status: OrderStatus.PENDING,
+        clientOrderStaleNotifiedAt: IsNull(),
+      },
+      order: { createdAt: 'ASC' },
+      take: 50,
+    });
+
+    const due = stale.filter(o => new Date(o.createdAt).getTime() <= cutoff.getTime());
+    let notified = 0;
+    for (const order of due) {
+      const hours = Math.max(
+        1,
+        Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 3_600_000),
+      );
+      try {
+        await this.notifyManagersClientOrder(
+          order.distributorId,
+          order.clientId,
+          Number(order.totalAmount),
+          order.id,
+          { stale: true, hoursWaiting: hours },
+        );
+        order.clientOrderStaleNotifiedAt = new Date();
+        await this.repo.save(order);
+        notified++;
+      } catch {
+        /* next */
+      }
+    }
+    return { checked: due.length, notified };
   }
 
   /** Agent: pending klient buyurtmasi mahsulotlarini o'zgartirish (miqdor / qo'shish / o'chirish) */

@@ -78,6 +78,10 @@ export class Order {
   @Column({ type: 'timestamptz', nullable: true })
   deliveredAt: Date | null;
 
+  /** Managerga «1 soat agent javob bermadi» push yuborilgan vaqt */
+  @Column({ type: 'timestamptz', nullable: true })
+  clientOrderStaleNotifiedAt: Date | null;
+
   @Column({ default: false })
   isOfflineCreated: boolean;
 

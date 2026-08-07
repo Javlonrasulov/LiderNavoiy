@@ -38,6 +38,21 @@ export class OrdersController {
     );
   }
 
+  @Get('client-pending')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Manager/admin: client orders for all agents (with wait times)' })
+  findClientOrdersAdmin(
+    @Query('status') status?: OrderStatus,
+    @Query('companyId') companyId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.findClientOrdersForAdmin({
+      status: status || OrderStatus.PENDING,
+      companyId: companyId || undefined,
+      limit: limit ? Number(limit) : 200,
+    });
+  }
+
   @Get('delivery')
   @ApiOperation({ summary: 'List orders assigned to delivery person (Tovar yuklash)' })
   findDeliveryOrders(@Request() req: { user: User }) {

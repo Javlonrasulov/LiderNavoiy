@@ -12,10 +12,11 @@ import AddClientScreen from './screens/AddClientScreen'
 import ProductsScreen from './screens/ProductsScreen'
 import PlanScreen from './screens/PlanScreen'
 import ProfileScreen from './screens/ProfileScreen'
+import ClientOrdersScreen from './screens/ClientOrdersScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
 
 type Phase = 'splash' | 'login' | 'app'
-type Overlay = 'addClient' | 'products' | null
+type Overlay = 'addClient' | 'products' | 'clientOrders' | null
 
 function loadDark(): boolean {
   const v = localStorage.getItem('lm-dark')
@@ -75,6 +76,7 @@ export default function App() {
     else if (screen === 'home') { setActiveTab('home'); setOverlay(null) }
     else if (screen === 'products') setOverlay('products')
     else if (screen === 'addClient') setOverlay('addClient')
+    else if (screen === 'clientOrders') setOverlay('clientOrders')
   }
 
   return (
@@ -161,6 +163,15 @@ export default function App() {
 
           {overlay === 'products' && (
             <ProductsScreen
+              dark={dark}
+              lang={lang}
+              tr={tr}
+              onBack={() => setOverlay(null)}
+            />
+          )}
+
+          {overlay === 'clientOrders' && (
+            <ClientOrdersScreen
               dark={dark}
               lang={lang}
               tr={tr}

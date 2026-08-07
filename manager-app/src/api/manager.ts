@@ -42,3 +42,37 @@ export function fetchPlans(year?: number, month?: number) {
 export function fetchCompanies() {
   return api<{ id: string; name: string }[]>('companies')
 }
+
+export type ClientOrderRow = {
+  id: string
+  clientId: string
+  distributorId: string
+  status: string
+  source: string
+  totalAmount: number
+  items: {
+    productId: string
+    productName: string
+    quantity: number
+    price: number
+    unit?: string
+  }[]
+  isUrgent?: boolean
+  createdAt: string
+  updatedAt: string
+  waitingMinutes: number
+  stale: boolean
+  clientName: string
+  clientCode?: string
+  clientAddress?: string | null
+  clientPhone?: string | null
+  agentName: string
+  agentCompanyId?: string | null
+}
+
+/** Manager: agentlarga kelgan pending klient buyurtmalari */
+export function fetchClientOrders(status: string = 'pending') {
+  const q = `?status=${encodeURIComponent(status)}`
+  return api<ClientOrderRow[]>(`orders/client-pending${q}`)
+}
+

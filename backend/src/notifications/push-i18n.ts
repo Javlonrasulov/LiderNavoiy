@@ -124,6 +124,53 @@ export const PushI18n = {
     });
   },
 
+  /** Manager: mijoz agentga yangi buyurtma yubordi */
+  adminClientOrderTitle(lang: PushLang, agent: string): string {
+    return pick(lang, {
+      uz: `Yangi buyurtma — ${agent} ga`,
+      uz_cyr: `Янги буюртма — ${agent} га`,
+      ru: `Новый заказ для ${agent}`,
+      en: `New client order for ${agent}`,
+    });
+  },
+
+  adminClientOrderBody(
+    lang: PushLang,
+    agent: string,
+    client: string,
+    sum: string,
+  ): string {
+    return pick(lang, {
+      uz: `Mijozdan yangi buyurtma bor — ${agent} ga kelgan · ${client} · ${sum} so'm`,
+      uz_cyr: `Мижоздан янги буюртма бор — ${agent} га келган · ${client} · ${sum} сўм`,
+      ru: `Новый заказ от клиента для ${agent} · ${client} · ${sum} сум`,
+      en: `New client order for ${agent} · ${client} · ${sum} so'm`,
+    });
+  },
+
+  adminClientOrderStaleTitle(lang: PushLang, agent: string): string {
+    return pick(lang, {
+      uz: `Diqqat: ${agent} javob bermadi`,
+      uz_cyr: `Диққат: ${agent} жавоб бермади`,
+      ru: `Внимание: ${agent} не ответил`,
+      en: `Alert: ${agent} inactive`,
+    });
+  },
+
+  adminClientOrderStaleBody(
+    lang: PushLang,
+    agent: string,
+    client: string,
+    hours: number,
+  ): string {
+    return pick(lang, {
+      uz: `${agent}: ${client} buyurtmasiga ${hours} soatdan beri javob yo'q`,
+      uz_cyr: `${agent}: ${client} буюртмасига ${hours} соатдан бери жавоб йўқ`,
+      ru: `${agent}: нет ответа на заказ ${client} уже ${hours} ч`,
+      en: `${agent}: no action on ${client} order for ${hours}h`,
+    });
+  },
+
   adminNewOrderTitle(lang: PushLang, agent: string): string {
     return pick(lang, {
       uz: `Yangi buyurtma — ${agent}`,

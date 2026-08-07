@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingUp, Truck, Users, Wallet } from '../icons'
+import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, Users, Wallet } from '../icons'
 import { fetchAdminDashboard, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
 import type { AdminDashboard, AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
-import { formatMoney, formatPct, theme } from '../theme'
+import { formatMoney, formatPct, formatTrend, theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
 import EmployeeMap from '../components/EmployeeMap'
 import RefreshResultCard from '../components/RefreshResultCard'
@@ -108,6 +108,13 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   }, [])
 
   const kpi = data?.kpi
+  const sales = kpi?.sales ?? 0
+  const plan = kpi?.plan ?? 0
+  /** Kartadagi savdo ÷ reja — har doim oylik raqamlar bilan mos */
+  const planPctLive = plan > 0 ? Math.round((sales / plan) * 100) : 0
+  /** O‘tgan oyga nisbatan oylik savdo o‘zgarishi (backend) */
+  const salesTrend = kpi?.salesTrend ?? 0
+  const trendUp = salesTrend >= 0
   const period = data?.period
   const monthLabel = (() => {
     const y = period?.year ?? new Date().getFullYear()
@@ -120,7 +127,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const actions = [
     { icon: Users, label: tr.staffNav, color: '#6C5CE7', screen: 'staff' },
     { icon: Package, label: tr.productsNav, color: '#E6963C', screen: 'products' },
-    { icon: Truck, label: tr.clientsNav, color: '#00C853', screen: 'clients' },
+    { icon: Truck, label: tr.clientOrdersTitle, color: '#00C853', screen: 'clientOrders' },
     { icon: Plus, label: tr.addClient, color: '#7C4DFF', screen: 'addClient' },
   ]
 
@@ -190,20 +197,33 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
                   {tr.todayOverview} · {monthLabel}
                 </span>
               </div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 99, background: 'rgba(255,255,255,0.15)' }}>
-                <TrendingUp size={12} color="white" />
-                <span style={{ color: 'white', fontSize: 11, fontWeight: 800 }}>{formatPct(kpi?.planPct ?? 0)}</span>
+              <div
+                title={`${tr.planPct}: ${formatPct(planPctLive)}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  background: 'transparent', padding: 0,
+                }}
+              >
+                {trendUp
+                  ? <TrendingUp size={12} color="white" />
+                  : <TrendingDown size={12} color="white" />}
+                <span style={{ color: 'white', fontSize: 11, fontWeight: 800 }}>
+                  {showLoadingValues ? '—' : formatTrend(salesTrend)}
+                </span>
               </div>
             </div>
             <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{tr.sales}</p>
-            <h2 style={{ color: 'white', fontSize: 28, fontWeight: 900, letterSpacing: '-0.5px', marginBottom: 16 }}>
-              {showLoadingValues ? '—' : formatMoney(kpi?.sales ?? 0, lang)}
+            <h2 style={{ color: 'white', fontSize: 28, fontWeight: 900, letterSpacing: '-0.5px', marginBottom: 6 }}>
+              {showLoadingValues ? '—' : formatMoney(sales, lang)}
             </h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 14 }}>
+              {tr.planPct}: {showLoadingValues ? '—' : formatPct(planPctLive)}
+            </p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
               {[
                 { label: tr.payments, value: formatMoney(kpi?.payments ?? 0, lang) },
                 { label: tr.debt, value: formatMoney(kpi?.debt ?? 0, lang) },
-                { label: tr.plan, value: formatMoney(kpi?.plan ?? 0, lang) },
+                { label: tr.plan, value: formatMoney(plan, lang) },
               ].map(item => (
                 <div key={item.label} style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: '10px 10px' }}>
                   <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', fontWeight: 600, marginBottom: 4 }}>{item.label}</p>

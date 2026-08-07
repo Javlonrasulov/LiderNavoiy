@@ -8,21 +8,38 @@ import type { Translations } from '../i18n'
 
 const NAVOIY: [number, number] = [40.0843, 65.3791]
 
-function makeMarkerIcon(role: 'agent' | 'delivery', online: boolean) {
+function shortName(name: string): string {
+  const first = name.trim().split(/\s+/)[0] || name
+  return first.length > 10 ? `${first.slice(0, 9)}…` : first
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function makeMarkerIcon(role: 'agent' | 'delivery', online: boolean, name: string) {
   const bg = role === 'agent'
     ? (online ? '#6366f1' : '#6b7280')
     : (online ? '#10b981' : '#6b7280')
   const border = role === 'agent'
     ? (online ? '#a5b4fc' : '#9ca3af')
     : (online ? '#6ee7b7' : '#9ca3af')
+  const label = escapeHtml(shortName(name))
   return L.divIcon({
     className: '',
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -18],
-    html: `<div style="width:30px;height:30px;border-radius:50%;background:${bg};border:2.5px solid ${border};box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;position:relative;">
-      ${role === 'delivery' ? '🚚' : '👤'}
-      ${online ? '<span style="position:absolute;bottom:0;right:0;width:8px;height:8px;background:#22c55e;border-radius:50%;border:2px solid #fff;"></span>' : ''}
+    iconSize: [72, 44],
+    iconAnchor: [36, 40],
+    popupAnchor: [0, -40],
+    html: `<div style="display:flex;flex-direction:column;align-items:center;width:72px;pointer-events:none;">
+      <div style="max-width:70px;padding:1px 5px;border-radius:6px;background:rgba(15,15,25,0.82);color:#fff;font-size:9px;font-weight:700;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;box-shadow:0 1px 4px rgba(0,0,0,.35);">${label}</div>
+      <div style="width:28px;height:28px;border-radius:50%;background:${bg};border:2.5px solid ${border};box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;position:relative;">
+        ${role === 'delivery' ? '🚚' : '👤'}
+        ${online ? '<span style="position:absolute;bottom:0;right:0;width:8px;height:8px;background:#22c55e;border-radius:50%;border:2px solid #fff;"></span>' : ''}
+      </div>
     </div>`,
   })
 }
@@ -70,7 +87,7 @@ export default function LiveLeafletMap({
       maxBounds: [[36.5, 54.5], [46.2, 74.0]],
       maxBoundsViscosity: 0.8,
     })
-    switchTileLayer(map, tileRef, activeLayer, dark)
+    switchTileLayer(map, tileRef, activeLayer, false)
     mapRef.current = map
 
     const lockCamera = () => { cameraReadyRef.current = true }
@@ -95,8 +112,9 @@ export default function LiveLeafletMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    switchTileLayer(map, tileRef, activeLayer, dark)
-  }, [activeLayer, dark])
+    // Dark tema xarita tilelariga ta'sir qilmasin
+    switchTileLayer(map, tileRef, activeLayer, false)
+  }, [activeLayer])
 
   useEffect(() => {
     const map = mapRef.current
@@ -145,12 +163,12 @@ export default function LiveLeafletMap({
         if (Math.abs(cur.lat - lat) > 1e-7 || Math.abs(cur.lng - lng) > 1e-7) {
           existing.setLatLng([lat, lng])
         }
-        existing.setIcon(makeMarkerIcon(emp.role, emp.online))
+        existing.setIcon(makeMarkerIcon(emp.role, emp.online, emp.name))
         existing.setPopupContent(popupHtml)
         return
       }
 
-      const marker = L.marker([lat, lng], { icon: makeMarkerIcon(emp.role, emp.online) })
+      const marker = L.marker([lat, lng], { icon: makeMarkerIcon(emp.role, emp.online, emp.name) })
       marker.bindPopup(popupHtml, { closeButton: false })
       marker.addTo(map)
       markersRef.current.set(key, marker)

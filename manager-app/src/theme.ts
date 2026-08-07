@@ -25,3 +25,11 @@ export function formatMoney(n: number, lang: string): string {
 export function formatPct(n: number): string {
   return `${Math.round(Number(n) || 0)}%`
 }
+
+/** Oylik trend: +8% / −3% / 0% */
+export function formatTrend(n: number | undefined | null): string {
+  const v = Math.round((Number(n) || 0) * 10) / 10
+  if (v > 0) return `+${v % 1 === 0 ? Math.round(v) : v}%`
+  if (v < 0) return `−${Math.abs(v % 1 === 0 ? Math.round(v) : v)}%`
+  return '0%'
+}

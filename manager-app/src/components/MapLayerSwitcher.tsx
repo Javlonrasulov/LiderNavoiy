@@ -1,14 +1,13 @@
 import type { MutableRefObject } from 'react'
 import L from 'leaflet'
 
-export type LayerId = 'standard' | 'satellite' | 'humanitarian' | 'topographic'
+export type LayerId = 'standard' | 'satellite'
 
 type LayerDef = {
   id: LayerId
   label: string
   url: string
   options: L.TileLayerOptions
-  darkInvert?: boolean
 }
 
 const LAYERS: LayerDef[] = [
@@ -17,19 +16,6 @@ const LAYERS: LayerDef[] = [
     label: 'OSM',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: { maxZoom: 19, subdomains: ['a', 'b', 'c'], attribution: '&copy; OpenStreetMap' },
-    darkInvert: true,
-  },
-  {
-    id: 'humanitarian',
-    label: 'HOT',
-    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    options: { maxZoom: 20, subdomains: ['a', 'b', 'c'], attribution: '&copy; HOT & OSM' },
-  },
-  {
-    id: 'topographic',
-    label: 'Topo',
-    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-    options: { maxZoom: 17, subdomains: ['a', 'b', 'c'], attribution: '&copy; OpenTopoMap' },
   },
   {
     id: 'satellite',
@@ -43,17 +29,13 @@ export function switchTileLayer(
   map: L.Map,
   tileLayerRef: MutableRefObject<L.TileLayer | null>,
   layerId: LayerId,
-  darkFilter?: boolean,
+  _darkFilter?: boolean,
 ) {
   if (tileLayerRef.current) map.removeLayer(tileLayerRef.current)
   const def = LAYERS.find(l => l.id === layerId) ?? LAYERS[0]
   tileLayerRef.current = L.tileLayer(def.url, def.options).addTo(map)
   const pane = map.getPane('tilePane')
-  if (pane) {
-    pane.style.filter = darkFilter && def.darkInvert
-      ? 'invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.7)'
-      : 'none'
-  }
+  if (pane) pane.style.filter = 'none'
 }
 
 interface Props {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
+import { ClientOrderStaleCron } from './client-order-stale.cron';
 import { Order } from './entities/order.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VisitsModule } from '../visits/visits.module';
@@ -21,7 +22,7 @@ import { OrderPayment } from '../payments/entities/order-payment.entity';
     TrackingModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, ClientOrderStaleCron],
   exports: [OrdersService],
 })
 export class OrdersModule {}

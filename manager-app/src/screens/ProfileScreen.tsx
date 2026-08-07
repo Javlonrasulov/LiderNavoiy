@@ -1,8 +1,13 @@
-import { Globe, LogOut, Moon, Shield, User } from '../icons'
+import { useState, type CSSProperties, type ReactNode } from 'react'
+import { ApiError } from '../api/client'
+import { changePassword } from '../api/auth'
 import type { AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
+import {
+  ChevronRight, Eye, EyeOff, Globe, Lock, LogOut, Moon, Shield, User, X,
+} from '../icons'
 
 interface Props {
   dark: boolean
@@ -16,6 +21,7 @@ interface Props {
 
 export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onChangeLang, onLogout }: Props) {
   const c = theme(dark)
+  const [pwOpen, setPwOpen] = useState(false)
 
   return (
     <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(100px + var(--safe-bottom))' }} className="no-scrollbar">
@@ -55,7 +61,25 @@ export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onCh
 
         <Section title={tr.account} card={c.card} border={c.border} text={c.text}>
           <Row icon={User} label={tr.fullName} sub={user?.fullName || '—'} muted={c.muted} mutedText={c.mutedText} text={c.text} />
+          <div style={{ height: 1, background: c.border, margin: '0 16px' }} />
           <Row icon={Shield} label={tr.role} sub={user?.role || '—'} muted={c.muted} mutedText={c.mutedText} text={c.text} />
+          <div style={{ height: 1, background: c.border, margin: '0 16px' }} />
+          <button
+            type="button"
+            onClick={() => setPwOpen(true)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+              background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+            }}
+          >
+            <div style={{ width: 40, height: 40, borderRadius: 13, background: c.muted, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Lock size={18} color="#6C5CE7" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{tr.changePassword}</p>
+            </div>
+            <ChevronRight size={18} color={c.mutedText} />
+          </button>
         </Section>
 
         <Section title={tr.preferences} card={c.card} border={c.border} text={c.text}>
@@ -99,12 +123,207 @@ export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onCh
           {tr.logout}
         </button>
       </div>
+
+      {pwOpen && (
+        <ChangePasswordModal
+          dark={dark}
+          tr={tr}
+          onClose={() => setPwOpen(false)}
+          onSuccess={onLogout}
+        />
+      )}
+    </div>
+  )
+}
+
+function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
+  dark: boolean; tr: Translations; onClose: () => void; onSuccess: () => void
+}) {
+  const c = theme(dark)
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNext, setShowNext] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+
+  const fieldStyle: CSSProperties = {
+    width: '100%', height: 48, borderRadius: 14, border: `1px solid ${c.border}`,
+    background: c.muted, color: c.text, padding: '0 14px', fontSize: 15, outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  async function submit() {
+    setError('')
+    if (!current || !next || !confirm) return
+    if (next.length < 6) {
+      setError(tr.passwordTooShort)
+      return
+    }
+    if (next !== confirm) {
+      setError(tr.passwordMismatch)
+      return
+    }
+    setLoading(true)
+    try {
+      await changePassword(current, next)
+      setDone(true)
+      setTimeout(() => {
+        onClose()
+        onSuccess()
+      }, 1000)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        setError(tr.wrongCurrentPassword)
+      } else {
+        setError(e instanceof Error ? e.message : tr.loginError)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(8,8,18,0.55)',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 480,
+          background: c.card,
+          borderRadius: '28px 28px 0 0',
+          padding: '20px 20px calc(20px + var(--safe-bottom))',
+          boxShadow: '0 -12px 40px rgba(0,0,0,0.25)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 18 }}>
+          <h2 style={{ flex: 1, fontSize: 18, fontWeight: 800, color: c.text, margin: 0 }}>{tr.changePassword}</h2>
+          <button type="button" onClick={onClose} style={{
+            width: 36, height: 36, borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: c.muted, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <X size={18} color={c.mutedText} />
+          </button>
+        </div>
+
+        {done ? (
+          <div style={{
+            padding: '28px 16px', textAlign: 'center',
+            color: c.green, fontWeight: 800, fontSize: 16,
+          }}>
+            {tr.passwordChanged}
+          </div>
+        ) : (
+          <>
+            <PwField
+              label={tr.currentPassword}
+              value={current}
+              onChange={setCurrent}
+              show={showCurrent}
+              onToggle={() => setShowCurrent(v => !v)}
+              fieldStyle={fieldStyle}
+              mutedText={c.mutedText}
+            />
+            <PwField
+              label={tr.newPassword}
+              value={next}
+              onChange={setNext}
+              show={showNext}
+              onToggle={() => setShowNext(v => !v)}
+              fieldStyle={fieldStyle}
+              mutedText={c.mutedText}
+            />
+            <PwField
+              label={tr.confirmPassword}
+              value={confirm}
+              onChange={setConfirm}
+              show={showNext}
+              onToggle={() => setShowNext(v => !v)}
+              fieldStyle={fieldStyle}
+              mutedText={c.mutedText}
+              onEnter={submit}
+            />
+
+            {error && (
+              <div style={{
+                marginBottom: 14, padding: '12px 14px', borderRadius: 14,
+                background: 'rgba(244,67,54,0.12)', color: c.red, fontSize: 13, fontWeight: 600,
+                textAlign: 'center',
+              }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={onClose} style={{
+                flex: 1, height: 50, borderRadius: 14, border: `1px solid ${c.border}`,
+                background: c.muted, color: c.text, fontWeight: 700, fontSize: 14, cursor: 'pointer',
+              }}>
+                {tr.cancel}
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={loading}
+                onClick={submit}
+                style={{
+                  flex: 1.4, height: 50, borderRadius: 14, border: 'none', cursor: loading ? 'wait' : 'pointer',
+                  background: 'linear-gradient(135deg, #6C5CE7 0%, #9B59B6 100%)',
+                  color: 'white', fontWeight: 800, fontSize: 14, opacity: loading ? 0.7 : 1,
+                }}
+              >
+                {loading ? tr.loading : tr.save}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PwField({ label, value, onChange, show, onToggle, fieldStyle, mutedText, onEnter }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  show: boolean
+  onToggle: () => void
+  fieldStyle: CSSProperties
+  mutedText: string
+  onEnter?: () => void
+}) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: mutedText, marginBottom: 8 }}>{label}</label>
+      <div style={{ position: 'relative' }}>
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && onEnter?.()}
+          autoCapitalize="none"
+          autoCorrect="off"
+          style={{ ...fieldStyle, paddingRight: 48 }}
+        />
+        <button type="button" onClick={onToggle}
+          style={{ position: 'absolute', right: 12, top: 12, background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+          {show ? <EyeOff size={18} color={mutedText} /> : <Eye size={18} color={mutedText} />}
+        </button>
+      </div>
     </div>
   )
 }
 
 function Section({ title, children, card, border, text }: {
-  title: string; children: React.ReactNode; card: string; border: string; text: string
+  title: string; children: ReactNode; card: string; border: string; text: string
 }) {
   return (
     <div>

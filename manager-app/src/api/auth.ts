@@ -27,6 +27,13 @@ export async function logout() {
   clearSession()
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api('auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+}
+
 export function isManagerRole(user: AuthUser | null | undefined): boolean {
   return user?.role === 'admin' || user?.role === 'manager'
 }
