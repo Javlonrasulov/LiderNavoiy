@@ -480,7 +480,7 @@ export class DashboardService {
       };
     });
 
-    // Barcha faol agent/dostavchilar — GPS bo'lsa xaritada (online + offline)
+    // Barcha faol agent/dostavchilar — GPS bo'lmasa ham xaritada (kompaniya markazi)
     const locQb = this.profileRepo
       .createQueryBuilder('d')
       .innerJoinAndSelect('d.user', 'u')
@@ -540,26 +540,53 @@ export class DashboardService {
       }
     }
 
+    /** Kompaniya markazi — GPS yo'q xodimlar uchun (Navoiy default) */
+    const COMPANY_FALLBACK: Record<string, [number, number]> = {
+      boran: [40.1025, 65.379],
+      zarafshon: [41.5686, 64.2038],
+      mipter: [40.1025, 65.379],
+      navruz: [39.7747, 64.4286],
+      sarbon: [39.627, 66.975],
+      atlas: [40.3864, 71.7864],
+      sherin: [40.1025, 65.379],
+    };
+    const DEFAULT_HQ: [number, number] = [40.0843, 65.3791];
+
     const now = Date.now();
-    const employeeLocations = profiles.map(d => {
+    const employeeLocations = profiles.map((d, index) => {
       const live = liveMap.get(d.id);
-      const lat = live?.latitude ?? (d.lastLatitude != null ? Number(d.lastLatitude) : NaN);
-      const lng = live?.longitude ?? (d.lastLongitude != null ? Number(d.lastLongitude) : NaN);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
-      if (lat === 0 && lng === 0) return null;
-      // Okean / Null Island / emulator — xaritaga chiqarmaslik
-      if (lat < 37.0 || lat > 45.8 || lng < 55.0 || lng > 73.5) return null;
+      let lat = live?.latitude ?? (d.lastLatitude != null ? Number(d.lastLatitude) : NaN);
+      let lng = live?.longitude ?? (d.lastLongitude != null ? Number(d.lastLongitude) : NaN);
+      let hasRealGps = true;
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        (lat === 0 && lng === 0) ||
+        Math.abs(lat) > 90 ||
+        Math.abs(lng) > 180 ||
+        lat < 37.0 ||
+        lat > 45.8 ||
+        lng < 55.0 ||
+        lng > 73.5
+      ) {
+        // GPS yo'q — tashkilot markaziga joylashtirish (offlayn pin)
+        const hq = (d.companyId && COMPANY_FALLBACK[d.companyId]) || DEFAULT_HQ;
+        const jitter = ((index % 9) - 4) * 0.0012;
+        lat = hq[0] + jitter * 0.4;
+        lng = hq[1] + jitter;
+        hasRealGps = false;
+      }
 
       const lastAt = live?.recordedAt
         ? new Date(live.recordedAt)
         : d.lastLocationAt;
       const ageMs = lastAt != null ? now - lastAt.getTime() : Number.POSITIVE_INFINITY;
-      // Sticky DB isOnline ISHLATILMAYDI — yangi GPS yoki Redis online
-      const online =
+      const online = hasRealGps && (
         ageMs <= LOCATION_ONLINE_MAX_AGE_MS
         || onlineIds.has(d.id)
-        || liveMap.has(d.id);
+        || liveMap.has(d.id)
+      );
 
       const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
       return {
@@ -568,12 +595,12 @@ export class DashboardService {
         avatar: initials(name),
         role: detectRole(d.position ?? d.user?.position),
         online,
-        lastSeen: formatLastSeen(lastAt),
+        lastSeen: hasRealGps ? formatLastSeen(lastAt) : 'GPS yo\'q',
         lat,
         lng,
         orgId: d.companyId ?? '',
       };
-    }).filter((e): e is NonNullable<typeof e> => e != null);
+    });
 
     return {
       period: {

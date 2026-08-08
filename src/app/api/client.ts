@@ -106,6 +106,7 @@ export interface Distributor {
   user?: {
     fullName: string;
     username: string;
+    role?: string;
     isActive?: boolean;
     lastLoginAt?: string | null;
   };
@@ -445,7 +446,9 @@ async function request<T>(
     throw new Error(text ? `HTTP ${res.status}: ${text}` : `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const raw = await res.text();
+  if (!raw.trim()) return undefined as T;
+  return JSON.parse(raw) as T;
 }
 
 // ─── Auth ───

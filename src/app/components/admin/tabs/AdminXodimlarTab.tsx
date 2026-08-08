@@ -165,7 +165,10 @@ export function AdminXodimlarTab({
 
       {/* Sub-tab content */}
       {subTab === 'users' && (
-        <AdminUsersTab D={D} t={t} card={card} divider={divider} sub={sub} />
+        <AdminUsersTab
+          D={D} t={t} card={card} divider={divider} sub={sub}
+          selectedCompanyIds={selectedCompanyIds}
+        />
       )}
       {subTab === 'departments' && (
         <AdminDepartmentsTab D={D} t={t} />

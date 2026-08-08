@@ -291,9 +291,16 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     const companyIds = selectedCompanyIds;
     return apiUsers
       .filter(u => {
-        const d = distByUserId.get(u.id);
-        if (companyIds.size > 0 && d?.companyId && !companyIds.has(d.companyId)) return false;
-        return true;
+        if (companyIds.size === 0) return true;
+        const userCompanyIds = [
+          ...(u.companyIds ?? []),
+          u.companyId,
+          distByUserId.get(u.id)?.companyId,
+        ]
+          .map(id => id?.trim())
+          .filter((id): id is string => !!id);
+        if (userCompanyIds.length === 0) return false;
+        return userCompanyIds.some(id => companyIds.has(id));
       })
       .map((u, i) => {
         const row = appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t);
@@ -424,8 +431,10 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
   const confirmDelete = async () => {
     if (!deleteRow?.backendUserId) return;
+    const id = deleteRow.backendUserId;
     try {
-      await api.deactivateAppUser(deleteRow.backendUserId);
+      await api.deactivateAppUser(id);
+      setApiUsers(prev => prev.filter(u => u.id !== id));
       await refreshEmployees();
     } catch {
       /* keep list unchanged */
@@ -559,7 +568,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                   style={inputStyle}
                   value={addLogin}
                   onChange={e => setAddLogin(e.target.value)}
-                  placeholder={t.empAppLoginPh || 'javlon'}
+                  placeholder={t.empAppLoginPh || 'login'}
                   autoComplete="off"
                 />
               </div>
@@ -598,7 +607,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                   style={inputStyle}
                   value={draft.username || ''}
                   onChange={e => onChangeDraft({ ...draft, username: e.target.value })}
-                  placeholder={t.empAppLoginPh || 'javlon'}
+                  placeholder={t.empAppLoginPh || 'login'}
                   autoComplete="off"
                 />
               </div>

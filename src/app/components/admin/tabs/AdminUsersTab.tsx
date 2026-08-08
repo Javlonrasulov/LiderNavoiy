@@ -25,6 +25,7 @@ interface Props {
   card: string;
   divider: string;
   sub: string;
+  selectedCompanyIds?: Set<string>;
 }
 
 type UserRow = AppUserListRow;
@@ -272,7 +273,7 @@ function MobileUserCard({ u, D, isSelected, onSelect, t }: {
 }
 
 /* ═══════════════════════ MAIN ═══════════════════════ */
-export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
+export function AdminUsersTab({ D, t, card, divider, sub, selectedCompanyIds }: Props) {
   const { companies } = useCompanies();
   const [isMobile, setIsMobile] = useState<boolean>(
     () => typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -399,6 +400,17 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
   const green  = D ? '#22c55e' : '#16a34a';
 
   const filtered = users.filter(u => {
+    if (selectedCompanyIds && selectedCompanyIds.size > 0) {
+      const userCompanyIds = [
+        ...(u.companyIds ?? []),
+        u.companyId,
+      ]
+        .map(id => id?.trim())
+        .filter((id): id is string => !!id);
+      if (userCompanyIds.length === 0) return false;
+      const matchesSelected = userCompanyIds.some(id => selectedCompanyIds.has(id));
+      if (!matchesSelected) return false;
+    }
     const q = search.trim().toLowerCase();
     return !q
       || u.name.toLowerCase().includes(q)

@@ -474,7 +474,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldWarehouse', 'Ombor:')}</span>
         <SelectInline value={form.ombor} onChange={v => upd('ombor', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
           options={OMBOR_LIST} D={D} border={border} txt={txt} muted={muted} />
-        <LookupBtn D={D} border={border} muted={muted} />
         <ClearBtn show={!!form.ombor} onClear={() => upd('ombor', '')} muted={muted} />
       </div>
 
@@ -483,7 +482,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldSchedule', 'Grafik turi:')}</span>
         <SelectInline value={form.grafik} onChange={v => upd('grafik', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
           options={grafikOptions} D={D} border={border} txt={txt} muted={muted} />
-        <LookupBtn D={D} border={border} muted={muted} />
       </div>
     </div>
   );

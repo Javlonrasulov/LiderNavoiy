@@ -68,20 +68,44 @@ function formatEmpLastSeen(iso?: string | null): string {
   return formatDisplayDateTime(iso);
 }
 
-function distributorToMarker(d: Distributor): EmployeeMarker | null {
-  const lat = d.lastLatitude != null ? Number(d.lastLatitude) : NaN;
-  const lng = d.lastLongitude != null ? Number(d.lastLongitude) : NaN;
-  if (!isInServiceArea(lat, lng)) return null;
+const NAVOIY_HQ: [number, number] = [40.0843, 65.3791];
+
+function companyHq(companyId?: string | null): [number, number] {
+  const c = companyId ? ORG_CITIES[companyId] : null;
+  if (c?.center && isInServiceArea(c.center[0], c.center[1])) {
+    return c.center as [number, number];
+  }
+  return NAVOIY_HQ;
+}
+
+/** GPS yo'q xodimlarni bir nuqtada yopishmasligi uchun kichik offset */
+function offsetHq(hq: [number, number], index: number): [number, number] {
+  const jitter = ((index % 9) - 4) * 0.0012;
+  return [hq[0] + jitter * 0.4, hq[1] + jitter];
+}
+
+function distributorToMarker(d: Distributor, index = 0): EmployeeMarker | null {
+  // Menejerlar maydon xaritasiga chiqmasin
+  const roleName = (d.user?.role ?? '').toLowerCase();
+  if (roleName === 'manager' || roleName === 'admin') return null;
+
+  let lat = d.lastLatitude != null ? Number(d.lastLatitude) : NaN;
+  let lng = d.lastLongitude != null ? Number(d.lastLongitude) : NaN;
+  let hasGps = isInServiceArea(lat, lng);
+  if (!hasGps) {
+    const hq = offsetHq(companyHq(d.companyId), index);
+    lat = hq[0];
+    lng = hq[1];
+  }
   const name = d.user?.fullName ?? d.user?.username ?? d.companyName ?? 'Agent';
-  // API applyLiveGps isOnline + lastLocationAt — ikkalasini ham hisobga olamiz
-  const fresh = !!d.isOnline || isGpsLiveOnline(d.lastLocationAt);
+  const fresh = hasGps && (!!d.isOnline || isGpsLiveOnline(d.lastLocationAt));
   return {
     id: clientIdHash(d.id),
     name,
     avatar: initialsOf(name),
     role: detectEmpRole(d.position),
     online: fresh,
-    lastSeen: formatEmpLastSeen(d.lastLocationAt),
+    lastSeen: hasGps ? formatEmpLastSeen(d.lastLocationAt) : 'GPS yo\'q',
     lat,
     lng,
     orgId: d.companyId ?? '',
@@ -473,20 +497,29 @@ export default function AdminPanel() {
     const byDist = new Map<string, EmployeeMarker>();
     const now = Date.now();
 
-    // 1) Distributors API — asosiy manba (online + offline)
-    for (const d of mapDistributors) {
-      const m = distributorToMarker(d);
+    // 1) Distributors API — barcha agent/dostavchi (GPS yo'q bo'lsa ham)
+    mapDistributors.forEach((d, index) => {
+      const m = distributorToMarker(d, index);
       if (m?.distributorId) byDist.set(m.distributorId, m);
-    }
+    });
 
-    // 2) Dashboard employeeLocations — faqat yangiroq bo‘lsa coords; online pastga tushmaydi
+    // 2) Dashboard employeeLocations — qo'shimcha / yangiroq
     if (dashData?.employeeLocations) {
-      for (const e of dashData.employeeLocations) {
-        if (!isInServiceArea(e.lat, e.lng)) continue;
+      dashData.employeeLocations.forEach((e, index) => {
+        if (!Number.isFinite(e.lat) || !Number.isFinite(e.lng)) return;
         const prev = byDist.get(e.distributorId);
         const live = liveLocations[e.distributorId];
         const liveFresh = !!live && live.online && (now - live.at) < 300_000
           && isInServiceArea(live.lat, live.lng);
+        const dashHasGps = e.lastSeen !== 'GPS yo\'q' && isInServiceArea(e.lat, e.lng);
+        const prevHasGps = !!prev && prev.lastSeen !== 'GPS yo\'q' && isInServiceArea(prev.lat, prev.lng);
+        let lat = e.lat;
+        let lng = e.lng;
+        if (!isInServiceArea(lat, lng)) {
+          const hq = offsetHq(companyHq(e.orgId), index);
+          lat = hq[0];
+          lng = hq[1];
+        }
         byDist.set(e.distributorId, {
           id: clientIdHash(e.distributorId),
           name: e.name || prev?.name || 'Agent',
@@ -495,16 +528,16 @@ export default function AdminPanel() {
           online: e.online || !!prev?.online || !!liveFresh,
           lastSeen: (e.online || liveFresh)
             ? (liveFresh ? (live.lastSeen || 'hozir') : e.lastSeen)
-            : (prev?.lastSeen || e.lastSeen),
-          lat: liveFresh ? live.lat : (prev?.lat ?? e.lat),
-          lng: liveFresh ? live.lng : (prev?.lng ?? e.lng),
+            : (prevHasGps ? prev!.lastSeen : e.lastSeen),
+          lat: liveFresh ? live.lat : (dashHasGps ? e.lat : (prevHasGps ? prev!.lat : lat)),
+          lng: liveFresh ? live.lng : (dashHasGps ? e.lng : (prevHasGps ? prev!.lng : lng)),
           orgId: e.orgId || prev?.orgId,
           distributorId: e.distributorId,
         });
-      }
+      });
     }
 
-    // 3) WebSocket jonli yangilanish — online ni kuchaytiradi, HTTP online ni o'chirmaydi
+    // 3) WebSocket jonli yangilanish
     for (const [distributorId, live] of Object.entries(liveLocations)) {
       const existing = byDist.get(distributorId);
       const hasCoords = isInServiceArea(live.lat, live.lng);
@@ -535,7 +568,9 @@ export default function AdminPanel() {
       }
     }
 
-    return [...byDist.values()].filter(e => isInServiceArea(e.lat, e.lng));
+    return [...byDist.values()].filter(e =>
+      Number.isFinite(e.lat) && Number.isFinite(e.lng) && isInServiceArea(e.lat, e.lng),
+    );
   })();
 
   const mapCenterInfo = (() => {
@@ -547,15 +582,17 @@ export default function AdminPanel() {
     const inArea = activeMapEmployees.filter(e => isInServiceArea(e.lat, e.lng));
     if (inArea.length === 0) return fallback;
 
-    const lat = inArea.reduce((s, e) => s + e.lat, 0) / inArea.length;
-    const lng = inArea.reduce((s, e) => s + e.lng, 0) / inArea.length;
+    const withGps = inArea.filter(e => e.lastSeen !== 'GPS yo\'q');
+    const focus = withGps.length > 0 ? withGps : inArea;
+    const lat = focus.reduce((s, e) => s + e.lat, 0) / focus.length;
+    const lng = focus.reduce((s, e) => s + e.lng, 0) / focus.length;
     if (!isInServiceArea(lat, lng)) return fallback;
 
     const org = !isAllView ? companies.find(c => c.id === viewOrg) : null;
     return {
       center: [lat, lng] as [number, number],
       label: org ? org.shortName : `${inArea.length} xodim`,
-      zoom: inArea.length === 1 ? 14 : 12,
+      zoom: focus.length === 1 ? 14 : 12,
     };
   })();
 
