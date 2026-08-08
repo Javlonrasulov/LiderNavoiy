@@ -843,6 +843,11 @@ object AppStrings {
         }
     }
     fun promoFree(lang: AppLanguage) = tr(lang, "tekin", "текин", "бесплатно")
+    fun promoConditionQty(lang: AppLanguage, n: String): String = when (lang) {
+        AppLanguage.UZ_LATIN -> "kamida $n ta"
+        AppLanguage.UZ_CYRILLIC -> "камида $n та"
+        AppLanguage.RUS -> "не менее $n шт."
+    }
     fun yes(lang: AppLanguage) = tr(lang, "Ha", "Ҳа", "Да")
     fun no(lang: AppLanguage) = tr(lang, "Yo‘q", "Йўқ", "Нет")
     fun visitTabAddons(lang: AppLanguage) = tr(lang, "Qo'shimchalar", "Қўшимчалар", "Дополнения")

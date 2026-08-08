@@ -2298,10 +2298,10 @@ private fun PromoBadge(promotion: ProductPromotion) {
     val label = when {
         promotion.subtitle.isNotBlank() -> promotion.subtitle
         promotion.hasReward() -> {
-            val cond = promotion.resolvedConditions().joinToString("+") {
-                "≥${it.buyQuantity.toInt()}"
-            }
-            "+${promotion.rewardQuantity.toInt()}" + if (cond.isNotBlank()) " ($cond)" else ""
+            val q = if (promotion.rewardQuantity % 1.0 == 0.0)
+                promotion.rewardQuantity.toInt().toString()
+            else promotion.rewardQuantity.toString()
+            if (promotion.rewardPrice <= 0) "+$q tekin" else "+$q"
         }
         promotion.discountPercent > 0 -> "-${promotion.discountPercent.toInt()}%"
         else -> promotion.title
@@ -2328,6 +2328,7 @@ private fun PromoRulesBanner(
     promotion: ProductPromotion,
     onDismiss: () -> Unit,
 ) {
+    val lang = LocalAppLanguage.current
     val startColor = remember(promotion.colorStart) {
         runCatching {
             Color(android.graphics.Color.parseColor(promotion.colorStart))
@@ -2340,7 +2341,9 @@ private fun PromoRulesBanner(
     }
     val rules = promotion.resolvedConditions().joinToString(", ") { c ->
         val name = c.productName.ifBlank { "…" }
-        "$name ≥ ${c.buyQuantity.toInt()}"
+        val n = if (c.buyQuantity % 1.0 == 0.0) c.buyQuantity.toInt().toString()
+        else c.buyQuantity.toString()
+        "$name: ${AppStrings.promoConditionQty(lang, n)}"
     }
     val reward = buildString {
         append(promotion.emoji)
@@ -2348,7 +2351,11 @@ private fun PromoRulesBanner(
         append(promotion.rewardProductName.ifBlank { "…" })
         append(" ×")
         append(promotion.rewardQuantity.toInt())
-        if (promotion.rewardPrice <= 0) append(" (tekin)")
+        if (promotion.rewardPrice <= 0) {
+            append(" (")
+            append(AppStrings.promoFree(lang))
+            append(")")
+        }
     }
     Row(
         modifier = Modifier

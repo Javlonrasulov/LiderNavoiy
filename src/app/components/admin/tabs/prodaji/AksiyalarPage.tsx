@@ -310,7 +310,11 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
                         {t.aksiyaProduct ?? 'Mahsulot'}:{' '}
                         <b style={{ color: txt, fontWeight: 600 }}>
                           {row.conditions && row.conditions.length > 0
-                            ? row.conditions.map((c) => `${c.productName}≥${c.buyQuantity}`).join(', ')
+                            ? row.conditions.map((c) => {
+                                const qty = (t.aksiyaConditionQty ?? 'kamida {n} ta')
+                                  .replace('{n}', String(c.buyQuantity));
+                                return `${c.productName}: ${qty}`;
+                              }).join(', ')
                             : row.productName}
                         </b>
                         {row.rewardProductName && (
@@ -384,7 +388,7 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
       {deleteConfirmId && (
         <div
           style={{
-            position: 'fixed', inset: 0, zIndex: 90,
+            position: 'fixed', inset: 0, zIndex: 10000,
             background: 'rgba(0,0,0,0.45)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', padding: 16,
           }}

@@ -112,7 +112,7 @@ export class OrdersService {
         const have = paidQty.get(c.productId) ?? 0;
         if (have < Number(c.buyQuantity)) {
           throw new BadRequestException(
-            `Aksiya sharti bajarilmagan: ${c.productName || c.productId} ≥ ${c.buyQuantity}`,
+            `Aksiya sharti bajarilmagan: ${c.productName || c.productId} kamida ${c.buyQuantity} ta`,
           );
         }
       }

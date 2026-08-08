@@ -166,26 +166,34 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const rewardQ = rewardQuantity === '' ? 0 : Number(rewardQuantity);
   const rewardP = rewardPrice === '' ? 0 : Number(rewardPrice);
 
+  const fmtConditionQty = (n: number) =>
+    (t.aksiyaConditionQty ?? 'kamida {n} ta').replace('{n}', String(n));
+
   const autoSubtitle = useMemo(() => {
     if (conditions.length === 0) return '';
     const parts = conditions
       .filter((c) => c.buyQuantity > 0)
-      .map((c) => `${c.productName || '…'}: ≥${c.buyQuantity}`);
+      .map((c) => `${c.productName || '…'}: ${fmtConditionQty(c.buyQuantity)}`);
     const gift = rewardProductName
-      ? ` → ${rewardProductName} ×${rewardQ || '?'}${rewardP === 0 ? ' (tekin)' : ` @${rewardP}`}`
+      ? ` → ${rewardProductName} ×${rewardQ || '?'}${rewardP === 0 ? ` (${t.aksiyaFreeLabel ?? 'tekin'})` : ` @${rewardP}`}`
       : '';
     return parts.join(', ') + gift;
-  }, [conditions, rewardProductName, rewardQ, rewardP]);
+  }, [conditions, rewardProductName, rewardQ, rewardP, t]);
 
   const previewSubtitle = subtitle.trim() || autoSubtitle
-    || (Number(discountPercent) > 0 ? `${discountPercent}% chegirma` : '');
+    || (Number(discountPercent) > 0
+      ? `${discountPercent}% ${t.aksiyaDiscountSuffix ?? 'chegirma'}`
+      : '');
 
   const addConditionProduct = (p: ProductOpt) => {
     if (conditions.some((c) => c.productId === p.id)) return;
+    const nextLen = conditions.length + 1;
     setConditions((prev) => [
       ...prev,
       { productId: p.id, productName: p.name, buyQuantity: 10 },
     ]);
+    // Birinchi shart tanlangach — sovg‘a tanlashga o‘tkazamiz
+    if (nextLen === 1) setPickingFor('reward');
   };
 
   const handleSave = async () => {
@@ -273,16 +281,18 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 80,
+        position: 'fixed', inset: 0, zIndex: 10000,
         background: 'rgba(0,0,0,0.45)', display: 'flex',
-        alignItems: 'center', justifyContent: 'center', padding: 16,
+        alignItems: 'flex-start', justifyContent: 'center',
+        padding: '24px 16px', overflowY: 'auto',
       }}
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 780, maxHeight: '92vh', overflow: 'auto',
+          width: '100%', maxWidth: 780, maxHeight: 'min(92vh, calc(100vh - 48px))',
+          margin: 'auto 0', overflow: 'auto',
           borderRadius: 18, border: `1px solid ${brd}`, background: card,
           boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
         }}
@@ -324,7 +334,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Yozgi chegirma"
+                placeholder={t.aksiyaTitlePlaceholder ?? 'Yozgi chegirma'}
                 style={fieldStyle}
               />
             </div>
@@ -334,7 +344,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               <input
                 value={subtitle}
                 onChange={(e) => setSubtitle(e.target.value)}
-                placeholder={autoSubtitle || 'Shartlar matni'}
+                placeholder={autoSubtitle || (t.aksiyaSubtitlePlaceholder ?? 'Shartlar matni')}
                 style={fieldStyle}
               />
             </div>
@@ -454,35 +464,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                 </div>
               )}
               <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
-                {t.aksiyaConditionsHint ?? 'Har bir mahsulot uchun minimal miqdor (≥). Barchasi bajarilganda aksiya taklif qilinadi.'}
-              </div>
-            </div>
-
-            {/* Sovg‘a */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{t.aksiyaRewardQty ?? 'Sovg‘a miqdori'}</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={rewardQuantity}
-                  onChange={(e) => setRewardQuantity(e.target.value)}
-                  placeholder="1"
-                  style={fieldStyle}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>{t.aksiyaRewardPrice ?? 'Aksiya narxi (0=tekin)'}</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={rewardPrice}
-                  onChange={(e) => setRewardPrice(e.target.value)}
-                  placeholder="0"
-                  style={fieldStyle}
-                />
+                {t.aksiyaConditionsHint ?? 'Har bir mahsulot uchun minimal miqdor. Barchasi bajarilganda aksiya taklif qilinadi.'}
               </div>
             </div>
 
@@ -579,97 +561,181 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
             </label>
           </div>
 
-          {/* Right: reward + preview */}
+          {/* Right: reward (shartlardan keyin) + preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label style={labelStyle}>
-                {t.aksiyaRewardProduct ?? 'Sovg‘a mahsulot'} *
-              </label>
-              {rewardProductId && (
-                <div
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 10px', borderRadius: 10, marginBottom: 8,
-                    background: D ? '#14532d' : '#ecfdf5', border: `1px solid ${D ? '#166534' : '#a7f3d0'}`,
-                  }}
-                >
-                  <span style={{ fontSize: 13, color: txt, fontWeight: 600 }}>{rewardProductName}</span>
-                  <button
-                    type="button"
-                    onClick={() => { setRewardProductId(null); setRewardProductName(''); }}
-                    style={{ border: 'none', background: 'transparent', color: muted, cursor: 'pointer' }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
+            {conditions.length === 0 ? (
               <div
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
-                  background: soft, marginBottom: 8,
+                  padding: 14, borderRadius: 12, border: `1px dashed ${brd}`,
+                  background: soft, fontSize: 12, color: muted, lineHeight: 1.45,
                 }}
               >
-                <Search size={14} color={muted} />
-                <input
-                  value={rewardSearch}
-                  onFocus={() => setPickingFor('reward')}
-                  onChange={(e) => {
-                    setPickingFor('reward');
-                    setRewardSearch(e.target.value);
-                  }}
-                  placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
-                  style={{
-                    flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                    color: txt, fontSize: 13,
-                  }}
-                />
+                {t.aksiyaRewardAfterConditions ?? 'Avval chapda shartli mahsulot tanlang — keyin sovg‘a mahsulot va miqdor shu yerda chiqadi.'}
               </div>
-              {pickingFor === 'reward' && (
+            ) : (
+              <div>
                 <div
                   style={{
-                    maxHeight: 160, overflow: 'auto', borderRadius: 10,
-                    border: `1px solid ${brd}`, background: inputBg,
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) 84px 100px',
+                    gap: 10,
+                    alignItems: 'start',
+                    marginBottom: 8,
                   }}
                 >
-                  {productsLoading ? (
-                    <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.aksiyaLoading ?? 'Yuklanmoqda...'}</div>
-                  ) : filteredProducts.length === 0 ? (
-                    <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.noDataFound ?? 'Topilmadi'}</div>
-                  ) : (
-                    filteredProducts.map((p) => {
-                      const active = rewardProductId === p.id;
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setRewardProductId(p.id);
-                            setRewardProductName(p.name);
-                          }}
+                  <div>
+                    <label style={labelStyle}>
+                      {t.aksiyaRewardProduct ?? 'Sovg‘a mahsulot'} *
+                    </label>
+                    {rewardProductId ? (
+                      <div
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 10px', borderRadius: 10, minHeight: 40,
+                          background: D ? '#14532d' : '#ecfdf5',
+                          border: `1px solid ${D ? '#166534' : '#a7f3d0'}`,
+                        }}
+                      >
+                        <span
                           style={{
-                            width: '100%', textAlign: 'left', padding: '8px 10px',
-                            border: 'none', borderBottom: `1px solid ${brd}`,
-                            background: active ? (D ? '#14532d' : '#ecfdf5') : 'transparent',
-                            color: txt, cursor: 'pointer', fontSize: 12,
-                            display: 'flex', alignItems: 'center', gap: 8,
+                            fontSize: 12, color: txt, fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}
                         >
-                          {active && <Check size={13} color="#059669" />}
-                          <span style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontWeight: 600 }}>{p.name}</span>
-                            <span style={{ color: muted }}> · {p.code}</span>
-                          </span>
+                          {rewardProductName}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setRewardProductId(null); setRewardProductName(''); }}
+                          style={{ border: 'none', background: 'transparent', color: muted, cursor: 'pointer', flexShrink: 0 }}
+                        >
+                          <X size={14} />
                         </button>
-                      );
-                    })
-                  )}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
+                          background: soft, minHeight: 40,
+                        }}
+                      >
+                        <Search size={14} color={muted} />
+                        <input
+                          value={rewardSearch}
+                          onFocus={() => setPickingFor('reward')}
+                          onChange={(e) => {
+                            setPickingFor('reward');
+                            setRewardSearch(e.target.value);
+                          }}
+                          placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
+                          style={{
+                            flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                            color: txt, fontSize: 13, minWidth: 0,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>{t.aksiyaRewardQty ?? 'Sovg‘a miqdori'}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={rewardQuantity}
+                      onChange={(e) => setRewardQuantity(e.target.value)}
+                      placeholder="1"
+                      style={{ ...fieldStyle, minHeight: 40 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>{t.aksiyaRewardPrice ?? 'Aksiya narxi'}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={rewardPrice}
+                      onChange={(e) => setRewardPrice(e.target.value)}
+                      placeholder="0"
+                      title={t.aksiyaRewardPrice ?? 'Aksiya narxi (0=tekin)'}
+                      style={{ ...fieldStyle, minHeight: 40 }}
+                    />
+                  </div>
                 </div>
-              )}
-              <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
-                {t.aksiyaRewardHint ?? 'Aksiya yigilganda agentga shu mahsulot taklif qilinadi (Ha/Yo‘q).'}
+
+                {rewardProductId && (
+                  <div
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
+                      background: soft, marginBottom: 8,
+                    }}
+                  >
+                    <Search size={14} color={muted} />
+                    <input
+                      value={rewardSearch}
+                      onFocus={() => setPickingFor('reward')}
+                      onChange={(e) => {
+                        setPickingFor('reward');
+                        setRewardSearch(e.target.value);
+                      }}
+                      placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
+                      style={{
+                        flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                        color: txt, fontSize: 13,
+                      }}
+                    />
+                  </div>
+                )}
+
+                {pickingFor === 'reward' && (
+                  <div
+                    style={{
+                      maxHeight: 160, overflow: 'auto', borderRadius: 10,
+                      border: `1px solid ${brd}`, background: inputBg, marginBottom: 6,
+                    }}
+                  >
+                    {productsLoading ? (
+                      <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.aksiyaLoading ?? 'Yuklanmoqda...'}</div>
+                    ) : filteredProducts.length === 0 ? (
+                      <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.noDataFound ?? 'Topilmadi'}</div>
+                    ) : (
+                      filteredProducts.map((p) => {
+                        const active = rewardProductId === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setRewardProductId(p.id);
+                              setRewardProductName(p.name);
+                              setPickingFor('reward');
+                            }}
+                            style={{
+                              width: '100%', textAlign: 'left', padding: '8px 10px',
+                              border: 'none', borderBottom: `1px solid ${brd}`,
+                              background: active ? (D ? '#14532d' : '#ecfdf5') : 'transparent',
+                              color: txt, cursor: 'pointer', fontSize: 12,
+                              display: 'flex', alignItems: 'center', gap: 8,
+                            }}
+                          >
+                            {active && <Check size={13} color="#059669" />}
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontWeight: 600 }}>{p.name}</span>
+                              <span style={{ color: muted }}> · {p.code}</span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+                <div style={{ fontSize: 11, color: muted }}>
+                  {t.aksiyaRewardHint ?? 'Aksiya yigilganda agentga shu mahsulot taklif qilinadi (Ha/Yo‘q).'}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <label style={labelStyle}>{t.aksiyaPreview ?? 'Klientda ko\'rinishi'}</label>
@@ -700,7 +766,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                         background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
                       }}
                     >
-                      +{rewardQ}{rewardP === 0 ? ' tekin' : ` @${rewardP}`}
+                      +{rewardQ}{rewardP === 0 ? ` ${t.aksiyaFreeLabel ?? 'tekin'}` : ` @${rewardP}`}
                     </div>
                   ) : Number(discountPercent) > 0 ? (
                     <div
