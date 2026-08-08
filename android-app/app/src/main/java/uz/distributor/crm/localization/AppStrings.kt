@@ -216,6 +216,27 @@ object AppStrings {
     fun clientOrdersTitle(lang: AppLanguage) = clientOrders(lang)
     fun deliveryOrdersTitle(lang: AppLanguage) = tr(lang, "Dostavka", "Доставка", "Доставка")
     fun deliveryDebtsTitle(lang: AppLanguage) = tr(lang, "Qarzlar", "Қарзлар", "Долги")
+    fun vanSalesTitle(lang: AppLanguage) = tr(lang, "Van Sales", "Van Sales", "Van Sales")
+    fun vanTabClients(lang: AppLanguage) = tr(lang, "Klientlar", "Клиентлар", "Клиенты")
+    fun vanTabStock(lang: AppLanguage) = tr(lang, "Zaxira", "Захира", "Запас")
+    fun vanTabReturn(lang: AppLanguage) = tr(lang, "Qaytarish", "Қайтариш", "Возврат")
+    fun vanNoClients(lang: AppLanguage) = tr(lang, "Bugun klientlar yo‘q", "Бугун клиентлар йўқ", "Нет клиентов на сегодня")
+    fun vanNoStock(lang: AppLanguage) = tr(lang, "Van zaxirasi bo‘sh", "Ван захираси бўш", "Запас фургона пуст")
+    fun vanSold(lang: AppLanguage) = tr(lang, "Sotilgan", "Сотилган", "Продано")
+    fun vanRemaining(lang: AppLanguage) = tr(lang, "Qoldiq", "Қолдиқ", "Остаток")
+    fun vanProgressSold(lang: AppLanguage) = tr(lang, "Sotilgan", "Сотилган", "Продано")
+    fun vanProgressVisited(lang: AppLanguage) = tr(lang, "Tashrif", "Ташриф", "Визит")
+    fun vanProgressPending(lang: AppLanguage) = tr(lang, "Kutilmoqda", "Кутилмоқда", "Ожидание")
+    fun vanReturnHint(lang: AppLanguage) = tr(
+        lang,
+        "Qoldiqni adminga topshirish uchun yuboring",
+        "Қолдиқни админга топшириш учун юборинг",
+        "Отправьте остаток на приёмку админу",
+    )
+    fun vanSubmittedCash(lang: AppLanguage) = tr(lang, "Topshirilgan naqd", "Топширилган нақд", "Сданная наличка")
+    fun vanSubmitReturn(lang: AppLanguage) = tr(lang, "Qaytarishni yuborish", "Қайтаришни юбориш", "Отправить возврат")
+    fun vanSaleTitle(lang: AppLanguage) = tr(lang, "Van sotuv", "Van сотув", "Продажа с фургона")
+    fun vanSendSale(lang: AppLanguage) = tr(lang, "Yuborish (sotilgan)", "Юбориш (сотилган)", "Отправить (продано)")
     fun noDeliveryDebts(lang: AppLanguage) = tr(
         lang,
         "Bu kunda qarz yo'q",

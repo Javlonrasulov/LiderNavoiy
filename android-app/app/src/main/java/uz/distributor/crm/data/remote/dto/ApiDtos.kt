@@ -437,6 +437,94 @@ data class CreateReturnRequest(
     val note: String? = null,
 )
 
+// ─── Van Sales ───
+data class VanLoadItemDto(
+    val id: String? = null,
+    val productId: String,
+    val productCode: String? = null,
+    val productName: String? = null,
+    val unit: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val loadedQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val soldQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val returnedQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val acceptedQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val remainingQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val expectedReturnQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val shortageQty: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val price: Double = 0.0,
+)
+
+data class VanLoadDto(
+    val id: String,
+    val companyId: String? = null,
+    val distributorId: String,
+    val distributorName: String? = null,
+    val loadDate: String,
+    val status: String,
+    val loadedAt: String? = null,
+    val returnSubmittedAt: String? = null,
+    val closedAt: String? = null,
+    val notes: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val expectedCash: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val submittedCash: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val cashDiff: Double? = null,
+    val items: List<VanLoadItemDto> = emptyList(),
+)
+
+data class VanClientDto(
+    val id: String,
+    val code: String? = null,
+    val name: String,
+    val fullName: String? = null,
+    val phone: String? = null,
+    val address: String? = null,
+    val lineCode: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val balance: Double = 0.0,
+    val category: String? = null,
+    val progress: String? = null,
+    val salesCount: Int = 0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val salesTotal: Double = 0.0,
+    val visitedToday: Boolean = false,
+)
+
+data class VanSellItemRequest(
+    val productId: String,
+    val quantity: Double,
+    val price: Double? = null,
+)
+
+data class VanSellRequest(
+    val clientId: String,
+    val loadId: String? = null,
+    val items: List<VanSellItemRequest>,
+    val paymentMethod: String,
+    val terminalId: String? = null,
+    val amount: Double? = null,
+    val dueAt: String? = null,
+    val photoUrl: String? = null,
+    val photoBase64: String? = null,
+    val offlineId: String? = null,
+    val visitId: String? = null,
+)
+
+data class VanSellResponse(
+    val order: OrderDto? = null,
+    val duplicated: Boolean = false,
+)
+
+data class VanReturnItemRequest(
+    val productId: String,
+    val quantity: Double,
+)
+
+data class VanReturnRequest(
+    val items: List<VanReturnItemRequest>? = null,
+    val submittedCash: Double? = null,
+    val notes: String? = null,
+)
+
 data class StartConversationRequest(val userId: String)
 
 data class PlanProductDto(

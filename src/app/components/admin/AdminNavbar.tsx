@@ -77,6 +77,7 @@ export function AdminNavbar({
     showTarozi ? 'tarozi' : 'unpreparedOrders',
     'prodaji',
     'ombor',
+    'vanSales',
   ]);
   const moduleBarItems = flatNavWithIcons.filter(item => MODULE_BAR_IDS.has(item.id));
 

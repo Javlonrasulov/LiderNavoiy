@@ -48,6 +48,8 @@ import uz.distributor.crm.presentation.dashboard.DashboardScreen
 import uz.distributor.crm.presentation.delivery.DeliveryDebtsScreen
 import uz.distributor.crm.presentation.delivery.DeliveryOrderDetailScreen
 import uz.distributor.crm.presentation.delivery.DeliveryOrdersScreen
+import uz.distributor.crm.presentation.vansales.VanClientSaleScreen
+import uz.distributor.crm.presentation.vansales.VanSalesScreen
 import uz.distributor.crm.presentation.location.LocationScreen
 import uz.distributor.crm.presentation.messages.ChatScreen
 import uz.distributor.crm.presentation.messages.IncomingMessageBannerOverlay
@@ -145,7 +147,10 @@ fun AppNavHost(
     }
 
     LaunchedEffect(currentRoute, isDeliveryPerson) {
-        if (currentRoute?.startsWith("delivery") == true && !isDeliveryPerson) {
+        if (
+            (currentRoute?.startsWith("delivery") == true || currentRoute?.startsWith("van_sales") == true) &&
+            !isDeliveryPerson
+        ) {
             navController.navigate("main") {
                 popUpTo("main") { inclusive = true }
                 launchSingleTop = true
@@ -288,6 +293,7 @@ fun AppNavHost(
                 DeliveryOrdersScreen(
                     onOrderClick = { id -> navController.navigate("delivery/$id") },
                     onDebtsClick = { navController.navigate("delivery/debts") },
+                    onVanClick = { navController.navigate("van_sales") },
                 )
             }
         }
@@ -301,6 +307,37 @@ fun AppNavHost(
                         }
                     },
                     onOrderClick = { id -> navController.navigate("delivery/$id") },
+                    onVanClick = { navController.navigate("van_sales") },
+                )
+            }
+        }
+        composable("van_sales") {
+            if (isDeliveryPerson) {
+                VanSalesScreen(
+                    onClientClick = { id -> navController.navigate("van_sales/$id") },
+                    onDeliveryClick = {
+                        navController.navigate("delivery") {
+                            popUpTo("delivery") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onDebtsClick = { navController.navigate("delivery/debts") },
+                )
+            }
+        }
+        composable(
+            route = "van_sales/{clientId}",
+            arguments = listOf(navArgument("clientId") { type = NavType.StringType }),
+        ) {
+            if (isDeliveryPerson) {
+                VanClientSaleScreen(
+                    onBack = { navController.popBackStack() },
+                    onDone = {
+                        navController.navigate("van_sales") {
+                            popUpTo("van_sales") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
         }

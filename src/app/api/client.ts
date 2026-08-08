@@ -1582,7 +1582,129 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ messageIds, forEveryone }),
     }),
+
+  // ─── Van Sales ───
+  getVanLoads: (opts?: {
+    companyId?: string;
+    distributorId?: string;
+    status?: string;
+    loadDate?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (opts?.companyId) q.set('companyId', opts.companyId);
+    if (opts?.distributorId) q.set('distributorId', opts.distributorId);
+    if (opts?.status) q.set('status', opts.status);
+    if (opts?.loadDate) q.set('loadDate', opts.loadDate);
+    const qs = q.toString();
+    return request<VanLoadDto[]>(`/van-sales/loads${qs ? `?${qs}` : ''}`);
+  },
+
+  getVanLoad: (id: string) => request<VanLoadDto>(`/van-sales/loads/${id}`),
+
+  createVanLoad: (body: {
+    distributorId: string;
+    loadDate: string;
+    companyId?: string;
+    notes?: string;
+    items: Array<{ productId: string; quantity: number }>;
+  }) =>
+    request<VanLoadDto>('/van-sales/loads', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  confirmVanLoad: (id: string) =>
+    request<VanLoadDto>(`/van-sales/loads/${id}/confirm`, { method: 'POST', body: '{}' }),
+
+  submitVanReturn: (
+    id: string,
+    body?: {
+      items?: Array<{ productId: string; quantity: number }>;
+      submittedCash?: number;
+      notes?: string;
+    },
+  ) =>
+    request<VanLoadDto>(`/van-sales/loads/${id}/return`, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  acceptVanReturn: (
+    id: string,
+    body?: {
+      items?: Array<{ productId: string; quantity: number }>;
+      submittedCash?: number;
+      notes?: string;
+    },
+  ) =>
+    request<VanLoadDto>(`/van-sales/loads/${id}/accept-return`, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  getVanReport: (opts?: {
+    companyId?: string;
+    distributorId?: string;
+    loadDate?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (opts?.companyId) q.set('companyId', opts.companyId);
+    if (opts?.distributorId) q.set('distributorId', opts.distributorId);
+    if (opts?.loadDate) q.set('loadDate', opts.loadDate);
+    const qs = q.toString();
+    return request<{
+      loadDate: string;
+      loads: VanLoadDto[];
+      summary: {
+        loadsCount: number;
+        ordersCount: number;
+        clientsSold: number;
+        totalSales: number;
+        paidTotal: number;
+        cash: number;
+        terminal: number;
+        debt: number;
+        expectedCash: number;
+        submittedCash: number;
+      };
+    }>(`/van-sales/report${qs ? `?${qs}` : ''}`);
+  },
 };
+
+export interface VanLoadItemDto {
+  id: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  price?: number;
+  loadedQty: number;
+  soldQty: number;
+  returnedQty: number;
+  acceptedQty: number;
+  remainingQty: number;
+  expectedReturnQty: number;
+  shortageQty: number;
+}
+
+export interface VanLoadDto {
+  id: string;
+  companyId: string | null;
+  distributorId: string;
+  distributorName?: string | null;
+  loadDate: string;
+  status: string;
+  loadedAt: string | null;
+  returnSubmittedAt: string | null;
+  closedAt: string | null;
+  notes: string | null;
+  expectedCash: number;
+  submittedCash: number | null;
+  cashDiff: number | null;
+  items: VanLoadItemDto[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ChatContact {
   id: string;

@@ -97,6 +97,7 @@ private val Accent = Color(0xFF6366F1)
 fun DeliveryOrdersScreen(
     onOrderClick: (String) -> Unit,
     onDebtsClick: () -> Unit = {},
+    onVanClick: () -> Unit = {},
     viewModel: DeliveryOrdersViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
@@ -127,9 +128,11 @@ fun DeliveryOrdersScreen(
                 title = {
                     DeliverySectionTabs(
                         selectedDebts = false,
+                        selectedVan = false,
                         lang = lang,
                         onDelivery = {},
                         onDebts = onDebtsClick,
+                        onVan = onVanClick,
                     )
                 },
                 actions = {

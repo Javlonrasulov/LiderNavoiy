@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
-import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft, Trash2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
@@ -84,6 +84,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [transferPickIds, setTransferPickIds] = useState<string[]>([]);
   const [listMode, setListMode] = useState<'active' | 'trash'>('active');
   const [actionBusy, setActionBusy] = useState(false);
+  const [trashConfirmClient, setTrashConfirmClient] = useState<ClientRow | null>(null);
   const clientFilterBtnRef = useRef<HTMLButtonElement>(null);
   const clientTableRef = useRef<HTMLDivElement>(null);
   const scrollClientTable = (dir: 'left' | 'right') => {
@@ -216,19 +217,20 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     }
   };
 
-  const handleMoveToTrash = async () => {
+  const openTrashConfirm = () => {
     if (!activeClient || actionBusy || listMode === 'trash') return;
-    const ok = window.confirm(
-      t.clientTrashConfirm ??
-        `"${activeClient.name}" mijozini korzinkaga o'tkazasizmi? Agent/manager APKlarida ko'rinmaydi.`,
-    );
-    if (!ok) return;
+    setTrashConfirmClient(activeClient);
+  };
+
+  const handleMoveToTrash = async () => {
+    if (!trashConfirmClient || actionBusy) return;
     setActionBusy(true);
     setSaveError(null);
     try {
-      await api.deleteClient(activeClient.id);
-      setClients(prev => prev.filter(c => c.id !== activeClient.id));
-      setActiveClient(null);
+      await api.deleteClient(trashConfirmClient.id);
+      setClients(prev => prev.filter(c => c.id !== trashConfirmClient.id));
+      setActiveClient(prev => (prev?.id === trashConfirmClient.id ? null : prev));
+      setTrashConfirmClient(null);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : (t.clientTrashErr ?? "O'chirishda xatolik"));
     } finally {
@@ -701,7 +703,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             </button>
           ) : (
             <button
-              onClick={handleMoveToTrash}
+              onClick={openTrashConfirm}
               disabled={!activeClient || actionBusy}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
                 ${activeClient && !actionBusy
@@ -994,6 +996,62 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           onClose={() => setShowTransfer(false)}
           onDone={() => { void refreshClients(); }}
         />
+      )}
+
+      {/* Trash confirm modal */}
+      {trashConfirmClient && (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
+          onClick={() => { if (!actionBusy) setTrashConfirmClient(null); }}
+        >
+          <div
+            className={`relative w-full max-w-sm rounded-2xl border shadow-2xl p-6 text-center ${
+              D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-200'
+            }`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${
+              D ? 'bg-rose-500/15' : 'bg-rose-50'
+            }`}>
+              <AlertTriangle size={22} className="text-rose-500" />
+            </div>
+            <h3 className={`text-base font-bold mb-2 ${text}`}>
+              {t.clientTrashTitleModal ?? "Korzinkaga o'tkazish"}
+            </h3>
+            <p className={`text-sm leading-relaxed mb-1 ${sub}`}>
+              <span className={`font-semibold ${text}`}>{trashConfirmClient.name}</span>
+            </p>
+            <p className={`text-xs leading-relaxed mb-6 ${sub}`}>
+              {t.clientTrashConfirm ??
+                "Mijoz korzinkaga o'tadi. Agent va manager APKlarida ko'rinmaydi, ma'lumotlar saqlanadi."}
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                disabled={actionBusy}
+                onClick={() => setTrashConfirmClient(null)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                  D
+                    ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {t.cancel ?? 'Bekor qilish'}
+              </button>
+              <button
+                type="button"
+                disabled={actionBusy}
+                onClick={() => { void handleMoveToTrash(); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/25 disabled:opacity-60"
+              >
+                {actionBusy
+                  ? (t.loading || '...')
+                  : (t.clientDeleteBtn ?? "O'chirish")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CLIENT MAP / GPS WARNING */}

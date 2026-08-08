@@ -214,4 +214,20 @@ interface ApiService {
         @Query("from") from: String? = null,
         @Query("to") to: String? = null,
     ): AgentSalesStatsDto?
+
+    // ─── Van Sales ───
+    @GET("van-sales/my/stock")
+    suspend fun getVanMyStock(): List<VanLoadDto>
+
+    @GET("van-sales/my/clients")
+    suspend fun getVanMyClients(): List<VanClientDto>
+
+    @POST("van-sales/sell")
+    suspend fun vanSell(@Body body: VanSellRequest): VanSellResponse
+
+    @POST("van-sales/loads/{id}/return")
+    suspend fun submitVanReturn(
+        @Path("id") id: String,
+        @Body body: VanReturnRequest = VanReturnRequest(),
+    ): VanLoadDto
 }

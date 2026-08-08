@@ -142,7 +142,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
     setLoadError(null);
     try {
       const raw = await api.getOrders(companyId);
-      setApiOrders(raw.map(backendOrderToZayavka));
+      setApiOrders(raw.filter(o => o.source !== 'van').map(backendOrderToZayavka));
       setBackendReady(true);
     } catch (e) {
       setApiOrders([]);

@@ -433,7 +433,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
       const raw = await api.getOrders(companyId);
       setApiOrders(
         raw
-          .filter(o => o.status !== 'cancelled')
+          .filter(o => o.status !== 'cancelled' && o.source !== 'van')
           .map(backendOrderToTaroziItem),
       );
       setBackendReady(true);

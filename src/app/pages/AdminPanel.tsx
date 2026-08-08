@@ -29,6 +29,7 @@ import { AdminReportsTab } from '../components/admin/tabs/AdminReportsTab';
 import { AdminPostavchikTab } from '../components/admin/tabs/AdminPostavchikTab';
 import { AdminProductsTab } from '../components/AdminProductsTab';
 import { AdminOmborTab }    from '../components/admin/tabs/AdminOmborTab';
+import { AdminVanSalesTab } from '../components/admin/tabs/AdminVanSalesTab';
 import { AdminLiniyaTab } from '../components/admin/tabs/AdminLiniyaTab';
 import { AdminXodimlarTab } from '../components/admin/tabs/AdminXodimlarTab';
 import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
@@ -778,7 +779,7 @@ export default function AdminPanel() {
         )}
 
         {/* PAGE CONTENT */}
-        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
+        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor' || tab === 'vanSales') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
 
           {tab === 'dashboard' && (
             <AdminDashboardTab
@@ -862,6 +863,14 @@ export default function AdminPanel() {
 
           {tab === 'ombor' && (
             <AdminOmborTab
+              D={D} card={card} divider={divider} cardHover={cardHover}
+              text={text} sub={sub} input={input} t={t}
+              viewOrg={viewOrg} activeIds={activeIds}
+            />
+          )}
+
+          {tab === 'vanSales' && (
+            <AdminVanSalesTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               text={text} sub={sub} input={input} t={t}
               viewOrg={viewOrg} activeIds={activeIds}

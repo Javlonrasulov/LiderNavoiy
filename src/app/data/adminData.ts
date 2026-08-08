@@ -4,11 +4,11 @@ import { demo, demoRec, demoRecKeys } from './demoLimit';
 
 import type { EmployeeMarker } from '../components/EmployeeMapModal';
 import type React from 'react';
-import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, MessageSquare, UserCog, ClipboardCheck } from 'lucide-react';
+import { LayoutDashboard, Users, UserCheck, BarChart3, Package, GitBranch, Users2, TrendingDown, Truck, Scale, ClipboardList, MessageSquare, UserCog, ClipboardCheck, Bus } from 'lucide-react';
 import GarageIcon from '../components/GarageIcon';
 
 // ─── TYPES ───
-export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'unpreparedOrders' | 'prodaji' | 'ombor' | 'messages' | 'systemUsers';
+export type Tab = 'dashboard' | 'products' | 'xodimlar' | 'clients' | 'liniya' | 'reports' | 'zatrati' | 'postavchik' | 'tarozi' | 'unpreparedOrders' | 'prodaji' | 'ombor' | 'vanSales' | 'messages' | 'systemUsers';
 
 export type NavChild = { id: Tab; key: string; icon: React.ComponentType<any> };
 export type NavEntry =
@@ -122,6 +122,7 @@ export const NAV_ITEMS_BASE: NavEntry[] = [
   { id: 'unpreparedOrders' as Tab, key: 'navUnpreparedOrders', icon: ClipboardCheck, hideInSidebar: true },
   { id: 'prodaji'    as Tab, key: 'navProdaji',    icon: ClipboardList, hideInSidebar: true },
   { id: 'ombor'      as Tab, key: 'navOmbor',      icon: GarageIcon, hideInSidebar: true },
+  { id: 'vanSales'   as Tab, key: 'navVanSales',   icon: Bus, hideInSidebar: true },
 ];
 
 export const ADMIN_LANGS: { id: LangAdmin; label: string; flag: string }[] = [
@@ -234,6 +235,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permUnpreparedOrders: 'Tayyorlanmagan buyurtmalar',
     permProdaji: 'Prodaji',
     permOmbor: 'Ombor',
+    permVanSales: 'Van Sales',
     permSystemUsers: 'Tizim foydalanuvchilari',
     msgSearch: 'Qidirish...',
     msgLoading: 'Yuklanmoqda...',
@@ -268,7 +270,16 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     unpreparedOrdersPlaceholder: "Bu bo‘lim tez orada qo‘shiladi. Hozircha dona mahsulotli organizatsiyalar uchun Tarozi o‘rniga ko‘rsatiladi.",
     navProdaji: 'Sotuvlar',
     navOmbor: 'Ombor',
+    navVanSales: 'Van sales',
     omborTabProducts: 'Mahsulotlar', omborTabReturns: 'Qaytarilgan',
+    vanTabLoad: 'Yuklash', vanTabActive: 'Faol', vanTabReturn: 'Qaytarish', vanTabReport: 'Hisobot',
+    vanPickDriver: 'Dostavchik', vanPickDate: 'Sana', vanAddProducts: 'Mahsulotlar',
+    vanConfirmLoad: 'Yuklashni tasdiqlash', vanCreateDraft: 'Saqlash (draft)',
+    vanAcceptReturn: 'Qabul qilish', vanShortage: 'Kamomad', vanOverage: 'Ortiqcha',
+    vanExpectedCash: 'Kutilgan naqd', vanSubmittedCash: 'Topshirilgan naqd',
+    vanCashDiff: 'Farq', vanRemaining: 'Qoldiq', vanSold: 'Sotilgan',
+    vanNoLoads: 'Yuklashlar yo‘q', vanProgress: 'Marshrut',
+    vanLineHint: 'Klientlar Liniya kunlaridan keladi',
     omborSkladName: 'Sklad nomi',
     omborSkladPlaceholder: 'Masalan: Sklad SHERIN',
     omborSkladHint: 'Bu nom Tovar yuklash (Forma zayavki) da avtomatik chiqadi',
@@ -508,9 +519,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     closeBtn: 'Yopish',
     transferBtn: "O'tkazish",
     clientTrashTitle: 'Korzinka',
+    clientTrashTitleModal: "Korzinkaga o'tkazish",
     clientDeleteBtn: "O'chirish",
     clientRestoreBtn: 'Qaytarish',
-    clientTrashConfirm: "Mijozni korzinkaga o'tkazasizmi? Agent va manager APKlarida ko'rinmaydi, ma'lumotlar saqlanadi.",
+    clientTrashConfirm: "Mijoz korzinkaga o'tadi. Agent va manager APKlarida ko'rinmaydi, ma'lumotlar saqlanadi.",
     clientTrashErr: "O'chirishda xatolik",
     clientRestoreErr: 'Qaytarishda xatolik',
     colCreatedBy: "Qo'shgan",
@@ -1060,6 +1072,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permUnpreparedOrders: 'Тайёрланмаган буюртмалар',
     permProdaji: 'Сотувлар',
     permOmbor: 'Омбор',
+    permVanSales: 'Van Sales',
     permSystemUsers: 'Тизим фойдаланувчилар',
     msgSearch: 'Қидириш...',
     msgLoading: 'Юкланмоқда...',
@@ -1094,7 +1107,16 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     unpreparedOrdersPlaceholder: 'Бу бўлим тез орада қўшилади. Ҳозирча дона маҳсулотли организациялар учун Тарози ўрнига кўрсатилади.',
     navProdaji: 'Сотувлар',
     navOmbor: 'Омбор',
+    navVanSales: 'Van sales',
     omborTabProducts: 'Маҳсулотлар', omborTabReturns: 'Қайтарилган',
+    vanTabLoad: 'Юклаш', vanTabActive: 'Фаол', vanTabReturn: 'Қайтариш', vanTabReport: 'Ҳисобот',
+    vanPickDriver: 'Доставчик', vanPickDate: 'Сана', vanAddProducts: 'Маҳсулотлар',
+    vanConfirmLoad: 'Юклашни тасдиқлаш', vanCreateDraft: 'Сақлаш (draft)',
+    vanAcceptReturn: 'Қабул қилиш', vanShortage: 'Камомад', vanOverage: 'Ортиқча',
+    vanExpectedCash: 'Кутилган нақд', vanSubmittedCash: 'Топширилган нақд',
+    vanCashDiff: 'Фарқ', vanRemaining: 'Қолдиқ', vanSold: 'Сотилган',
+    vanNoLoads: 'Юклашлар йўқ', vanProgress: 'Маршрут',
+    vanLineHint: 'Клиентлар Линия кунларидан келади',
     omborSkladName: 'Склад номи',
     omborSkladPlaceholder: 'Масалан: Sklad SHERIN',
     omborSkladHint: 'Бу ном Товар юклаш (Forma zayavki) да автоматик чиқади',
@@ -1334,9 +1356,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     closeBtn: 'Ёпиш',
     transferBtn: 'Ўтказиш',
     clientTrashTitle: 'Корзинка',
+    clientTrashTitleModal: 'Корзинкага ўтказиш',
     clientDeleteBtn: 'Ўчириш',
     clientRestoreBtn: 'Қайтариш',
-    clientTrashConfirm: 'Мижозни корзинкага ўтказасизми? Агент ва менеджер АПКларида кўринмайди, маълумотлар сақланади.',
+    clientTrashConfirm: 'Мижоз корзинкага ўтади. Агент ва менеджер АПКларида кўринмайди, маълумотлар сақланади.',
     clientTrashErr: 'Ўчиришда хатолик',
     clientRestoreErr: 'Қайтаришда хатолик',
     colCreatedBy: 'Қўшган',
@@ -1888,6 +1911,7 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     permUnpreparedOrders: 'Неподготовленные заказы',
     permProdaji: 'Продажи',
     permOmbor: 'Склад',
+    permVanSales: 'Van Sales',
     permSystemUsers: 'Системные пользователи',
     msgSearch: 'Поиск...',
     msgLoading: 'Загрузка...',
@@ -1922,7 +1946,16 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     unpreparedOrdersPlaceholder: 'Этот раздел скоро будет добавлен. Пока вместо Весов показывается для организаций со штучной продукцией.',
     navProdaji: 'Продажи',
     navOmbor: 'Склад',
+    navVanSales: 'Van sales',
     omborTabProducts: 'Товары', omborTabReturns: 'Возвраты',
+    vanTabLoad: 'Погрузка', vanTabActive: 'Активные', vanTabReturn: 'Возврат', vanTabReport: 'Отчёт',
+    vanPickDriver: 'Доставщик', vanPickDate: 'Дата', vanAddProducts: 'Товары',
+    vanConfirmLoad: 'Подтвердить погрузку', vanCreateDraft: 'Сохранить (draft)',
+    vanAcceptReturn: 'Принять', vanShortage: 'Недостача', vanOverage: 'Излишек',
+    vanExpectedCash: 'Ожидаемая наличка', vanSubmittedCash: 'Сданная наличка',
+    vanCashDiff: 'Разница', vanRemaining: 'Остаток', vanSold: 'Продано',
+    vanNoLoads: 'Нет погрузок', vanProgress: 'Маршрут',
+    vanLineHint: 'Клиенты берутся из дней Линии',
     omborSkladName: 'Название склада',
     omborSkladPlaceholder: 'Например: Sklad SHERIN',
     omborSkladHint: 'Это имя автоматически подставится в Отгрузку (Forma zayavki)',
@@ -2156,9 +2189,10 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     closeBtn: 'Закрыть',
     transferBtn: 'Перенести',
     clientTrashTitle: 'Корзина',
+    clientTrashTitleModal: 'В корзину',
     clientDeleteBtn: 'Удалить',
     clientRestoreBtn: 'Восстановить',
-    clientTrashConfirm: 'Переместить клиента в корзину? В APK агента и менеджера не будет виден, данные сохранятся.',
+    clientTrashConfirm: 'Клиент попадёт в корзину. В APK агента и менеджера не будет виден, данные сохранятся.',
     clientTrashErr: 'Ошибка удаления',
     clientRestoreErr: 'Ошибка восстановления',
     colCreatedBy: 'Добавил',

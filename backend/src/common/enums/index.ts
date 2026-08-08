@@ -32,6 +32,14 @@ export enum OrderStatus {
 export enum OrderSource {
   AGENT = 'agent',
   CLIENT = 'client',
+  VAN = 'van',
+}
+
+export enum VanLoadStatus {
+  DRAFT = 'draft',
+  LOADED = 'loaded',
+  RETURN_PENDING = 'return_pending',
+  CLOSED = 'closed',
 }
 
 export enum PaymentMethod {

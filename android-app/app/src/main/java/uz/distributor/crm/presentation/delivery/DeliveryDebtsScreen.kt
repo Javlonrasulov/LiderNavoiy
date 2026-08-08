@@ -103,6 +103,7 @@ private val DeliveryAccent = Color(0xFF6366F1)
 fun DeliveryDebtsScreen(
     onBackToDelivery: () -> Unit,
     onOrderClick: (String) -> Unit,
+    onVanClick: () -> Unit = {},
     viewModel: DeliveryDebtsViewModel = hiltViewModel(),
 ) {
     val lang = LocalAppLanguage.current
@@ -129,9 +130,11 @@ fun DeliveryDebtsScreen(
                 title = {
                     DeliverySectionTabs(
                         selectedDebts = true,
+                        selectedVan = false,
                         lang = lang,
                         onDelivery = onBackToDelivery,
                         onDebts = {},
+                        onVan = onVanClick,
                     )
                 },
                 actions = {
@@ -287,29 +290,44 @@ internal fun DeliverySectionTabs(
     lang: AppLanguage,
     onDelivery: () -> Unit,
     onDebts: () -> Unit,
+    selectedVan: Boolean = false,
+    onVan: (() -> Unit)? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             AppStrings.deliveryOrdersTitle(lang),
-            fontWeight = if (!selectedDebts) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 18.sp,
-            color = if (!selectedDebts) DeliveryAccent else Color(0xFF9CA3AF),
+            fontWeight = if (!selectedDebts && !selectedVan) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 16.sp,
+            color = if (!selectedDebts && !selectedVan) DeliveryAccent else Color(0xFF9CA3AF),
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onDelivery)
                 .padding(horizontal = 4.dp, vertical = 2.dp),
         )
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(10.dp))
         Text(
             AppStrings.deliveryDebtsTitle(lang),
             fontWeight = if (selectedDebts) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             color = if (selectedDebts) Accent else Color(0xFF9CA3AF),
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onDebts)
                 .padding(horizontal = 4.dp, vertical = 2.dp),
         )
+        if (onVan != null) {
+            Spacer(Modifier.width(10.dp))
+            Text(
+                AppStrings.vanSalesTitle(lang),
+                fontWeight = if (selectedVan) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 16.sp,
+                color = if (selectedVan) Color(0xFF0EA5E9) else Color(0xFF9CA3AF),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onVan)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
     }
 }
 

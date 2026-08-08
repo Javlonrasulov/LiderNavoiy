@@ -120,6 +120,7 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
 
   const sourceLabel =
     o.source === 'client' ? 'Klient'
+    : o.source === 'van' ? 'Van Sales'
     : o.source === 'agent' || !o.source ? 'APK'
     : o.source;
 
@@ -290,6 +291,7 @@ export interface OtgrApiRow {
  * delivered / cancelled — yakuniy
  */
 export function backendOrderToOtgr(o: BackendOrder): OtgrApiRow | null {
+  if (o.source === 'van') return null;
   if (o.status !== 'packing' && o.status !== 'on_way' && o.status !== 'delivered' && o.status !== 'cancelled') {
     return null;
   }
