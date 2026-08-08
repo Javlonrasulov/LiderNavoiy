@@ -181,7 +181,7 @@ export function formatLastActive(
   app: Pick<AppUserRecord, 'isOnline' | 'lastActiveAt' | 'lastLoginAt'>,
   t?: Record<string, string>,
 ): string {
-  if (app.isOnline) return t?.userLastActOnline || 'Hozir online';
+  if (app.isOnline) return t?.userLastActOnline || t?.trackOnlineNow || 'Hozir online';
   const at = app.lastActiveAt || app.lastLoginAt;
   if (!at) return '';
 

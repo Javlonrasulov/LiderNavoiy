@@ -210,7 +210,6 @@ export class UsersService {
     const users = await this.userRepo.find({
       where: {
         role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]),
-        isActive: true,
       },
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
