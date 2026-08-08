@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PenSquare, Plus, Search } from '../icons'
-import { fetchClients } from '../api/manager'
+import {
+  fetchClientRequests,
+  fetchClients,
+  type ClientRequestRow,
+} from '../api/manager'
+import { getStoredUser } from '../api/client'
 import type { Client } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
@@ -21,9 +26,30 @@ function clientDebt(cl: Client): number {
   return Number(cl.debt ?? 0) || 0
 }
 
+function statusStyle(status: ClientRequestRow['status'], dark: boolean) {
+  if (status === 'pending') {
+    return {
+      bg: 'rgba(245, 158, 11, 0.16)',
+      color: dark ? '#FBBF24' : '#B45309',
+    }
+  }
+  if (status === 'approved') {
+    return {
+      bg: 'rgba(16, 185, 129, 0.16)',
+      color: dark ? '#34D399' : '#047857',
+    }
+  }
+  return {
+    bg: 'rgba(239, 68, 68, 0.14)',
+    color: dark ? '#FCA5A5' : '#B91C1C',
+  }
+}
+
 export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) {
   const c = theme(dark)
+  const companyId = getStoredUser()?.companyId || undefined
   const [list, setList] = useState<Client[]>([])
+  const [requests, setRequests] = useState<ClientRequestRow[]>([])
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<ClientSort>('all')
   const [loading, setLoading] = useState(true)
@@ -32,16 +58,21 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
   const load = async () => {
     setLoading(true)
     try {
-      const data = await fetchClients()
+      const [data, reqs] = await Promise.all([
+        fetchClients(companyId),
+        fetchClientRequests({ companyId, status: 'all' }).catch(() => [] as ClientRequestRow[]),
+      ])
       setList(Array.isArray(data) ? data : [])
+      setRequests(Array.isArray(reqs) ? reqs : [])
     } catch {
       setList([])
+      setRequests([])
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [companyId])
 
   useEffect(() => {
     return pushBackHandler(() => {
@@ -60,6 +91,18 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
     { id: 'debt_desc', label: tr.clientSortDebtDesc },
     { id: 'debt_asc', label: tr.clientSortDebtAsc },
   ]
+
+  const visibleRequests = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return requests
+      .filter(r => r.status === 'pending' || r.status === 'rejected')
+      .filter(r => {
+        if (!needle) return true
+        const hay = `${r.name} ${r.fullName || ''} ${r.phone || ''} ${r.inn || ''}`.toLowerCase()
+        return hay.includes(needle)
+      })
+      .slice(0, 40)
+  }, [requests, q])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -92,6 +135,12 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
     })
   }, [list, q, sort])
 
+  const statusLabel = (status: ClientRequestRow['status']) => {
+    if (status === 'pending') return tr.clientReqPending
+    if (status === 'approved') return tr.clientReqApproved
+    return tr.clientReqRejected
+  }
+
   return (
     <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(100px + var(--safe-bottom))' }} className="no-scrollbar">
       <div style={{
@@ -115,6 +164,48 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
           <input value={q} onChange={e => setQ(e.target.value)} placeholder={tr.search}
             style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: c.text, fontSize: 14, fontWeight: 600 }} />
         </div>
+
+        {!loading && visibleRequests.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 800, color: c.mutedText, letterSpacing: 0.4 }}>
+              {tr.clientRequestsTitle}
+            </p>
+            {visibleRequests.map(req => {
+              const st = statusStyle(req.status, dark)
+              return (
+                <div
+                  key={req.id}
+                  style={{
+                    borderRadius: 16, padding: 14, background: c.card,
+                    border: `1px solid ${c.border}`,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: c.text }}>
+                        {req.name}
+                      </p>
+                      {req.fullName && req.fullName !== req.name && (
+                        <p style={{ margin: '3px 0 0', fontSize: 12, color: c.mutedText }}>{req.fullName}</p>
+                      )}
+                      <p style={{ margin: '6px 0 0', fontSize: 11, color: c.mutedText }}>
+                        {req.requestType === 'update' ? tr.clientReqUpdate : tr.clientReqCreate}
+                        {req.phone ? ` · ${req.phone}` : ''}
+                      </p>
+                    </div>
+                    <span style={{
+                      flexShrink: 0, fontSize: 11, fontWeight: 800,
+                      padding: '5px 10px', borderRadius: 999,
+                      background: st.bg, color: st.color,
+                    }}>
+                      {statusLabel(req.status)}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         <div
           className="no-scrollbar"
@@ -211,7 +302,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
           </div>
         ))}
 
-        {!loading && filtered.length === 0 && (
+        {!loading && filtered.length === 0 && visibleRequests.length === 0 && (
           <p style={{ textAlign: 'center', color: c.mutedText, padding: 32 }}>{tr.noData}</p>
         )}
       </div>

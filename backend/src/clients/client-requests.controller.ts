@@ -17,7 +17,10 @@ import { ClientsService } from './clients.service';
 import { ClientCredentialsService } from './client-credentials.service';
 import { CompaniesService } from '../companies/companies.service';
 import { CreateClientRequestDto } from './dto/client-request.dto';
-import { ClientRequestType } from './entities/client-request.entity';
+import {
+  ClientRequestStatus,
+  ClientRequestType,
+} from './entities/client-request.entity';
 
 @ApiTags('Client Requests')
 @ApiBearerAuth()
@@ -31,16 +34,60 @@ export class ClientRequestsController {
     private readonly companiesService: CompaniesService,
   ) {}
 
+  private resolveCompanyId(
+    user: User,
+    dtoCompanyId?: string | null,
+  ): string | undefined {
+    const fromDto = dtoCompanyId?.trim();
+    if (fromDto) return fromDto;
+    const profile = user.distributorProfile;
+    if (!profile) return undefined;
+    const primary = profile.companyId?.trim();
+    if (primary) return primary;
+    const ids = [
+      ...new Set(
+        (Array.isArray(profile.companyIds) ? profile.companyIds : [])
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    return ids[0];
+  }
+
   @Get()
-  @ApiOperation({ summary: 'List pending client requests (admin)' })
-  findPending(
+  @ApiOperation({
+    summary:
+      'List client requests (admin/manager: company; agent: own). status=pending|approved|rejected|all',
+  })
+  findList(
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
+    @Query('status') status?: string,
   ) {
+    const resolvedCompany = this.resolveCompanyId(req.user, companyId);
+    const normalized =
+      status === 'approved' ||
+      status === 'rejected' ||
+      status === 'pending' ||
+      status === 'all'
+        ? status
+        : undefined;
+
     if (req.user.role === UserRole.DISTRIBUTOR) {
-      return [];
+      return this.service.findList({
+        companyId: resolvedCompany,
+        distributorId: req.user.distributorProfile?.id,
+        status: (normalized as ClientRequestStatus | 'all' | undefined) ?? 'all',
+      });
     }
-    return this.service.findPending(companyId);
+
+    // Admin bell: default pending. Manager: default all (ko‘rish uchun).
+    const defaultStatus =
+      req.user.role === UserRole.MANAGER ? 'all' : 'pending';
+    return this.service.findList({
+      companyId: resolvedCompany ?? companyId,
+      status: (normalized as ClientRequestStatus | 'all' | undefined) ?? defaultStatus,
+    });
   }
 
   @Get(':id/inn-check')
@@ -58,8 +105,7 @@ export class ClientRequestsController {
   @Post()
   @ApiOperation({ summary: 'Agent/manager submits new client (approval or direct)' })
   async create(@Request() req: { user: User }, @Body() dto: CreateClientRequestDto) {
-    const companyId =
-      dto.companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+    const companyId = this.resolveCompanyId(req.user, dto.companyId);
 
     if (req.user.role === UserRole.DISTRIBUTOR) {
       await this.companiesService.assertAgentsCanAddClients(companyId);
@@ -89,6 +135,7 @@ export class ClientRequestsController {
           clientClass: dto.clientClass,
           priceCategory: dto.priceCategory,
           photoUrl: dto.photoUrl,
+          canSeePromotions: dto.canSeePromotions === true,
         },
         req.user,
       );

@@ -115,6 +115,13 @@ export function createLine(body: {
   return api<SalesLine>('lines', { method: 'POST', body: JSON.stringify(body) })
 }
 
+export function updateLine(id: string, body: { name?: string; code?: string; agentName?: string }) {
+  return api<SalesLine>(`lines/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
 export type ClientCategory = {
   id: string
   name: string
@@ -131,6 +138,43 @@ export function createClientCategory(body: { name: string; companyId?: string })
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+export function updateClientCategory(id: string, body: { name: string }) {
+  return api<ClientCategory>(`client-categories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export type ClientRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export type ClientRequestRow = {
+  id: string
+  status: ClientRequestStatus
+  requestType?: 'create' | 'update'
+  name: string
+  fullName?: string | null
+  phone?: string | null
+  address?: string | null
+  lineCode?: string | null
+  category?: string | null
+  inn?: string | null
+  agentName?: string | null
+  reviewedBy?: string | null
+  reviewedAt?: string | null
+  createdAt: string
+  companyId?: string | null
+}
+
+export function fetchClientRequests(
+  params?: { companyId?: string; status?: ClientRequestStatus | 'all' },
+) {
+  const q = new URLSearchParams()
+  if (params?.companyId) q.set('companyId', params.companyId)
+  if (params?.status) q.set('status', params.status)
+  const qs = q.toString()
+  return api<ClientRequestRow[]>(`client-requests${qs ? `?${qs}` : ''}`)
 }
 
 export function fetchPlans(year?: number, month?: number) {

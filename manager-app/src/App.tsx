@@ -18,7 +18,7 @@ import MessagesScreen from './screens/MessagesScreen'
 import ClientOrdersScreen from './screens/ClientOrdersScreen'
 import FactoryOrdersScreen from './screens/FactoryOrdersScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
-import { ToastHost } from './components/Toast'
+import { showToast, ToastHost } from './components/Toast'
 import { initManagerPush, syncPushLanguage } from './push/registerPush'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
@@ -370,11 +370,16 @@ export default function App() {
                 setEditingClient(null)
                 setOverlay(null)
               }}
-              onCreated={() => {
+              onCreated={(result) => {
                 setEditingClient(null)
                 setClientsKey(k => k + 1)
                 setActiveTab('clients')
                 setOverlay(null)
+                if (result?.message) {
+                  window.setTimeout(() => {
+                    showToast(result.message, result.kind ?? 'success')
+                  }, 80)
+                }
               }}
             />
           )}

@@ -6,9 +6,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClientCategory } from './entities/client-category.entity';
+import { Client } from '../clients/entities/client.entity';
 import {
   ClientCategoryItemDto,
   CreateClientCategoryDto,
+  UpdateClientCategoryDto,
 } from './dto/client-category.dto';
 
 @Injectable()
@@ -16,6 +18,8 @@ export class ClientCategoriesService {
   constructor(
     @InjectRepository(ClientCategory)
     private readonly repo: Repository<ClientCategory>,
+    @InjectRepository(Client)
+    private readonly clientRepo: Repository<Client>,
   ) {}
 
   async findAll(companyId?: string): Promise<ClientCategoryItemDto[]> {
@@ -58,6 +62,53 @@ export class ClientCategoriesService {
         isActive: true,
       }),
     );
+    return this.toItem(saved);
+  }
+
+  async update(
+    id: string,
+    dto: UpdateClientCategoryDto,
+  ): Promise<ClientCategoryItemDto> {
+    const row = await this.repo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Category not found');
+
+    if (dto.name === undefined) return this.toItem(row);
+
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException('Category name is required');
+
+    const companyId = row.companyId;
+    const dupQb = this.repo
+      .createQueryBuilder('c')
+      .where('LOWER(c.name) = LOWER(:name)', { name })
+      .andWhere('c.isActive = true')
+      .andWhere('c.id <> :id', { id });
+    if (companyId) {
+      dupQb.andWhere('c.companyId = :companyId', { companyId });
+    } else {
+      dupQb.andWhere('c.companyId IS NULL');
+    }
+    const exists = await dupQb.getOne();
+    if (exists) {
+      throw new BadRequestException('Bu kategoriya allaqachon mavjud');
+    }
+
+    const oldName = row.name;
+    row.name = name;
+    const saved = await this.repo.save(row);
+
+    if (oldName !== name) {
+      const qb = this.clientRepo
+        .createQueryBuilder()
+        .update(Client)
+        .set({ category: name })
+        .where('category = :oldName', { oldName });
+      if (companyId) {
+        qb.andWhere('companyId = :companyId', { companyId });
+      }
+      await qb.execute();
+    }
+
     return this.toItem(saved);
   }
 

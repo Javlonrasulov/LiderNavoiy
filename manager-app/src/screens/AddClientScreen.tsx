@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Plus, X } from '../icons'
+import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Pencil, Plus, X } from '../icons'
 import { pushBackHandler } from '../utils/hardwareBack'
 import {
   createClient,
@@ -10,6 +10,8 @@ import {
   fetchClientCategories,
   fetchLines,
   updateClient,
+  updateClientCategory,
+  updateLine,
   type ClientCategory,
   type SalesLine,
 } from '../api/manager'
@@ -27,7 +29,7 @@ interface Props {
   user: AuthUser | null
   editClient?: Client | null
   onBack: () => void
-  onCreated: () => void
+  onCreated: (result?: { message: string; kind?: 'success' | 'error' | 'info' }) => void
 }
 
 type ExtraPhone = { phone: string; note: string }
@@ -99,6 +101,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
 
   const [modal, setModal] = useState<ModalKind>(null)
   const [modalName, setModalName] = useState('')
+  const [modalEditId, setModalEditId] = useState<string | null>(null)
   const [modalSaving, setModalSaving] = useState(false)
   const [picker, setPicker] = useState<PickerKind>(null)
   const modalSheetRef = useRef<HTMLDivElement>(null)
@@ -112,6 +115,8 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
       }
       if (modal) {
         setModal(null)
+        setModalEditId(null)
+        setModalName('')
         return true
       }
       if (picker) {
@@ -222,11 +227,13 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
     </div>
   )
 
-  const openModal = (kind: ModalKind) => {
+  const openModal = (kind: ModalKind, edit?: { id: string; name: string }) => {
+    if (!kind) return
     setPicker(null)
     setMapFullscreen(false)
     setModal(kind)
-    setModalName('')
+    setModalEditId(edit?.id ?? null)
+    setModalName(edit?.name ?? '')
   }
 
   const saveModal = async () => {
@@ -238,30 +245,55 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
     setModalSaving(true)
     try {
       if (modal === 'line') {
-        const created = await createLine({
-          name: value,
-          code: nextNumericLineCode(lines),
-          companyId,
-        })
-        setLines(prev => {
-          const next = [...prev.filter(l => l.id !== created.id), created]
-          next.sort((a, b) => a.code.localeCompare(b.code))
-          return next
-        })
-        setLineCode(created.code)
-        showToast(tr.lineSaved, 'success')
+        if (modalEditId) {
+          const updated = await updateLine(modalEditId, { name: value })
+          setLines(prev => {
+            const next = [...prev.filter(l => l.id !== updated.id), updated]
+            next.sort((a, b) => a.name.localeCompare(b.name))
+            return next
+          })
+          showToast(tr.lineUpdated, 'success')
+        } else {
+          const created = await createLine({
+            name: value,
+            code: nextNumericLineCode(lines),
+            companyId,
+          })
+          setLines(prev => {
+            const next = [...prev.filter(l => l.id !== created.id), created]
+            next.sort((a, b) => a.name.localeCompare(b.name))
+            return next
+          })
+          setLineCode(created.code)
+          showToast(tr.lineSaved, 'success')
+        }
       } else if (modal === 'category') {
-        const created = await createClientCategory({ name: value, companyId })
-        setCategories(prev => {
-          const next = [...prev.filter(x => x.id !== created.id), created]
-          next.sort((a, b) => a.name.localeCompare(b.name))
-          return next
-        })
-        setCategory(created.name)
-        showToast(tr.categorySaved, 'success')
+        if (modalEditId) {
+          const prevName = categories.find(c => c.id === modalEditId)?.name
+          const updated = await updateClientCategory(modalEditId, { name: value })
+          setCategories(prev => {
+            const next = [...prev.filter(x => x.id !== updated.id), updated]
+            next.sort((a, b) => a.name.localeCompare(b.name))
+            return next
+          })
+          if (category === prevName || category === updated.name) {
+            setCategory(updated.name)
+          }
+          showToast(tr.categoryUpdated, 'success')
+        } else {
+          const created = await createClientCategory({ name: value, companyId })
+          setCategories(prev => {
+            const next = [...prev.filter(x => x.id !== created.id), created]
+            next.sort((a, b) => a.name.localeCompare(b.name))
+            return next
+          })
+          setCategory(created.name)
+          showToast(tr.categorySaved, 'success')
+        }
       }
       setModal(null)
       setModalName('')
+      setModalEditId(null)
     } catch (e) {
       showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
     } finally {
@@ -348,16 +380,21 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
       if (isEdit && editClient) {
         const updated = await updateClient(editClient.id, body)
         const pending = updated.status === 'pending'
-        showToast(pending ? tr.clientRequestSubmitted : tr.clientUpdated, 'success')
+        onCreated({
+          message: pending ? tr.clientRequestSubmitted : tr.clientUpdated,
+          kind: 'success',
+        })
       } else {
         const created = await createClient({
           ...body,
           extraPhones: extras.length ? extras : undefined,
         })
         const pending = created.status === 'pending'
-        showToast(pending ? tr.clientRequestSubmitted : tr.clientCreated, 'success')
+        onCreated({
+          message: pending ? tr.clientRequestSubmitted : tr.clientCreated,
+          kind: 'success',
+        })
       }
-      onCreated()
     } catch (e) {
       showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
     } finally {
@@ -388,9 +425,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
   }
 
   const selectedLine = lines.find(l => l.code === lineCode)
-  const lineLabel = selectedLine
-    ? (selectedLine.name + (selectedLine.code && selectedLine.code !== selectedLine.name ? ` (${selectedLine.code})` : ''))
-    : ''
+  const lineLabel = selectedLine?.name ?? ''
 
   const pickerField = (
     label: string,
@@ -798,42 +833,87 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
 
               {picker === 'line' && lines.map(line => {
                 const selected = line.code === lineCode
-                const label = line.name + (line.code && line.code !== line.name ? ` (${line.code})` : '')
                 return (
-                  <button
+                  <div
                     key={line.id}
-                    type="button"
-                    onClick={() => { setLineCode(line.code); setPicker(null) }}
                     style={{
-                      width: '100%', padding: '14px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
+                      width: '100%', borderRadius: 14,
                       border: `1px solid ${selected ? 'rgba(99,102,241,0.45)' : c.border}`,
                       background: selected ? 'rgba(99,102,241,0.12)' : (dark ? '#1A1A2E' : '#F9FAFB'),
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      display: 'flex', alignItems: 'stretch',
                     }}
                   >
-                    <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{label}</span>
-                    {selected ? <CheckCircle size={18} color={c.primary} /> : null}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => { setLineCode(line.code); setPicker(null) }}
+                      style={{
+                        flex: 1, minWidth: 0, padding: '14px 14px', border: 'none', background: 'transparent',
+                        cursor: 'pointer', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{line.name}</span>
+                      {selected ? <CheckCircle size={18} color={c.primary} /> : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={tr.editItem}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openModal('line', { id: line.id, name: line.name })
+                      }}
+                      style={{
+                        width: 48, flexShrink: 0, border: 'none', borderLeft: `1px solid ${c.border}`,
+                        background: 'transparent', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Pencil size={16} color={c.mutedText} />
+                    </button>
+                  </div>
                 )
               })}
 
               {picker === 'category' && categories.map(cat => {
                 const selected = cat.name === category
                 return (
-                  <button
+                  <div
                     key={cat.id}
-                    type="button"
-                    onClick={() => { setCategory(cat.name); setPicker(null) }}
                     style={{
-                      width: '100%', padding: '14px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
+                      width: '100%', borderRadius: 14,
                       border: `1px solid ${selected ? 'rgba(99,102,241,0.45)' : c.border}`,
                       background: selected ? 'rgba(99,102,241,0.12)' : (dark ? '#1A1A2E' : '#F9FAFB'),
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      display: 'flex', alignItems: 'stretch',
                     }}
                   >
-                    <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{cat.name}</span>
-                    {selected ? <CheckCircle size={18} color={c.primary} /> : null}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCategory(cat.name); setPicker(null) }}
+                      style={{
+                        flex: 1, minWidth: 0, padding: '14px 14px', border: 'none', background: 'transparent',
+                        cursor: 'pointer', textAlign: 'left',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{cat.name}</span>
+                      {selected ? <CheckCircle size={18} color={c.primary} /> : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={tr.editItem}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openModal('category', { id: cat.id, name: cat.name })
+                      }}
+                      style={{
+                        width: 48, flexShrink: 0, border: 'none', borderLeft: `1px solid ${c.border}`,
+                        background: 'transparent', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Pencil size={16} color={c.mutedText} />
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -881,7 +961,11 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
             WebkitOverflowScrolling: 'touch',
           }}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setModal(null)
+            if (e.target === e.currentTarget) {
+              setModal(null)
+              setModalEditId(null)
+              setModalName('')
+            }
           }}
         >
           <div
@@ -899,11 +983,13 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: c.text }}>
-                {modal === 'line' ? tr.addLine : tr.addCategory}
+                {modal === 'line'
+                  ? (modalEditId ? tr.editLine : tr.addLine)
+                  : (modalEditId ? tr.editCategory : tr.addCategory)}
               </p>
               <button
                 type="button"
-                onClick={() => setModal(null)}
+                onClick={() => { setModal(null); setModalEditId(null); setModalName('') }}
                 style={{
                   width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',

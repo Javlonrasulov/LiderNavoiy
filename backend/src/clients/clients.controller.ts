@@ -52,6 +52,27 @@ export class ClientsController {
     return undefined;
   }
 
+  /** DTO yoki profil companyId / companyIds[0] */
+  private resolveCompanyId(
+    user: User,
+    dtoCompanyId?: string | null,
+  ): string | undefined {
+    const fromDto = dtoCompanyId?.trim();
+    if (fromDto) return fromDto;
+    const profile = user.distributorProfile;
+    if (!profile) return undefined;
+    const primary = profile.companyId?.trim();
+    if (primary) return primary;
+    const ids = [
+      ...new Set(
+        (Array.isArray(profile.companyIds) ? profile.companyIds : [])
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    return ids[0];
+  }
+
   private scopeCompanyIds(user: User, queryCompanyId?: string): string | string[] | undefined {
     const q = queryCompanyId?.trim();
     if (q) return q;
@@ -256,8 +277,7 @@ export class ClientsController {
   async create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
     const { appUsername, appPassword, ...clientDto } = dto;
     const distributorId = this.scopeDistributorId(req.user);
-    const companyId =
-      clientDto.companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+    const companyId = this.resolveCompanyId(req.user, clientDto.companyId);
 
     if (req.user.role === UserRole.DISTRIBUTOR) {
       await this.companiesService.assertAgentsCanAddClients(companyId);
@@ -319,8 +339,10 @@ export class ClientsController {
     const distributorId = this.scopeDistributorId(req.user);
 
     const existing = await this.service.findOne(id, distributorId);
-    const companyId =
-      existing.companyId ?? req.user.distributorProfile?.companyId ?? undefined;
+    const companyId = this.resolveCompanyId(
+      req.user,
+      clientDto.companyId ?? existing.companyId,
+    );
 
     const isAdmin = req.user.role === UserRole.ADMIN;
     const skipApproval =
@@ -336,7 +358,7 @@ export class ClientsController {
       const agentName = req.user.fullName ?? req.user.username;
       return this.requestsService.createUpdate(
         id,
-        clientDto,
+        { ...clientDto, companyId },
         distributorId,
         agentName,
       );

@@ -36,15 +36,29 @@ export class ClientRequestsService {
   }
 
   async findPending(companyId?: string) {
-    const qb = this.baseQuery().where('r.status = :status', {
-      status: ClientRequestStatus.PENDING,
-    });
-    if (companyId) {
+    return this.findList({ companyId, status: ClientRequestStatus.PENDING });
+  }
+
+  async findList(opts: {
+    companyId?: string;
+    status?: ClientRequestStatus | 'all';
+    distributorId?: string;
+  }) {
+    const qb = this.baseQuery();
+    if (opts.status && opts.status !== 'all') {
+      qb.andWhere('r.status = :status', { status: opts.status });
+    }
+    if (opts.companyId) {
       qb.andWhere('(r.companyId = :companyId OR r.companyId IS NULL)', {
-        companyId,
+        companyId: opts.companyId,
       });
     }
-    return qb.orderBy('r.createdAt', 'DESC').getMany();
+    if (opts.distributorId) {
+      qb.andWhere('r.distributorId = :distributorId', {
+        distributorId: opts.distributorId,
+      });
+    }
+    return qb.orderBy('r.createdAt', 'DESC').take(200).getMany();
   }
 
   async findOne(id: string) {

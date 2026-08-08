@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Request,
@@ -12,7 +13,10 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ClientCategoriesService } from './client-categories.service';
-import { CreateClientCategoryDto } from './dto/client-category.dto';
+import {
+  CreateClientCategoryDto,
+  UpdateClientCategoryDto,
+} from './dto/client-category.dto';
 import { User } from '../auth/entities/user.entity';
 
 @ApiTags('Client categories')
@@ -44,6 +48,12 @@ export class ClientCategoriesController {
       req.user.distributorProfile?.companyId ||
       undefined;
     return this.service.create({ ...dto, companyId });
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update client category' })
+  update(@Param('id') id: string, @Body() dto: UpdateClientCategoryDto) {
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')

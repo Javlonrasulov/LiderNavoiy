@@ -13,6 +13,14 @@ export class CreateClientCategoryDto {
   companyId?: string;
 }
 
+export class UpdateClientCategoryDto {
+  @ApiPropertyOptional({ example: 'VIP' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+}
+
 export interface ClientCategoryItemDto {
   id: string;
   name: string;
