@@ -777,6 +777,12 @@ export const api = {
 
   searchClients: (q: string) => request<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`),
 
+  assignLineDistributor: (lineCode: string, distributorId: string | null) =>
+    request<{ updated: number }>('/clients/assign-line-distributor', {
+      method: 'POST',
+      body: JSON.stringify({ lineCode, distributorId }),
+    }),
+
   createClient: (body: {
     code: string;
     name: string;
@@ -1222,6 +1228,8 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      agentVisitDays: number[];
+      deliveryVisitDays: number[];
       visitDays: number[];
       clientCount: number;
       companyId: string | null;
@@ -1232,6 +1240,8 @@ export const api = {
     name: string;
     agentName?: string;
     deliveryName?: string;
+    agentVisitDays?: number[];
+    deliveryVisitDays?: number[];
     visitDays?: number[];
     companyId?: string;
   }) =>
@@ -1241,6 +1251,8 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      agentVisitDays: number[];
+      deliveryVisitDays: number[];
       visitDays: number[];
       clientCount: number;
       companyId: string | null;
@@ -1254,6 +1266,8 @@ export const api = {
     name?: string;
     agentName?: string | null;
     deliveryName?: string | null;
+    agentVisitDays?: number[] | null;
+    deliveryVisitDays?: number[] | null;
     visitDays?: number[] | null;
   }) =>
     request<{
@@ -1262,6 +1276,8 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      agentVisitDays: number[];
+      deliveryVisitDays: number[];
       visitDays: number[];
       clientCount: number;
       companyId: string | null;

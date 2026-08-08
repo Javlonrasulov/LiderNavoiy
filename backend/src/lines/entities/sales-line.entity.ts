@@ -28,9 +28,17 @@ export class SalesLine {
   @Column({ type: 'varchar', nullable: true })
   deliveryName: string | null;
 
-  /** Hafta kunlari: 1=Dushanba … 7=Yakshanba */
+  /** Eski maydon — agent kunlari bilan sync (1=Du … 7=Yak) */
   @Column({ type: 'simple-json', nullable: true })
   visitDays: number[] | null;
+
+  /** Agent boradigan kunlar: 1=Dushanba … 7=Yakshanba */
+  @Column({ type: 'simple-json', nullable: true })
+  agentVisitDays: number[] | null;
+
+  /** Dostavkachi boradigan kunlar: 1=Dushanba … 7=Yakshanba */
+  @Column({ type: 'simple-json', nullable: true })
+  deliveryVisitDays: number[] | null;
 
   @Column({ default: true })
   isActive: boolean;

@@ -153,8 +153,16 @@ data class LineDto(
     val clientCount: Int = 0,
     val agentName: String? = null,
     val deliveryName: String? = null,
+    val agentVisitDays: List<Int> = emptyList(),
+    val deliveryVisitDays: List<Int> = emptyList(),
     val visitDays: List<Int> = emptyList(),
-)
+) {
+    fun daysForAgent(): List<Int> =
+        agentVisitDays.ifEmpty { visitDays }
+
+    fun daysForDelivery(): List<Int> =
+        deliveryVisitDays.ifEmpty { visitDays }
+}
 
 data class ClientPhotoUploadDto(
     val url: String,

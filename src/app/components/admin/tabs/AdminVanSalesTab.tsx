@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Truck,
   PackagePlus,
   Activity,
   RotateCcw,
@@ -49,8 +48,59 @@ function fmtNum(n: number) {
   return Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
 }
 
+const fieldStyle = (D: boolean, bdr: string, text: string): React.CSSProperties => ({
+  height: 34,
+  padding: '0 12px',
+  borderRadius: 8,
+  border: `1px solid ${bdr}`,
+  background: D ? '#111113' : '#fff',
+  color: text,
+  fontSize: 13,
+  outline: 'none',
+  width: '100%',
+});
+
+const panelStyle = (bg2: string, bdr: string): React.CSSProperties => ({
+  background: bg2,
+  border: `1px solid ${bdr}`,
+  borderRadius: 16,
+  padding: 16,
+});
+
+const btnPrimary = (acc: string, disabled?: boolean): React.CSSProperties => ({
+  height: 34,
+  padding: '0 14px',
+  borderRadius: 8,
+  border: 'none',
+  background: disabled ? '#e5e7eb' : acc,
+  color: disabled ? '#9ca3af' : '#fff',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: disabled ? 'default' : 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+});
+
+const btnGhost = (D: boolean, bdr: string, text: string): React.CSSProperties => ({
+  height: 34,
+  padding: '0 14px',
+  borderRadius: 8,
+  border: `1px solid ${bdr}`,
+  background: 'transparent',
+  color: text,
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+});
+
 export function AdminVanSalesTab({
-  D, card, divider, text, sub, input, t, viewOrg, activeIds,
+  D, divider, text, t, viewOrg, activeIds,
 }: Props) {
   const [active, setActive] = useState<VanSub>('yuklash');
   const companyId = viewOrg !== 'all' ? viewOrg : (activeIds[0] ?? undefined);
@@ -59,16 +109,15 @@ export function AdminVanSalesTab({
   const bg2 = D ? '#1c1c1e' : '#ffffff';
   const bdr = D ? '#2a2a2e' : '#e5e7eb';
   const muted = D ? '#6b7280' : '#9ca3af';
-  const acc = '#0ea5e9';
+  const acc = '#6366f1';
 
   const TABS: { id: VanSub; label: string; icon: React.ReactNode }[] = [
-    { id: 'yuklash', label: t.vanTabLoad ?? 'Yuklash', icon: <PackagePlus size={15} /> },
-    { id: 'faol', label: t.vanTabActive ?? 'Faol', icon: <Activity size={15} /> },
-    { id: 'qaytarish', label: t.vanTabReturn ?? 'Qaytarish', icon: <RotateCcw size={15} /> },
-    { id: 'hisobot', label: t.vanTabReport ?? 'Hisobot', icon: <BarChart3 size={15} /> },
+    { id: 'yuklash', label: t.vanTabLoad ?? 'Yuklash', icon: <PackagePlus size={15} strokeWidth={1.8} /> },
+    { id: 'faol', label: t.vanTabActive ?? 'Faol', icon: <Activity size={15} strokeWidth={1.8} /> },
+    { id: 'qaytarish', label: t.vanTabReturn ?? 'Qaytarish', icon: <RotateCcw size={15} strokeWidth={1.8} /> },
+    { id: 'hisobot', label: t.vanTabReport ?? 'Hisobot', icon: <BarChart3 size={15} strokeWidth={1.8} /> },
   ];
 
-  // ── shared data ──
   const [drivers, setDrivers] = useState<Distributor[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loads, setLoads] = useState<VanLoadDto[]>([]);
@@ -107,7 +156,6 @@ export function AdminVanSalesTab({
     return () => clearInterval(id);
   }, [refreshLoads]);
 
-  // ── Yuklash form ──
   const [driverId, setDriverId] = useState('');
   const [loadDate, setLoadDate] = useState(todayIso);
   const [notes, setNotes] = useState('');
@@ -229,7 +277,6 @@ export function AdminVanSalesTab({
     }
   };
 
-  // ── Report ──
   const [reportDate, setReportDate] = useState(todayIso);
   const [report, setReport] = useState<Awaited<ReturnType<typeof api.getVanReport>> | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
@@ -250,550 +297,456 @@ export function AdminVanSalesTab({
     if (active === 'hisobot') loadReport();
   }, [active, loadReport]);
 
+  const labelCls: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: muted,
+    marginBottom: 4,
+    display: 'block',
+  };
+
   return (
     <div style={{ background: bg, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div
-        style={{
-          background: bg2,
-          borderBottom: `1px solid ${bdr}`,
-          position: 'sticky',
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', overflowX: 'auto' }}>
-          <Truck size={18} color={acc} style={{ flexShrink: 0 }} />
-          {TABS.map((tab) => {
-            const on = active === tab.id;
+      {/* Sub-tab bar — Ombor uslubi */}
+      <div style={{
+        background: bg2,
+        borderBottom: `1px solid ${bdr}`,
+        flexShrink: 0,
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '10px 16px',
+          overflowX: 'auto',
+        }}>
+          {TABS.map((tb) => {
+            const isActive = active === tb.id;
             return (
               <button
-                key={tab.id}
+                key={tb.id}
                 type="button"
-                onClick={() => setActive(tab.id)}
+                onClick={() => setActive(tb.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 14px',
+                  gap: 7,
+                  padding: '8px 16px',
                   borderRadius: 10,
                   border: 'none',
-                  cursor: 'pointer',
-                  background: on ? (D ? '#0c4a6e' : '#e0f2fe') : 'transparent',
-                  color: on ? (D ? '#7dd3fc' : '#0369a1') : muted,
-                  fontWeight: on ? 600 : 500,
+                  background: isActive ? acc : (D ? '#2a2a2e' : '#f3f4f6'),
+                  color: isActive ? '#ffffff' : muted,
                   fontSize: 13,
+                  fontWeight: isActive ? 600 : 500,
+                  cursor: 'pointer',
                   whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'background 0.18s, color 0.18s',
+                  boxShadow: isActive ? `0 4px 14px ${acc}45` : 'none',
                 }}
               >
-                {tab.icon}
-                {tab.label}
+                {tb.icon}
+                <span>{tb.label}</span>
               </button>
             );
           })}
         </div>
-        <div style={{ padding: '0 16px 10px', fontSize: 12, color: muted }}>
+        <div style={{
+          padding: '8px 16px 12px',
+          borderTop: `1px solid ${bdr}`,
+          fontSize: 11,
+          color: muted,
+        }}>
           {t.vanLineHint ?? 'Klientlar Liniya kunlaridan keladi'}
         </div>
       </div>
 
-      <div style={{ padding: 16, flex: 1 }}>
-        {error && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '10px 12px',
-              borderRadius: 10,
-              background: D ? '#450a0a' : '#fef2f2',
-              color: D ? '#fca5a5' : '#b91c1c',
-              fontSize: 13,
-            }}
-          >
-            {error}
-          </div>
-        )}
-        {flash && (
-          <div
-            style={{
-              marginBottom: 12,
-              padding: '10px 12px',
-              borderRadius: 10,
-              background: D ? '#052e16' : '#f0fdf4',
-              color: D ? '#86efac' : '#15803d',
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Check size={14} /> {flash}
-          </div>
-        )}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <div className="px-5 md:px-8 py-6">
+          {error && (
+            <div className={`mb-4 rounded-xl px-3 py-2.5 text-sm ${D ? 'bg-red-950/40 text-red-300' : 'bg-red-50 text-red-700'}`}>
+              {error}
+            </div>
+          )}
+          {flash && (
+            <div className={`mb-4 rounded-xl px-3 py-2.5 text-sm flex items-center gap-2 ${D ? 'bg-emerald-950/40 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>
+              <Check size={14} /> {flash}
+            </div>
+          )}
 
-        {active === 'yuklash' && (
-          <div style={{ display: 'grid', gap: 16, maxWidth: 960 }}>
-            <div className={card} style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <label style={{ display: 'grid', gap: 4, fontSize: 12, color: muted }}>
-                  {t.vanPickDriver ?? 'Dostavchik'}
-                  <select
-                    className={input}
-                    value={driverId}
-                    onChange={(e) => setDriverId(e.target.value)}
-                    style={{ padding: '8px 10px', borderRadius: 10 }}
-                  >
-                    <option value="">—</option>
-                    {drivers.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.user?.fullName || d.user?.username || d.id.slice(0, 8)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ display: 'grid', gap: 4, fontSize: 12, color: muted }}>
-                  {t.vanPickDate ?? 'Sana'}
+          {active === 'yuklash' && (
+            <div className="space-y-4 max-w-5xl">
+              <div style={panelStyle(bg2, bdr)}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label style={labelCls}>{t.vanPickDriver ?? 'Dostavchik'}</label>
+                    <select
+                      value={driverId}
+                      onChange={(e) => setDriverId(e.target.value)}
+                      style={fieldStyle(D, bdr, text)}
+                    >
+                      <option value="">—</option>
+                      {drivers.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.user?.fullName || d.user?.username || d.id.slice(0, 8)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelCls}>{t.vanPickDate ?? 'Sana'}</label>
+                    <input
+                      type="date"
+                      value={loadDate}
+                      onChange={(e) => setLoadDate(e.target.value)}
+                      style={fieldStyle(D, bdr, text)}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={labelCls}>Izoh</label>
                   <input
-                    type="date"
-                    className={input}
-                    value={loadDate}
-                    onChange={(e) => setLoadDate(e.target.value)}
-                    style={{ padding: '8px 10px', borderRadius: 10 }}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    style={fieldStyle(D, bdr, text)}
                   />
-                </label>
-              </div>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, color: muted, marginTop: 12 }}>
-                Izoh
-                <input
-                  className={input}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  style={{ padding: '8px 10px', borderRadius: 10 }}
-                />
-              </label>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div className={card} style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: text }}>
-                  {t.vanAddProducts ?? 'Mahsulotlar'}
-                </div>
-                <input
-                  className={input}
-                  placeholder="Qidirish..."
-                  value={prodSearch}
-                  onChange={(e) => setProdSearch(e.target.value)}
-                  style={{ padding: '8px 10px', borderRadius: 10, width: '100%', marginBottom: 8 }}
-                />
-                <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 4 }}>
-                  {filteredProducts.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => addProduct(p)}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '8px 10px',
-                        borderRadius: 10,
-                        border: `1px solid ${bdr}`,
-                        background: D ? '#111' : '#fafafa',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        color: text,
-                      }}
-                    >
-                      <span style={{ fontSize: 13 }}>
-                        <span style={{ opacity: 0.5, marginRight: 6 }}>{p.code}</span>
-                        {p.name}
-                      </span>
-                      <span style={{ fontSize: 12, color: muted, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {Number(p.stockBalance) || 0} {p.unit}
-                        <Plus size={14} color={acc} />
-                      </span>
-                    </button>
-                  ))}
                 </div>
               </div>
 
-              <div className={card} style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: text }}>Savatcha</div>
-                {cart.length === 0 && (
-                  <div style={{ color: muted, fontSize: 13 }}>Mahsulot qo‘shing</div>
-                )}
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {cart.map((c) => (
-                    <div
-                      key={c.productId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: 8,
-                        borderRadius: 10,
-                        border: `1px solid ${bdr}`,
-                      }}
-                    >
-                      <div style={{ flex: 1, fontSize: 13, color: text }}>
-                        {c.name}
-                        <div style={{ fontSize: 11, color: muted }}>
-                          ombor: {c.stock} {c.unit}
-                        </div>
-                      </div>
-                      <input
-                        type="number"
-                        min={0.001}
-                        step="any"
-                        value={c.qty}
-                        onChange={(e) => {
-                          const qty = Number(e.target.value) || 0;
-                          setCart((prev) =>
-                            prev.map((x) =>
-                              x.productId === c.productId ? { ...x, qty } : x,
-                            ),
-                          );
-                        }}
-                        style={{
-                          width: 72,
-                          padding: '6px 8px',
-                          borderRadius: 8,
-                          border: `1px solid ${bdr}`,
-                          background: D ? '#0a0a0a' : '#fff',
-                          color: text,
-                        }}
-                      />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div style={panelStyle(bg2, bdr)}>
+                  <div className={`text-sm font-semibold mb-2 ${D ? 'text-white' : 'text-gray-900'}`}>
+                    {t.vanAddProducts ?? 'Mahsulotlar'}
+                  </div>
+                  <input
+                    placeholder="Qidirish..."
+                    value={prodSearch}
+                    onChange={(e) => setProdSearch(e.target.value)}
+                    style={{ ...fieldStyle(D, bdr, text), marginBottom: 8 }}
+                  />
+                  <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 4 }}>
+                    {filteredProducts.map((p) => (
                       <button
+                        key={p.id}
                         type="button"
-                        onClick={() => setCart((prev) => prev.filter((x) => x.productId !== c.productId))}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: muted }}
+                        onClick={() => addProduct(p)}
+                        className={`flex items-center justify-between text-left px-3 py-2 rounded-lg border transition-colors ${
+                          D
+                            ? 'border-gray-800 bg-[#111113] hover:border-indigo-500/40 text-gray-200'
+                            : 'border-gray-100 bg-gray-50 hover:border-indigo-200 hover:bg-indigo-50/40 text-gray-800'
+                        }`}
                       >
-                        <Trash2 size={16} />
+                        <span className="text-[13px]">
+                          <span className="opacity-45 mr-1.5">{p.code}</span>
+                          {p.name}
+                        </span>
+                        <span className="text-xs flex items-center gap-1.5" style={{ color: muted }}>
+                          {Number(p.stockBalance) || 0} {p.unit}
+                          <Plus size={14} color={acc} />
+                        </span>
                       </button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => createAndMaybeConfirm(false)}
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: `1px solid ${bdr}`,
-                      background: 'transparent',
-                      color: text,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {saving ? <Loader2 className="animate-spin" size={16} /> : (t.vanCreateDraft ?? 'Draft')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => createAndMaybeConfirm(true)}
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      border: 'none',
-                      background: acc,
-                      color: '#fff',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t.vanConfirmLoad ?? 'Tasdiqlash'}
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            {draftLoads.length > 0 && (
-              <div className={card} style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: text }}>Draft yuklashlar</div>
-                {draftLoads.map((l) => (
-                  <div
-                    key={l.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '10px 0',
-                      borderBottom: `1px solid ${divider}`,
-                    }}
-                  >
-                    <div style={{ fontSize: 13, color: text }}>
-                      {l.distributorName || l.distributorId.slice(0, 8)} · {l.loadDate} ·{' '}
-                      {l.items.length} mahsulot
-                    </div>
+                <div style={panelStyle(bg2, bdr)}>
+                  <div className={`text-sm font-semibold mb-2 ${D ? 'text-white' : 'text-gray-900'}`}>Savatcha</div>
+                  {cart.length === 0 && (
+                    <div className="text-[13px]" style={{ color: muted }}>Mahsulot qo‘shing</div>
+                  )}
+                  <div className="space-y-2">
+                    {cart.map((c) => (
+                      <div
+                        key={c.productId}
+                        className={`flex items-center gap-2 p-2 rounded-lg border ${D ? 'border-gray-800' : 'border-gray-100'}`}
+                      >
+                        <div className="flex-1 text-[13px]" style={{ color: text }}>
+                          {c.name}
+                          <div className="text-[11px]" style={{ color: muted }}>
+                            ombor: {c.stock} {c.unit}
+                          </div>
+                        </div>
+                        <input
+                          type="number"
+                          min={0.001}
+                          step="any"
+                          value={c.qty}
+                          onChange={(e) => {
+                            const qty = Number(e.target.value) || 0;
+                            setCart((prev) =>
+                              prev.map((x) =>
+                                x.productId === c.productId ? { ...x, qty } : x,
+                              ),
+                            );
+                          }}
+                          style={{
+                            width: 72,
+                            height: 32,
+                            padding: '0 8px',
+                            borderRadius: 8,
+                            border: `1px solid ${bdr}`,
+                            background: D ? '#0a0a0a' : '#fff',
+                            color: text,
+                            fontSize: 13,
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setCart((prev) => prev.filter((x) => x.productId !== c.productId))}
+                          className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-4">
                     <button
                       type="button"
-                      onClick={() => confirmDraft(l.id)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: 8,
-                        border: 'none',
-                        background: acc,
-                        color: '#fff',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                      }}
+                      disabled={saving}
+                      onClick={() => createAndMaybeConfirm(false)}
+                      style={{ ...btnGhost(D, bdr, text), flex: 1 }}
+                    >
+                      {saving ? <Loader2 className="animate-spin" size={14} /> : (t.vanCreateDraft ?? 'Draft')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => createAndMaybeConfirm(true)}
+                      style={{ ...btnPrimary(acc, saving), flex: 1 }}
                     >
                       {t.vanConfirmLoad ?? 'Tasdiqlash'}
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {active === 'faol' && (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {activeLoads.length === 0 && (
-              <div style={{ color: muted, padding: 24 }}>{t.vanNoLoads ?? 'Yuklashlar yo‘q'}</div>
-            )}
-            {activeLoads.map((l) => (
-              <div
-                key={l.id}
-                className={card}
-                style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, color: text }}>
-                      {l.distributorName || 'Dostavchik'} · {l.loadDate}
-                    </div>
-                    <div style={{ fontSize: 12, color: muted }}>
-                      {t.vanExpectedCash ?? 'Naqd'}: {fmtNum(l.expectedCash)}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      padding: '4px 8px',
-                      borderRadius: 8,
-                      background: D ? '#0c4a6e' : '#e0f2fe',
-                      color: D ? '#7dd3fc' : '#0369a1',
-                      height: 'fit-content',
-                    }}
-                  >
-                    {l.status}
-                  </span>
                 </div>
-                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ color: muted, textAlign: 'left' }}>
-                      <th style={{ padding: '6px 4px' }}>Mahsulot</th>
-                      <th>Yuk</th>
-                      <th>{t.vanSold ?? 'Sotilgan'}</th>
-                      <th>{t.vanRemaining ?? 'Qoldiq'}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {l.items.map((it) => (
-                      <tr key={it.id} style={{ borderTop: `1px solid ${bdr}`, color: text }}>
-                        <td style={{ padding: '8px 4px' }}>{it.productName}</td>
-                        <td>{it.loadedQty}</td>
-                        <td>{it.soldQty}</td>
-                        <td style={{ fontWeight: 600 }}>{it.remainingQty}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
-            ))}
-          </div>
-        )}
 
-        {active === 'qaytarish' && (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {returnLoads.length === 0 && (
-              <div style={{ color: muted, padding: 24 }}>{t.vanNoLoads ?? 'Yuklashlar yo‘q'}</div>
-            )}
-            {returnLoads.map((l) => {
-              const shortage = l.items.reduce((s, it) => s + (it.shortageQty || 0), 0);
-              return (
-                <div
-                  key={l.id}
-                  className={card}
-                  style={{ padding: 16, borderRadius: 16, border: `1px solid ${bdr}` }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: text }}>
-                        {l.distributorName || 'Dostavchik'} · {l.loadDate}
-                      </div>
-                      <div style={{ fontSize: 12, color: muted }}>
-                        {t.vanExpectedCash ?? 'Kutilgan naqd'}: {fmtNum(l.expectedCash)}
-                      </div>
-                    </div>
-                    {shortage > 0.001 && (
-                      <span
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: 12,
-                          color: '#dc2626',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <AlertTriangle size={14} />
-                        {t.vanShortage ?? 'Kamomad'}: {shortage}
-                      </span>
-                    )}
-                  </div>
-                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', marginBottom: 12 }}>
-                    <thead>
-                      <tr style={{ color: muted, textAlign: 'left' }}>
-                        <th style={{ padding: '6px 4px' }}>Mahsulot</th>
-                        <th>Kutilgan qaytish</th>
-                        <th>Topshirilgan</th>
-                        <th>{t.vanShortage ?? 'Kamomad'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {l.items.map((it) => (
-                        <tr key={it.id} style={{ borderTop: `1px solid ${bdr}`, color: text }}>
-                          <td style={{ padding: '8px 4px' }}>{it.productName}</td>
-                          <td>{it.expectedReturnQty}</td>
-                          <td>{it.returnedQty || it.expectedReturnQty}</td>
-                          <td style={{ color: it.shortageQty > 0 ? '#dc2626' : text }}>
-                            {it.shortageQty}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      className={input}
-                      placeholder={t.vanSubmittedCash ?? 'Topshirilgan naqd'}
-                      value={cashInputs[l.id] ?? ''}
-                      onChange={(e) =>
-                        setCashInputs((prev) => ({ ...prev, [l.id]: e.target.value }))
-                      }
-                      style={{ padding: '8px 10px', borderRadius: 10, flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      disabled={accepting === l.id}
-                      onClick={() => acceptReturn(l)}
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: 12,
-                        border: 'none',
-                        background: '#059669',
-                        color: '#fff',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {accepting === l.id ? (
-                        <Loader2 className="animate-spin" size={16} />
-                      ) : (
-                        t.vanAcceptReturn ?? 'Qabul qilish'
-                      )}
-                    </button>
-                  </div>
-                  {l.cashDiff != null && (
-                    <div style={{ marginTop: 8, fontSize: 12, color: muted }}>
-                      {t.vanCashDiff ?? 'Farq'}: {fmtNum(l.cashDiff)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {active === 'hisobot' && (
-          <div style={{ display: 'grid', gap: 16, maxWidth: 800 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="date"
-                className={input}
-                value={reportDate}
-                onChange={(e) => setReportDate(e.target.value)}
-                style={{ padding: '8px 10px', borderRadius: 10 }}
-              />
-              <button
-                type="button"
-                onClick={loadReport}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: acc,
-                  color: '#fff',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {reportLoading ? <Loader2 className="animate-spin" size={16} /> : 'Yangilash'}
-              </button>
-            </div>
-            {report && (
-              <>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                    gap: 10,
-                  }}
-                >
-                  {[
-                    ['Sotuvlar', report.summary.ordersCount],
-                    ['Jami sotish', fmtNum(report.summary.totalSales)],
-                    ['Naqd', fmtNum(report.summary.cash)],
-                    ['Terminal', fmtNum(report.summary.terminal)],
-                    ['Qarz', fmtNum(report.summary.debt)],
-                    ['Klientlar', report.summary.clientsSold],
-                    [t.vanExpectedCash ?? 'Kutilgan naqd', fmtNum(report.summary.expectedCash)],
-                    [t.vanSubmittedCash ?? 'Topshirilgan', fmtNum(report.summary.submittedCash)],
-                  ].map(([label, val]) => (
+              {draftLoads.length > 0 && (
+                <div style={panelStyle(bg2, bdr)}>
+                  <div className={`text-sm font-semibold mb-2 ${D ? 'text-white' : 'text-gray-900'}`}>Draft yuklashlar</div>
+                  {draftLoads.map((l) => (
                     <div
-                      key={String(label)}
-                      className={card}
-                      style={{
-                        padding: 14,
-                        borderRadius: 14,
-                        border: `1px solid ${bdr}`,
-                      }}
+                      key={l.id}
+                      className="flex items-center justify-between py-2.5"
+                      style={{ borderBottom: `1px solid ${divider}` }}
                     >
-                      <div style={{ fontSize: 11, color: muted }}>{label}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: text, marginTop: 4 }}>
-                        {val}
+                      <div className="text-[13px]" style={{ color: text }}>
+                        {l.distributorName || l.distributorId.slice(0, 8)} · {l.loadDate} · {l.items.length} mahsulot
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => confirmDraft(l.id)}
+                        style={btnPrimary(acc)}
+                      >
+                        {t.vanConfirmLoad ?? 'Tasdiqlash'}
+                      </button>
                     </div>
                   ))}
                 </div>
-                {report.loads.map((l) => (
-                  <div
-                    key={l.id}
-                    className={card}
-                    style={{ padding: 14, borderRadius: 14, border: `1px solid ${bdr}` }}
-                  >
-                    <div style={{ fontWeight: 600, color: text }}>
-                      {l.distributorName} · {l.status}
+              )}
+            </div>
+          )}
+
+          {active === 'faol' && (
+            <div className="space-y-3 max-w-5xl">
+              {activeLoads.length === 0 && (
+                <div className="py-10 text-center text-sm" style={{ color: muted }}>
+                  {t.vanNoLoads ?? 'Yuklashlar yo‘q'}
+                </div>
+              )}
+              {activeLoads.map((l) => (
+                <div key={l.id} style={panelStyle(bg2, bdr)}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <div className={`font-semibold text-sm ${D ? 'text-white' : 'text-gray-900'}`}>
+                        {l.distributorName || 'Dostavchik'} · {l.loadDate}
+                      </div>
+                      <div className="text-xs mt-0.5" style={{ color: muted }}>
+                        {t.vanExpectedCash ?? 'Naqd'}: {fmtNum(l.expectedCash)}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: muted, marginTop: 4 }}>
-                      Sotilgan: {l.items.reduce((s, i) => s + i.soldQty, 0)} · Qoldiq:{' '}
-                      {l.items.reduce((s, i) => s + i.remainingQty, 0)}
-                      {l.cashDiff != null && ` · Farq: ${fmtNum(l.cashDiff)}`}
-                    </div>
+                    <span
+                      className="text-[11px] font-semibold px-2 py-1 rounded-lg"
+                      style={{ background: `${acc}18`, color: acc }}
+                    >
+                      {l.status}
+                    </span>
                   </div>
-                ))}
-              </>
-            )}
-          </div>
-        )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[13px]">
+                      <thead>
+                        <tr style={{ color: muted, textAlign: 'left' }}>
+                          <th className="py-2 pr-2 font-medium">Mahsulot</th>
+                          <th className="py-2 font-medium">Yuk</th>
+                          <th className="py-2 font-medium">{t.vanSold ?? 'Sotilgan'}</th>
+                          <th className="py-2 font-medium">{t.vanRemaining ?? 'Qoldiq'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {l.items.map((it) => (
+                          <tr key={it.id} style={{ borderTop: `1px solid ${bdr}`, color: text }}>
+                            <td className="py-2.5 pr-2">{it.productName}</td>
+                            <td className="py-2.5">{it.loadedQty}</td>
+                            <td className="py-2.5">{it.soldQty}</td>
+                            <td className="py-2.5 font-semibold">{it.remainingQty}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {active === 'qaytarish' && (
+            <div className="space-y-3 max-w-5xl">
+              {returnLoads.length === 0 && (
+                <div className="py-10 text-center text-sm" style={{ color: muted }}>
+                  {t.vanNoLoads ?? 'Yuklashlar yo‘q'}
+                </div>
+              )}
+              {returnLoads.map((l) => {
+                const shortage = l.items.reduce((s, it) => s + (it.shortageQty || 0), 0);
+                return (
+                  <div key={l.id} style={panelStyle(bg2, bdr)}>
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className={`font-semibold text-sm ${D ? 'text-white' : 'text-gray-900'}`}>
+                          {l.distributorName || 'Dostavchik'} · {l.loadDate}
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: muted }}>
+                          {t.vanExpectedCash ?? 'Kutilgan naqd'}: {fmtNum(l.expectedCash)}
+                        </div>
+                      </div>
+                      {shortage > 0.001 && (
+                        <span className="flex items-center gap-1 text-xs font-semibold text-red-500">
+                          <AlertTriangle size={13} />
+                          {t.vanShortage ?? 'Kamomad'}: {shortage}
+                        </span>
+                      )}
+                    </div>
+                    <div className="overflow-x-auto mb-3">
+                      <table className="w-full text-[13px]">
+                        <thead>
+                          <tr style={{ color: muted, textAlign: 'left' }}>
+                            <th className="py-2 pr-2 font-medium">Mahsulot</th>
+                            <th className="py-2 font-medium">Kutilgan</th>
+                            <th className="py-2 font-medium">Topshirilgan</th>
+                            <th className="py-2 font-medium">{t.vanShortage ?? 'Kamomad'}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {l.items.map((it) => (
+                            <tr key={it.id} style={{ borderTop: `1px solid ${bdr}`, color: text }}>
+                              <td className="py-2.5 pr-2">{it.productName}</td>
+                              <td className="py-2.5">{it.expectedReturnQty}</td>
+                              <td className="py-2.5">{it.returnedQty || it.expectedReturnQty}</td>
+                              <td className={`py-2.5 ${it.shortageQty > 0 ? 'text-red-500 font-semibold' : ''}`}>
+                                {it.shortageQty}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <input
+                        placeholder={t.vanSubmittedCash ?? 'Topshirilgan naqd'}
+                        value={cashInputs[l.id] ?? ''}
+                        onChange={(e) =>
+                          setCashInputs((prev) => ({ ...prev, [l.id]: e.target.value }))
+                        }
+                        style={{ ...fieldStyle(D, bdr, text), flex: 1, minWidth: 160 }}
+                      />
+                      <button
+                        type="button"
+                        disabled={accepting === l.id}
+                        onClick={() => acceptReturn(l)}
+                        style={btnPrimary(acc, accepting === l.id)}
+                      >
+                        {accepting === l.id ? (
+                          <Loader2 className="animate-spin" size={14} />
+                        ) : (
+                          t.vanAcceptReturn ?? 'Qabul qilish'
+                        )}
+                      </button>
+                    </div>
+                    {l.cashDiff != null && (
+                      <div className="mt-2 text-xs" style={{ color: muted }}>
+                        {t.vanCashDiff ?? 'Farq'}: {fmtNum(l.cashDiff)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {active === 'hisobot' && (
+            <div className="space-y-4 max-w-5xl">
+              <div className="flex flex-wrap gap-2 items-end">
+                <div>
+                  <label style={labelCls}>{t.vanPickDate ?? 'Sana'}</label>
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                    style={{ ...fieldStyle(D, bdr, text), width: 'auto', minWidth: 160 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={loadReport}
+                  style={btnPrimary(acc, reportLoading)}
+                >
+                  {reportLoading ? <Loader2 className="animate-spin" size={14} /> : (t.refresh ?? 'Yangilash')}
+                </button>
+              </div>
+
+              {report && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {[
+                      ['Sotuvlar', report.summary.ordersCount],
+                      ['Jami sotish', fmtNum(report.summary.totalSales)],
+                      ['Naqd', fmtNum(report.summary.cash)],
+                      ['Terminal', fmtNum(report.summary.terminal)],
+                      ['Qarz', fmtNum(report.summary.debt)],
+                      ['Klientlar', report.summary.clientsSold],
+                      [t.vanExpectedCash ?? 'Kutilgan naqd', fmtNum(report.summary.expectedCash)],
+                      [t.vanSubmittedCash ?? 'Topshirilgan', fmtNum(report.summary.submittedCash)],
+                    ].map(([label, val]) => (
+                      <div key={String(label)} style={panelStyle(bg2, bdr)}>
+                        <div className="text-[11px] font-medium" style={{ color: muted }}>{label}</div>
+                        <div className={`text-xl font-bold mt-1 tabular-nums ${D ? 'text-white' : 'text-gray-900'}`}>
+                          {val}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {report.loads.map((l) => (
+                    <div key={l.id} style={panelStyle(bg2, bdr)}>
+                      <div className={`font-semibold text-sm ${D ? 'text-white' : 'text-gray-900'}`}>
+                        {l.distributorName} · {l.status}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: muted }}>
+                        Sotilgan: {l.items.reduce((s, i) => s + i.soldQty, 0)} · Qoldiq:{' '}
+                        {l.items.reduce((s, i) => s + i.remainingQty, 0)}
+                        {l.cashDiff != null && ` · Farq: ${fmtNum(l.cashDiff)}`}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

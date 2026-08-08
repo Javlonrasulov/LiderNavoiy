@@ -44,8 +44,8 @@ object VisitSchedule {
 
     /**
      * Mijoz shu kunga mosmi:
-     * 1) liniya visitDays (asosiy)
-     * 2) territory = "monday"… (eski usul)
+     * - Liniyada visitDays bor → faqat shu kunlarda
+     * - Liniyada visitDays yo‘q → har kuni ko‘rinadi (yoki eski territory)
      */
     fun clientMatchesDay(
         client: Client,
@@ -58,8 +58,16 @@ object VisitSchedule {
             if (!days.isNullOrEmpty()) {
                 return visitDay in days
             }
+            // Bu liniyada kun belgilanmagan — yashirma
+            if (daysByLineCode.isNotEmpty()) return true
         }
-        return client.territory?.lowercase()?.trim() == englishKey(visitDay)
+        if (daysByLineCode.isNotEmpty()) {
+            // Boshqa liniyalar sozlangan, bu mijozda line/kun yo‘q — ko‘rsat
+            return true
+        }
+        val territory = client.territory?.lowercase()?.trim().orEmpty()
+        if (territory.isEmpty()) return true
+        return territory == englishKey(visitDay)
     }
 
     fun buildDaysByLineCode(lines: List<Pair<String, List<Int>>>): Map<String, List<Int>> {

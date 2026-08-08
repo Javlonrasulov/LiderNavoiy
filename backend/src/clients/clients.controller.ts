@@ -115,9 +115,29 @@ export class ClientsController {
     }
   }
 
+  private async agentLineCodesFor(user: User): Promise<string[]> {
+    if (user.role !== UserRole.DISTRIBUTOR || !user.distributorProfile) {
+      return [];
+    }
+    const codes = new Set<string>();
+    const profileCode = user.distributorProfile.lineCode?.trim();
+    if (profileCode) codes.add(profileCode);
+    const companyId = this.resolveCompanyId(user);
+    const lines = await this.service.findLines(
+      typeof companyId === 'string' ? companyId : undefined,
+    );
+    const agentName = user.fullName?.trim();
+    for (const line of lines) {
+      if (agentName && line.agentName?.trim() === agentName) {
+        codes.add(line.code);
+      }
+    }
+    return [...codes];
+  }
+
   @Get()
   @ApiOperation({ summary: 'List clients' })
-  findAll(
+  async findAll(
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
     @Query('lineCode') lineCode?: string,
@@ -129,10 +149,14 @@ export class ClientsController {
       (req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER
         ? distributorId
         : undefined);
+    const agentLineCodes = scoped
+      ? await this.agentLineCodesFor(req.user)
+      : undefined;
     return this.service.findAll(
       this.scopeCompanyIds(req.user, companyId),
       lineCode,
       filterDistributorId,
+      agentLineCodes,
     );
   }
 
@@ -148,8 +172,25 @@ export class ClientsController {
 
   @Get('search')
   @ApiOperation({ summary: 'Search clients' })
-  search(@Request() req: { user: User }, @Query('q') q: string) {
-    return this.service.search(q, this.scopeDistributorId(req.user));
+  async search(@Request() req: { user: User }, @Query('q') q: string) {
+    const scoped = this.scopeDistributorId(req.user);
+    const agentLineCodes = scoped
+      ? await this.agentLineCodesFor(req.user)
+      : undefined;
+    return this.service.search(q, scoped, agentLineCodes);
+  }
+
+  @Post('assign-line-distributor')
+  @ApiOperation({ summary: 'Assign all clients on a line to a distributor (agent)' })
+  assignLineDistributor(
+    @Request() req: { user: User },
+    @Body() body: { lineCode: string; distributorId: string | null },
+  ) {
+    this.assertAdminOrManager(req.user);
+    return this.service.assignDistributorToLine(
+      body.lineCode,
+      body.distributorId ?? null,
+    );
   }
 
   @Get('lines')

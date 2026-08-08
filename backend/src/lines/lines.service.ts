@@ -21,6 +21,12 @@ function normalizeVisitDays(days?: number[] | null): number[] | null {
   return cleaned.length ? cleaned : null;
 }
 
+function asDays(primary?: number[] | null, fallback?: number[] | null): number[] {
+  const a = Array.isArray(primary) ? primary : [];
+  if (a.length) return a;
+  return Array.isArray(fallback) ? fallback : [];
+}
+
 @Injectable()
 export class LinesService {
   constructor(
@@ -69,6 +75,11 @@ export class LinesService {
       throw new BadRequestException('Bu kod bilan liniya mavjud');
     }
 
+    const agentDays = normalizeVisitDays(
+      dto.agentVisitDays ?? dto.visitDays ?? null,
+    );
+    const deliveryDays = normalizeVisitDays(dto.deliveryVisitDays ?? null);
+
     const saved = await this.lineRepo.save(
       this.lineRepo.create({
         code,
@@ -76,7 +87,9 @@ export class LinesService {
         companyId,
         agentName: dto.agentName?.trim() || null,
         deliveryName: dto.deliveryName?.trim() || null,
-        visitDays: normalizeVisitDays(dto.visitDays),
+        agentVisitDays: agentDays,
+        deliveryVisitDays: deliveryDays,
+        visitDays: agentDays,
         isActive: true,
       }),
     );
@@ -93,8 +106,15 @@ export class LinesService {
     if (dto.deliveryName !== undefined) {
       line.deliveryName = dto.deliveryName?.trim() || null;
     }
-    if (dto.visitDays !== undefined) {
-      line.visitDays = normalizeVisitDays(dto.visitDays);
+    if (dto.agentVisitDays !== undefined || dto.visitDays !== undefined) {
+      const agentDays = normalizeVisitDays(
+        dto.agentVisitDays !== undefined ? dto.agentVisitDays : dto.visitDays,
+      );
+      line.agentVisitDays = agentDays;
+      line.visitDays = agentDays;
+    }
+    if (dto.deliveryVisitDays !== undefined) {
+      line.deliveryVisitDays = normalizeVisitDays(dto.deliveryVisitDays);
     }
     if (dto.isActive !== undefined) line.isActive = dto.isActive;
     const saved = await this.lineRepo.save(line);
@@ -132,13 +152,17 @@ export class LinesService {
   }
 
   private toListItem(line: SalesLine, clientCount: number): LineListItemDto {
+    const agentVisitDays = asDays(line.agentVisitDays, line.visitDays);
+    const deliveryVisitDays = asDays(line.deliveryVisitDays, null);
     return {
       id: line.id,
       code: line.code,
       name: line.name,
       agentName: line.agentName,
       deliveryName: line.deliveryName,
-      visitDays: Array.isArray(line.visitDays) ? line.visitDays : [],
+      agentVisitDays,
+      deliveryVisitDays,
+      visitDays: agentVisitDays,
       clientCount,
       companyId: line.companyId,
     };

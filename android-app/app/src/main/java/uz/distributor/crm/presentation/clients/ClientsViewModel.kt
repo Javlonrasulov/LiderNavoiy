@@ -29,7 +29,7 @@ data class ClientsUiState(
 @HiltViewModel
 class ClientsViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
-    authRepository: AuthRepository,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ClientsUiState())
@@ -37,11 +37,18 @@ class ClientsViewModel @Inject constructor(
 
     private var allClients: List<Client> = emptyList()
     private var daysByLineCode: Map<String, List<Int>> = emptyMap()
+    private var isDeliveryUser: Boolean = false
 
     init {
         viewModelScope.launch {
             authRepository.getUserFlow().collect { user ->
+                val delivery = user?.isDeliveryPerson() == true
+                val roleChanged = delivery != isDeliveryUser
+                isDeliveryUser = delivery
                 _uiState.update { it.copy(canAddClients = user?.canAddClients() == true) }
+                if (roleChanged && allClients.isNotEmpty()) {
+                    loadClients(force = false)
+                }
             }
         }
         loadClients(force = true)
@@ -77,7 +84,10 @@ class ClientsViewModel @Inject constructor(
             try {
                 val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
                 daysByLineCode = VisitSchedule.buildDaysByLineCode(
-                    lines.map { it.code to it.visitDays },
+                    lines.map { line ->
+                        val days = if (isDeliveryUser) line.daysForDelivery() else line.daysForAgent()
+                        line.code to days
+                    },
                 )
                 allClients = clientRepository.getClients(force)
                 applyFilters(allClients)
@@ -109,12 +119,9 @@ class ClientsViewModel @Inject constructor(
             ClientsListTab.SEARCH -> if (state.searchQuery.isBlank()) list = emptyList()
             ClientsListTab.SCHEDULE -> {
                 val visitDay = VisitSchedule.fromCalendarIndex(state.selectedDay)
-                val byDay = list.filter {
+                list = list.filter {
                     VisitSchedule.clientMatchesDay(it, visitDay, daysByLineCode)
                 }
-                // Agar liniya kunlari sozlangan bo‘lsa — faqat shu kun mijozlari.
-                // Aks holda (hech narsa topilmasa) eski usul: barcha mijozlar.
-                list = if (byDay.isNotEmpty() || daysByLineCode.isNotEmpty()) byDay else list
             }
         }
         _uiState.update { it.copy(clients = list, dayClientCounts = dayCounts) }

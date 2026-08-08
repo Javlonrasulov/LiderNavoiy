@@ -9,6 +9,7 @@ import uz.distributor.crm.data.local.AgentLocationHolder
 import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.remote.TrackingSocketManager
 import uz.distributor.crm.data.repository.AppSettingsRepository
+import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.domain.model.Client
@@ -32,6 +33,7 @@ data class LocationUiState(
 @HiltViewModel
 class LocationViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
+    private val authRepository: AuthRepository,
     private val agentLocationHolder: AgentLocationHolder,
     private val deviceLocationProvider: DeviceLocationProvider,
     private val locationTrackingController: LocationTrackingController,
@@ -43,6 +45,8 @@ class LocationViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(LocationUiState())
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
+    private var isDeliveryUser: Boolean = false
+
     val darkMode: StateFlow<Boolean> = appSettingsRepository.darkMode.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -51,6 +55,11 @@ class LocationViewModel @Inject constructor(
 
     init {
         trackingSocket.connect()
+        viewModelScope.launch {
+            authRepository.getUserFlow().collect { user ->
+                isDeliveryUser = user?.isDeliveryPerson() == true
+            }
+        }
         viewModelScope.launch {
             agentLocationHolder.location
                 .distinctUntilChanged { a, b ->
@@ -82,7 +91,10 @@ class LocationViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
             val daysByLine = VisitSchedule.buildDaysByLineCode(
-                lines.map { it.code to it.visitDays },
+                lines.map { line ->
+                    val days = if (isDeliveryUser) line.daysForDelivery() else line.daysForAgent()
+                    line.code to days
+                },
             )
             val clients = clientRepository.getClients(forceRefresh = true)
             _uiState.update {
@@ -130,11 +142,9 @@ class LocationViewModel @Inject constructor(
             else -> VisitSchedule.englishKeyToVisitDay(state.selectedDay)
                 ?: VisitSchedule.todayVisitDay()
         }
-        val byDay = state.clients.filter { client ->
+        return state.clients.filter { client ->
             VisitSchedule.clientMatchesDay(client, visitDay, state.daysByLineCode)
         }
-        return if (byDay.isNotEmpty() || state.daysByLineCode.isNotEmpty()) byDay
-        else state.clients
     }
 
     fun selectedMapId(): String? = _uiState.value.selectedClient?.id

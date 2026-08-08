@@ -363,7 +363,11 @@ export class VanSalesService {
 
     const matchedCodes = new Set<string>();
     for (const line of lines) {
-      const days = Array.isArray(line.visitDays) ? line.visitDays.map(Number) : [];
+      const days = Array.isArray(line.deliveryVisitDays) && line.deliveryVisitDays.length
+        ? line.deliveryVisitDays.map(Number)
+        : Array.isArray(line.visitDays)
+          ? line.visitDays.map(Number)
+          : [];
       if (days.length > 0 && !days.includes(day)) continue;
 
       const deliveryName = (line.deliveryName || '').trim().toLowerCase();

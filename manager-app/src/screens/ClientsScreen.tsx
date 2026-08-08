@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { PenSquare, Plus, Search, X } from '../icons'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, PenSquare, Plus, Search, X } from '../icons'
 import {
   deleteClientRequest,
   fetchClientRequests,
@@ -59,6 +59,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
   const [requests, setRequests] = useState<ClientRequestRow[]>([])
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<ClientSort>('all')
+  const [lineFilter, setLineFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Client | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -119,6 +120,28 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
     { id: 'debt_asc', label: tr.clientSortDebtAsc },
   ]
 
+  const lineOptions = useMemo(() => {
+    const fromApi = lines
+      .map(l => ({
+        code: (l.code || '').trim(),
+        name: (l.name || '').trim() || (l.code || '').trim(),
+      }))
+      .filter(l => l.code)
+    const seen = new Set(fromApi.map(l => l.code))
+    for (const cl of list) {
+      const code = (cl.lineCode || '').trim()
+      if (!code || seen.has(code)) continue
+      seen.add(code)
+      fromApi.push({ code, name: code })
+    }
+    return fromApi.sort((a, b) => a.name.localeCompare(b.name, 'uz'))
+  }, [lines, list])
+
+  const sortLabel = sortTabs.find(t => t.id === sort)?.label ?? tr.clientSortAll
+  const lineFilterLabel = lineFilter
+    ? (lineNameByCode.get(lineFilter) || lineFilter)
+    : tr.clientFilterLineAll
+
   const visibleRequests = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return requests
@@ -134,6 +157,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     let rows = list.filter(cl => {
+      if (lineFilter && (cl.lineCode || '').trim() !== lineFilter) return false
       if (!needle) return true
       const hay = `${cl.name} ${cl.fullName || ''} ${cl.phone || ''} ${cl.code || ''}`.toLowerCase()
       return hay.includes(needle)
@@ -160,7 +184,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
       }
       return byName(a, b)
     })
-  }, [list, q, sort])
+  }, [list, q, sort, lineFilter])
 
   const statusLabel = (status: ClientRequestRow['status']) => {
     if (status === 'pending') return tr.clientReqPending
@@ -284,28 +308,28 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
           </div>
         )}
 
-        <div
-          className="no-scrollbar"
-          style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}
-        >
-          {sortTabs.map(t => {
-            const active = sort === t.id
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setSort(t.id)}
-                style={{
-                  flexShrink: 0, height: 36, padding: '0 12px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                  fontWeight: 800, fontSize: 12, whiteSpace: 'nowrap',
-                  background: active ? 'rgba(108,92,231,0.15)' : c.muted,
-                  color: active ? c.primary : c.mutedText,
-                }}
-              >
-                {t.label}
-              </button>
-            )
-          })}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <FilterDropdown
+            dark={dark}
+            label={tr.clientFilterSort}
+            valueLabel={sortLabel}
+            active={sort !== 'all'}
+            options={sortTabs.map(t => ({ id: t.id, label: t.label }))}
+            selectedId={sort}
+            onSelect={id => setSort(id as ClientSort)}
+          />
+          <FilterDropdown
+            dark={dark}
+            label={tr.clientFilterLine}
+            valueLabel={lineFilterLabel}
+            active={!!lineFilter}
+            options={[
+              { id: '', label: tr.clientFilterLineAll },
+              ...lineOptions.map(l => ({ id: l.code, label: l.name })),
+            ]}
+            selectedId={lineFilter}
+            onSelect={setLineFilter}
+          />
         </div>
 
         {loading && <p style={{ textAlign: 'center', color: c.mutedText, padding: 24 }}>{tr.loading}</p>}

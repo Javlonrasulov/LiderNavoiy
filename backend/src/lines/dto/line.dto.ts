@@ -11,6 +11,11 @@ import {
   MinLength,
 } from 'class-validator';
 
+const visitDaysProp = {
+  example: [1, 3, 5],
+  description: '1=Mon … 7=Sun',
+};
+
 export class CreateLineDto {
   @ApiProperty({ example: '01' })
   @IsString()
@@ -37,7 +42,26 @@ export class CreateLineDto {
   @IsString()
   deliveryName?: string;
 
-  @ApiPropertyOptional({ example: [1, 3, 5], description: '1=Mon … 7=Sun' })
+  @ApiPropertyOptional(visitDaysProp)
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  agentVisitDays?: number[];
+
+  @ApiPropertyOptional(visitDaysProp)
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  deliveryVisitDays?: number[];
+
+  /** @deprecated — agentVisitDays ga yoziladi */
+  @ApiPropertyOptional(visitDaysProp)
   @IsOptional()
   @IsArray()
   @ArrayUnique()
@@ -70,7 +94,26 @@ export class UpdateLineDto {
   @IsString()
   deliveryName?: string | null;
 
-  @ApiPropertyOptional({ example: [1, 3, 5], description: '1=Mon … 7=Sun' })
+  @ApiPropertyOptional(visitDaysProp)
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  agentVisitDays?: number[] | null;
+
+  @ApiPropertyOptional(visitDaysProp)
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  deliveryVisitDays?: number[] | null;
+
+  /** @deprecated */
+  @ApiPropertyOptional(visitDaysProp)
   @IsOptional()
   @IsArray()
   @ArrayUnique()
@@ -91,6 +134,9 @@ export interface LineListItemDto {
   name: string;
   agentName: string | null;
   deliveryName: string | null;
+  agentVisitDays: number[];
+  deliveryVisitDays: number[];
+  /** Agent kunlari (eski klientlar uchun) */
   visitDays: number[];
   clientCount: number;
   companyId: string | null;

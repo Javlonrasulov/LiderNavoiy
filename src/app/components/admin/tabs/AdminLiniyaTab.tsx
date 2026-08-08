@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check, MapPin } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check, MapPin, ChevronDown } from 'lucide-react';
 import { LINES } from '../../../data/adminData';
 import { api, type Client, type Distributor } from '../../../api/client';
 
@@ -18,7 +18,8 @@ type Line = {
   kolTT: number;
   agent: string;
   delivery: string;
-  visitDays: number[];
+  agentVisitDays: number[];
+  deliveryVisitDays: number[];
   plan: number;
   visits: number;
   sales: number;
@@ -68,9 +69,14 @@ function apiLineToRow(row: {
   name: string;
   agentName: string | null;
   deliveryName?: string | null;
+  agentVisitDays?: number[] | null;
+  deliveryVisitDays?: number[] | null;
   visitDays?: number[] | null;
   clientCount: number;
 }): Line {
+  const agentDays = Array.isArray(row.agentVisitDays) && row.agentVisitDays.length
+    ? row.agentVisitDays
+    : (Array.isArray(row.visitDays) ? row.visitDays : []);
   return {
     id: row.id,
     code: row.code,
@@ -78,7 +84,8 @@ function apiLineToRow(row: {
     kolTT: row.clientCount,
     agent: row.agentName ?? '',
     delivery: row.deliveryName ?? '',
-    visitDays: Array.isArray(row.visitDays) ? row.visitDays : [],
+    agentVisitDays: agentDays,
+    deliveryVisitDays: Array.isArray(row.deliveryVisitDays) ? row.deliveryVisitDays : [],
     plan: 0,
     visits: 0,
     sales: 0,
@@ -86,7 +93,8 @@ function apiLineToRow(row: {
 }
 
 const emptyForm = (): Omit<Line, 'id'> => ({
-  code: '', name: '', kolTT: 0, agent: '', delivery: '', visitDays: [], plan: 0, visits: 0, sales: 0,
+  code: '', name: '', kolTT: 0, agent: '', delivery: '',
+  agentVisitDays: [], deliveryVisitDays: [], plan: 0, visits: 0, sales: 0,
 });
 
 /** Keyingi raqamli kod: 01, 02, 03… (nom emas) */
@@ -117,11 +125,193 @@ const demoLines: Line[] = LINES.map(l => ({
   kolTT: l.kolTT,
   agent: l.agent,
   delivery: '',
-  visitDays: [],
+  agentVisitDays: [],
+  deliveryVisitDays: [],
   plan: l.plan,
   visits: l.visits,
   sales: l.sales,
 }));
+
+function DayChips({
+  days,
+  onChange,
+  t,
+  txt,
+  muted,
+  border,
+  indigo,
+}: {
+  days: number[];
+  onChange: (days: number[]) => void;
+  t: Record<string, string>;
+  txt: string;
+  muted: string;
+  border: string;
+  indigo: string;
+}) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {WEEK_DAYS.map(day => {
+        const on = days.includes(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            onClick={() => onChange(
+              on
+                ? days.filter(d => d !== day)
+                : [...days, day].sort((a, b) => a - b),
+            )}
+            style={{
+              minWidth: 42, padding: '7px 8px', borderRadius: 8,
+              border: `1.5px solid ${on ? indigo : border}`,
+              background: on ? 'rgba(99,102,241,0.14)' : 'transparent',
+              color: on ? indigo : txt,
+              fontSize: 12, fontWeight: on ? 700 : 500,
+              cursor: 'pointer',
+            }}
+          >
+            {dayLabel(day, t)}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function LineSelect({
+  value,
+  options,
+  placeholder,
+  onChange,
+  D,
+  txt,
+  muted,
+  border,
+  inpBg,
+  indigo,
+}: {
+  value: string;
+  options: PersonOption[];
+  placeholder: string;
+  onChange: (v: string) => void;
+  D: boolean;
+  txt: string;
+  muted: string;
+  border: string;
+  inpBg: string;
+  indigo: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const label = value || placeholder;
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+          background: inpBg, border: `1.5px solid ${open ? indigo : border}`,
+          borderRadius: 10, padding: '10px 12px',
+          fontSize: 13, color: value ? txt : muted,
+          cursor: 'pointer', textAlign: 'left', outline: 'none',
+        }}
+      >
+        <span style={{
+          flex: 1, minWidth: 0, overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {label}
+        </span>
+        <ChevronDown
+          size={14}
+          color={muted}
+          style={{ flexShrink: 0, transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 40,
+          background: D ? '#1e1e1e' : '#fff',
+          border: `1px solid ${border}`,
+          borderRadius: 10,
+          boxShadow: D ? '0 12px 32px rgba(0,0,0,0.55)' : '0 12px 32px rgba(0,0,0,0.12)',
+          overflow: 'hidden',
+          maxHeight: 220,
+          overflowY: 'auto',
+        }}>
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false); }}
+            style={{
+              width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none',
+              background: !value ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.08)') : 'transparent',
+              color: !value ? indigo : muted,
+              fontSize: 13, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+            onMouseEnter={e => {
+              if (value) e.currentTarget.style.background = D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = !value
+                ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.08)')
+                : 'transparent';
+            }}
+          >
+            {!value ? <Check size={12} color={indigo} /> : <span style={{ width: 12 }} />}
+            {placeholder}
+          </button>
+          {options.map(opt => {
+            const selected = value === opt.name;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => { onChange(opt.name); setOpen(false); }}
+                style={{
+                  width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none',
+                  background: selected ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.08)') : 'transparent',
+                  color: selected ? indigo : txt,
+                  fontSize: 13, fontWeight: selected ? 600 : 400, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}
+                onMouseEnter={e => {
+                  if (!selected) e.currentTarget.style.background = D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = selected
+                    ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.08)')
+                    : 'transparent';
+                }}
+              >
+                {selected ? <Check size={12} color={indigo} /> : <span style={{ width: 12 }} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {opt.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   const [lines, setLines]       = useState<Line[]>(demoLines);
@@ -187,11 +377,19 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   useEffect(() => { refreshLines(); }, [refreshLines]);
   useEffect(() => { loadPeople(); }, [loadPeople]);
 
-  const syncLineCode = async (personName: string, people: PersonOption[], lineCode: string) => {
+  const syncLineCode = async (
+    personName: string,
+    people: PersonOption[],
+    lineCode: string,
+    assignClients: boolean,
+  ) => {
     const person = people.find(p => p.name === personName);
     if (!person) return;
     try {
       await api.updateDistributor(person.id, { lineCode });
+      if (assignClients) {
+        await api.assignLineDistributor(lineCode, person.id);
+      }
     } catch {
       /* ignore — name on line is already saved */
     }
@@ -229,7 +427,8 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
       code: resolveLineCode(line.code, others),
       name: line.name, kolTT: line.kolTT,
       agent: line.agent, delivery: line.delivery,
-      visitDays: [...(line.visitDays ?? [])],
+      agentVisitDays: [...(line.agentVisitDays ?? [])],
+      deliveryVisitDays: [...(line.deliveryVisitDays ?? [])],
       plan: line.plan, visits: line.visits, sales: line.sales,
     });
     setEditLine(line);
@@ -277,10 +476,11 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           name: form.name,
           agentName: form.agent || null,
           deliveryName: form.delivery || null,
-          visitDays: form.visitDays.length ? form.visitDays : null,
+          agentVisitDays: form.agentVisitDays.length ? form.agentVisitDays : null,
+          deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : null,
         });
-        if (form.agent) await syncLineCode(form.agent, agents, code);
-        if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
+        if (form.agent) await syncLineCode(form.agent, agents, code, true);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false);
         setLines(prev => prev.map(l => l.id === editLine.id ? apiLineToRow(updated) : l));
       } catch {
         return;
@@ -314,10 +514,11 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           name: form.name,
           agentName: form.agent || undefined,
           deliveryName: form.delivery || undefined,
-          visitDays: form.visitDays.length ? form.visitDays : undefined,
+          agentVisitDays: form.agentVisitDays.length ? form.agentVisitDays : undefined,
+          deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : undefined,
         });
-        if (form.agent) await syncLineCode(form.agent, agents, code);
-        if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
+        if (form.agent) await syncLineCode(form.agent, agents, code, true);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false);
         setLines(prev => [...prev, apiLineToRow(created)]);
       } catch {
         return;
@@ -335,18 +536,6 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     background: inpBg, border: `1.5px solid ${border}`,
     borderRadius: 10, padding: '10px 12px',
     fontSize: 13, color: txt, outline: 'none',
-  };
-
-  const selectStyle = {
-    ...InputStyle,
-    appearance: 'none' as const,
-    WebkitAppearance: 'none' as const,
-    MozAppearance: 'none' as const,
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(muted)}' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'right 12px center',
-    paddingRight: 32,
-    cursor: 'pointer' as const,
   };
 
   const isOpen = !!editLine || addMode;
@@ -369,8 +558,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     t.lineColName ?? 'Nomi',
     t.lineColTT ?? 'Savdo nuqtalari',
     t.lineColAgent ?? 'Agent',
-    t.lineColDelivery ?? 'Dostavchik',
-    t.lineColDays ?? 'Kunlar',
+    t.lineColDelivery ?? 'Dostavkachi',
+    t.lineColAgentDays ?? 'Agent kunlari',
+    t.lineColDeliveryDays ?? 'Dostavkachi kunlari',
     '',
   ];
 
@@ -397,7 +587,8 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => { setEditLine(null); setAddMode(false); }}>
           <div style={{
-            background: modalBg, borderRadius: 18, padding: 28, width: 440, maxWidth: '92vw',
+            background: modalBg, borderRadius: 18, padding: 28, width: 460, maxWidth: '92vw',
+            maxHeight: '90vh', overflowY: 'auto',
             boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
             border: `1px solid ${border}`,
           }} onClick={e => e.stopPropagation()}>
@@ -460,16 +651,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
                 <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
                   {t.lineLabelAgent ?? 'AGENT'}
                 </div>
-                <select
-                  style={selectStyle}
+                <LineSelect
                   value={form.agent}
-                  onChange={e => setForm(f => ({ ...f, agent: e.target.value }))}
-                >
-                  <option value="">{noneLabel}</option>
-                  {agentOptions.map(a => (
-                    <option key={a.id} value={a.name}>{a.name}</option>
-                  ))}
-                </select>
+                  options={agentOptions}
+                  placeholder={noneLabel}
+                  onChange={v => setForm(f => ({ ...f, agent: v }))}
+                  D={D} txt={txt} muted={muted} border={border} inpBg={inpBg} indigo={indigo}
+                />
                 {hasApiToken() && agentOptions.length === 0 && (
                   <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>
                     {t.lineNoAgents ?? 'Agent topilmadi'}
@@ -478,58 +666,46 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
               </div>
               <div>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
-                  {t.lineLabelDelivery ?? 'DOSTAVCHIK'}
+                  {t.lineLabelDelivery ?? 'DOSTAVKACHI'}
                 </div>
-                <select
-                  style={selectStyle}
+                <LineSelect
                   value={form.delivery}
-                  onChange={e => setForm(f => ({ ...f, delivery: e.target.value }))}
-                >
-                  <option value="">{noneLabel}</option>
-                  {deliveryOptions.map(d => (
-                    <option key={d.id} value={d.name}>{d.name}</option>
-                  ))}
-                </select>
+                  options={deliveryOptions}
+                  placeholder={noneLabel}
+                  onChange={v => setForm(f => ({ ...f, delivery: v }))}
+                  D={D} txt={txt} muted={muted} border={border} inpBg={inpBg} indigo={indigo}
+                />
                 {hasApiToken() && deliveryOptions.length === 0 && (
                   <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>
-                    {t.lineNoDelivery ?? 'Dostavchik topilmadi'}
+                    {t.lineNoDelivery ?? 'Dostavkachi topilmadi'}
                   </div>
                 )}
               </div>
               <div>
                 <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
-                  {t.lineLabelDays ?? 'HAFTA KUNLARI'}
+                  {t.lineLabelAgentDays ?? 'AGENT KUNLARI'}
                 </div>
                 <div style={{ fontSize: 10, color: muted, marginBottom: 8 }}>
-                  {t.lineDaysHint ?? 'Agent / dostavchik qaysi kunlari borishi'}
+                  {t.lineAgentDaysHint ?? 'Agent qaysi kunlari boradi'}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {WEEK_DAYS.map(day => {
-                    const on = form.visitDays.includes(day);
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => setForm(f => ({
-                          ...f,
-                          visitDays: on
-                            ? f.visitDays.filter(d => d !== day)
-                            : [...f.visitDays, day].sort((a, b) => a - b),
-                        }))}
-                        style={{
-                          minWidth: 42, padding: '7px 8px', borderRadius: 8,
-                          border: `1.5px solid ${on ? indigo : border}`,
-                          background: on ? 'rgba(99,102,241,0.14)' : 'transparent',
-                          color: on ? indigo : txt,
-                          fontSize: 12, fontWeight: on ? 700 : 500,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {dayLabel(day, t)}
-                      </button>
-                    );
-                  })}
+                <DayChips
+                  days={form.agentVisitDays}
+                  onChange={days => setForm(f => ({ ...f, agentVisitDays: days }))}
+                  t={t} txt={txt} muted={muted} border={border} indigo={indigo}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                  {t.lineLabelDeliveryDays ?? 'DOSTAVKACHI KUNLARI'}
                 </div>
+                <div style={{ fontSize: 10, color: muted, marginBottom: 8 }}>
+                  {t.lineDeliveryDaysHint ?? 'Dostavkachi qaysi kunlari boradi'}
+                </div>
+                <DayChips
+                  days={form.deliveryVisitDays}
+                  onChange={days => setForm(f => ({ ...f, deliveryVisitDays: days }))}
+                  t={t} txt={txt} muted={muted} border={border} indigo={indigo}
+                />
               </div>
             </div>
 
@@ -767,7 +943,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
 
       {/* ── Table header ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '48px 1fr 72px 90px 90px 110px 60px',
+        display: 'grid', gridTemplateColumns: '48px 1fr 64px 80px 80px 100px 100px 60px',
         gap: 8, padding: '8px 12px',
         borderRadius: 8,
         background: D ? 'rgba(255,255,255,0.04)' : '#f3f4f6',
@@ -790,7 +966,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           <div
             key={line.id}
             style={{
-              display: 'grid', gridTemplateColumns: '48px 1fr 72px 90px 90px 110px 60px',
+              display: 'grid', gridTemplateColumns: '48px 1fr 64px 80px 80px 100px 100px 60px',
               gap: 8, padding: '10px 12px', borderRadius: 10,
               border: `1px solid transparent`,
               cursor: 'pointer', alignItems: 'center', transition: 'all .12s',
@@ -847,10 +1023,19 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
             </div>
 
             <div style={{
-              fontSize: 11, color: line.visitDays.length ? txt : muted, fontWeight: line.visitDays.length ? 600 : 400,
+              fontSize: 11, color: line.agentVisitDays.length ? txt : muted,
+              fontWeight: line.agentVisitDays.length ? 600 : 400,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {formatVisitDays(line.visitDays, t)}
+              {formatVisitDays(line.agentVisitDays, t)}
+            </div>
+
+            <div style={{
+              fontSize: 11, color: line.deliveryVisitDays.length ? txt : muted,
+              fontWeight: line.deliveryVisitDays.length ? 600 : 400,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {formatVisitDays(line.deliveryVisitDays, t)}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

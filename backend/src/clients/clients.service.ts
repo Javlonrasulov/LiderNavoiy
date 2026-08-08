@@ -101,6 +101,7 @@ export class ClientsService {
     companyId?: string | string[],
     lineCode?: string,
     distributorId?: string,
+    agentLineCodes?: string[],
   ) {
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
     const ids = Array.isArray(companyId)
@@ -120,9 +121,35 @@ export class ClientsService {
       );
     }
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
-    if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
+    if (distributorId) {
+      const codes = (agentLineCodes ?? [])
+        .map((c) => c?.trim())
+        .filter((c): c is string => !!c);
+      if (codes.length > 0) {
+        qb.andWhere(
+          '(c.distributorId = :distributorId OR c.lineCode IN (:...agentLineCodes))',
+          { distributorId, agentLineCodes: codes },
+        );
+      } else {
+        qb.andWhere('c.distributorId = :distributorId', { distributorId });
+      }
+    }
     const clients = await qb.orderBy('c.name', 'ASC').getMany();
     return this.withDebts(clients);
+  }
+
+  /** Liniya agentiga shu lineCode dagi barcha mijozlarni biriktiradi */
+  async assignDistributorToLine(lineCode: string, distributorId: string | null) {
+    const code = lineCode?.trim();
+    if (!code) return { updated: 0 };
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Client)
+      .set({ distributorId: distributorId || null })
+      .where('lineCode = :code', { code })
+      .andWhere('deletedAt IS NULL')
+      .execute();
+    return { updated: result.affected ?? 0 };
   }
 
   /** Faqat admin korzinka — o'chirilgan mijozlar */
@@ -182,10 +209,22 @@ export class ClientsService {
     return qb.getOne();
   }
 
-  async search(query: string, distributorId?: string) {
+  async search(query: string, distributorId?: string, agentLineCodes?: string[]) {
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'))
       .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
-    if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
+    if (distributorId) {
+      const codes = (agentLineCodes ?? [])
+        .map((c) => c?.trim())
+        .filter((c): c is string => !!c);
+      if (codes.length > 0) {
+        qb.andWhere(
+          '(c.distributorId = :distributorId OR c.lineCode IN (:...agentLineCodes))',
+          { distributorId, agentLineCodes: codes },
+        );
+      } else {
+        qb.andWhere('c.distributorId = :distributorId', { distributorId });
+      }
+    }
     const clients = await qb.limit(50).getMany();
     return this.withDebts(clients);
   }
