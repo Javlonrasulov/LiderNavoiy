@@ -183,6 +183,7 @@ data class PromotionDto(
     val productId: String? = null,
     val productName: String? = null,
     val conditions: List<PromotionConditionDto>? = null,
+    val rewards: List<PromotionRewardDto>? = null,
     val rewardProductId: String? = null,
     val rewardProductName: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class) val rewardQuantity: Double? = null,
@@ -200,6 +201,13 @@ data class PromotionConditionDto(
     val productId: String,
     val productName: String? = null,
     @JsonAdapter(FlexibleDoubleAdapter::class) val buyQuantity: Double = 0.0,
+)
+
+data class PromotionRewardDto(
+    val productId: String,
+    val productName: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val quantity: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val price: Double = 0.0,
 )
 
 data class OrderItemDto(

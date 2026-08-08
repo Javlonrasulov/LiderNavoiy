@@ -4,6 +4,7 @@ import uz.distributor.crm.data.remote.ApiService
 import uz.distributor.crm.data.remote.dto.PromotionDto
 import uz.distributor.crm.domain.model.ProductPromotion
 import uz.distributor.crm.domain.model.PromotionCondition
+import uz.distributor.crm.domain.model.PromotionReward
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,7 +12,6 @@ import javax.inject.Singleton
 class PromotionsRepository @Inject constructor(
     private val api: ApiService,
 ) {
-    /** Barcha aktiv aksiyalar (shartli + umumiy) */
     suspend fun getActivePromotions(): List<ProductPromotion> {
         return try {
             api.getActivePromotions().map { it.toDomain() }
@@ -20,7 +20,6 @@ class PromotionsRepository @Inject constructor(
         }
     }
 
-    /** Shartli mahsulot → aksiya (badge). Bir mahsulotda bir nechta bo‘lsa — birinchisi. */
     suspend fun getProductPromotionMap(): Map<String, ProductPromotion> {
         val map = LinkedHashMap<String, ProductPromotion>()
         for (promo in getActivePromotions()) {
@@ -44,6 +43,15 @@ class PromotionsRepository @Inject constructor(
                 buyQuantity = c.buyQuantity,
             )
         }
+        val rewardList = rewards.orEmpty().mapNotNull { r ->
+            if (r.productId.isBlank() || r.quantity <= 0) null
+            else PromotionReward(
+                productId = r.productId,
+                productName = r.productName.orEmpty(),
+                quantity = r.quantity,
+                price = r.price,
+            )
+        }
         val rewardQty = rewardQuantity ?: freeQuantity ?: 0.0
         return ProductPromotion(
             id = id,
@@ -53,6 +61,7 @@ class PromotionsRepository @Inject constructor(
             productId = productId,
             buyQuantity = buyQuantity ?: 0.0,
             conditions = conds,
+            rewards = rewardList,
             rewardProductId = rewardProductId ?: productId,
             rewardProductName = rewardProductName?.trim().orEmpty()
                 .ifBlank { productName?.trim().orEmpty() },

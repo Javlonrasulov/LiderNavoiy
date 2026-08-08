@@ -991,6 +991,7 @@ export const api = {
       productId: string | null;
       productName: string | null;
       conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewards?: Array<{ productId: string; productName: string; quantity: number | string; price: number | string }>;
       rewardProductId?: string | null;
       rewardProductName?: string | null;
       rewardQuantity?: number | string | null;
@@ -1014,6 +1015,7 @@ export const api = {
     freeQuantity?: number | null;
     productId?: string | null;
     conditions?: Array<{ productId: string; productName?: string; buyQuantity: number }>;
+    rewards?: Array<{ productId: string; productName?: string; quantity: number; price?: number }>;
     rewardProductId?: string | null;
     rewardQuantity?: number | null;
     rewardPrice?: number | null;
@@ -1035,6 +1037,7 @@ export const api = {
       productId: string | null;
       productName: string | null;
       conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewards?: Array<{ productId: string; productName: string; quantity: number | string; price: number | string }>;
       rewardProductId?: string | null;
       rewardProductName?: string | null;
       rewardQuantity?: number | string | null;
@@ -1059,6 +1062,7 @@ export const api = {
     freeQuantity?: number | null;
     productId?: string | null;
     conditions?: Array<{ productId: string; productName?: string; buyQuantity: number }>;
+    rewards?: Array<{ productId: string; productName?: string; quantity: number; price?: number }>;
     rewardProductId?: string | null;
     rewardQuantity?: number | null;
     rewardPrice?: number | null;
@@ -1080,6 +1084,7 @@ export const api = {
       productId: string | null;
       productName: string | null;
       conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewards?: Array<{ productId: string; productName: string; quantity: number | string; price: number | string }>;
       rewardProductId?: string | null;
       rewardProductName?: string | null;
       rewardQuantity?: number | string | null;

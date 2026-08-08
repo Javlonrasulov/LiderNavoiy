@@ -68,29 +68,39 @@ class CartRepository @Inject constructor(
         }
     }
 
-    /** Aksiya sovg‘a qatorini qo‘shish / yangilash */
+    /** Aksiya sovg‘a qatorlarini qo‘shish (1..N) */
+    suspend fun setPromoRewards(
+        clientId: String,
+        promotion: ProductPromotion,
+        productsById: Map<String, Product>,
+    ) {
+        if (clientId.isBlank() || !promotion.hasReward()) return
+        for (reward in promotion.resolvedRewards()) {
+            val product = productsById[reward.productId] ?: continue
+            db.cartDao().insert(
+                CartItemEntity(
+                    clientId = clientId,
+                    productId = product.id,
+                    promotionId = promotion.id,
+                    productCode = product.code,
+                    productName = product.name,
+                    price = reward.price,
+                    quantity = reward.quantity,
+                    unit = product.unit,
+                    category = product.category,
+                    isFree = reward.price <= 0.0,
+                ),
+            )
+        }
+    }
+
+    /** @deprecated — bitta reward; setPromoRewards ishlating */
     suspend fun setPromoReward(
         clientId: String,
         promotion: ProductPromotion,
         product: Product,
     ) {
-        if (clientId.isBlank() || !promotion.hasReward()) return
-        val qty = promotion.rewardQuantity
-        val price = promotion.rewardPrice
-        db.cartDao().insert(
-            CartItemEntity(
-                clientId = clientId,
-                productId = product.id,
-                promotionId = promotion.id,
-                productCode = product.code,
-                productName = product.name,
-                price = price,
-                quantity = qty,
-                unit = product.unit,
-                category = product.category,
-                isFree = price <= 0.0,
-            ),
-        )
+        setPromoRewards(clientId, promotion, mapOf(product.id to product))
     }
 
     suspend fun removePromoReward(clientId: String, promotionId: String) {

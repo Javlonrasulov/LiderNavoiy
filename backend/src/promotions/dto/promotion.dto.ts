@@ -29,6 +29,28 @@ export class PromotionConditionDto {
   buyQuantity: number;
 }
 
+export class PromotionRewardDto {
+  @ApiProperty()
+  @IsUUID()
+  productId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  productName?: string;
+
+  @ApiProperty({ example: 1 })
+  @IsNumber()
+  @Min(0.001)
+  quantity: number;
+
+  @ApiPropertyOptional({ example: 0, description: '0 = tekin' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  price?: number;
+}
+
 export class CreatePromotionDto {
   @ApiProperty({ example: 'Yozgi chegirma' })
   @IsString()
@@ -79,17 +101,27 @@ export class CreatePromotionDto {
   @Type(() => PromotionConditionDto)
   conditions?: PromotionConditionDto[];
 
-  @ApiPropertyOptional({ description: 'Sovg‘a mahsulot ID' })
+  @ApiPropertyOptional({ type: [PromotionRewardDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PromotionRewardDto)
+  rewards?: PromotionRewardDto[];
+
+  /** @deprecated — rewards[0] */
+  @ApiPropertyOptional({ description: 'Sovg‘a mahsulot ID (legacy)' })
   @IsOptional()
   @IsUUID()
   rewardProductId?: string | null;
 
+  /** @deprecated — rewards[0].quantity */
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   rewardQuantity?: number | null;
 
+  /** @deprecated — rewards[0].price */
   @ApiPropertyOptional({ example: 0, description: 'Aksiya narxi; 0 = tekin' })
   @IsOptional()
   @IsNumber()

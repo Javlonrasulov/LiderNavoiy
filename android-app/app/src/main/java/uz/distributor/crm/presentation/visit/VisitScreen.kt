@@ -190,24 +190,19 @@ fun VisitScreen(
         }
 
         state.pendingPromoOffer?.let { offer ->
-            val rewardLabel = offer.rewardProductName.ifBlank { "…" }
-            val priceLabel = if (offer.rewardPrice <= 0) {
-                AppStrings.promoFree(lang)
-            } else {
-                "${priceFmt.format(offer.rewardPrice.toLong())} ${AppStrings.sumCurrency(lang)}"
-            }
+            val rewards = offer.resolvedRewards()
+            val rewardLabel = rewards.joinToString(", ") { r ->
+                val name = r.productName.ifBlank { "…" }
+                val q = if (r.quantity % 1.0 == 0.0) r.quantity.toInt().toString() else r.quantity.toString()
+                val pricePart = if (r.price <= 0) AppStrings.promoFree(lang)
+                else "${priceFmt.format(r.price.toLong())} ${AppStrings.sumCurrency(lang)}"
+                "$name × $q ($pricePart)"
+            }.ifBlank { "…" }
             AlertDialog(
                 onDismissRequest = viewModel::declinePromoOffer,
                 title = { Text(AppStrings.promoOfferTitle(lang)) },
                 text = {
-                    Text(
-                        AppStrings.promoOfferBody(
-                            lang,
-                            rewardLabel,
-                            offer.rewardQuantity,
-                            priceLabel,
-                        ),
-                    )
+                    Text(AppStrings.promoOfferBodyMulti(lang, rewardLabel))
                 },
                 confirmButton = {
                     TextButton(onClick = viewModel::acceptPromoOffer) {
@@ -2298,10 +2293,15 @@ private fun PromoBadge(promotion: ProductPromotion) {
     val label = when {
         promotion.subtitle.isNotBlank() -> promotion.subtitle
         promotion.hasReward() -> {
-            val q = if (promotion.rewardQuantity % 1.0 == 0.0)
-                promotion.rewardQuantity.toInt().toString()
-            else promotion.rewardQuantity.toString()
-            if (promotion.rewardPrice <= 0) "+$q tekin" else "+$q"
+            val list = promotion.resolvedRewards()
+            val q = list.sumOf { it.quantity }
+            val qLabel = if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
+            val free = list.all { it.price <= 0 }
+            buildString {
+                append("+$qLabel")
+                if (free) append(" tekin")
+                if (list.size > 1) append(" · ${list.size}")
+            }
         }
         promotion.discountPercent > 0 -> "-${promotion.discountPercent.toInt()}%"
         else -> promotion.title
@@ -2345,16 +2345,26 @@ private fun PromoRulesBanner(
         else c.buyQuantity.toString()
         "$name: ${AppStrings.promoConditionQty(lang, n)}"
     }
-    val reward = buildString {
-        append(promotion.emoji)
-        append(' ')
-        append(promotion.rewardProductName.ifBlank { "…" })
-        append(" ×")
-        append(promotion.rewardQuantity.toInt())
-        if (promotion.rewardPrice <= 0) {
-            append(" (")
-            append(AppStrings.promoFree(lang))
-            append(")")
+    val reward = promotion.resolvedRewards().joinToString(", ") { r ->
+        val name = r.productName.ifBlank { "…" }
+        val q = if (r.quantity % 1.0 == 0.0) r.quantity.toInt().toString() else r.quantity.toString()
+        buildString {
+            append(promotion.emoji)
+            append(' ')
+            append(name)
+            append(" ×")
+            append(q)
+            if (r.price <= 0) {
+                append(" (")
+                append(AppStrings.promoFree(lang))
+                append(")")
+            }
+        }
+    }.ifBlank {
+        buildString {
+            append(promotion.emoji)
+            append(' ')
+            append(promotion.rewardProductName.ifBlank { "…" })
         }
     }
     Row(

@@ -842,6 +842,11 @@ object AppStrings {
                 "Подарок: $productName × $q ($priceLabel). Добавить?"
         }
     }
+    fun promoOfferBodyMulti(lang: AppLanguage, rewardsLabel: String): String = when (lang) {
+        AppLanguage.UZ_LATIN -> "Sovg‘alar: $rewardsLabel. Qo‘shasizmi?"
+        AppLanguage.UZ_CYRILLIC -> "Совғалар: $rewardsLabel. Қўшасизми?"
+        AppLanguage.RUS -> "Подарки: $rewardsLabel. Добавить?"
+    }
     fun promoFree(lang: AppLanguage) = tr(lang, "tekin", "текин", "бесплатно")
     fun promoConditionQty(lang: AppLanguage, n: String): String = when (lang) {
         AppLanguage.UZ_LATIN -> "kamida $n ta"

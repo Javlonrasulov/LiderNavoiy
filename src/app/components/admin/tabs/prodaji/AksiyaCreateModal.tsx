@@ -9,6 +9,13 @@ export type PromotionConditionRow = {
   buyQuantity: number;
 };
 
+export type PromotionRewardRow = {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+};
+
 export type PromotionRow = {
   id: string;
   title: string;
@@ -19,6 +26,7 @@ export type PromotionRow = {
   productId: string | null;
   productName: string | null;
   conditions?: PromotionConditionRow[];
+  rewards?: PromotionRewardRow[];
   rewardProductId?: string | null;
   rewardProductName?: string | null;
   rewardQuantity?: number | null;
@@ -80,6 +88,26 @@ function initialConditions(initial: PromotionRow | null): PromotionConditionRow[
   return [];
 }
 
+function initialRewards(initial: PromotionRow | null): PromotionRewardRow[] {
+  if (initial?.rewards && initial.rewards.length > 0) {
+    return initial.rewards.map((r) => ({
+      productId: r.productId,
+      productName: r.productName,
+      quantity: Number(r.quantity) || 1,
+      price: Number(r.price) || 0,
+    }));
+  }
+  if (initial?.rewardProductId) {
+    return [{
+      productId: initial.rewardProductId,
+      productName: initial.rewardProductName || '',
+      quantity: Number(initial.rewardQuantity ?? initial.freeQuantity) || 1,
+      price: Number(initial.rewardPrice) || 0,
+    }];
+  }
+  return [];
+}
+
 interface Props {
   D: boolean;
   t: Record<string, string>;
@@ -91,27 +119,11 @@ interface Props {
 export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [subtitle, setSubtitle] = useState(initial?.subtitle ?? '');
-  const [discountPercent, setDiscountPercent] = useState(
-    initial ? String(initial.discountPercent || '') : '',
-  );
   const [conditions, setConditions] = useState<PromotionConditionRow[]>(() =>
     initialConditions(initial),
   );
-  const [rewardProductId, setRewardProductId] = useState<string | null>(
-    initial?.rewardProductId ?? null,
-  );
-  const [rewardProductName, setRewardProductName] = useState(
-    initial?.rewardProductName ?? '',
-  );
-  const [rewardQuantity, setRewardQuantity] = useState(
-    initial?.rewardQuantity != null
-      ? String(initial.rewardQuantity)
-      : initial?.freeQuantity != null
-        ? String(initial.freeQuantity)
-        : '1',
-  );
-  const [rewardPrice, setRewardPrice] = useState(
-    initial?.rewardPrice != null ? String(initial.rewardPrice) : '0',
+  const [rewards, setRewards] = useState<PromotionRewardRow[]>(() =>
+    initialRewards(initial),
   );
   const [colorStart, setColorStart] = useState(initial?.colorStart ?? '#4F46E5');
   const [colorEnd, setColorEnd] = useState(initial?.colorEnd ?? '#9333EA');
@@ -125,7 +137,6 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const [productsLoading, setProductsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** qaysi condition qatoriga mahsulot tanlanmoqda; null = reward */
   const [pickingFor, setPickingFor] = useState<'condition' | 'reward'>('condition');
 
   const card = D ? '#1c1c1e' : '#ffffff';
@@ -163,9 +174,6 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       .slice(0, 40);
   }, [products, activeSearch]);
 
-  const rewardQ = rewardQuantity === '' ? 0 : Number(rewardQuantity);
-  const rewardP = rewardPrice === '' ? 0 : Number(rewardPrice);
-
   const fmtConditionQty = (n: number) =>
     (t.aksiyaConditionQty ?? 'kamida {n} ta').replace('{n}', String(n));
 
@@ -174,16 +182,19 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
     const parts = conditions
       .filter((c) => c.buyQuantity > 0)
       .map((c) => `${c.productName || '…'}: ${fmtConditionQty(c.buyQuantity)}`);
-    const gift = rewardProductName
-      ? ` → ${rewardProductName} ×${rewardQ || '?'}${rewardP === 0 ? ` (${t.aksiyaFreeLabel ?? 'tekin'})` : ` @${rewardP}`}`
+    const gift = rewards.length > 0
+      ? ` → ${rewards.map((r) => {
+          const free = Number(r.price) === 0;
+          return `${r.productName} ×${r.quantity}${free ? ` (${t.aksiyaFreeLabel ?? 'tekin'})` : ` @${r.price}`}`;
+        }).join(', ')}`
       : '';
     return parts.join(', ') + gift;
-  }, [conditions, rewardProductName, rewardQ, rewardP, t]);
+  }, [conditions, rewards, t]);
 
-  const previewSubtitle = subtitle.trim() || autoSubtitle
-    || (Number(discountPercent) > 0
-      ? `${discountPercent}% ${t.aksiyaDiscountSuffix ?? 'chegirma'}`
-      : '');
+  const previewSubtitle = subtitle.trim() || autoSubtitle;
+
+  const rewardBadgeQty = rewards.reduce((s, r) => s + (Number(r.quantity) || 0), 0);
+  const allRewardsFree = rewards.length > 0 && rewards.every((r) => Number(r.price) === 0);
 
   const addConditionProduct = (p: ProductOpt) => {
     if (conditions.some((c) => c.productId === p.id)) return;
@@ -192,19 +203,21 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       ...prev,
       { productId: p.id, productName: p.name, buyQuantity: 10 },
     ]);
-    // Birinchi shart tanlangach — sovg‘a tanlashga o‘tkazamiz
     if (nextLen === 1) setPickingFor('reward');
+  };
+
+  const addRewardProduct = (p: ProductOpt) => {
+    if (rewards.some((r) => r.productId === p.id)) return;
+    setRewards((prev) => [
+      ...prev,
+      { productId: p.id, productName: p.name, quantity: 1, price: 0 },
+    ]);
   };
 
   const handleSave = async () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError(t.aksiyaTitleRequired ?? 'Sarlavha majburiy');
-      return;
-    }
-    const pct = Number(discountPercent);
-    if (discountPercent !== '' && (Number.isNaN(pct) || pct < 0 || pct > 100)) {
-      setError(t.aksiyaDiscountInvalid ?? 'Chegirma 0–100 oralig\'ida bo\'lishi kerak');
       return;
     }
 
@@ -216,20 +229,21 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       }
     }
 
+    const cleanRewards = rewards.filter((r) => r.productId && Number(r.quantity) > 0);
     if (cleanConditions.length > 0) {
-      if (!rewardProductId) {
+      if (cleanRewards.length === 0) {
         setError(t.aksiyaRewardRequired ?? 'Sovg‘a mahsulot majburiy');
         return;
       }
-      const rq = Number(rewardQuantity);
-      if (!rq || Number.isNaN(rq) || rq <= 0) {
-        setError(t.aksiyaRewardQtyInvalid ?? 'Sovg‘a miqdori noto‘g‘ri');
-        return;
-      }
-      const rp = Number(rewardPrice);
-      if (Number.isNaN(rp) || rp < 0) {
-        setError(t.aksiyaRewardPriceInvalid ?? 'Aksiya narxi noto‘g‘ri');
-        return;
+      for (const r of cleanRewards) {
+        if (Number.isNaN(Number(r.quantity)) || Number(r.quantity) <= 0) {
+          setError(t.aksiyaRewardQtyInvalid ?? 'Sovg‘a miqdori noto‘g‘ri');
+          return;
+        }
+        if (Number.isNaN(Number(r.price)) || Number(r.price) < 0) {
+          setError(t.aksiyaRewardPriceInvalid ?? 'Aksiya narxi noto‘g‘ri');
+          return;
+        }
       }
     }
 
@@ -238,15 +252,18 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
     const body = {
       title: trimmedTitle,
       subtitle: subtitle.trim() || previewSubtitle || undefined,
-      discountPercent: Number.isFinite(pct) ? pct : 0,
+      discountPercent: 0,
       conditions: cleanConditions.map((c) => ({
         productId: c.productId,
         productName: c.productName,
         buyQuantity: Number(c.buyQuantity),
       })),
-      rewardProductId: rewardProductId || null,
-      rewardQuantity: rewardQuantity === '' ? null : Number(rewardQuantity),
-      rewardPrice: rewardPrice === '' ? 0 : Number(rewardPrice),
+      rewards: cleanRewards.map((r) => ({
+        productId: r.productId,
+        productName: r.productName,
+        quantity: Number(r.quantity),
+        price: Number(r.price) || 0,
+      })),
       colorStart,
       colorEnd,
       emoji: emoji || '🎁',
@@ -468,37 +485,23 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={labelStyle}>{t.aksiyaDiscount ?? 'Chegirma %'}</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={discountPercent}
-                  onChange={(e) => setDiscountPercent(e.target.value)}
-                  placeholder="0"
-                  style={fieldStyle}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>{t.aksiyaEmoji ?? 'Emoji'}</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {EMOJI_OPTS.map((em) => (
-                    <button
-                      key={em}
-                      type="button"
-                      onClick={() => setEmoji(em)}
-                      style={{
-                        width: 34, height: 34, borderRadius: 8, fontSize: 16,
-                        border: emoji === em ? '2px solid #6366f1' : `1px solid ${brd}`,
-                        background: soft, cursor: 'pointer',
-                      }}
-                    >
-                      {em}
-                    </button>
-                  ))}
-                </div>
+            <div>
+              <label style={labelStyle}>{t.aksiyaEmoji ?? 'Emoji'}</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {EMOJI_OPTS.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setEmoji(em)}
+                    style={{
+                      width: 34, height: 34, borderRadius: 8, fontSize: 16,
+                      border: emoji === em ? '2px solid #6366f1' : `1px solid ${brd}`,
+                      background: soft, cursor: 'pointer',
+                    }}
+                  >
+                    {em}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -574,125 +577,148 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               </div>
             ) : (
               <div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) 84px 100px',
-                    gap: 10,
-                    alignItems: 'start',
-                    marginBottom: 8,
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>
-                      {t.aksiyaRewardProduct ?? 'Sovg‘a mahsulot'} *
-                    </label>
-                    {rewardProductId ? (
-                      <div
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '8px 10px', borderRadius: 10, minHeight: 40,
-                          background: D ? '#14532d' : '#ecfdf5',
-                          border: `1px solid ${D ? '#166534' : '#a7f3d0'}`,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 12, color: txt, fontWeight: 600,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {rewardProductName}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => { setRewardProductId(null); setRewardProductName(''); }}
-                          style={{ border: 'none', background: 'transparent', color: muted, cursor: 'pointer', flexShrink: 0 }}
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
-                          background: soft, minHeight: 40,
-                        }}
-                      >
-                        <Search size={14} color={muted} />
-                        <input
-                          value={rewardSearch}
-                          onFocus={() => setPickingFor('reward')}
-                          onChange={(e) => {
-                            setPickingFor('reward');
-                            setRewardSearch(e.target.value);
-                          }}
-                          placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
-                          style={{
-                            flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                            color: txt, fontSize: 13, minWidth: 0,
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>{t.aksiyaRewardQty ?? 'Sovg‘a miqdori'}</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={rewardQuantity}
-                      onChange={(e) => setRewardQuantity(e.target.value)}
-                      placeholder="1"
-                      style={{ ...fieldStyle, minHeight: 40 }}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>{t.aksiyaRewardPrice ?? 'Aksiya narxi'}</label>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={rewardPrice}
-                      onChange={(e) => setRewardPrice(e.target.value)}
-                      placeholder="0"
-                      title={t.aksiyaRewardPrice ?? 'Aksiya narxi (0=tekin)'}
-                      style={{ ...fieldStyle, minHeight: 40 }}
-                    />
-                  </div>
-                </div>
-
-                {rewardProductId && (
+                <label style={labelStyle}>
+                  {t.aksiyaRewardProduct ?? 'Sovg‘a mahsulotlar'} *
+                </label>
+                {rewards.length > 0 && (
                   <div
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
-                      background: soft, marginBottom: 8,
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) 70px 78px 28px',
+                      gap: 8,
+                      alignItems: 'center',
+                      padding: '0 10px 6px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: muted,
                     }}
                   >
-                    <Search size={14} color={muted} />
-                    <input
-                      value={rewardSearch}
-                      onFocus={() => setPickingFor('reward')}
-                      onChange={(e) => {
-                        setPickingFor('reward');
-                        setRewardSearch(e.target.value);
-                      }}
-                      placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
-                      style={{
-                        flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                        color: txt, fontSize: 13,
-                      }}
-                    />
+                    <span>{t.aksiyaProduct ?? 'Mahsulot'}</span>
+                    <span style={{ textAlign: 'center' }}>{t.aksiyaRewardQtyShort ?? 'Miqdor'}</span>
+                    <span style={{ textAlign: 'center' }}>{t.aksiyaRewardPriceShort ?? 'Narx'}</span>
+                    <span />
                   </div>
                 )}
-
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+                  {rewards.map((r) => (
+                    <div
+                      key={r.productId}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) 70px 78px 28px',
+                        gap: 8,
+                        alignItems: 'center',
+                        height: 44,
+                        padding: '0 10px',
+                        borderRadius: 10,
+                        background: D ? '#14532d' : '#ecfdf5',
+                        border: `1px solid ${D ? '#166534' : '#a7f3d0'}`,
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 12, fontWeight: 600, color: txt,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          lineHeight: '28px',
+                        }}
+                      >
+                        {r.productName}
+                      </span>
+                      <input
+                        type="number"
+                        min={0.001}
+                        step={1}
+                        value={r.quantity || ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRewards((prev) =>
+                            prev.map((x) =>
+                              x.productId === r.productId
+                                ? { ...x, quantity: v === '' ? 0 : Number(v) }
+                                : x,
+                            ),
+                          );
+                        }}
+                        title={t.aksiyaRewardQty ?? 'Sovg‘a miqdori'}
+                        placeholder="1"
+                        style={{
+                          ...fieldStyle,
+                          height: 32,
+                          padding: '4px 6px',
+                          fontSize: 12,
+                          textAlign: 'center',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={r.price}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRewards((prev) =>
+                            prev.map((x) =>
+                              x.productId === r.productId
+                                ? { ...x, price: v === '' ? 0 : Number(v) }
+                                : x,
+                            ),
+                          );
+                        }}
+                        title={t.aksiyaRewardPrice ?? 'Aksiya narxi (0=tekin)'}
+                        placeholder="0"
+                        style={{
+                          ...fieldStyle,
+                          height: 32,
+                          padding: '4px 6px',
+                          fontSize: 12,
+                          textAlign: 'center',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRewards((prev) => prev.filter((x) => x.productId !== r.productId))
+                        }
+                        style={{
+                          width: 28, height: 28, border: 'none', background: 'transparent',
+                          color: muted, cursor: 'pointer', display: 'flex',
+                          alignItems: 'center', justifyContent: 'center', padding: 0,
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
+                    background: soft, marginBottom: 6,
+                  }}
+                >
+                  <Search size={14} color={muted} />
+                  <input
+                    value={rewardSearch}
+                    onFocus={() => setPickingFor('reward')}
+                    onChange={(e) => {
+                      setPickingFor('reward');
+                      setRewardSearch(e.target.value);
+                    }}
+                    placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
+                    style={{
+                      flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                      color: txt, fontSize: 13,
+                    }}
+                  />
+                </div>
                 {pickingFor === 'reward' && (
                   <div
                     style={{
-                      maxHeight: 160, overflow: 'auto', borderRadius: 10,
+                      maxHeight: 140, overflow: 'auto', borderRadius: 10,
                       border: `1px solid ${brd}`, background: inputBg, marginBottom: 6,
                     }}
                   >
@@ -702,25 +728,22 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                       <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.noDataFound ?? 'Topilmadi'}</div>
                     ) : (
                       filteredProducts.map((p) => {
-                        const active = rewardProductId === p.id;
+                        const active = rewards.some((r) => r.productId === p.id);
                         return (
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => {
-                              setRewardProductId(p.id);
-                              setRewardProductName(p.name);
-                              setPickingFor('reward');
-                            }}
+                            onClick={() => addRewardProduct(p)}
+                            disabled={active}
                             style={{
                               width: '100%', textAlign: 'left', padding: '8px 10px',
                               border: 'none', borderBottom: `1px solid ${brd}`,
                               background: active ? (D ? '#14532d' : '#ecfdf5') : 'transparent',
-                              color: txt, cursor: 'pointer', fontSize: 12,
-                              display: 'flex', alignItems: 'center', gap: 8,
+                              color: txt, cursor: active ? 'default' : 'pointer', fontSize: 12,
+                              display: 'flex', alignItems: 'center', gap: 8, opacity: active ? 0.6 : 1,
                             }}
                           >
-                            {active && <Check size={13} color="#059669" />}
+                            {active ? <Check size={13} color="#059669" /> : <Plus size={13} color={muted} />}
                             <span style={{ flex: 1, minWidth: 0 }}>
                               <span style={{ fontWeight: 600 }}>{p.name}</span>
                               <span style={{ color: muted }}> · {p.code}</span>
@@ -732,7 +755,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: muted }}>
-                  {t.aksiyaRewardHint ?? 'Aksiya yigilganda agentga shu mahsulot taklif qilinadi (Ha/Yo‘q).'}
+                  {t.aksiyaRewardHint ?? 'Bir yoki bir nechta sovg‘a. Har biri uchun miqdor va narx (0=tekin).'}
                 </div>
               </div>
             )}
@@ -758,7 +781,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   <span style={{ fontSize: 28, lineHeight: 1 }}>{emoji || '🎁'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
-                  {rewardQ > 0 ? (
+                  {rewardBadgeQty > 0 ? (
                     <div
                       style={{
                         display: 'inline-block',
@@ -766,17 +789,8 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                         background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
                       }}
                     >
-                      +{rewardQ}{rewardP === 0 ? ` ${t.aksiyaFreeLabel ?? 'tekin'}` : ` @${rewardP}`}
-                    </div>
-                  ) : Number(discountPercent) > 0 ? (
-                    <div
-                      style={{
-                        display: 'inline-block',
-                        padding: '4px 10px', borderRadius: 999,
-                        background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
-                      }}
-                    >
-                      {discountPercent}%
+                      +{rewardBadgeQty}{allRewardsFree ? ` ${t.aksiyaFreeLabel ?? 'tekin'}` : ''}
+                      {rewards.length > 1 ? ` · ${rewards.length}` : ''}
                     </div>
                   ) : <span />}
                   <div style={{ fontSize: 11, opacity: 0.85, textAlign: 'right' }}>

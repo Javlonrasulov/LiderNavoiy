@@ -439,12 +439,15 @@ class VisitViewModel @Inject constructor(
         val offer = _uiState.value.pendingPromoOffer ?: return
         viewModelScope.launch {
             val clientId = _uiState.value.clientId
-            val rewardId = offer.rewardProductId ?: return@launch
-            val product = _uiState.value.allProducts.find { it.id == rewardId }
-                ?: productRepository.getProduct(rewardId)
-            if (product != null) {
-                cartRepository.setPromoReward(clientId, offer, product)
+            val rewards = offer.resolvedRewards()
+            if (rewards.isEmpty()) return@launch
+            val productsById = mutableMapOf<String, uz.distributor.crm.domain.model.Product>()
+            for (r in rewards) {
+                val product = _uiState.value.allProducts.find { it.id == r.productId }
+                    ?: productRepository.getProduct(r.productId)
+                if (product != null) productsById[product.id] = product
             }
+            cartRepository.setPromoRewards(clientId, offer, productsById)
             _uiState.update { it.copy(pendingPromoOffer = null) }
             refreshCart()
         }

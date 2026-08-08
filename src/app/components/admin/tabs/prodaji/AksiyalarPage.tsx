@@ -73,6 +73,14 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
               buyQuantity: Number(c.buyQuantity) || 0,
             }))
           : undefined,
+        rewards: Array.isArray(p.rewards)
+          ? p.rewards.map((r) => ({
+              productId: r.productId,
+              productName: r.productName,
+              quantity: Number(r.quantity) || 0,
+              price: Number(r.price) || 0,
+            }))
+          : undefined,
         rewardProductId: p.rewardProductId ?? null,
         rewardProductName: p.rewardProductName ?? null,
         rewardQuantity: p.rewardQuantity != null ? Number(p.rewardQuantity) : null,
@@ -317,9 +325,11 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
                               }).join(', ')
                             : row.productName}
                         </b>
-                        {row.rewardProductName && (
-                          <> → {row.rewardProductName}×{row.rewardQuantity ?? '?'}</>
-                        )}
+                        {(row.rewards && row.rewards.length > 0)
+                          ? <> → {row.rewards.map((r) => `${r.productName}×${r.quantity}`).join(', ')}</>
+                          : row.rewardProductName
+                            ? <> → {row.rewardProductName}×{row.rewardQuantity ?? '?'}</>
+                            : null}
                       </span>
                     ) : (
                       <span style={{ fontSize: 12, color: muted }}>

@@ -117,21 +117,32 @@ export class OrdersService {
         }
       }
 
-      const rewardId = promo.rewardProductId || promo.productId;
-      const rewardQty = Number(promo.rewardQuantity ?? promo.freeQuantity ?? 0);
-      const rewardPrice = Number(promo.rewardPrice ?? 0);
+      const rewards =
+        Array.isArray(promo.rewards) && promo.rewards.length > 0
+          ? promo.rewards
+          : promo.rewardProductId && Number(promo.rewardQuantity ?? promo.freeQuantity) > 0
+            ? [
+                {
+                  productId: promo.rewardProductId,
+                  productName: promo.rewardProductName ?? '',
+                  quantity: Number(promo.rewardQuantity ?? promo.freeQuantity),
+                  price: Number(promo.rewardPrice ?? 0),
+                },
+              ]
+            : [];
 
-      if (rewardId && line.productId !== rewardId) {
-        throw new BadRequestException('Promo line product must match reward product');
+      const match = rewards.find((r) => r.productId === line.productId);
+      if (!match) {
+        throw new BadRequestException('Promo line product must match a reward product');
       }
-      if (rewardQty > 0 && Math.abs(Number(line.quantity) - rewardQty) > 0.001) {
+      if (Math.abs(Number(line.quantity) - Number(match.quantity)) > 0.001) {
         throw new BadRequestException(
-          `Promo quantity must be ${rewardQty} (admin belgilagan)`,
+          `Promo quantity must be ${match.quantity} (admin belgilagan)`,
         );
       }
-      if (Math.abs(Number(line.price) - rewardPrice) > 0.01) {
+      if (Math.abs(Number(line.price) - Number(match.price)) > 0.01) {
         throw new BadRequestException(
-          `Promo price must be ${rewardPrice} (admin belgilagan)`,
+          `Promo price must be ${match.price} (admin belgilagan)`,
         );
       }
     }

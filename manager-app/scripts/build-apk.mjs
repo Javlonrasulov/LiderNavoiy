@@ -9,24 +9,36 @@ const isWin = process.platform === 'win32'
 const gradlew = path.join(androidDir, isWin ? 'gradlew.bat' : 'gradlew')
 
 const javaCandidates = [
-  process.env.JAVA_HOME,
-  'C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.2.10-hotspot',
+  'C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.8-hotspot',
+  'C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.8+9-hotspot',
   'C:\\Program Files\\Eclipse Adoptium\\jdk-21',
+  process.env.JAVA_HOME,
+  'C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.18.8-hotspot',
+  'C:\\Program Files\\Eclipse Adoptium\\jdk-17',
   '/usr/lib/jvm/java-21-openjdk',
+  '/usr/lib/jvm/java-17-openjdk',
 ].filter(Boolean)
 
-function hasJava21Plus(javaHome) {
+function javaMajor(javaHome) {
   const javaBin = path.join(javaHome, 'bin', isWin ? 'java.exe' : 'java')
-  if (!fs.existsSync(javaBin)) return false
+  if (!fs.existsSync(javaBin)) return 0
   const result = spawnSync(javaBin, ['-version'], { encoding: 'utf8' })
   const out = `${result.stderr || ''}${result.stdout || ''}`
   const match = out.match(/version "(\d+)/)
-  return match ? Number(match[1]) >= 21 : false
+  return match ? Number(match[1]) : 0
 }
 
-const javaHome = javaCandidates.find(hasJava21Plus)
+/** Gradle 8.14: JDK 17–23. Capacitor 8 plugins: toolchain 21 (foojay download). */
+function isUsableGradleJvm(javaHome) {
+  const major = javaMajor(javaHome)
+  return major >= 17 && major <= 23
+}
+
+const javaHome = javaCandidates.find(isUsableGradleJvm)
 if (!javaHome) {
-  console.error('Java 21+ required for Capacitor 8 Android builds. Install Temurin JDK 21+.')
+  console.error(
+    'Java 17–23 required to run Gradle (JDK 25+ is too new for Gradle 8.14). Install Temurin JDK 21.',
+  )
   process.exit(1)
 }
 

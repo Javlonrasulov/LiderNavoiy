@@ -13,6 +13,15 @@ export interface PromotionCondition {
   buyQuantity: number;
 }
 
+/** Sovg‘a mahsulot (aksiya qatori) */
+export interface PromotionReward {
+  productId: string;
+  productName: string;
+  quantity: number;
+  /** 0 = tekin */
+  price: number;
+}
+
 @Entity('promotions')
 export class Promotion {
   @PrimaryGeneratedColumn('uuid')
@@ -35,7 +44,7 @@ export class Promotion {
   @Column({ type: 'decimal', precision: 15, scale: 3, nullable: true })
   buyQuantity: number | null;
 
-  /** Legacy: bepul miqdor — endi `rewardQuantity` */
+  /** Legacy: bepul miqdor — endi rewards[0].quantity */
   @Column({ type: 'decimal', precision: 15, scale: 3, nullable: true })
   freeQuantity: number | null;
 
@@ -50,7 +59,11 @@ export class Promotion {
   @Column({ type: 'jsonb', default: [] })
   conditions: PromotionCondition[];
 
-  /** Sovg‘a (aksiya) mahsuloti — har doim alohida */
+  /** Sovg‘a mahsulotlar (1..N) */
+  @Column({ type: 'jsonb', default: [] })
+  rewards: PromotionReward[];
+
+  /** Legacy: birinchi sovg‘a — rewards[0] bilan sync */
   @Column({ type: 'uuid', nullable: true })
   rewardProductId: string | null;
 

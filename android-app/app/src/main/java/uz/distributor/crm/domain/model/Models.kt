@@ -112,6 +112,14 @@ data class PromotionCondition(
     val buyQuantity: Double,
 )
 
+/** Sovg‘a mahsulot */
+data class PromotionReward(
+    val productId: String,
+    val productName: String = "",
+    val quantity: Double,
+    val price: Double = 0.0,
+)
+
 /** Admindan kelgan aksiya */
 data class ProductPromotion(
     val id: String,
@@ -121,6 +129,7 @@ data class ProductPromotion(
     val productId: String? = null,
     val buyQuantity: Double = 0.0,
     val conditions: List<PromotionCondition> = emptyList(),
+    val rewards: List<PromotionReward> = emptyList(),
     val rewardProductId: String? = null,
     val rewardProductName: String = "",
     val rewardQuantity: Double = 0.0,
@@ -136,6 +145,15 @@ data class ProductPromotion(
         return listOf(PromotionCondition(pid, "", buyQuantity))
     }
 
+    fun resolvedRewards(): List<PromotionReward> {
+        if (rewards.isNotEmpty()) return rewards
+        val pid = rewardProductId ?: return emptyList()
+        if (rewardQuantity <= 0) return emptyList()
+        return listOf(
+            PromotionReward(pid, rewardProductName, rewardQuantity, rewardPrice),
+        )
+    }
+
     fun conditionProductIds(): Set<String> = resolvedConditions().map { it.productId }.toSet()
 
     fun isSatisfied(paidQtyByProduct: Map<String, Double>): Boolean {
@@ -144,8 +162,7 @@ data class ProductPromotion(
         return conds.all { c -> (paidQtyByProduct[c.productId] ?: 0.0) >= c.buyQuantity }
     }
 
-    fun hasReward(): Boolean =
-        !rewardProductId.isNullOrBlank() && rewardQuantity > 0
+    fun hasReward(): Boolean = resolvedRewards().isNotEmpty()
 }
 
 data class Message(
