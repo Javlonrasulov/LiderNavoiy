@@ -21,10 +21,19 @@ function hasApiToken(): boolean {
 }
 
 function mapApiRow(r: ClientRequestItem & Record<string, unknown>): ClientRequestItem {
+  const distributor = r.distributor as {
+    position?: string | null;
+    user?: { fullName?: string; position?: string | null };
+  } | undefined;
   const agentName =
     r.agentName
-    ?? (r.distributor as { user?: { fullName?: string } } | undefined)?.user?.fullName
+    ?? distributor?.user?.fullName
     ?? null;
+  const submitterPosition =
+    (r.submitterPosition as string | null | undefined)?.trim()
+    || distributor?.position?.trim()
+    || distributor?.user?.position?.trim()
+    || null;
   return {
     id: r.id,
     status: (r.status as ClientRequestItem['status']) ?? 'pending',
@@ -47,6 +56,7 @@ function mapApiRow(r: ClientRequestItem & Record<string, unknown>): ClientReques
     photoUrl: r.photoUrl ?? null,
     canSeePromotions: r.canSeePromotions === true,
     agentName,
+    submitterPosition,
     note: r.note ?? null,
     previousSnapshot: (r.previousSnapshot as ClientRequestItem['previousSnapshot']) ?? null,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),

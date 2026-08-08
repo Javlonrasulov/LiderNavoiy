@@ -373,9 +373,12 @@ export function AdminUsersTab({ D, t, card, divider, sub, selectedCompanyIds }: 
   const handleDelete = async (id: number) => {
     const row = users.find(u => u.id === id);
     if (!row?.backendUserId) return;
+    const backendId = row.backendUserId;
     try {
-      await api.deactivateAppUser(row.backendUserId);
+      await api.deactivateAppUser(backendId);
       if (row.onTrade) removeStoredAppPassword(row.onTrade);
+      setUsers(prev => prev.filter(u => u.backendUserId !== backendId));
+      setSelected(prev => (prev === id ? null : prev));
       await refreshUsers();
     } catch {
       /* keep list unchanged on API error */

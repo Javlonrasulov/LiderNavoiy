@@ -435,11 +435,11 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     try {
       await api.deactivateAppUser(id);
       setApiUsers(prev => prev.filter(u => u.id !== id));
-      await refreshEmployees();
+      setDeleteRow(null);
+      void refreshEmployees();
     } catch {
-      /* keep list unchanged */
+      setDeleteRow(null);
     }
-    setDeleteRow(null);
   };
 
   const saveAdd = async () => {

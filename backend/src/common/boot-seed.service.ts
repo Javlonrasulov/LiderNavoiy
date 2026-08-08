@@ -136,6 +136,15 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`distributor_profiles department migrate: ${(err as Error).message}`);
     }
 
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMPTZ NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`users.deletedAt migrate: ${(err as Error).message}`);
+    }
+
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
     // Eski postgres enum -> varchar (on_way / packing uchun)

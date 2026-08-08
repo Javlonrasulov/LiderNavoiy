@@ -7,7 +7,7 @@ import { useClientRequests, ClientRequestProvider } from '../ClientRequestContex
 import { useCompanies } from '../CompaniesContext';
 import { useAdminAuth } from '../AdminAuthContext';
 import { api } from '../../api/client';
-import { getClientRequestChanges, type ClientRequestItem } from '../../data/clientRequests';
+import { getClientRequestCompareRows, resolvePreviousSnapshot, snapshotFromApiClient, type ClientRequestItem, type ClientRequestSnapshot } from '../../data/clientRequests';
 import type { ClientRow } from '../../data/adminData';
 
 interface Props {
@@ -39,10 +39,37 @@ function RequestCard({
   const { checkInn, approve, reject } = useClientRequests();
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [fetchedPrev, setFetchedPrev] = useState<ClientRequestSnapshot | null>(null);
   const isUpdate = item.requestType === 'update';
-  const changes = isUpdate
-    ? getClientRequestChanges(item, t, existingClients)
+
+  useEffect(() => {
+    if (!isUpdate || !item.targetClientId) return;
+    if (item.previousSnapshot) {
+      setFetchedPrev(null);
+      return;
+    }
+    const local = resolvePreviousSnapshot(item, existingClients);
+    if (local) {
+      setFetchedPrev(local);
+      return;
+    }
+    let cancelled = false;
+    void api.getClient(item.targetClientId)
+      .then((c) => {
+        if (!cancelled) setFetchedPrev(snapshotFromApiClient(c));
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedPrev(null);
+      });
+    return () => { cancelled = true; };
+  }, [isUpdate, item.id, item.targetClientId, item.previousSnapshot, existingClients]);
+
+  const prev = resolvePreviousSnapshot(item, existingClients, fetchedPrev);
+  const compareRows = isUpdate
+    ? getClientRequestCompareRows(item, prev, t)
     : [];
+  const changedCount = compareRows.filter(r => r.changed).length;
+
   const dup = checkInn(
     item.inn,
     item.id,
@@ -118,7 +145,11 @@ function RequestCard({
       <div className="grid grid-cols-1 gap-1 text-xs" style={{ color: sub }}>
         {item.agentName && (
           <span className="flex items-center gap-1.5">
-            <User size={11} /> {t.notifAgent ?? 'Agent'}: <strong style={{ color: text }}>{item.agentName}</strong>
+            <User size={11} />{' '}
+            {item.submitterPosition?.trim()
+              || t.notifSubmitter
+              || 'Yuboruvchi'}
+            : <strong style={{ color: text }}>{item.agentName}</strong>
           </span>
         )}
         {!isUpdate && item.inn && (
@@ -144,34 +175,75 @@ function RequestCard({
         {!isUpdate && item.note && <span>{t.colNote ?? 'Izoh'}: {item.note}</span>}
       </div>
 
-      {isUpdate && changes.length > 0 && (
+      {isUpdate && compareRows.length > 0 && (
         <div
-          className="rounded-lg px-2.5 py-2 space-y-1.5"
+          className="rounded-lg overflow-hidden"
           style={{
-            background: D ? 'rgba(59,130,246,0.1)' : '#eff6ff',
             border: `1px solid ${D ? 'rgba(59,130,246,0.25)' : '#bfdbfe'}`,
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: D ? '#93c5fd' : '#1d4ed8' }}>
-            {t.notifChanges ?? 'O\'zgarishlar'}
-          </p>
-          {changes.map((ch) => (
-            <div key={ch.key} className="text-xs leading-snug">
-              <span style={{ color: sub }}>{t[ch.labelKey] ?? ch.labelKey}: </span>
-              <span
-                className="line-through mr-1"
-                style={{ color: D ? '#9ca3af' : '#6b7280' }}
-              >
-                {ch.from}
-              </span>
-              <span style={{ color: D ? '#93c5fd' : '#1d4ed8' }}>→</span>
-              <strong className="ml-1" style={{ color: text }}>{ch.to}</strong>
+          <div
+            className="grid grid-cols-2 text-[10px] font-semibold uppercase tracking-wide"
+            style={{
+              background: D ? 'rgba(59,130,246,0.15)' : '#dbeafe',
+              color: D ? '#93c5fd' : '#1d4ed8',
+            }}
+          >
+            <div className="px-2 py-1.5 border-r" style={{ borderColor: D ? 'rgba(59,130,246,0.25)' : '#bfdbfe' }}>
+              {t.notifOldState ?? 'Eski holat'}
             </div>
-          ))}
+            <div className="px-2 py-1.5">
+              {t.notifNewState ?? 'O\'zgargan holat'}
+              {changedCount > 0 && (
+                <span className="ml-1 normal-case font-medium opacity-80">
+                  ({changedCount})
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="divide-y" style={{ borderColor: D ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
+            {compareRows.map((row) => (
+              <div
+                key={row.key}
+                className="grid grid-cols-2 text-[11px] leading-snug"
+                style={{
+                  background: row.changed
+                    ? (D ? 'rgba(245,158,11,0.08)' : '#fffbeb')
+                    : undefined,
+                }}
+              >
+                <div
+                  className="px-2 py-1.5 border-r min-w-0"
+                  style={{ borderColor: D ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}
+                >
+                  <p className="text-[9px] mb-0.5" style={{ color: sub }}>{row.label}</p>
+                  <p
+                    className={`break-words ${row.changed ? 'line-through' : ''}`}
+                    style={{ color: row.changed ? (D ? '#9ca3af' : '#6b7280') : text }}
+                  >
+                    {row.from}
+                  </p>
+                </div>
+                <div className="px-2 py-1.5 min-w-0">
+                  <p className="text-[9px] mb-0.5" style={{ color: sub }}>{row.label}</p>
+                  <p
+                    className="break-words font-medium"
+                    style={{
+                      color: row.changed
+                        ? (D ? '#fbbf24' : '#b45309')
+                        : text,
+                    }}
+                  >
+                    {row.to}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {isUpdate && changes.length === 0 && (
+      {isUpdate && compareRows.length === 0 && (
         <p className="text-[11px]" style={{ color: sub }}>
           {t.notifNoFieldChanges ?? 'Maydon o\'zgarishi aniqlanmadi'}
         </p>

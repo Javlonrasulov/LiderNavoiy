@@ -32,6 +32,10 @@ export class User {
   @Column({ default: true })
   isActive: boolean;
 
+  /** Soft-delete: o‘chirilgan foydalanuvchi (ro‘yxatda ko‘rinmaydi) */
+  @Column({ type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
+
   @Column({ type: 'varchar', nullable: true })
   fcmToken: string | null;
 

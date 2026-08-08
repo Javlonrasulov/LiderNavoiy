@@ -98,6 +98,10 @@ export class ClientRequest {
   @Column({ type: 'varchar', nullable: true })
   agentName: string | null;
 
+  /** So‘rov yuborgan odamning lavozimi (manager, agent, dostavka, …) */
+  @Column({ type: 'varchar', nullable: true })
+  submitterPosition: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   note: string | null;
 

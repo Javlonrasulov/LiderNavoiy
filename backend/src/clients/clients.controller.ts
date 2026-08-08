@@ -30,6 +30,21 @@ import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
 
+function resolveSubmitterMeta(user: User): { name: string; position: string | null } {
+  const name = user.fullName ?? user.username;
+  const position =
+    user.distributorProfile?.position?.trim() ||
+    user.position?.trim() ||
+    (user.role === UserRole.MANAGER
+      ? 'Manager'
+      : user.role === UserRole.DISTRIBUTOR
+        ? 'Agent'
+        : user.role === UserRole.ADMIN
+          ? 'Admin'
+          : null);
+  return { name, position };
+}
+
 @ApiTags('Clients')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -294,7 +309,7 @@ export class ClientsController {
         req.user.role === UserRole.MANAGER);
 
     if (requiresApproval) {
-      const agentName = req.user.fullName ?? req.user.username;
+      const { name: agentName, position } = resolveSubmitterMeta(req.user);
       const requestDto: CreateClientRequestDto = {
         name: clientDto.name,
         fullName: clientDto.fullName,
@@ -313,7 +328,12 @@ export class ClientsController {
         photoUrl: clientDto.photoUrl,
         canSeePromotions: clientDto.canSeePromotions === true,
       };
-      return this.requestsService.create(requestDto, distributorId, agentName);
+      return this.requestsService.create(
+        requestDto,
+        distributorId,
+        agentName,
+        position ?? undefined,
+      );
     }
 
     const client = await this.service.create(
@@ -355,12 +375,13 @@ export class ClientsController {
         req.user.role === UserRole.MANAGER);
 
     if (requiresApproval) {
-      const agentName = req.user.fullName ?? req.user.username;
+      const { name: agentName, position } = resolveSubmitterMeta(req.user);
       return this.requestsService.createUpdate(
         id,
         { ...clientDto, companyId },
         distributorId,
         agentName,
+        position ?? undefined,
       );
     }
 

@@ -165,6 +165,7 @@ export class ClientRequestsService {
     dto: CreateClientRequestDto,
     distributorId?: string,
     agentName?: string,
+    submitterPosition?: string,
   ) {
     const dup = await this.checkInnDuplicate(dto.inn);
     if (dup.duplicate) {
@@ -197,6 +198,7 @@ export class ClientRequestsService {
       photoUrl: dto.photoUrl ?? null,
       canSeePromotions: dto.canSeePromotions === true,
       agentName: agentName ?? null,
+      submitterPosition: submitterPosition?.trim() || null,
       note: dto.note ?? null,
     });
     const saved = await this.repo.save(row);
@@ -212,6 +214,7 @@ export class ClientRequestsService {
     dto: UpdateClientDto,
     distributorId?: string,
     agentName?: string,
+    submitterPosition?: string,
   ) {
     const existing = await this.clientsService.findOne(targetClientId);
     const companyId = existing.companyId ?? undefined;
@@ -286,6 +289,9 @@ export class ClientRequestsService {
         pendingExisting.previousSnapshot = previousSnapshot;
       }
       pendingExisting.agentName = agentName ?? pendingExisting.agentName;
+      if (submitterPosition?.trim()) {
+        pendingExisting.submitterPosition = submitterPosition.trim();
+      }
       pendingExisting.distributorId =
         distributorId ?? pendingExisting.distributorId;
       pendingExisting.companyId = companyId ?? pendingExisting.companyId;
@@ -316,6 +322,7 @@ export class ClientRequestsService {
       canSeePromotions: merged.canSeePromotions === true,
       previousSnapshot,
       agentName: agentName ?? null,
+      submitterPosition: submitterPosition?.trim() || null,
       note: null,
     });
     const saved = await this.repo.save(row);
@@ -438,6 +445,7 @@ export class ClientRequestsService {
     dto: CreateClientRequestDto,
     distributorId?: string,
     agentName?: string,
+    submitterPosition?: string,
   ) {
     const request = await this.findOne(id);
     if (request.status !== ClientRequestStatus.REJECTED) {
@@ -485,6 +493,9 @@ export class ClientRequestsService {
     }
     if (distributorId) request.distributorId = distributorId;
     if (agentName) request.agentName = agentName;
+    if (submitterPosition?.trim()) {
+      request.submitterPosition = submitterPosition.trim();
+    }
 
     request.status = ClientRequestStatus.PENDING;
     request.reviewedBy = null;

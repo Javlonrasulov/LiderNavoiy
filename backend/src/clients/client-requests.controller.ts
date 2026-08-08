@@ -23,6 +23,21 @@ import {
   ClientRequestType,
 } from './entities/client-request.entity';
 
+function resolveSubmitterMeta(user: User): { name: string; position: string | null } {
+  const name = user.fullName ?? user.username;
+  const position =
+    user.distributorProfile?.position?.trim() ||
+    user.position?.trim() ||
+    (user.role === UserRole.MANAGER
+      ? 'Manager'
+      : user.role === UserRole.DISTRIBUTOR
+        ? 'Agent'
+        : user.role === UserRole.ADMIN
+          ? 'Admin'
+          : null);
+  return { name, position };
+}
+
 @ApiTags('Client Requests')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -145,7 +160,7 @@ export class ClientRequestsController {
     }
 
     const distributorId = req.user.distributorProfile?.id;
-    const agentName = req.user.fullName ?? req.user.username;
+    const { name: agentName, position } = resolveSubmitterMeta(req.user);
     return this.service.create(
       {
         ...dto,
@@ -153,6 +168,7 @@ export class ClientRequestsController {
       },
       distributorId,
       agentName,
+      position ?? undefined,
     );
   }
 
@@ -242,12 +258,13 @@ export class ClientRequestsController {
     }
 
     const distributorId = req.user.distributorProfile?.id;
-    const agentName = req.user.fullName ?? req.user.username;
+    const { name: agentName, position } = resolveSubmitterMeta(req.user);
     return this.service.resubmit(
       id,
       { ...dto, companyId },
       distributorId,
       agentName,
+      position ?? undefined,
     );
   }
 

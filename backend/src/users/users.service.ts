@@ -9,7 +9,7 @@ import { User } from '../auth/entities/user.entity';
 import { UserLoginDevice } from '../auth/entities/user-login-device.entity';
 import { AuthService } from '../auth/auth.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
-import { In } from 'typeorm';
+import { In, IsNull } from 'typeorm';
 import { DistributorStatus, UserRole } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
 import {
@@ -210,6 +210,7 @@ export class UsersService {
     const users = await this.userRepo.find({
       where: {
         role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]),
+        deletedAt: IsNull(),
       },
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
@@ -238,7 +239,12 @@ export class UsersService {
   async deactivate(id: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
+    if (user.deletedAt) return;
     user.isActive = false;
+    user.deletedAt = new Date();
+    // Login nomini bo‘shatish — keyin shu login bilan yangi xodim ochish mumkin
+    const stamp = Date.now().toString(36);
+    user.username = `del_${stamp}_${user.username}`.slice(0, 120);
     await this.userRepo.save(user);
   }
 

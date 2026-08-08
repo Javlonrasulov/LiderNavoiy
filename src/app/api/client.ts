@@ -1278,6 +1278,7 @@ export const api = {
       photoUrl?: string | null;
       canSeePromotions?: boolean | null;
       agentName?: string | null;
+      submitterPosition?: string | null;
       note?: string | null;
       previousSnapshot?: Record<string, unknown> | null;
       createdAt: string;

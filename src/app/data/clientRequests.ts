@@ -43,6 +43,7 @@ export interface ClientRequestItem {
   photoUrl?: string | null;
   canSeePromotions?: boolean | null;
   agentName?: string | null;
+  submitterPosition?: string | null;
   note?: string | null;
   previousSnapshot?: ClientRequestSnapshot | null;
   createdAt: string;
@@ -65,6 +66,14 @@ export type ClientFieldChange = {
   labelKey: string;
   from: string;
   to: string;
+};
+
+export type ClientCompareRow = {
+  key: string;
+  label: string;
+  from: string;
+  to: string;
+  changed: boolean;
 };
 
 const EDIT_FIELDS: Array<{
@@ -108,6 +117,132 @@ function formatGps(lat: unknown, lng: unknown): string {
   return `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
 }
 
+export function snapshotFromClientRow(row: ClientRow): ClientRequestSnapshot {
+  const gpsParts = (row.gps || '').split(',').map(s => s.trim());
+  return {
+    name: row.name,
+    fullName: row.fullName,
+    phone: row.phone,
+    address: row.legalAddr,
+    lineCode: row.line,
+    latitude: gpsParts[0] ? Number(gpsParts[0]) : null,
+    longitude: gpsParts[1] ? Number(gpsParts[1]) : null,
+    category: row.category,
+    inn: row.inn,
+    contactPerson: row.contact,
+    territory: row.territory,
+    clientClass: row.cls,
+    priceCategory: row.priceCat,
+  };
+}
+
+export function snapshotFromApiClient(c: {
+  name?: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  lineCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  category?: string | null;
+  inn?: string | null;
+  contactPerson?: string | null;
+  territory?: string | null;
+  clientClass?: string | null;
+  priceCategory?: string | null;
+  photoUrl?: string | null;
+  canSeePromotions?: boolean | null;
+}): ClientRequestSnapshot {
+  return {
+    name: c.name ?? null,
+    fullName: c.fullName ?? null,
+    phone: c.phone ?? null,
+    address: c.address ?? null,
+    lineCode: c.lineCode ?? null,
+    latitude: c.latitude ?? null,
+    longitude: c.longitude ?? null,
+    category: c.category ?? null,
+    inn: c.inn ?? null,
+    contactPerson: c.contactPerson ?? null,
+    territory: c.territory ?? null,
+    clientClass: c.clientClass ?? null,
+    priceCategory: c.priceCategory ?? null,
+    photoUrl: c.photoUrl ?? null,
+    canSeePromotions: c.canSeePromotions === true,
+  };
+}
+
+export function resolvePreviousSnapshot(
+  item: ClientRequestItem,
+  existingClients: ClientRow[] = [],
+  fetched?: ClientRequestSnapshot | null,
+): ClientRequestSnapshot | null {
+  if (item.previousSnapshot) return item.previousSnapshot;
+  if (fetched) return fetched;
+  if (item.targetClientId) {
+    const row = existingClients.find(c => String(c.id) === String(item.targetClientId));
+    if (row) return snapshotFromClientRow(row);
+  }
+  return null;
+}
+
+function formatFieldDisplay(
+  key: keyof ClientRequestSnapshot,
+  raw: unknown,
+  t: Record<string, string>,
+  format?: (v: unknown) => string,
+): string {
+  if (key === 'photoUrl') {
+    return raw ? (t.notifHasPhoto ?? 'Bor') : '—';
+  }
+  if (key === 'canSeePromotions') {
+    return raw === true ? (t.notifYes ?? 'Ha') : (t.notifNo ?? "Yo'q");
+  }
+  return displayValue(raw, format);
+}
+
+/** Yonma-yon solishtirish qatorlari (eski | yangi) */
+export function getClientRequestCompareRows(
+  item: ClientRequestItem,
+  prev: ClientRequestSnapshot | null,
+  t: Record<string, string> = {},
+): ClientCompareRow[] {
+  if (!prev) return [];
+
+  const rows: ClientCompareRow[] = [];
+
+  for (const field of EDIT_FIELDS) {
+    const fromRaw = prev[field.key];
+    const toRaw = item[field.key as keyof ClientRequestItem];
+    const from = formatFieldDisplay(field.key, fromRaw, t, field.format);
+    const to = formatFieldDisplay(field.key, toRaw, t, field.format);
+    // Bo‘sh maydonlarni ikkala tomonda ham yashirish
+    if (from === '—' && to === '—') continue;
+    rows.push({
+      key: field.key,
+      label: t[field.labelKey] ?? field.labelKey,
+      from,
+      to,
+      changed: from !== to,
+    });
+  }
+
+  const fromGps = formatGps(prev.latitude, prev.longitude);
+  const toGps = formatGps(item.latitude, item.longitude);
+  if (fromGps !== '—' || toGps !== '—') {
+    rows.push({
+      key: 'gps',
+      label: t.colGPS ?? 'GPS',
+      from: fromGps,
+      to: toGps,
+      changed: !sameCoord(prev.latitude, item.latitude)
+        || !sameCoord(prev.longitude, item.longitude),
+    });
+  }
+
+  return rows;
+}
+
 /** Tahrirlash so‘rovida o‘zgargan maydonlar (eski → yangi) */
 export function getClientRequestChanges(
   item: ClientRequestItem,
@@ -115,78 +250,16 @@ export function getClientRequestChanges(
   existingClients: ClientRow[] = [],
 ): ClientFieldChange[] {
   if (item.requestType !== 'update') return [];
-
-  let prev = item.previousSnapshot ?? null;
-  if (!prev && item.targetClientId) {
-    const row = existingClients.find(c => String(c.id) === String(item.targetClientId));
-    if (row) {
-      const gpsParts = (row.gps || '').split(',').map(s => s.trim());
-      prev = {
-        name: row.name,
-        fullName: row.fullName,
-        phone: row.phone,
-        address: row.legalAddr,
-        lineCode: row.line,
-        latitude: gpsParts[0] ? Number(gpsParts[0]) : null,
-        longitude: gpsParts[1] ? Number(gpsParts[1]) : null,
-        category: row.category,
-        inn: row.inn,
-        contactPerson: row.contact,
-        territory: row.territory,
-        clientClass: row.cls,
-        priceCategory: row.priceCat,
-      };
-    }
-  }
+  const prev = resolvePreviousSnapshot(item, existingClients);
   if (!prev) return [];
-
-  const changes: ClientFieldChange[] = [];
-
-  for (const field of EDIT_FIELDS) {
-    const fromRaw = prev[field.key];
-    const toRaw = item[field.key as keyof ClientRequestItem];
-    const from = displayValue(fromRaw, field.format);
-    const to = displayValue(toRaw, field.format);
-    if (from === to) continue;
-    // photoUrl: faqat o‘zgarganini ko‘rsat, URL o‘rniga qisqa belgi
-    if (field.key === 'photoUrl') {
-      changes.push({
-        key: field.key,
-        labelKey: field.labelKey,
-        from: fromRaw ? (t.notifHasPhoto ?? 'Bor') : '—',
-        to: toRaw ? (t.notifHasPhoto ?? 'Bor') : '—',
-      });
-      continue;
-    }
-    if (field.key === 'canSeePromotions') {
-      changes.push({
-        key: field.key,
-        labelKey: field.labelKey,
-        from: fromRaw === true ? (t.notifYes ?? 'Ha') : (t.notifNo ?? "Yo'q"),
-        to: toRaw === true ? (t.notifYes ?? 'Ha') : (t.notifNo ?? "Yo'q"),
-      });
-      continue;
-    }
-    changes.push({
-      key: field.key,
-      labelKey: field.labelKey,
-      from,
-      to,
-    });
-  }
-
-  const latChanged = !sameCoord(prev.latitude, item.latitude);
-  const lngChanged = !sameCoord(prev.longitude, item.longitude);
-  if (latChanged || lngChanged) {
-    changes.push({
-      key: 'gps',
-      labelKey: 'colGPS',
-      from: formatGps(prev.latitude, prev.longitude),
-      to: formatGps(item.latitude, item.longitude),
-    });
-  }
-
-  return changes;
+  return getClientRequestCompareRows(item, prev, t)
+    .filter(r => r.changed)
+    .map(r => ({
+      key: r.key,
+      labelKey: r.key,
+      from: r.from,
+      to: r.to,
+    }));
 }
 
 /** Eski demo ma'lumotlarni tozalash (bir martalik) */
