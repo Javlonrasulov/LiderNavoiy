@@ -231,15 +231,18 @@ function ClientRequestBellInner({ D, sub, text, t, existingClients = [], company
   const company = companies.find(c => c.id === effectiveCompanyId)
     ?? (selectedCompany?.id === effectiveCompanyId ? selectedCompany : null);
   const skipApproval = !!company?.clientsAddWithoutApproval;
+  /** UI: «Админ текшируви» — ёқилса сўров келади (foydalanuvchi tili) */
+  const adminReviewOn = !skipApproval;
 
-  const toggleSkipApproval = async () => {
+  const toggleAdminReview = async () => {
     if (!effectiveCompanyId || savingSkip) return;
     setSavingSkip(true);
     setSkipError(null);
-    const next = !skipApproval;
+    // Tekshiruvni O'CHIRISH = withoutApproval true
+    const nextSkipApproval = adminReviewOn; // if currently ON, turning off → skip=true
     try {
       const updated = await api.updateCompany(effectiveCompanyId, {
-        clientsAddWithoutApproval: next,
+        clientsAddWithoutApproval: nextSkipApproval,
       });
       await refreshCompanies();
       if (selectedCompany?.id === effectiveCompanyId) {
@@ -318,33 +321,33 @@ function ClientRequestBellInner({ D, sub, text, t, existingClients = [], company
                   disabled={savingSkip}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void toggleSkipApproval();
+                    void toggleAdminReview();
                   }}
                   className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 ${
-                    skipApproval
+                    adminReviewOn
                       ? D
+                        ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
+                        : 'border-amber-300 bg-amber-50 text-amber-800'
+                      : D
                         ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
                         : 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                      : D
-                        ? 'border-white/10 bg-white/5 text-gray-300'
-                        : 'border-gray-200 bg-gray-50 text-gray-700'
                   }`}
                 >
                   <span className="text-left leading-snug">
-                    {t.notifSkipApproval ?? 'Tekshirishsiz qo\'shilsin'}
+                    {t.notifAdminReview ?? 'Admin tekshiruvi'}
                   </span>
                   <span className={`w-10 h-5 rounded-full p-0.5 flex-shrink-0 transition-colors ${
-                    skipApproval ? 'bg-emerald-500' : D ? 'bg-white/15' : 'bg-gray-300'
+                    adminReviewOn ? 'bg-amber-500' : 'bg-emerald-500'
                   }`}>
                     <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      skipApproval ? 'translate-x-5' : 'translate-x-0'
+                      adminReviewOn ? 'translate-x-5' : 'translate-x-0'
                     }`} />
                   </span>
                 </button>
                 <p className={`text-[10px] mt-1.5 leading-snug ${sub}`}>
-                  {skipApproval
-                    ? (t.notifSkipApprovalOnHint ?? 'Yoqilgan: manager/agent darhol qo\'shadi/tahrirlaydi')
-                    : (t.notifSkipApprovalOffHint ?? 'O\'chirilgan: so\'rov shu yerda chiqadi, admin tasdiqlagach qo\'llanadi')}
+                  {adminReviewOn
+                    ? (t.notifAdminReviewOnHint ?? 'Yoqilgan: manager so\'rovi shu yerda chiqadi, siz tasdiqlaysiz')
+                    : (t.notifAdminReviewOffHint ?? 'O\'chirilgan: manager mijozni darhol qo\'shadi (tekshiruvsiz)')}
                 </p>
                 {skipError && (
                   <p className="text-[10px] mt-1 text-red-500">{skipError}</p>

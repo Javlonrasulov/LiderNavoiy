@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { PRODUCT_TYPES, type ProductType } from './create-company.dto';
 
@@ -48,10 +49,18 @@ export class UpdateCompanyDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    return value === true || value === 'true' || value === 1 || value === '1';
+  })
   agentsCanAddClients?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    return value === true || value === 'true' || value === 1 || value === '1';
+  })
   clientsAddWithoutApproval?: boolean;
 }
