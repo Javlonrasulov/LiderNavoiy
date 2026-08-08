@@ -82,8 +82,8 @@ export class ClientRequestsController {
     }
 
     // Admin bell: default pending. Manager: default all (ko‘rish uchun).
-    const defaultStatus =
-      req.user.role === UserRole.MANAGER ? 'all' : 'pending';
+    const defaultStatus: ClientRequestStatus | 'all' =
+      req.user.role === UserRole.MANAGER ? 'all' : ClientRequestStatus.PENDING;
     return this.service.findList({
       companyId: resolvedCompany ?? companyId,
       status: (normalized as ClientRequestStatus | 'all' | undefined) ?? defaultStatus,
