@@ -16,12 +16,13 @@ import PlanScreen from './screens/PlanScreen'
 import ProfileScreen from './screens/ProfileScreen'
 import MessagesScreen from './screens/MessagesScreen'
 import ClientOrdersScreen from './screens/ClientOrdersScreen'
+import FactoryOrdersScreen from './screens/FactoryOrdersScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
 import { ToastHost } from './components/Toast'
 import { initManagerPush, syncPushLanguage } from './push/registerPush'
 
 type Phase = 'splash' | 'login' | 'app'
-type Overlay = 'addClient' | 'products' | 'clientOrders' | 'employeeTracking' | 'profile' | null
+type Overlay = 'addClient' | 'products' | 'clientOrders' | 'factoryOrders' | 'employeeTracking' | 'profile' | null
 
 function loadDark(): boolean {
   const v = localStorage.getItem('lm-dark')
@@ -136,6 +137,7 @@ export default function App() {
     else if (screen === 'products') setOverlay('products')
     else if (screen === 'addClient') setOverlay('addClient')
     else if (screen === 'clientOrders') setOverlay('clientOrders')
+    else if (screen === 'factoryOrders') setOverlay('factoryOrders')
   }
 
   const openEmployeeTracking = (distributor: Distributor, location?: EmployeeLocation) => {
@@ -223,6 +225,15 @@ export default function App() {
 
           {overlay === 'clientOrders' && (
             <ClientOrdersScreen
+              dark={dark}
+              lang={lang}
+              tr={tr}
+              onBack={() => setOverlay(null)}
+            />
+          )}
+
+          {overlay === 'factoryOrders' && (
+            <FactoryOrdersScreen
               dark={dark}
               lang={lang}
               tr={tr}

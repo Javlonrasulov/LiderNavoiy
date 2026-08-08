@@ -147,6 +147,14 @@ export interface Product {
   companyId?: string | null
 }
 
+export interface ProductStats extends Product {
+  soldQuantity: number
+  soldAmount: number
+  orderCount: number
+  avgRating: number | null
+  ratingCount: number
+}
+
 export interface Client {
   id: string
   name: string

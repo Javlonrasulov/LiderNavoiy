@@ -16,8 +16,9 @@ import { BonusStrafCreateModal } from '../BonusStrafCreateModal';
 import { formatDisplayDate } from '../../../utils/dateFormat';
 
 const POST_RECEIPTS_KEY = 'lider_goods_receipts';
+const POST_IMPORTED_KEY = 'lider_goods_receipts_imported';
 
-function loadPostReceipts(): PostRowRef[] {
+function loadLocalPostReceipts(): PostRowRef[] {
   try {
     const raw = localStorage.getItem(POST_RECEIPTS_KEY);
     if (!raw) return [];
@@ -28,12 +29,40 @@ function loadPostReceipts(): PostRowRef[] {
   }
 }
 
-function savePostReceipts(rows: PostRowRef[]) {
-  try {
-    localStorage.setItem(POST_RECEIPTS_KEY, JSON.stringify(rows));
-  } catch {
-    /* ignore quota errors */
-  }
+function mapApiReceipt(r: Awaited<ReturnType<typeof api.getGoodsReceipts>>[number]): PostRowRef {
+  return {
+    id: r.id,
+    date: r.date,
+    num: r.num,
+    ox: r.ox,
+    supplier: r.supplier,
+    org: r.org,
+    warehouse: r.warehouse,
+    wagon: r.wagon || '',
+    dir: r.dir || '',
+    invoice: r.invoice || '',
+    sum: Number(r.sum) || 0,
+    netto: Number(r.netto) || 0,
+    type: r.type,
+    author: r.author || '',
+    authorId: r.authorId || undefined,
+    items: (r.items || []).map((it, i) => ({
+      id: i + 1,
+      productId: it.productId || undefined,
+      tovar: it.tovar,
+      artikul: it.artikul || '',
+      kolFakt: Number(it.kolFakt) || 0,
+      kolBrak: Number(it.kolBrak) || 0,
+      upakovka: it.upakovka || '',
+      tsenaPost: Number(it.tsenaPost) || 0,
+      skid: Number(it.skid) || 0,
+      tsenaPriv: Number(it.tsenaPriv) || 0,
+      summa: Number(it.summa) || 0,
+      ves: Number(it.ves) || 0,
+    })),
+    companyId: r.companyId,
+    reconciliationStatus: r.reconciliationStatus,
+  };
 }
 
 interface Props {
@@ -45,6 +74,7 @@ interface Props {
   text: string;
   input: string;
   t: Record<string, string>;
+  companyId?: string;
 }
 
 interface SupRow {
@@ -147,7 +177,7 @@ const VOZVRAT_DATA = demo([
   { id:25, dateSend:'10.03.2026 15:35', dateAccept:'10.03.2026 15:35', num:'70', supplier:'Янги асорт «Соф…»', org:'LEADERS BARAKA',  warehouse:'Брак',         note:'', dir:'SOF IN', sum:0          },
 ]);
 
-export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
+export function AdminPostavchikTab({ D, card, divider, sub, text, t, companyId }: Props) {
   const [aktSup, setAktSup] = useState<SupRow | null>(null);
 
   const [reportTab, setReportTab] = useState<ReportTab>('schyot');
@@ -226,12 +256,76 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
     '2026-03-03','2026-03-07','2026-03-10',
   ]);
 
-  const [postData, setPostData] = useState<PostRowRef[]>(() => loadPostReceipts());
+  const [postData, setPostData] = useState<PostRowRef[]>([]);
+  const [postLoading, setPostLoading] = useState(true);
   const [postFilter, setPostFilter] = useState<'all'|'opt'|'chakana'|'ishlab'>('all');
   const [postSearch, setPostSearch] = useState('');
-  const [postExpanded, setPostExpanded] = useState<Set<number>>(new Set());
+  const [postExpanded, setPostExpanded] = useState<Set<string | number>>(new Set());
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<PostRowRef | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setPostLoading(true);
+      try {
+        let rows = await api.getGoodsReceipts({ companyId });
+        // Bir marta localStorage → API import
+        if (rows.length === 0 && !localStorage.getItem(POST_IMPORTED_KEY)) {
+          const local = loadLocalPostReceipts();
+          if (local.length > 0) {
+            await api.importGoodsReceipts(
+              local.map(r => ({
+                legacyId: r.id,
+                companyId: companyId || undefined,
+                date: r.date,
+                num: r.num,
+                ox: r.ox,
+                supplier: r.supplier,
+                org: r.org,
+                warehouse: r.warehouse,
+                wagon: r.wagon,
+                dir: r.dir,
+                invoice: r.invoice,
+                sum: r.sum,
+                netto: r.netto,
+                type: r.type,
+                author: r.author,
+                authorId: r.authorId,
+                items: (r.items || []).map(it => ({
+                  productId: it.productId,
+                  tovar: it.tovar,
+                  artikul: it.artikul,
+                  kolFakt: it.kolFakt,
+                  kolBrak: it.kolBrak,
+                  upakovka: it.upakovka,
+                  tsenaPost: it.tsenaPost,
+                  skid: it.skid,
+                  tsenaPriv: it.tsenaPriv,
+                  summa: it.summa,
+                  ves: it.ves,
+                })),
+              })),
+            );
+            localStorage.setItem(POST_IMPORTED_KEY, '1');
+            rows = await api.getGoodsReceipts({ companyId });
+          } else {
+            localStorage.setItem(POST_IMPORTED_KEY, '1');
+          }
+        }
+        if (!cancelled) setPostData(rows.map(mapApiReceipt));
+      } catch (e) {
+        console.error('Failed to load goods receipts', e);
+        if (!cancelled) {
+          // Offline fallback
+          setPostData(loadLocalPostReceipts());
+        }
+      } finally {
+        if (!cancelled) setPostLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   // table scroll refs
   const postTableRef = useRef<HTMLDivElement>(null);
@@ -286,19 +380,59 @@ export function AdminPostavchikTab({ D, card, divider, sub, text, t }: Props) {
   );
   const vozTotalSum = vozRows.reduce((s, r) => s + r.sum, 0);
 
-  const togglePost = (id: number) =>
+  const togglePost = (id: string | number) =>
     setPostExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
 
   const nextPostNum = String(
     Math.max(0, ...postData.map(r => parseInt(r.num, 10) || 0)) + 1,
   ).padStart(5, '0');
 
-  const handlePostSave = (row: PostRowRef) => {
-    setPostData(prev => {
-      const next = [row, ...prev];
-      savePostReceipts(next);
-      return next;
-    });
+  const handlePostSave = async (row: PostRowRef) => {
+    try {
+      const saved = await api.createGoodsReceipt({
+        legacyId: typeof row.id === 'number' ? row.id : undefined,
+        companyId: companyId || undefined,
+        date: row.date,
+        num: row.num,
+        ox: row.ox,
+        supplier: row.supplier,
+        org: row.org,
+        warehouse: row.warehouse,
+        wagon: row.wagon,
+        dir: row.dir,
+        invoice: row.invoice,
+        sum: row.sum,
+        netto: row.netto,
+        type: row.type,
+        author: row.author,
+        authorId: row.authorId,
+        items: (row.items || []).map(it => ({
+          productId: it.productId,
+          tovar: it.tovar,
+          artikul: it.artikul,
+          kolFakt: it.kolFakt,
+          kolBrak: it.kolBrak,
+          upakovka: it.upakovka,
+          tsenaPost: it.tsenaPost,
+          skid: it.skid,
+          tsenaPriv: it.tsenaPriv,
+          summa: it.summa,
+          ves: it.ves,
+        })),
+      });
+      const full = await api.getGoodsReceipts({ companyId });
+      const mapped = full.map(mapApiReceipt);
+      setPostData(mapped);
+      const created = mapped.find(r => r.id === saved.id);
+      if (created) setSelectedPost(created);
+    } catch (e) {
+      console.error('Failed to save goods receipt', e);
+      // Fallback: keep local list so admin ishni yo'qotmasin
+      setPostData(prev => [row, ...prev]);
+      try {
+        localStorage.setItem(POST_RECEIPTS_KEY, JSON.stringify([row, ...postData]));
+      } catch { /* ignore */ }
+    }
     setShowCreateModal(false);
   };
 

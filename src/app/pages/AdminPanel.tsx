@@ -802,6 +802,7 @@ export default function AdminPanel() {
             <AdminPostavchikTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               sub={sub} text={text} input={input} t={t}
+              companyId={viewOrg !== 'all' ? viewOrg : selectedCompany?.id}
             />
           )}
 

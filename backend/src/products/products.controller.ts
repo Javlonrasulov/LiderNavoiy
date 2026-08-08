@@ -30,6 +30,16 @@ export class ProductsController {
     return this.service.findAll(category, companyId?.trim() || null);
   }
 
+  @Get('top')
+  @ApiOperation({ summary: 'Top selling products with ratings' })
+  topProducts(
+    @Query('companyId') companyId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const n = Math.min(Math.max(parseInt(limit || '30', 10) || 30, 1), 100);
+    return this.service.findTopSelling(companyId?.trim() || null, n);
+  }
+
   @Get('categories')
   @ApiOperation({ summary: 'List product categories' })
   categories(@Query('companyId') companyId?: string) {
@@ -67,6 +77,15 @@ export class ProductsController {
   @ApiOperation({ summary: 'Delete product category metadata' })
   removeCategoryMeta(@Param('metaId') metaId: string) {
     return this.service.removeCategoryMeta(metaId);
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Product detail with sales stats and rating' })
+  productStats(
+    @Param('id') id: string,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getProductStats(id, companyId?.trim() || null);
   }
 
   @Get(':id')

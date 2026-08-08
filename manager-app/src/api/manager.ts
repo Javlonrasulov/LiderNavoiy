@@ -7,6 +7,7 @@ import type {
   Distributor,
   PlanRow,
   Product,
+  ProductStats,
   VisitAdminRow,
 } from './types'
 
@@ -36,6 +37,18 @@ export function fetchDailyRoute(distributorId: string, date: string) {
 export function fetchProducts(companyId?: string) {
   const q = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
   return api<Product[]>(`products${q}`)
+}
+
+export function fetchTopProducts(companyId?: string, limit = 30) {
+  const params = new URLSearchParams()
+  if (companyId) params.set('companyId', companyId)
+  params.set('limit', String(limit))
+  return api<ProductStats[]>(`products/top?${params.toString()}`)
+}
+
+export function fetchProductStats(productId: string, companyId?: string) {
+  const q = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
+  return api<ProductStats>(`products/${productId}/stats${q}`)
 }
 
 export function fetchProductCategories(companyId?: string) {

@@ -27,6 +27,7 @@ import { PromotionsModule } from './promotions/promotions.module';
 import { TerminalsModule } from './terminals/terminals.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReturnsModule } from './returns/returns.module';
+import { GoodsReceiptsModule } from './goods-receipts/goods-receipts.module';
 import { RedisModule } from './common/redis/redis.module';
 import { User } from './auth/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
@@ -102,6 +103,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     TerminalsModule,
     PaymentsModule,
     ReturnsModule,
+    GoodsReceiptsModule,
   ],
   providers: [
     BootSeedService,

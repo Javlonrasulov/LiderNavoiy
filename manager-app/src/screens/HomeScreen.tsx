@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCircle, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, User, Users, Wallet } from '../icons'
+import { Bell, CheckCircle, ClipboardList, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, User, Users, Wallet } from '../icons'
 import { fetchAdminDashboard, fetchClientOrders, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
 import type { AdminDashboard, AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
@@ -141,6 +141,7 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
     { icon: Users, label: tr.staffNav, color: '#6C5CE7', screen: 'staff' },
     { icon: Package, label: tr.productsNav, color: '#E6963C', screen: 'products' },
     { icon: Truck, label: tr.clientOrdersTitle, color: '#00C853', screen: 'clientOrders' },
+    { icon: ClipboardList, label: tr.factoryOrdersTitle, color: '#FF6B35', screen: 'factoryOrders' },
     { icon: Plus, label: tr.addClient, color: '#7C4DFF', screen: 'addClient' },
     { icon: User, label: tr.profileNav, color: '#3B82F6', screen: 'profile' },
   ]

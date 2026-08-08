@@ -42,7 +42,7 @@ export interface PostReceiptItem {
 }
 
 export interface PostRowRef {
-  id:       number;
+  id:       string | number;
   date:     string;
   num:      string;
   ox:       boolean;
@@ -58,6 +58,8 @@ export interface PostRowRef {
   author:   string;
   authorId?: string;
   items?:    PostReceiptItem[];
+  companyId?: string | null;
+  reconciliationStatus?: string | null;
 }
 
 interface Props {

@@ -1260,6 +1260,61 @@ export const api = {
       body: JSON.stringify({ token }),
     }),
 
+  // ─── Goods receipts (prixod) / factory reconciliation ───
+  getGoodsReceipts: (params?: { companyId?: string; ox?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.companyId) q.set('companyId', params.companyId);
+    if (params?.ox !== undefined) q.set('ox', String(params.ox));
+    const qs = q.toString();
+    return request<Array<{
+      id: string;
+      legacyId?: string | null;
+      companyId?: string | null;
+      date: string;
+      num: string;
+      ox: boolean;
+      supplier: string;
+      org: string;
+      warehouse: string;
+      wagon: string;
+      dir: string;
+      invoice: string;
+      sum: number;
+      netto: number;
+      type: 'opt' | 'chakana' | 'ishlab';
+      author: string;
+      authorId?: string | null;
+      items?: Array<{
+        productId?: string | null;
+        tovar: string;
+        artikul?: string | null;
+        kolFakt: number;
+        kolBrak: number;
+        upakovka?: string | null;
+        tsenaPost: number;
+        skid?: number;
+        tsenaPriv?: number;
+        summa: number;
+        ves: number;
+        unit?: string | null;
+      }>;
+      reconciliationStatus?: string | null;
+      reconciliationId?: string | null;
+    }>>(`/goods-receipts${qs ? `?${qs}` : ''}`);
+  },
+
+  createGoodsReceipt: (body: Record<string, unknown>) =>
+    request<{ id: string }>('/goods-receipts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  importGoodsReceipts: (rows: Record<string, unknown>[]) =>
+    request<{ created: number; skipped: number }>('/goods-receipts/import', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+
   broadcastPush: (body: {
     title: string;
     body: string;

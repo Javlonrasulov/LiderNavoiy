@@ -89,7 +89,7 @@ interface Props {
   D: boolean;
   t: Record<string, string>;
   onClose: () => void;
-  onSave?: (row: PostRowRef) => void;
+  onSave?: (row: PostRowRef) => void | Promise<void>;
   suppliers?: string[];
   nextNum?: string;
 }
@@ -844,7 +844,7 @@ export function PostupleniyaModal({ D, t, onClose, onSave, suppliers = [], nextN
           supplier: postavshik,
         });
       }
-      onSave?.(row);
+      await onSave?.(row);
       if (closeAfter) onClose();
     } catch (error) {
       console.error('Failed to sync receipt products', error);

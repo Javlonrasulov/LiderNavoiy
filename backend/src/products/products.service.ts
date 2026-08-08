@@ -8,7 +8,20 @@ import {
 } from './dto/product-category.dto';
 import { Product } from './entities/product.entity';
 import { ProductCategory } from './entities/product-category.entity';
+import { ProductRating } from './entities/product-rating.entity';
+import { Order } from '../orders/entities/order.entity';
+import { OrderStatus } from '../common/enums';
 import { ProductsUploadService } from './products-upload.service';
+
+export type ProductSalesStats = {
+  soldQuantity: number;
+  soldAmount: number;
+  orderCount: number;
+  avgRating: number | null;
+  ratingCount: number;
+};
+
+export type ProductWithStats = Product & ProductSalesStats;
 
 @Injectable()
 export class ProductsService {
@@ -17,6 +30,10 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
+    @InjectRepository(ProductRating)
+    private readonly ratingRepo: Repository<ProductRating>,
+    @InjectRepository(Order)
+    private readonly orderRepo: Repository<Order>,
     private readonly uploadService: ProductsUploadService,
   ) {}
 
@@ -188,6 +205,141 @@ export class ProductsService {
     if (!product) throw new NotFoundException('Product not found');
     product.isActive = false;
     return this.repo.save(product);
+  }
+
+  /** Buyurtmalardan mahsulot bo‘yicha sotuv agregatsiyasi */
+  private async aggregateSalesByProduct(
+    companyId?: string | null,
+    productIds?: string[],
+  ): Promise<Map<string, { soldQuantity: number; soldAmount: number; orderCount: number }>> {
+    const params: unknown[] = [OrderStatus.CANCELLED, OrderStatus.DRAFT];
+    let filterSql = `o.status NOT IN ($1, $2)`;
+
+    if (companyId) {
+      params.push(companyId);
+      filterSql += ` AND o."companyId" = $${params.length}`;
+    }
+    if (productIds?.length) {
+      params.push(productIds);
+      filterSql += ` AND (elem->>'productId') = ANY($${params.length}::text[])`;
+    }
+
+    const rows: Array<{
+      productId: string;
+      soldQuantity: string | number;
+      soldAmount: string | number;
+      orderCount: string | number;
+    }> = await this.orderRepo.query(
+      `
+      SELECT
+        elem->>'productId' AS "productId",
+        COALESCE(SUM((elem->>'quantity')::numeric), 0) AS "soldQuantity",
+        COALESCE(SUM((elem->>'quantity')::numeric * (elem->>'price')::numeric), 0) AS "soldAmount",
+        COUNT(DISTINCT o.id) AS "orderCount"
+      FROM orders o
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.items, '[]'::jsonb)) AS elem
+      WHERE ${filterSql}
+        AND elem->>'productId' IS NOT NULL
+        AND elem->>'productId' <> ''
+        AND elem->>'productId' <> 'null'
+      GROUP BY elem->>'productId'
+      `,
+      params,
+    );
+
+    const map = new Map<string, { soldQuantity: number; soldAmount: number; orderCount: number }>();
+    for (const row of rows) {
+      if (!row.productId) continue;
+      map.set(row.productId, {
+        soldQuantity: Number(row.soldQuantity) || 0,
+        soldAmount: Number(row.soldAmount) || 0,
+        orderCount: Number(row.orderCount) || 0,
+      });
+    }
+    return map;
+  }
+
+  private async aggregateRatings(
+    productIds: string[],
+  ): Promise<Map<string, { avgRating: number | null; ratingCount: number }>> {
+    const map = new Map<string, { avgRating: number | null; ratingCount: number }>();
+    if (!productIds.length) return map;
+
+    const rows = await this.ratingRepo
+      .createQueryBuilder('r')
+      .select('r.productId', 'productId')
+      .addSelect('AVG(r.stars)', 'avgRating')
+      .addSelect('COUNT(*)', 'ratingCount')
+      .where('r.productId IN (:...ids)', { ids: productIds })
+      .groupBy('r.productId')
+      .getRawMany<{ productId: string; avgRating: string; ratingCount: string }>();
+
+    for (const row of rows) {
+      const count = Number(row.ratingCount) || 0;
+      const avg = count > 0 ? Math.round((Number(row.avgRating) || 0) * 10) / 10 : null;
+      map.set(row.productId, { avgRating: avg, ratingCount: count });
+    }
+    return map;
+  }
+
+  async findTopSelling(companyId?: string | null, limit = 30): Promise<ProductWithStats[]> {
+    const salesMap = await this.aggregateSalesByProduct(companyId);
+    const ranked = [...salesMap.entries()]
+      .filter(([, s]) => s.soldQuantity > 0)
+      .sort((a, b) => b[1].soldQuantity - a[1].soldQuantity)
+      .slice(0, limit);
+
+    if (!ranked.length) return [];
+
+    const ids = ranked.map(([id]) => id);
+    const qb = this.repo
+      .createQueryBuilder('p')
+      .where('p.id IN (:...ids)', { ids })
+      .andWhere('p.isActive = true');
+    this.applyCompanyFilter(qb, companyId);
+    const products = await qb.getMany();
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const ratings = await this.aggregateRatings(ids);
+
+    return ranked
+      .map(([id, sales]) => {
+        const product = byId.get(id);
+        if (!product) return null;
+        const rating = ratings.get(id) ?? { avgRating: null, ratingCount: 0 };
+        return {
+          ...product,
+          soldQuantity: sales.soldQuantity,
+          soldAmount: sales.soldAmount,
+          orderCount: sales.orderCount,
+          avgRating: rating.avgRating,
+          ratingCount: rating.ratingCount,
+        };
+      })
+      .filter((p): p is ProductWithStats => Boolean(p));
+  }
+
+  async getProductStats(id: string, companyId?: string | null): Promise<ProductWithStats> {
+    const product = await this.findOne(id);
+    if (!product || !product.isActive) throw new NotFoundException('Product not found');
+    if (companyId && product.companyId && product.companyId !== companyId) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const [salesMap, ratings] = await Promise.all([
+      this.aggregateSalesByProduct(companyId, [id]),
+      this.aggregateRatings([id]),
+    ]);
+    const sales = salesMap.get(id) ?? { soldQuantity: 0, soldAmount: 0, orderCount: 0 };
+    const rating = ratings.get(id) ?? { avgRating: null, ratingCount: 0 };
+
+    return {
+      ...product,
+      soldQuantity: sales.soldQuantity,
+      soldAmount: sales.soldAmount,
+      orderCount: sales.orderCount,
+      avgRating: rating.avgRating,
+      ratingCount: rating.ratingCount,
+    };
   }
 
   findAllCategoryMeta() {

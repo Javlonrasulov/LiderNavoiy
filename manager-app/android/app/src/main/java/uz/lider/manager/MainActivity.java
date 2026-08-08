@@ -1,4 +1,4 @@
-package com.milliy.libos;
+package uz.lider.manager;
 
 import android.os.Bundle;
 import android.webkit.WebView;
