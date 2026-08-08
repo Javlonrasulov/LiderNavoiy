@@ -1259,6 +1259,8 @@ export const api = {
     request<Array<{
       id: string;
       status: string;
+      requestType?: 'create' | 'update';
+      targetClientId?: string | null;
       name: string;
       fullName?: string | null;
       phone?: string | null;
@@ -1274,8 +1276,10 @@ export const api = {
       clientClass?: string | null;
       priceCategory?: string | null;
       photoUrl?: string | null;
+      canSeePromotions?: boolean | null;
       agentName?: string | null;
       note?: string | null;
+      previousSnapshot?: Record<string, unknown> | null;
       createdAt: string;
       distributor?: { id: string; user?: { fullName: string } } | null;
     }>>(`/client-requests${companyId ? `?companyId=${companyId}` : ''}`),

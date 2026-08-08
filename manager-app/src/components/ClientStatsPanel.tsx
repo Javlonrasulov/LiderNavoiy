@@ -327,7 +327,6 @@ export default function ClientStatsPanel({ client, dark, lang, tr, onClose }: Pr
             </p>
             <p style={{ fontSize: 12, color: c.mutedText, marginTop: 2 }}>
               {selectedCat ? tr.statProdAnalysis : tr.statTitle}
-              {client.code ? ` · ${client.code}` : ''}
             </p>
           </div>
           <button

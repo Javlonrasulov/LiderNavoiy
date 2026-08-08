@@ -45,8 +45,10 @@ function mapApiRow(r: ClientRequestItem & Record<string, unknown>): ClientReques
     clientClass: r.clientClass ?? null,
     priceCategory: r.priceCategory ?? null,
     photoUrl: r.photoUrl ?? null,
+    canSeePromotions: r.canSeePromotions === true,
     agentName,
     note: r.note ?? null,
+    previousSnapshot: (r.previousSnapshot as ClientRequestItem['previousSnapshot']) ?? null,
     createdAt: typeof r.createdAt === 'string' ? r.createdAt : new Date().toISOString(),
     distributor: r.distributor ?? null,
   };

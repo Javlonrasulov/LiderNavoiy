@@ -3,6 +3,24 @@ import type { ClientRow } from './adminData';
 export type ClientRequestStatus = 'pending' | 'approved' | 'rejected';
 export type ClientRequestType = 'create' | 'update';
 
+export type ClientRequestSnapshot = {
+  name?: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  lineCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  category?: string | null;
+  inn?: string | null;
+  contactPerson?: string | null;
+  territory?: string | null;
+  clientClass?: string | null;
+  priceCategory?: string | null;
+  photoUrl?: string | null;
+  canSeePromotions?: boolean | null;
+};
+
 export interface ClientRequestItem {
   id: string;
   status: ClientRequestStatus;
@@ -23,8 +41,10 @@ export interface ClientRequestItem {
   clientClass?: string | null;
   priceCategory?: string | null;
   photoUrl?: string | null;
+  canSeePromotions?: boolean | null;
   agentName?: string | null;
   note?: string | null;
+  previousSnapshot?: ClientRequestSnapshot | null;
   createdAt: string;
   distributor?: {
     id: string;
@@ -38,6 +58,135 @@ export interface InnCheckResult {
   reason?: 'client_exists' | 'request_exists';
   existingClient?: { id: string; name: string; inn: string | null } | null;
   existingRequest?: { id: string; name: string; inn: string | null } | null;
+}
+
+export type ClientFieldChange = {
+  key: string;
+  labelKey: string;
+  from: string;
+  to: string;
+};
+
+const EDIT_FIELDS: Array<{
+  key: keyof ClientRequestSnapshot;
+  labelKey: string;
+  format?: (v: unknown) => string;
+}> = [
+  { key: 'name', labelKey: 'colClientName' },
+  { key: 'fullName', labelKey: 'colFullName' },
+  { key: 'phone', labelKey: 'colPhone' },
+  { key: 'address', labelKey: 'colLegalAddr' },
+  { key: 'lineCode', labelKey: 'colLine' },
+  { key: 'category', labelKey: 'colCategory' },
+  { key: 'inn', labelKey: 'colINN' },
+  { key: 'contactPerson', labelKey: 'colContact' },
+  { key: 'territory', labelKey: 'colTerritory' },
+  { key: 'clientClass', labelKey: 'colClass' },
+  { key: 'priceCategory', labelKey: 'colPriceCat' },
+  { key: 'photoUrl', labelKey: 'colPhoto' },
+  {
+    key: 'canSeePromotions',
+    labelKey: 'colPromotions',
+    format: (v) => (v === true ? 'on' : 'off'),
+  },
+];
+
+function displayValue(v: unknown, format?: (v: unknown) => string): string {
+  if (format) return format(v);
+  if (v == null || v === '') return '—';
+  return String(v);
+}
+
+function sameCoord(a: unknown, b: unknown): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return Math.abs(Number(a) - Number(b)) < 1e-6;
+}
+
+function formatGps(lat: unknown, lng: unknown): string {
+  if (lat == null || lng == null) return '—';
+  return `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)}`;
+}
+
+/** Tahrirlash so‘rovida o‘zgargan maydonlar (eski → yangi) */
+export function getClientRequestChanges(
+  item: ClientRequestItem,
+  t: Record<string, string> = {},
+  existingClients: ClientRow[] = [],
+): ClientFieldChange[] {
+  if (item.requestType !== 'update') return [];
+
+  let prev = item.previousSnapshot ?? null;
+  if (!prev && item.targetClientId) {
+    const row = existingClients.find(c => String(c.id) === String(item.targetClientId));
+    if (row) {
+      const gpsParts = (row.gps || '').split(',').map(s => s.trim());
+      prev = {
+        name: row.name,
+        fullName: row.fullName,
+        phone: row.phone,
+        address: row.legalAddr,
+        lineCode: row.line,
+        latitude: gpsParts[0] ? Number(gpsParts[0]) : null,
+        longitude: gpsParts[1] ? Number(gpsParts[1]) : null,
+        category: row.category,
+        inn: row.inn,
+        contactPerson: row.contact,
+        territory: row.territory,
+        clientClass: row.cls,
+        priceCategory: row.priceCat,
+      };
+    }
+  }
+  if (!prev) return [];
+
+  const changes: ClientFieldChange[] = [];
+
+  for (const field of EDIT_FIELDS) {
+    const fromRaw = prev[field.key];
+    const toRaw = item[field.key as keyof ClientRequestItem];
+    const from = displayValue(fromRaw, field.format);
+    const to = displayValue(toRaw, field.format);
+    if (from === to) continue;
+    // photoUrl: faqat o‘zgarganini ko‘rsat, URL o‘rniga qisqa belgi
+    if (field.key === 'photoUrl') {
+      changes.push({
+        key: field.key,
+        labelKey: field.labelKey,
+        from: fromRaw ? (t.notifHasPhoto ?? 'Bor') : '—',
+        to: toRaw ? (t.notifHasPhoto ?? 'Bor') : '—',
+      });
+      continue;
+    }
+    if (field.key === 'canSeePromotions') {
+      changes.push({
+        key: field.key,
+        labelKey: field.labelKey,
+        from: fromRaw === true ? (t.notifYes ?? 'Ha') : (t.notifNo ?? "Yo'q"),
+        to: toRaw === true ? (t.notifYes ?? 'Ha') : (t.notifNo ?? "Yo'q"),
+      });
+      continue;
+    }
+    changes.push({
+      key: field.key,
+      labelKey: field.labelKey,
+      from,
+      to,
+    });
+  }
+
+  const latChanged = !sameCoord(prev.latitude, item.latitude);
+  const lngChanged = !sameCoord(prev.longitude, item.longitude);
+  if (latChanged || lngChanged) {
+    changes.push({
+      key: 'gps',
+      labelKey: 'colGPS',
+      from: formatGps(prev.latitude, prev.longitude),
+      to: formatGps(item.latitude, item.longitude),
+    });
+  }
+
+  return changes;
 }
 
 /** Eski demo ma'lumotlarni tozalash (bir martalik) */

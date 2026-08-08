@@ -11,6 +11,7 @@ import StaffScreen from './screens/StaffScreen'
 import EmployeeTrackingScreen from './screens/EmployeeTrackingScreen'
 import ClientsScreen from './screens/ClientsScreen'
 import AddClientScreen from './screens/AddClientScreen'
+import { clientFromRequest } from './api/manager'
 import ProductsScreen from './screens/ProductsScreen'
 import PlanScreen from './screens/PlanScreen'
 import ProfileScreen from './screens/ProfileScreen'
@@ -49,6 +50,7 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(() => getStoredUser())
   const [clientsKey, setClientsKey] = useState(0)
   const [editingClient, setEditingClient] = useState<import('./api/types').Client | null>(null)
+  const [resubmitRequestId, setResubmitRequestId] = useState<string | null>(null)
   const [messagesUnread, setMessagesUnread] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const [messagesChatOpen, setMessagesChatOpen] = useState(false)
@@ -150,6 +152,7 @@ export default function App() {
         setOverlay(null)
         setTrackingEmp(null)
         setEditingClient(null)
+        setResubmitRequestId(null)
         return
       }
       if (activeTabRef.current !== 'home') {
@@ -281,10 +284,17 @@ export default function App() {
                 tr={tr}
                 onAdd={() => {
                   setEditingClient(null)
+                  setResubmitRequestId(null)
                   setOverlay('addClient')
                 }}
                 onEdit={(cl) => {
                   setEditingClient(cl)
+                  setResubmitRequestId(null)
+                  setOverlay('addClient')
+                }}
+                onEditRequest={(req) => {
+                  setEditingClient(clientFromRequest(req))
+                  setResubmitRequestId(req.id)
                   setOverlay('addClient')
                 }}
               />
@@ -366,12 +376,15 @@ export default function App() {
               tr={tr}
               user={user}
               editClient={editingClient}
+              resubmitRequestId={resubmitRequestId}
               onBack={() => {
                 setEditingClient(null)
+                setResubmitRequestId(null)
                 setOverlay(null)
               }}
               onCreated={(result) => {
                 setEditingClient(null)
+                setResubmitRequestId(null)
                 setClientsKey(k => k + 1)
                 setActiveTab('clients')
                 setOverlay(null)

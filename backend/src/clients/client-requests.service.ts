@@ -20,6 +20,60 @@ function normalizeInn(inn?: string | null): string | null {
   return v ? v : null;
 }
 
+type ClientFieldSnapshot = {
+  name: string | null;
+  fullName: string | null;
+  phone: string | null;
+  address: string | null;
+  lineCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  category: string | null;
+  inn: string | null;
+  contactPerson: string | null;
+  territory: string | null;
+  clientClass: string | null;
+  priceCategory: string | null;
+  photoUrl: string | null;
+  canSeePromotions: boolean;
+};
+
+function snapshotFromClient(c: {
+  name?: string | null;
+  fullName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  lineCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  category?: string | null;
+  inn?: string | null;
+  contactPerson?: string | null;
+  territory?: string | null;
+  clientClass?: string | null;
+  priceCategory?: string | null;
+  photoUrl?: string | null;
+  canSeePromotions?: boolean | null;
+}): ClientFieldSnapshot {
+  return {
+    name: c.name ?? null,
+    fullName: c.fullName ?? null,
+    phone: c.phone ?? null,
+    address: c.address ?? null,
+    lineCode: c.lineCode ?? null,
+    latitude: c.latitude ?? null,
+    longitude: c.longitude ?? null,
+    category: c.category ?? null,
+    inn: normalizeInn(c.inn),
+    contactPerson: c.contactPerson ?? null,
+    territory: c.territory ?? null,
+    clientClass: c.clientClass ?? null,
+    priceCategory: c.priceCategory ?? null,
+    photoUrl: c.photoUrl ?? null,
+    canSeePromotions: c.canSeePromotions === true,
+  };
+}
+
 @Injectable()
 export class ClientRequestsService {
   constructor(
@@ -161,6 +215,7 @@ export class ClientRequestsService {
   ) {
     const existing = await this.clientsService.findOne(targetClientId);
     const companyId = existing.companyId ?? undefined;
+    const previousSnapshot = snapshotFromClient(existing);
 
     const merged = {
       name: dto.name ?? existing.name,
@@ -226,6 +281,10 @@ export class ClientRequestsService {
       pendingExisting.priceCategory = merged.priceCategory ?? null;
       pendingExisting.photoUrl = merged.photoUrl ?? null;
       pendingExisting.canSeePromotions = merged.canSeePromotions === true;
+      // Birinchi so‘rovdagi eski qiymatlar saqlansin
+      if (!pendingExisting.previousSnapshot) {
+        pendingExisting.previousSnapshot = previousSnapshot;
+      }
       pendingExisting.agentName = agentName ?? pendingExisting.agentName;
       pendingExisting.distributorId =
         distributorId ?? pendingExisting.distributorId;
@@ -255,6 +314,7 @@ export class ClientRequestsService {
       priceCategory: merged.priceCategory ?? null,
       photoUrl: merged.photoUrl ?? null,
       canSeePromotions: merged.canSeePromotions === true,
+      previousSnapshot,
       agentName: agentName ?? null,
       note: null,
     });
@@ -358,6 +418,79 @@ export class ClientRequestsService {
     request.status = ClientRequestStatus.REJECTED;
     request.reviewedBy = reviewerName;
     request.reviewedAt = new Date();
+    await this.repo.save(request);
+    return this.findOne(id);
+  }
+
+  /** Manager/agent bekor qilingan (yoki keraksiz) so‘rovni o‘chiradi */
+  async dismiss(id: string) {
+    const request = await this.findOne(id);
+    if (request.status === ClientRequestStatus.APPROVED) {
+      throw new BadRequestException('Tasdiqlangan so‘rovni o‘chirib bo‘lmaydi');
+    }
+    await this.repo.remove(request);
+    return { ok: true as const };
+  }
+
+  /** Bekor qilingan so‘rovni tahrirlab qayta yuborish */
+  async resubmit(
+    id: string,
+    dto: CreateClientRequestDto,
+    distributorId?: string,
+    agentName?: string,
+  ) {
+    const request = await this.findOne(id);
+    if (request.status !== ClientRequestStatus.REJECTED) {
+      throw new BadRequestException('Faqat bekor qilingan so‘rovni qayta yuborish mumkin');
+    }
+
+    const dup = await this.checkInnDuplicate(
+      dto.inn ?? request.inn,
+      id,
+      request.targetClientId ?? undefined,
+    );
+    if (dup.duplicate) {
+      throw new BadRequestException(
+        dup.reason === 'client_exists'
+          ? 'Bu INN bilan mijoz tizimda mavjud'
+          : 'Bu INN bilan kutilayotgan so\'rov mavjud',
+      );
+    }
+
+    if (dto.name !== undefined) request.name = dto.name.trim();
+    if (dto.fullName !== undefined) request.fullName = dto.fullName?.trim() || request.name;
+    if (dto.phone !== undefined) request.phone = dto.phone?.trim() || null;
+    if (dto.address !== undefined) request.address = dto.address?.trim() || null;
+    if (dto.lineCode !== undefined) request.lineCode = dto.lineCode?.trim() || null;
+    if (dto.latitude !== undefined) request.latitude = dto.latitude ?? null;
+    if (dto.longitude !== undefined) request.longitude = dto.longitude ?? null;
+    if (dto.category !== undefined) request.category = dto.category?.trim() || null;
+    if (dto.inn !== undefined) request.inn = normalizeInn(dto.inn);
+    if (dto.contactPerson !== undefined) {
+      request.contactPerson = dto.contactPerson?.trim() || null;
+    }
+    if (dto.territory !== undefined) request.territory = dto.territory?.trim() || null;
+    if (dto.clientClass !== undefined) {
+      request.clientClass = dto.clientClass?.trim() || null;
+    }
+    if (dto.priceCategory !== undefined) {
+      request.priceCategory = dto.priceCategory?.trim() || null;
+    }
+    if (dto.photoUrl !== undefined) request.photoUrl = dto.photoUrl?.trim() || null;
+    if (dto.canSeePromotions !== undefined) {
+      request.canSeePromotions = dto.canSeePromotions === true;
+    }
+    if (dto.companyId !== undefined) {
+      request.companyId = dto.companyId?.trim() || request.companyId;
+    }
+    if (distributorId) request.distributorId = distributorId;
+    if (agentName) request.agentName = agentName;
+
+    request.status = ClientRequestStatus.PENDING;
+    request.reviewedBy = null;
+    request.reviewedAt = null;
+    request.approvedClientId = null;
+
     await this.repo.save(request);
     return this.findOne(id);
   }

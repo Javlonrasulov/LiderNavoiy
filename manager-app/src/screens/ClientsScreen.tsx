@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PenSquare, Plus, Search } from '../icons'
+import { PenSquare, Plus, Search, X } from '../icons'
 import {
+  deleteClientRequest,
   fetchClientRequests,
   fetchClients,
+  fetchLines,
   type ClientRequestRow,
+  type SalesLine,
 } from '../api/manager'
-import { getStoredUser } from '../api/client'
+import { ApiError, getStoredUser } from '../api/client'
 import type { Client } from '../api/types'
 import type { Lang, Translations } from '../i18n'
+import { localizeApiError } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import ClientStatsPanel from '../components/ClientStatsPanel'
+import { showToast } from '../components/Toast'
 import { pushBackHandler } from '../utils/hardwareBack'
 
 type ClientSort = 'all' | 'top_desc' | 'top_asc' | 'debt_desc' | 'debt_asc'
@@ -20,6 +25,7 @@ interface Props {
   tr: Translations
   onAdd: () => void
   onEdit: (client: Client) => void
+  onEditRequest: (req: ClientRequestRow) => void
 }
 
 function clientDebt(cl: Client): number {
@@ -45,28 +51,49 @@ function statusStyle(status: ClientRequestRow['status'], dark: boolean) {
   }
 }
 
-export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) {
+export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditRequest }: Props) {
   const c = theme(dark)
   const companyId = getStoredUser()?.companyId || undefined
   const [list, setList] = useState<Client[]>([])
+  const [lines, setLines] = useState<SalesLine[]>([])
   const [requests, setRequests] = useState<ClientRequestRow[]>([])
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<ClientSort>('all')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Client | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const lineNameByCode = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const line of lines) {
+      const code = line.code?.trim()
+      if (!code) continue
+      map.set(code, line.name?.trim() || code)
+    }
+    return map
+  }, [lines])
+
+  const resolveLineLabel = (code?: string | null) => {
+    const key = code?.trim()
+    if (!key) return '—'
+    return lineNameByCode.get(key) || '—'
+  }
 
   const load = async () => {
     setLoading(true)
     try {
-      const [data, reqs] = await Promise.all([
+      const [data, reqs, lineRows] = await Promise.all([
         fetchClients(companyId),
         fetchClientRequests({ companyId, status: 'all' }).catch(() => [] as ClientRequestRow[]),
+        fetchLines(companyId).catch(() => [] as SalesLine[]),
       ])
       setList(Array.isArray(data) ? data : [])
       setRequests(Array.isArray(reqs) ? reqs : [])
+      setLines(Array.isArray(lineRows) ? lineRows : [])
     } catch {
       setList([])
       setRequests([])
+      setLines([])
     } finally {
       setLoading(false)
     }
@@ -141,6 +168,20 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
     return tr.clientReqRejected
   }
 
+  const dismissRequest = async (req: ClientRequestRow) => {
+    if (busyId) return
+    setBusyId(req.id)
+    try {
+      await deleteClientRequest(req.id)
+      setRequests(prev => prev.filter(r => r.id !== req.id))
+      showToast(tr.clientReqDeleted, 'success')
+    } catch (e) {
+      showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: '100%', overflowY: 'auto', background: c.bg, paddingBottom: 'calc(100px + var(--safe-bottom))' }} className="no-scrollbar">
       <div style={{
@@ -193,13 +234,49 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
                         {req.phone ? ` · ${req.phone}` : ''}
                       </p>
                     </div>
-                    <span style={{
-                      flexShrink: 0, fontSize: 11, fontWeight: 800,
-                      padding: '5px 10px', borderRadius: 999,
-                      background: st.bg, color: st.color,
-                    }}>
-                      {statusLabel(req.status)}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 800,
+                        padding: '5px 10px', borderRadius: 999,
+                        background: st.bg, color: st.color,
+                      }}>
+                        {statusLabel(req.status)}
+                      </span>
+                      {req.status === 'rejected' && (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            disabled={busyId === req.id}
+                            title={tr.editItem}
+                            aria-label={tr.editItem}
+                            onClick={() => onEditRequest(req)}
+                            style={{
+                              width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
+                              background: 'rgba(108,92,231,0.12)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              opacity: busyId === req.id ? 0.5 : 1,
+                            }}
+                          >
+                            <PenSquare size={15} color={c.primary} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === req.id}
+                            title={tr.cancel}
+                            aria-label={tr.cancel}
+                            onClick={() => void dismissRequest(req)}
+                            style={{
+                              width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
+                              background: 'rgba(239,68,68,0.12)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              opacity: busyId === req.id ? 0.5 : 1,
+                            }}
+                          >
+                            <X size={16} color="#DC2626" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
@@ -261,15 +338,6 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexShrink: 0 }}>
-                {cl.code && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 800, color: c.primary,
-                    background: 'rgba(108,92,231,0.12)', padding: '4px 8px',
-                    borderRadius: 8, height: 'fit-content',
-                  }}>
-                    {cl.code}
-                  </span>
-                )}
                 <button
                   type="button"
                   title={tr.editClient}
@@ -290,7 +358,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) 
             </div>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <Meta label={tr.phone} value={cl.phone || '—'} muted={c.mutedText} text={c.text} />
-              <Meta label={tr.line} value={cl.lineCode || '—'} muted={c.mutedText} text={c.text} />
+              <Meta label={tr.line} value={resolveLineLabel(cl.lineCode)} muted={c.mutedText} text={c.text} />
               <Meta label={tr.address} value={cl.address || '—'} muted={c.mutedText} text={c.text} />
               <Meta
                 label={tr.debt}

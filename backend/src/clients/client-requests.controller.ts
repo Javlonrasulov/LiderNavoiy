@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -171,5 +172,88 @@ export class ClientRequestsController {
   reject(@Request() req: { user: User }, @Param('id') id: string) {
     const reviewer = req.user.fullName ?? req.user.username;
     return this.service.reject(id, reviewer);
+  }
+
+  @Post(':id/resubmit')
+  @ApiOperation({ summary: 'Resubmit rejected client request after edits' })
+  async resubmit(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: CreateClientRequestDto,
+  ) {
+    const companyId = this.resolveCompanyId(req.user, dto.companyId);
+    const skipApproval =
+      req.user.role === UserRole.ADMIN ||
+      (await this.companiesService.getClientsAddWithoutApproval(companyId));
+
+    if (skipApproval) {
+      const existing = await this.service.findOne(id);
+      if (existing.requestType === ClientRequestType.UPDATE && existing.targetClientId) {
+        const client = await this.clientsService.update(
+          existing.targetClientId,
+          {
+            name: dto.name,
+            fullName: dto.fullName,
+            phone: dto.phone,
+            address: dto.address,
+            companyId,
+            lineCode: dto.lineCode,
+            latitude: dto.latitude,
+            longitude: dto.longitude,
+            category: dto.category,
+            inn: dto.inn,
+            contactPerson: dto.contactPerson,
+            territory: dto.territory,
+            clientClass: dto.clientClass,
+            priceCategory: dto.priceCategory,
+            photoUrl: dto.photoUrl,
+            canSeePromotions: dto.canSeePromotions === true,
+          },
+          req.user,
+        );
+        await this.service.dismiss(id);
+        return client;
+      }
+      const client = await this.clientsService.create(
+        {
+          name: dto.name,
+          fullName: dto.fullName,
+          phone: dto.phone,
+          address: dto.address,
+          companyId,
+          lineCode: dto.lineCode,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+          category: dto.category,
+          distributorId: req.user.distributorProfile?.id,
+          inn: dto.inn,
+          contactPerson: dto.contactPerson,
+          territory: dto.territory,
+          clientClass: dto.clientClass,
+          priceCategory: dto.priceCategory,
+          photoUrl: dto.photoUrl,
+          canSeePromotions: dto.canSeePromotions === true,
+        },
+        req.user,
+      );
+      await this.service.dismiss(id);
+      await this.credentialsService.ensureDefaultCredentials(client.id, req.user);
+      return client;
+    }
+
+    const distributorId = req.user.distributorProfile?.id;
+    const agentName = req.user.fullName ?? req.user.username;
+    return this.service.resubmit(
+      id,
+      { ...dto, companyId },
+      distributorId,
+      agentName,
+    );
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Dismiss/delete pending or rejected client request' })
+  dismiss(@Param('id') id: string) {
+    return this.service.dismiss(id);
   }
 }

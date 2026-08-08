@@ -7,7 +7,7 @@ import { useClientRequests, ClientRequestProvider } from '../ClientRequestContex
 import { useCompanies } from '../CompaniesContext';
 import { useAdminAuth } from '../AdminAuthContext';
 import { api } from '../../api/client';
-import type { ClientRequestItem } from '../../data/clientRequests';
+import { getClientRequestChanges, type ClientRequestItem } from '../../data/clientRequests';
 import type { ClientRow } from '../../data/adminData';
 
 interface Props {
@@ -40,6 +40,9 @@ function RequestCard({
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const isUpdate = item.requestType === 'update';
+  const changes = isUpdate
+    ? getClientRequestChanges(item, t, existingClients)
+    : [];
   const dup = checkInn(
     item.inn,
     item.id,
@@ -118,28 +121,61 @@ function RequestCard({
             <User size={11} /> {t.notifAgent ?? 'Agent'}: <strong style={{ color: text }}>{item.agentName}</strong>
           </span>
         )}
-        {item.inn && (
+        {!isUpdate && item.inn && (
           <span className="flex items-center gap-1.5">
             <Building2 size={11} /> INN: <strong style={{ color: text }}>{item.inn}</strong>
           </span>
         )}
-        {item.phone && (
+        {!isUpdate && item.phone && (
           <span className="flex items-center gap-1.5">
             <Phone size={11} /> {item.phone}
           </span>
         )}
-        {item.address && (
+        {!isUpdate && item.address && (
           <span className="flex items-center gap-1.5">
             <MapPin size={11} className="flex-shrink-0" />
             <span className="truncate">{item.address}</span>
           </span>
         )}
-        {item.territory && <span>{t.colTerritory ?? 'Hudud'}: {item.territory}</span>}
-        {item.lineCode && <span>{t.colLine ?? 'Liniya'}: {item.lineCode}</span>}
-        {item.contactPerson && <span>{t.colContact ?? 'Kontakt'}: {item.contactPerson}</span>}
-        {item.category && <span>{t.colCategory ?? 'Kategoriya'}: {item.category}</span>}
-        {item.note && <span>{t.colNote ?? 'Izoh'}: {item.note}</span>}
+        {!isUpdate && item.territory && <span>{t.colTerritory ?? 'Hudud'}: {item.territory}</span>}
+        {!isUpdate && item.lineCode && <span>{t.colLine ?? 'Liniya'}: {item.lineCode}</span>}
+        {!isUpdate && item.contactPerson && <span>{t.colContact ?? 'Kontakt'}: {item.contactPerson}</span>}
+        {!isUpdate && item.category && <span>{t.colCategory ?? 'Kategoriya'}: {item.category}</span>}
+        {!isUpdate && item.note && <span>{t.colNote ?? 'Izoh'}: {item.note}</span>}
       </div>
+
+      {isUpdate && changes.length > 0 && (
+        <div
+          className="rounded-lg px-2.5 py-2 space-y-1.5"
+          style={{
+            background: D ? 'rgba(59,130,246,0.1)' : '#eff6ff',
+            border: `1px solid ${D ? 'rgba(59,130,246,0.25)' : '#bfdbfe'}`,
+          }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: D ? '#93c5fd' : '#1d4ed8' }}>
+            {t.notifChanges ?? 'O\'zgarishlar'}
+          </p>
+          {changes.map((ch) => (
+            <div key={ch.key} className="text-xs leading-snug">
+              <span style={{ color: sub }}>{t[ch.labelKey] ?? ch.labelKey}: </span>
+              <span
+                className="line-through mr-1"
+                style={{ color: D ? '#9ca3af' : '#6b7280' }}
+              >
+                {ch.from}
+              </span>
+              <span style={{ color: D ? '#93c5fd' : '#1d4ed8' }}>→</span>
+              <strong className="ml-1" style={{ color: text }}>{ch.to}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isUpdate && changes.length === 0 && (
+        <p className="text-[11px]" style={{ color: sub }}>
+          {t.notifNoFieldChanges ?? 'Maydon o\'zgarishi aniqlanmadi'}
+        </p>
+      )}
 
       {actionError && (
         <div

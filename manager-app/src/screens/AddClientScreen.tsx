@@ -9,6 +9,7 @@ import {
   fetchClient,
   fetchClientCategories,
   fetchLines,
+  resubmitClientRequest,
   updateClient,
   updateClientCategory,
   updateLine,
@@ -28,6 +29,8 @@ interface Props {
   tr: Translations
   user: AuthUser | null
   editClient?: Client | null
+  /** Bekor qilingan so‘rovni qayta yuborish */
+  resubmitRequestId?: string | null
   onBack: () => void
   onCreated: (result?: { message: string; kind?: 'success' | 'error' | 'info' }) => void
 }
@@ -72,10 +75,13 @@ function phoneToStorage(formatted: string): string | undefined {
   return `+${full.slice(0, 12)}`
 }
 
-export default function AddClientScreen({ dark, tr, user, editClient = null, onBack, onCreated }: Props) {
+export default function AddClientScreen({
+  dark, tr, user, editClient = null, resubmitRequestId = null, onBack, onCreated,
+}: Props) {
   const c = theme(dark)
   const companyId = user?.companyId ?? undefined
-  const isEdit = !!editClient?.id
+  const isResubmit = !!resubmitRequestId
+  const isEdit = !!editClient?.id && !isResubmit
 
   const [name, setName] = useState('')
   const [fullName, setFullName] = useState('')
@@ -149,7 +155,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
   }, [companyId])
 
   useEffect(() => {
-    if (!editClient?.id) {
+    if (!editClient) {
       setPrefillLoading(false)
       return
     }
@@ -181,6 +187,17 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
     }
 
     apply(editClient)
+
+    if (isResubmit) {
+      setPrefillLoading(false)
+      return
+    }
+
+    if (!editClient.id) {
+      setPrefillLoading(false)
+      return
+    }
+
     setPrefillLoading(true)
     void fetchClient(editClient.id)
       .then(full => {
@@ -192,7 +209,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
       })
 
     return () => { cancelled = true }
-  }, [editClient?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editClient?.id, isResubmit]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modal/picker ochiqda fon scroll qulflansin; input fokus (klaviatura tepadagi dialogni yopmasin)
   useEffect(() => {
@@ -377,7 +394,17 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
         canSeePromotions,
       }
 
-      if (isEdit && editClient) {
+      if (isResubmit && resubmitRequestId) {
+        const result = await resubmitClientRequest(resubmitRequestId, {
+          ...body,
+          extraPhones: extras.length ? extras : undefined,
+        })
+        const pending = (result as { status?: string }).status === 'pending'
+        onCreated({
+          message: pending ? tr.clientRequestSubmitted : tr.clientCreated,
+          kind: 'success',
+        })
+      } else if (isEdit && editClient) {
         const updated = await updateClient(editClient.id, body)
         const pending = updated.status === 'pending'
         onCreated({
@@ -479,7 +506,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
             <ArrowLeft size={18} color={c.text} />
           </button>
           <h1 style={{ flex: 1, fontSize: 20, fontWeight: 800, color: c.text, margin: 0 }}>
-            {isEdit ? tr.editClient : tr.addClient}
+            {isResubmit ? tr.clientReqResubmit : isEdit ? tr.editClient : tr.addClient}
           </h1>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

@@ -153,6 +153,7 @@ export type ClientRequestRow = {
   id: string
   status: ClientRequestStatus
   requestType?: 'create' | 'update'
+  targetClientId?: string | null
   name: string
   fullName?: string | null
   phone?: string | null
@@ -160,6 +161,9 @@ export type ClientRequestRow = {
   lineCode?: string | null
   category?: string | null
   inn?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  canSeePromotions?: boolean | null
   agentName?: string | null
   reviewedBy?: string | null
   reviewedAt?: string | null
@@ -175,6 +179,53 @@ export function fetchClientRequests(
   if (params?.status) q.set('status', params.status)
   const qs = q.toString()
   return api<ClientRequestRow[]>(`client-requests${qs ? `?${qs}` : ''}`)
+}
+
+export function deleteClientRequest(id: string) {
+  return api<{ ok: boolean }>(`client-requests/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function resubmitClientRequest(
+  id: string,
+  body: {
+    name: string
+    fullName?: string
+    phone?: string
+    address?: string
+    companyId?: string
+    lineCode?: string
+    category?: string
+    inn?: string
+    latitude?: number
+    longitude?: number
+    orderRadiusMeters?: number
+    canSeePromotions?: boolean
+    extraPhones?: { phone: string; note?: string }[]
+  },
+) {
+  return api<ClientRequestRow | Client>(`client-requests/${encodeURIComponent(id)}/resubmit`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export function clientFromRequest(req: ClientRequestRow): Client {
+  return {
+    id: req.targetClientId || req.id,
+    name: req.name,
+    fullName: req.fullName,
+    phone: req.phone,
+    address: req.address,
+    lineCode: req.lineCode,
+    category: req.category,
+    inn: req.inn,
+    latitude: req.latitude,
+    longitude: req.longitude,
+    companyId: req.companyId,
+    canSeePromotions: req.canSeePromotions === true,
+  }
 }
 
 export function fetchPlans(year?: number, month?: number) {

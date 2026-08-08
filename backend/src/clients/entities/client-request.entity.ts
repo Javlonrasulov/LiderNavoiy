@@ -101,6 +101,12 @@ export class ClientRequest {
   @Column({ type: 'varchar', nullable: true })
   note: string | null;
 
+  /**
+   * update so‘rovida — tahrirdan oldingi qiymatlar (diff UI uchun)
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  previousSnapshot: Record<string, unknown> | null;
+
   @Column({ type: 'uuid', nullable: true })
   approvedClientId: string | null;
 
