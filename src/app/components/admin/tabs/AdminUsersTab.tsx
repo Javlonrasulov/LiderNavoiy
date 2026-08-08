@@ -8,13 +8,15 @@ import { translateUserRole, userStatusOpenLabel } from '../../../data/adminData'
 import { api } from '../../../api/client';
 import {
   appUserToRow,
-  mapAdminRoleToBackend,
-  mapAdminRoleToPosition,
   removeStoredAppPassword,
   storeAppPassword,
   translateApiError,
   type AppUserListRow,
 } from '../../../utils/appUserCreds';
+import {
+  appAccessToBackendRole,
+  positionPayloadForAccess,
+} from '../../../utils/positionsStore';
 import { useCompanies } from '../../CompaniesContext';
 
 interface Props {
@@ -63,11 +65,13 @@ function formToUserRow(
     dirs: '',
     acceptPay: data.appAcceptPay,
     consig: data.appConsig,
+    canAddClients: data.appAddClient,
     gps: true,
     device: prevDevice || '',
     devices: [],
     companyId: data.companyIds[0] ?? null,
     companyIds: data.companyIds,
+    positionId: data.positionId || null,
   };
 }
 
@@ -80,8 +84,17 @@ async function syncAppCredentials(
   const password = data.appPassword.trim();
   const fullName = data.fio.trim() || data.xodim.trim();
   const isActive = data.status === userStatusOpenLabel(t);
-  const role = mapAdminRoleToBackend(data.role);
-  const position = mapAdminRoleToPosition(data.role);
+  if (!data.positionId && !data.role.trim()) {
+    throw new Error(t.empPosNone || 'Lavozim tanlang');
+  }
+  const positions = await api.getPositions();
+  const pos = positions.find(p => p.id === data.positionId)
+    || positions.find(p => p.name.trim().toLowerCase() === data.role.trim().toLowerCase());
+  if (!pos) {
+    throw new Error(t.empPosNone || 'Lavozim tanlang');
+  }
+  const role = appAccessToBackendRole(pos.appAccess);
+  const position = positionPayloadForAccess(pos.name, pos.appAccess);
   const companyIds = [...new Set(data.companyIds.map(id => id.trim()).filter(Boolean))];
   const companyId = companyIds[0];
   const companyName = data.org.replace(/\.\.\.$/, '').trim() || undefined;
@@ -107,6 +120,8 @@ async function syncAppCredentials(
       companyIds: companyIds.length ? companyIds : undefined,
       isActive,
       position,
+      positionId: pos.id,
+      canAddClients: data.appAddClient,
     });
     storeAppPassword(username, password);
     return created.id;
@@ -121,6 +136,8 @@ async function syncAppCredentials(
     companyId,
     companyIds,
     position,
+    positionId: pos.id,
+    canAddClients: data.appAddClient,
   };
   if (password) payload.password = password;
 
@@ -403,7 +420,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
     { key: 'name',      label: t.userName      || 'Ism (FIO)',     w: 190 },
     { key: 'lastAct',   label: t.userLastAct   || 'Oxirgi faol.', w: 100 },
     { key: 'device',    label: t.userDevice    || 'Telefon',      w: 220 },
-    { key: 'role',      label: t.userRole      || 'Rol',          w: 150 },
+    { key: 'role',      label: t.empPositionCol || 'Lavozim',   w: 150 },
     { key: 'status',    label: t.userStatus    || 'Status',       w: 80  },
     { key: 'org',       label: t.userOrg       || 'Tashkilot',    w: 140 },
     { key: 'emp',       label: t.userEmployee  || 'Xodim',        w: 140 },

@@ -7,13 +7,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
 import { UserLoginDevice } from './entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
-import { Company } from '../companies/entities/company.entity';
 import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 import { isDeliveryPosition } from '../common/staff-role.util';
@@ -49,8 +48,6 @@ export class AuthService {
     private readonly deviceRepo: Repository<UserLoginDevice>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
-    @InjectRepository(Company)
-    private readonly companyRepo: Repository<Company>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly sessions: SessionStoreService,
@@ -327,7 +324,6 @@ export class AuthService {
     const effectivePosition =
       profile?.position?.trim() || user.position?.trim() || null;
 
-    let agentsCanAddClients = false;
     const companyIds = [
       ...new Set(
         [
@@ -339,20 +335,8 @@ export class AuthService {
       ),
     ];
     const primaryCompanyId = companyIds[0] ?? profile?.companyId ?? undefined;
-    if (primaryCompanyId) {
-      const company = await this.companyRepo.findOne({
-        where: { id: primaryCompanyId, isActive: true },
-        select: ['id', 'agentsCanAddClients'],
-      });
-      agentsCanAddClients = !!company?.agentsCanAddClients;
-    }
-    if (!agentsCanAddClients && companyIds.length > 1) {
-      const anyAllowed = await this.companyRepo.findOne({
-        where: { id: In(companyIds), isActive: true, agentsCanAddClients: true },
-        select: ['id'],
-      });
-      agentsCanAddClients = !!anyAllowed;
-    }
+    // Per-user Ilova toggle (default false). Company-level flag is separate admin setting.
+    const agentsCanAddClients = !!profile?.canAddClients;
 
     return {
       accessToken,

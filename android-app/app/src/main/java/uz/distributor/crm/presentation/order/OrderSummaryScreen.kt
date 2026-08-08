@@ -260,7 +260,7 @@ private fun CurrentOrderContent(
     onToggleClient: (String) -> Unit,
     onToggleItem: (String) -> Unit,
     onUpdateQty: (String, String, Double) -> Unit,
-    onRemoveItem: (String, String) -> Unit,
+    onRemoveItem: (String, String, String?) -> Unit,
     onEditClient: (String) -> Unit,
     onSubmit: () -> Unit,
     submitLabel: String = AppStrings.sendOrder(lang),
@@ -350,7 +350,9 @@ private fun CurrentOrderContent(
                     onToggleClient = { onToggleClient(draft.clientId) },
                     onToggleItem = onToggleItem,
                     onUpdateQty = { productId, qty -> onUpdateQty(draft.clientId, productId, qty) },
-                    onRemoveItem = { productId -> onRemoveItem(draft.clientId, productId) },
+                    onRemoveItem = { productId, promotionId ->
+                        onRemoveItem(draft.clientId, productId, promotionId)
+                    },
                     onEditClient = { onEditClient(draft.clientId) },
                 )
             }
@@ -439,7 +441,7 @@ private fun ClientOrderCard(
     onToggleClient: () -> Unit,
     onToggleItem: (String) -> Unit,
     onUpdateQty: (String, Double) -> Unit,
-    onRemoveItem: (String) -> Unit,
+    onRemoveItem: (String, String?) -> Unit,
     onEditClient: () -> Unit,
 ) {
     val borderColor = if (isDark) Color(0xFF374151) else CardBorder
@@ -507,19 +509,22 @@ private fun ClientOrderCard(
             if (expanded) {
                 HorizontalDivider(color = borderColor, thickness = 1.dp)
                 items.forEachIndexed { index, item ->
+                    val itemKey = cartItemKey(item)
                     OrderItemRow(
                         item = item,
                         brand = productBrands[item.productId].orEmpty(),
-                        expanded = item.productId in expandedItems,
+                        expanded = itemKey in expandedItems,
                         showDivider = index < items.lastIndex,
                         fmt = fmt,
                         stockFmt = stockFmt,
                         lang = lang,
                         titleColor = titleColor,
                         borderColor = borderColor,
-                        onToggle = { onToggleItem(item.productId) },
+                        onToggle = { onToggleItem(itemKey) },
                         onUpdateQty = { qty -> onUpdateQty(item.productId, qty) },
-                        onRemove = { onRemoveItem(item.productId) },
+                        onRemove = {
+                            onRemoveItem(item.productId, item.promotionId)
+                        },
                     )
                 }
                 TotalSummaryBar(
@@ -550,10 +555,19 @@ private fun OrderItemRow(
     onUpdateQty: (Double) -> Unit,
     onRemove: () -> Unit,
 ) {
+    val isPromo = !item.promotionId.isNullOrBlank()
+    val isFree = item.isFree || (isPromo && item.price == 0.0)
     val lineTotal = item.price * item.quantity
+    val promoBg = if (isPromo) {
+        if (borderColor == Color(0xFF374151)) Color(0xFF2E1065).copy(alpha = 0.35f) else Color(0xFFF5F3FF)
+    } else {
+        Color.Transparent
+    }
+    val accent = if (isPromo) Color(0xFF7C3AED) else PrimaryBlue
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(promoBg)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(
@@ -563,17 +577,33 @@ private fun OrderItemRow(
             verticalAlignment = Alignment.Top,
         ) {
             Column(Modifier.weight(1f)) {
-                if (brand.isNotBlank()) {
-                    Text(
-                        brand.uppercase(),
-                        color = SubText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (brand.isNotBlank()) {
+                        Text(
+                            brand.uppercase(),
+                            color = SubText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    if (isPromo) {
+                        OrderPromoBadge(
+                            label = if (isFree) {
+                                AppStrings.orderPromoFreeBadge(lang)
+                            } else {
+                                AppStrings.orderPromoBadge(lang)
+                            },
+                        )
+                    }
+                }
+                if (brand.isNotBlank() || isPromo) {
                     Spacer(Modifier.height(2.dp))
                 }
                 Text(
-                    "${item.productCode} — ${item.productName}",
+                    "${item.productCode} - ${item.productName}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = titleColor,
@@ -582,16 +612,24 @@ private fun OrderItemRow(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${formatQty(item.quantity, stockFmt)} ${item.unit} × ${fmt.format(item.price.toLong())}",
-                    color = SubText,
+                    when {
+                        isFree -> "${formatQty(item.quantity, stockFmt)} ${item.unit} · ${AppStrings.orderPromoFreePrice(lang)}"
+                        else -> "${formatQty(item.quantity, stockFmt)} ${item.unit} x ${fmt.format(item.price.toLong())}"
+                    },
+                    color = if (isPromo) accent else SubText,
                     fontSize = 12.sp,
+                    fontWeight = if (isPromo) FontWeight.Medium else FontWeight.Normal,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${fmt.format(lineTotal.toLong())} ${AppStrings.productSomShort(lang)}",
+                    if (isFree) {
+                        AppStrings.orderPromoFreePrice(lang)
+                    } else {
+                        "${fmt.format(lineTotal.toLong())} ${AppStrings.productSomShort(lang)}"
+                    },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
-                    color = PrimaryBlue,
+                    color = accent,
                 )
             }
             Box(
@@ -618,7 +656,7 @@ private fun OrderItemRow(
             )
         }
 
-        if (expanded) {
+        if (expanded && !isPromo) {
             Spacer(Modifier.height(12.dp))
             val step = qtyStepForUnit(item.unit)
             Row(
@@ -705,6 +743,25 @@ private fun QtyButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
+    }
+}
+
+private fun cartItemKey(item: CartItem): String =
+    "${item.productId}|${item.promotionId.orEmpty()}"
+
+@Composable
+private fun OrderPromoBadge(label: String) {
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Color(0xFF7C3AED),
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -966,6 +1023,7 @@ private fun SentOrderCard(
                         brand = order.productBrands[item.productId].orEmpty(),
                         fmt = fmt,
                         stockFmt = stockFmt,
+                        lang = lang,
                         titleColor = titleColor,
                         showDivider = index < order.items.lastIndex,
                         borderColor = borderColor,
@@ -1016,28 +1074,53 @@ private fun SentOrderItemRow(
     brand: String,
     fmt: DecimalFormat,
     stockFmt: DecimalFormat,
+    lang: AppLanguage,
     titleColor: Color,
     showDivider: Boolean,
     borderColor: Color,
 ) {
-    val isFree = item.isFree || item.price == 0.0
+    val isPromo = !item.promotionId.isNullOrBlank()
+    val isFree = item.isFree || (isPromo && item.price == 0.0)
+    val accent = if (isPromo) Color(0xFF7C3AED) else PrimaryBlue
+    val promoBg = if (isPromo) {
+        if (borderColor == Color(0xFF374151)) Color(0xFF2E1065).copy(alpha = 0.35f) else Color(0xFFF5F3FF)
+    } else {
+        Color.Transparent
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(promoBg)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top,
         ) {
-            Column(Modifier.weight(1f)) {
-                if (brand.isNotBlank()) {
-                    Text(
-                        brand.uppercase(),
-                        color = SubText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (brand.isNotBlank()) {
+                        Text(
+                            brand.uppercase(),
+                            color = SubText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    if (isPromo) {
+                        OrderPromoBadge(
+                            label = if (isFree) {
+                                AppStrings.orderPromoFreeBadge(lang)
+                            } else {
+                                AppStrings.orderPromoBadge(lang)
+                            },
+                        )
+                    }
+                }
+                if (brand.isNotBlank() || isPromo) {
                     Spacer(Modifier.height(2.dp))
                 }
                 Text(
@@ -1053,33 +1136,34 @@ private fun SentOrderItemRow(
             Column(horizontalAlignment = Alignment.End) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFF0F7FF),
+                    color = if (isPromo) Color(0xFFEDE9FE) else Color(0xFFF0F7FF),
                 ) {
                     Text(
                         "${formatQty(item.quantity, stockFmt)} ${item.unit}",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        color = PrimaryBlue,
+                        color = accent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (isFree) "Bepul" else fmt.format((item.price * item.quantity).toLong()),
+                    if (isFree) {
+                        AppStrings.orderPromoFreePrice(lang)
+                    } else {
+                        fmt.format((item.price * item.quantity).toLong())
+                    },
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
-                    color = if (!item.promotionId.isNullOrBlank()) Color(0xFF7C3AED) else PrimaryBlue,
+                    color = accent,
                 )
-                Text(
-                    when {
-                        isFree -> "Aksiya"
-                        !item.promotionId.isNullOrBlank() ->
-                            "Aksiya · ${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}"
-                        else -> "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}"
-                    },
-                    color = SubText,
-                    fontSize = 11.sp,
-                )
+                if (!isFree) {
+                    Text(
+                        "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}",
+                        color = SubText,
+                        fontSize = 11.sp,
+                    )
+                }
             }
         }
         if (showDivider) {

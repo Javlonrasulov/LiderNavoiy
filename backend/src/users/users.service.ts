@@ -57,6 +57,7 @@ export class UsersService {
           positionId: dto.positionId,
           department: dto.department,
           departmentId: dto.departmentId,
+          canAddClients: dto.canAddClients,
         });
       }
       throw new ConflictException('Username already exists');
@@ -79,6 +80,7 @@ export class UsersService {
       positionId: dto.positionId,
       department: dto.department,
       departmentId: dto.departmentId,
+      canAddClients: dto.canAddClients ?? false,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
@@ -110,6 +112,7 @@ export class UsersService {
       positionId: dto.positionId,
       department: dto.department,
       departmentId: dto.departmentId,
+      canAddClients: dto.canAddClients,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
@@ -139,6 +142,7 @@ export class UsersService {
       positionId?: string;
       department?: string;
       departmentId?: string;
+      canAddClients?: boolean;
     },
   ): Promise<void> {
     if (user.role !== UserRole.DISTRIBUTOR && user.role !== UserRole.MANAGER) {
@@ -154,6 +158,7 @@ export class UsersService {
       data.positionId !== undefined ||
       data.department !== undefined ||
       data.departmentId !== undefined ||
+      data.canAddClients !== undefined ||
       user.role === UserRole.DISTRIBUTOR;
 
     if (!hasProfileData) return;
@@ -176,6 +181,7 @@ export class UsersService {
         positionId: data.positionId?.trim() || null,
         department: data.department?.trim() || null,
         departmentId: data.departmentId?.trim() || null,
+        canAddClients: data.canAddClients ?? false,
         status: DistributorStatus.OFFLINE,
         isOnline: false,
       });
@@ -191,6 +197,9 @@ export class UsersService {
       if (data.department !== undefined) profile.department = data.department.trim() || null;
       if (data.departmentId !== undefined) {
         profile.departmentId = data.departmentId.trim() || null;
+      }
+      if (data.canAddClients !== undefined) {
+        profile.canAddClients = !!data.canAddClients;
       }
     }
 
@@ -422,6 +431,7 @@ export class UsersService {
       companyId: profile?.companyId ?? companyIds[0] ?? null,
       companyName: profile?.companyName ?? null,
       companyIds,
+      canAddClients: !!profile?.canAddClients,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,
       isOnline,

@@ -120,9 +120,13 @@ class OrderViewModel @Inject constructor(
         }
     }
 
-    fun removeItem(clientId: String, productId: String) {
+    fun removeItem(clientId: String, productId: String, promotionId: String? = null) {
         viewModelScope.launch {
-            cartRepository.removeFromCart(clientId, productId)
+            if (!promotionId.isNullOrBlank()) {
+                cartRepository.removePromoReward(clientId, promotionId)
+            } else {
+                cartRepository.removeFromCart(clientId, productId)
+            }
             reloadCartNow()
         }
     }

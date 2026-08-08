@@ -788,6 +788,9 @@ object AppStrings {
     fun visitProducts(lang: AppLanguage) = tr(lang, "Tashrif — Mahsulotlar", "Ташриф — Маҳсулотлар", "Визит — Товары")
     fun visitTabProduct(lang: AppLanguage) = tr(lang, "Mahsulot", "Маҳсулот", "Товар")
     fun visitTabPromotion(lang: AppLanguage) = tr(lang, "Aksiya", "Акция", "Акция")
+    fun orderPromoBadge(lang: AppLanguage) = tr(lang, "Aksiya", "Акция", "Акция")
+    fun orderPromoFreeBadge(lang: AppLanguage) = tr(lang, "Aksiya · bepul", "Акция · бепул", "Акция · бесплатно")
+    fun orderPromoFreePrice(lang: AppLanguage) = tr(lang, "Bepul", "Бепул", "Бесплатно")
     fun promoOfferTitle(lang: AppLanguage) = tr(
         lang,
         "Aksiya yigildi",

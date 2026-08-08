@@ -75,6 +75,14 @@ export class CreateAppUserDto {
   @IsOptional()
   @IsString()
   departmentId?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Agent APK: mijoz qo‘shish ruxsati (default false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  canAddClients?: boolean;
 }
 
 export class UpdateAppUserDto {
@@ -145,6 +153,14 @@ export class UpdateAppUserDto {
   @IsOptional()
   @IsString()
   departmentId?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Agent APK: mijoz qo‘shish ruxsati (default false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  canAddClients?: boolean;
 }
 
 export class AppUserResponseDto {
@@ -160,6 +176,8 @@ export class AppUserResponseDto {
   companyId?: string | null;
   companyName?: string | null;
   companyIds?: string[];
+  /** Agent APK: mijoz qo‘shish (default false) */
+  canAddClients?: boolean;
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;

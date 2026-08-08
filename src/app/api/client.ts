@@ -70,6 +70,7 @@ export interface AppUserRecord {
   lastDeviceModel?: string | null;
   lastDeviceOs?: string | null;
   devices?: AppUserDeviceRecord[];
+  canAddClients?: boolean;
 }
 
 export type PositionAppAccess = 'agent' | 'delivery' | 'manager';
@@ -587,6 +588,7 @@ export const api = {
     positionId?: string;
     department?: string;
     departmentId?: string;
+    canAddClients?: boolean;
   }) =>
     request<AppUserRecord>('/users/app', {
       method: 'POST',
@@ -607,6 +609,7 @@ export const api = {
     positionId?: string;
     department?: string;
     departmentId?: string;
+    canAddClients?: boolean;
   }) =>
     request<AppUserRecord>(`/users/app/${id}`, {
       method: 'PATCH',

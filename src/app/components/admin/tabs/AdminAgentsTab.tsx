@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown } from 'lucide-react';
+import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { type SotrudnikRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
 import {
@@ -180,6 +180,9 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   });
   const [addLogin, setAddLogin]   = useState('');
   const [addPassword, setAddPassword] = useState('');
+  const [showAddPassword, setShowAddPassword] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
   const [deptOptions, setDeptOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -373,6 +376,11 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
 
   const saveEdit = async () => {
     if (!editDraft?.backendUserId || !editDraft.name.trim()) return;
+    const nextLogin = (editDraft.username || '').trim();
+    if (!nextLogin) {
+      setSaveError(t.userErrPasswordRequired || 'Login kiriting');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -381,7 +389,10 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       const dept = resolveDepartmentMeta(editDraft);
       const role = appAccessToBackendRole(meta.appAccess);
       const position = positionPayloadForAccess(meta.name, meta.appAccess);
+      const newPassword = editPassword.trim();
       await api.updateAppUser(editDraft.backendUserId, {
+        username: nextLogin,
+        ...(newPassword ? { password: newPassword } : {}),
         fullName: editDraft.name.trim(),
         role,
         phone,
@@ -401,6 +412,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       await refreshEmployees();
       setEditRow(null);
       setEditDraft(null);
+      setEditPassword('');
+      setShowEditPassword(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       setSaveError(translateApiError(msg, t));
@@ -449,6 +462,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       setShowAdd(false);
       setAddLogin('');
       setAddPassword('');
+      setShowAddPassword(false);
       setAddDraft({
         tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
         deptKey: '', posKey: 'salesAgent', positionId: '',
@@ -551,22 +565,71 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               </div>
               <div>
                 <label style={labelStyle}>{t.empAppPasswordCol || 'Parol'}</label>
-                <input
-                  style={inputStyle}
-                  type="password"
-                  value={addPassword}
-                  onChange={e => setAddPassword(e.target.value)}
-                  placeholder={t.empAppPasswordPh || 'parol123'}
-                  autoComplete="new-password"
-                />
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: 40 }}
+                    type={showAddPassword ? 'text' : 'password'}
+                    value={addPassword}
+                    onChange={e => setAddPassword(e.target.value)}
+                    placeholder={t.empAppPasswordPh || 'parol123'}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPassword(v => !v)}
+                    style={{
+                      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                      color: muted, display: 'flex', alignItems: 'center',
+                    }}
+                    aria-label={showAddPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                    title={showAddPassword ? 'Yashirish' : 'Ko‘rsatish'}
+                  >
+                    {showAddPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
             </>
-          ) : draft.username ? (
-            <div>
-              <label style={labelStyle}>{t.empAppLoginCol || 'Ilova login'}</label>
-              <input style={{ ...inputStyle, opacity: 0.7 }} value={draft.username} readOnly />
-            </div>
-          ) : null}
+          ) : (
+            <>
+              <div>
+                <label style={labelStyle}>{t.empAppLoginCol || 'Ilova login'}</label>
+                <input
+                  style={inputStyle}
+                  value={draft.username || ''}
+                  onChange={e => onChangeDraft({ ...draft, username: e.target.value })}
+                  placeholder={t.empAppLoginPh || 'javlon'}
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>{t.empAppPasswordCol || 'Parol'}</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    style={{ ...inputStyle, paddingRight: 40 }}
+                    type={showEditPassword ? 'text' : 'password'}
+                    value={editPassword}
+                    onChange={e => setEditPassword(e.target.value)}
+                    placeholder={t.empAppPasswordKeepPh || "Bo'sh qoldiring — o'zgarmaydi"}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(v => !v)}
+                    style={{
+                      position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                      color: muted, display: 'flex', alignItems: 'center',
+                    }}
+                    aria-label={showEditPassword ? 'Parolni yashirish' : 'Parolni ko‘rsatish'}
+                    title={showEditPassword ? 'Yashirish' : 'Ko‘rsatish'}
+                  >
+                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           <div>
             <label style={labelStyle}>{t.empPhoneCol || 'Telefon'}</label>
@@ -701,13 +764,17 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       <>
         {editRow && editDraft && renderModal(
           t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
-          setEditDraft, () => { void saveEdit(); }, () => { setEditRow(null); setEditDraft(null); setSaveError(null); },
+          setEditDraft, () => { void saveEdit(); },
+          () => {
+            setEditRow(null); setEditDraft(null); setSaveError(null);
+            setEditPassword(''); setShowEditPassword(false);
+          },
         )}
         {deleteRow && renderDeleteModal()}
         {showAdd && renderModal(
           t.empAddTitle || "Yangi xodim qo'shish", addDraft,
           setAddDraft, () => { void saveAdd(); },
-          () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); },
+          () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); setShowAddPassword(false); },
           true,
         )}
 
@@ -812,6 +879,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                         d => d.name.trim().toLowerCase() === (emp.department || '').trim().toLowerCase(),
                       );
                     setEditRow(emp);
+                    setEditPassword('');
+                    setShowEditPassword(false);
                     setEditDraft({
                       ...emp,
                       phone: formatUzPhoneInput(emp.phone || ''),
@@ -862,13 +931,17 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     <>
       {editRow && editDraft && renderModal(
         t.editEmpTitle || 'Xodimni tahrirlash', editDraft,
-        setEditDraft, () => { void saveEdit(); }, () => { setEditRow(null); setEditDraft(null); setSaveError(null); },
-      )}
+          setEditDraft, () => { void saveEdit(); },
+          () => {
+            setEditRow(null); setEditDraft(null); setSaveError(null);
+            setEditPassword(''); setShowEditPassword(false);
+          },
+        )}
       {deleteRow && renderDeleteModal()}
       {showAdd && renderModal(
         t.empAddTitle || "Yangi xodim qo'shish", addDraft,
         setAddDraft, () => { void saveAdd(); },
-        () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); },
+        () => { setShowAdd(false); setSaveError(null); setAddLogin(''); setAddPassword(''); setShowAddPassword(false); },
         true,
       )}
 
@@ -1064,6 +1137,8 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                         d => d.name.trim().toLowerCase() === (emp.department || '').trim().toLowerCase(),
                       );
                     setEditRow(emp);
+                    setEditPassword('');
+                    setShowEditPassword(false);
                     setEditDraft({
                       ...emp,
                       phone: formatUzPhoneInput(emp.phone || ''),

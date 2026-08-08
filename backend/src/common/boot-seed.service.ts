@@ -128,6 +128,10 @@ export class BootSeedService implements OnModuleInit {
         ALTER TABLE distributor_profiles
         ADD COLUMN IF NOT EXISTS "positionId" uuid NULL
       `);
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS "canAddClients" boolean NOT NULL DEFAULT false
+      `);
     } catch (err) {
       this.logger.warn(`distributor_profiles department migrate: ${(err as Error).message}`);
     }

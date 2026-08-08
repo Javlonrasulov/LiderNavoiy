@@ -66,6 +66,10 @@ export class DistributorProfile {
   @Column({ default: false })
   isOnline: boolean;
 
+  /** Agent APK: yangi mijoz qo‘shish ruxsati (default: yo‘q) */
+  @Column({ default: false })
+  canAddClients: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

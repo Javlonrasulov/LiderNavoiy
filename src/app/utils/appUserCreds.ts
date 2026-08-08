@@ -57,12 +57,14 @@ export interface AppUserListRow {
   dirs: string;
   acceptPay: boolean;
   consig: boolean;
+  canAddClients: boolean;
   gps: boolean;
   isOnline?: boolean;
   device?: string;
   devices: AppUserDeviceRow[];
   companyId?: string | null;
   companyIds?: string[];
+  positionId?: string | null;
 }
 
 function formatDeviceLabel(brand?: string | null, model?: string | null, os?: string | null): string {
@@ -216,13 +218,16 @@ export function appUserToRow(
     ),
   ];
   const orgLabel = app.companyName || (companyIds.length ? companyIds.join(', ') : '');
+  const positionLabel = (app.position || '')
+    .replace(/\s*·\s*delivery\s*$/i, '')
+    .trim();
   return {
     id: localId,
     code: String(localId).padStart(4, '0'),
     name: app.fullName,
     tg: '',
     lastAct: formatLastActive(app, t),
-    role: mapBackendRoleToDisplay(app.role, app.position, app.username),
+    role: positionLabel || mapBackendRoleToDisplay(app.role, app.position, app.username),
     status: app.isActive ? 'open' : 'closed',
     org: orgLabel.length > 14 ? `${orgLabel.slice(0, 13)}...` : orgLabel,
     emp: app.fullName.length > 14 ? `${app.fullName.slice(0, 13)}...` : app.fullName,
@@ -231,12 +236,14 @@ export function appUserToRow(
     dirs: '',
     acceptPay: true,
     consig: false,
+    canAddClients: !!app.canAddClients,
     gps: true,
     isOnline: app.isOnline,
     device: deviceInfo.summary,
     devices: deviceInfo.devices,
     companyId: app.companyId ?? companyIds[0] ?? null,
     companyIds,
+    positionId: app.positionId ?? null,
   };
 }
 

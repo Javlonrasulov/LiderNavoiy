@@ -22,7 +22,6 @@ export function AdminPositionsTab({ D, t }: Props) {
   const [deleteRow, setDeleteRow] = useState<BackendStaffPosition | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
-  const [addCode, setAddCode] = useState('');
   const [addAccess, setAddAccess] = useState<PositionAppAccess>('agent');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,13 +83,10 @@ export function AdminPositionsTab({ D, t }: Props) {
     count: t.deptCount || 'ta',
     namePlaceholder: t.posNamePlaceholder || 'Lavozim nomi',
     save: t.save || 'Saqlash',
-    codeLbl: t.deptCodeLabel || 'Kod',
     nameLbl: t.deptNameLabel || 'Nom',
     appLbl: t.posAppLabel || 'Qaysi ilova',
     edit: t.editLabel || "O'zgartirish",
   };
-
-  const nextCode = () => Math.max(0, ...rows.map(r => r.code)) + 1;
 
   const saveAdd = async () => {
     if (!addName.trim() || saving) return;
@@ -99,11 +95,9 @@ export function AdminPositionsTab({ D, t }: Props) {
     try {
       await api.createPosition({
         name: addName.trim(),
-        code: Number(addCode) || undefined,
         appAccess: addAccess,
       });
       setAddName('');
-      setAddCode('');
       setAddAccess('agent');
       setShowAdd(false);
       await refresh();
@@ -120,7 +114,6 @@ export function AdminPositionsTab({ D, t }: Props) {
     setError(null);
     try {
       await api.updatePosition(editDraft.id, {
-        code: editDraft.code,
         name: editDraft.name.trim(),
         appAccess: editDraft.appAccess,
       });
@@ -197,13 +190,11 @@ export function AdminPositionsTab({ D, t }: Props) {
   );
 
   const FormModal = ({
-    title, codeVal, nameVal, access, onCode, onName, onAccess, onSave, onClose,
+    title, nameVal, access, onName, onAccess, onSave, onClose,
   }: {
     title: string;
-    codeVal: string;
     nameVal: string;
     access: PositionAppAccess;
-    onCode: (v: string) => void;
     onName: (v: string) => void;
     onAccess: (v: PositionAppAccess) => void;
     onSave: () => void;
@@ -246,14 +237,6 @@ export function AdminPositionsTab({ D, t }: Props) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={lblSt}>{T.codeLbl}</label>
-            <input
-              style={inputSt} type="number" min={1}
-              value={codeVal} onChange={e => onCode(e.target.value)}
-              placeholder="1"
-            />
-          </div>
           <div>
             <label style={lblSt}>{T.nameLbl}</label>
             <input
@@ -299,11 +282,11 @@ export function AdminPositionsTab({ D, t }: Props) {
       {showAdd && (
         <FormModal
           title={T.addTitle}
-          codeVal={addCode} nameVal={addName} access={addAccess}
-          onCode={setAddCode} onName={setAddName} onAccess={setAddAccess}
+          nameVal={addName} access={addAccess}
+          onName={setAddName} onAccess={setAddAccess}
           onSave={() => { void saveAdd(); }}
           onClose={() => {
-            setShowAdd(false); setAddName(''); setAddCode(''); setAddAccess('agent');
+            setShowAdd(false); setAddName(''); setAddAccess('agent');
           }}
         />
       )}
@@ -311,10 +294,8 @@ export function AdminPositionsTab({ D, t }: Props) {
       {editRow && editDraft && (
         <FormModal
           title={T.editTitle}
-          codeVal={String(editDraft.code)}
           nameVal={editDraft.name}
           access={editDraft.appAccess}
-          onCode={v => setEditDraft(d => d ? { ...d, code: Number(v) || d.code } : d)}
           onName={v => setEditDraft(d => d ? { ...d, name: v } : d)}
           onAccess={v => setEditDraft(d => d ? { ...d, appAccess: v } : d)}
           onSave={() => { void saveEdit(); }}
@@ -382,7 +363,7 @@ export function AdminPositionsTab({ D, t }: Props) {
             </span>
           </div>
           <button
-            onClick={() => { setAddCode(String(nextCode())); setShowAdd(true); }}
+            onClick={() => setShowAdd(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '8px 16px', borderRadius: 11, border: 'none',

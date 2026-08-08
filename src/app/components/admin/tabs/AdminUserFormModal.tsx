@@ -2,16 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Save, Trash2, ChevronDown, Check, Eye, EyeOff } from 'lucide-react';
 import {
-  USER_ROLE_CANONICAL,
-  translateUserRole,
   userStatusOpenLabel,
   userStatusClosedLabel,
 } from '../../../data/adminData';
 import { getStoredAppPassword, translateApiError } from '../../../utils/appUserCreds';
 import { useCompanies } from '../../CompaniesContext';
+import { api, type BackendStaffPosition } from '../../../api/client';
 
 /* ═══════════ Types ═══════════ */
-type ModalTab = 'asosiy' | 'boglanish' | 'ontrade';
+type ModalTab = 'asosiy' | 'ontrade';
 
 export interface UserFormRow {
   id: number;
@@ -28,9 +27,11 @@ export interface UserFormRow {
   dirs: string;
   acceptPay: boolean;
   consig: boolean;
+  canAddClients: boolean;
   gps: boolean;
   companyId?: string | null;
   companyIds?: string[];
+  positionId?: string | null;
 }
 
 interface FormData {
@@ -39,7 +40,9 @@ interface FormData {
   status: string;
   xodim: string;
   fio: string;
+  /** Lavozim nomi (ro‘yxatda ko‘rinadi) */
   role: string;
+  positionId: string;
   telegramId: string;
   org: string;
   ombor: string;
@@ -49,6 +52,7 @@ interface FormData {
   appPassword: string;
   appAcceptPay: boolean;
   appConsig: boolean;
+  appAddClient: boolean;
   appOffline: boolean;
 }
 
@@ -180,78 +184,6 @@ function TextField({
   );
 }
 
-/* ═══════════ Checkbox table ═══════════ */
-function CheckTable({
-  title, items, selected, onToggle, D, border, txt, muted, surface,
-}: {
-  title: string;
-  items: Array<{ id: string; label: string }>;
-  selected: string[];
-  onToggle: (id: string) => void;
-  D: boolean; border: string; txt: string; muted: string; surface: string;
-}) {
-  const indigo = '#6366f1';
-  return (
-    <div style={{
-      border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden',
-      display: 'flex', flexDirection: 'column',
-      background: surface,
-    }}>
-      {/* table header */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '28px 24px 1fr',
-        background: D ? '#1e1e1e' : '#f3f4f6',
-        borderBottom: `1px solid ${border}`,
-        padding: '5px 8px',
-      }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase' }}>№</span>
-        <span />
-        <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase' }}>{title}</span>
-      </div>
-      {/* rows */}
-      {items.map((item, idx) => {
-        const isChecked = selected.includes(item.id);
-        return (
-          <div
-            key={item.id}
-            onClick={() => onToggle(item.id)}
-            style={{
-              display: 'grid', gridTemplateColumns: '28px 24px 1fr',
-              padding: '7px 8px', cursor: 'pointer',
-              background: isChecked
-                ? (D ? 'rgba(99,102,241,0.16)' : 'rgba(99,102,241,0.07)')
-                : (idx % 2 === 0
-                    ? 'transparent'
-                    : (D ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.012)')),
-              borderBottom: idx < items.length - 1 ? `1px solid ${border}` : 'none',
-              transition: 'background 0.12s',
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ fontSize: 11, color: muted, fontVariantNumeric: 'tabular-nums' }}>{idx + 1}</span>
-            <div style={{
-              width: 15, height: 15, borderRadius: 4,
-              border: `1.5px solid ${isChecked ? indigo : (D ? '#4b5563' : '#d1d5db')}`,
-              background: isChecked ? indigo : 'transparent',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.12s',
-            }}>
-              {isChecked && <Check size={9} color="#fff" strokeWidth={3} />}
-            </div>
-            <span style={{
-              fontSize: 12, color: isChecked ? (D ? '#c7d2fe' : '#4338ca') : txt,
-              fontWeight: isChecked ? 600 : 400,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {item.label}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ═══════════ MAIN COMPONENT ═══════════ */
 export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Props) {
   const { companies } = useCompanies();
@@ -262,6 +194,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [positions, setPositions] = useState<BackendStaffPosition[]>([]);
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth < 640);
@@ -269,10 +202,24 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     return () => window.removeEventListener('resize', fn);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await api.getPositions();
+        if (!cancelled) setPositions(rows);
+      } catch {
+        if (!cancelled) setPositions([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const statusOpen  = userStatusOpenLabel(t);
   const statusClosed = userStatusClosedLabel(t);
   const grafikOptions = grafikList(t);
   const orgNames = companies.map(c => c.name);
+  const posNames = positions.map(p => p.name);
   const orgNameById = (id: string) =>
     companies.find(c => c.id === id)?.name || id;
 
@@ -296,6 +243,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         xodim: user.emp,
         fio: user.name,
         role: user.role,
+        positionId: user.positionId || '',
         telegramId: user.tg || '',
         org: user.org.replace(/\.\.\.$/, ''),
         ombor: '',
@@ -305,17 +253,45 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         appPassword: getStoredAppPassword(user.onTrade || ''),
         appAcceptPay: user.acceptPay,
         appConsig: user.consig,
+        appAddClient: !!user.canAddClients,
         appOffline: true,
       };
     }
     return {
       code: '', uid: '', status: statusOpen, xodim: '', fio: '',
-      role: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
+      role: '', positionId: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
       companyIds: [],
       appLogin: '', appPassword: '',
-      appAcceptPay: true, appConsig: false, appOffline: true,
+      appAcceptPay: true, appConsig: false, appAddClient: false, appOffline: true,
     };
   });
+
+  // Lavozimlar yuklanganda — positionId yoki nom bo‘yicha bog‘lash
+  useEffect(() => {
+    if (positions.length === 0) return;
+    setForm(f => {
+      if (f.positionId) {
+        const byId = positions.find(p => p.id === f.positionId);
+        if (byId && f.role !== byId.name) return { ...f, role: byId.name };
+        return f;
+      }
+      if (!f.role) return f;
+      const byName = positions.find(
+        p => p.name.trim().toLowerCase() === f.role.trim().toLowerCase(),
+      );
+      if (byName) return { ...f, positionId: byName.id, role: byName.name };
+      return f;
+    });
+  }, [positions]);
+
+  const selectPositionByName = (name: string) => {
+    const pos = positions.find(p => p.name === name);
+    setForm(f => ({
+      ...f,
+      role: name,
+      positionId: pos?.id || '',
+    }));
+  };
 
   const submitForm = async (closeAfter: boolean) => {
     setSaveError(null);
@@ -343,19 +319,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       companyIds: unique,
       org: unique.map(orgNameById).join(', '),
     }));
-  };
-
-  const toggleCompany = (id: string) => {
-    setForm(f => {
-      const next = f.companyIds.includes(id)
-        ? f.companyIds.filter(x => x !== id)
-        : [...f.companyIds, id];
-      return {
-        ...f,
-        companyIds: next,
-        org: next.map(orgNameById).join(', '),
-      };
-    });
   };
 
   const selectPrimaryOrgByName = (name: string) => {
@@ -389,9 +352,8 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     : tr(t, 'userModalNew', 'Yangi foydalanuvchi');
 
   const TABS: { id: ModalTab; label: string }[] = [
-    { id: 'asosiy',    label: tr(t, 'userTabMain', 'Asosiy') },
-    { id: 'boglanish', label: tr(t, 'userTabLinks', "Bog'lanishlar") },
-    { id: 'ontrade',   label: tr(t, 'userTabApp', 'Ilova') },
+    { id: 'asosiy',  label: tr(t, 'userTabMain', 'Asosiy') },
+    { id: 'ontrade', label: tr(t, 'userTabApp', 'Ilova') },
   ];
 
   /* ─── Tab content renderers ─── */
@@ -470,12 +432,22 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       <TextField label={tr(t, 'userFldFio', 'F.I.O:')} value={form.fio} onChange={v => upd('fio', v)}
         D={D} border={border} txt={txt} muted={muted} />
 
-      {/* Rol */}
+      {/* Lavozim (rol shundan olinadi) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldRole', 'Rol:')}</span>
-        <RoleSelect value={form.role} onChange={v => upd('role', v)} t={t}
-          D={D} border={border} txt={txt} muted={muted} />
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'empPositionCol', 'Lavozim:')}</span>
+        <SelectInline
+          value={form.role}
+          onChange={selectPositionByName}
+          placeholder={tr(t, 'empPosNone', '— lavozim tanlang —')}
+          options={posNames}
+          D={D} border={border} txt={txt} muted={muted}
+        />
         <LookupBtn D={D} border={border} muted={muted} />
+        <ClearBtn
+          show={!!form.role || !!form.positionId}
+          onClear={() => setForm(f => ({ ...f, role: '', positionId: '' }))}
+          muted={muted}
+        />
       </div>
 
       {/* Telegram ID */}
@@ -513,26 +485,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
           options={grafikOptions} D={D} border={border} txt={txt} muted={muted} />
         <LookupBtn D={D} border={border} muted={muted} />
       </div>
-    </div>
-  );
-
-  const renderBoglanish = () => (
-    <div style={{
-      padding: isMobile ? '12px 14px' : '12px 20px',
-      maxWidth: 520,
-    }}>
-      <CheckTable
-        title={tr(t, 'userFldOrgs', 'Tashkilotlar')}
-        items={companies.map(c => ({ id: c.id, label: c.name }))}
-        selected={form.companyIds}
-        onToggle={toggleCompany}
-        D={D} border={border} txt={txt} muted={muted} surface={surface}
-      />
-      {companies.length === 0 && (
-        <div style={{ marginTop: 10, fontSize: 12, color: muted }}>
-          {tr(t, 'userNoOrgs', 'Tashkilotlar topilmadi')}
-        </div>
-      )}
     </div>
   );
 
@@ -600,14 +552,15 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
           { key: 'appAcceptPay' as const, label: tr(t, 'userAppAcceptPay', "To'lov qabul qilish"), locked: false },
           { key: 'appGps' as const, label: tr(t, 'userAppGps', 'GPS tracking'), locked: true },
           { key: 'appConsig' as const, label: tr(t, 'userAppConsig', 'Konsignatsiya'), locked: false },
+          { key: 'appAddClient' as const, label: tr(t, 'userPermNewClient', "Yangi mijoz qo'shish"), locked: false },
           { key: 'appOffline' as const, label: tr(t, 'userAppOffline', 'Offline rejim'), locked: false },
-        ].map((item, i) => {
+        ].map((item, i, arr) => {
           const val = item.key === 'appGps' ? true : form[item.key];
           return (
           <div key={item.label} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 14px',
-            borderBottom: i < 3 ? `1px solid ${border}` : 'none',
+            borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none',
             background: i % 2 === 0 ? 'transparent' : (D ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.012)'),
           }}>
             <span style={{ fontSize: 12.5, color: txt }}>
@@ -768,11 +721,10 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         <div style={{
           flex: 1, overflowY: 'auto', overflowX: 'hidden',
           background: bg,
-          paddingTop: tab === 'boglanish' ? 0 : 4,
+          paddingTop: 4,
         }}>
-          {tab === 'asosiy'    && renderAsosiy()}
-          {tab === 'boglanish' && renderBoglanish()}
-          {tab === 'ontrade'   && renderOntrade()}
+          {tab === 'asosiy'  && renderAsosiy()}
+          {tab === 'ontrade' && renderOntrade()}
         </div>
 
         {/* ══ FOOTER ══ */}
@@ -790,6 +742,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
               {[
                 { label: tr(t, 'userAcceptPay', "To'lov"), active: form.appAcceptPay, color: green },
                 { label: tr(t, 'userConsig', 'Konsig'), active: form.appConsig, color: '#f59e0b' },
+                { label: tr(t, 'userPermNewClient', "Mijoz qo'shish"), active: form.appAddClient, color: '#8b5cf6' },
                 { label: tr(t, 'userGPS', 'GPS'), active: true, color: '#3b82f6' },
               ].map(b => (
                 <span key={b.label} style={{
@@ -996,119 +949,6 @@ function SelectInline({ value, onChange, options, placeholder, D, border, txt, m
       >
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {value || placeholder || '— tanlang —'}
-        </span>
-        <ChevronDown size={12} style={{ flexShrink: 0, marginLeft: 4, opacity: 0.5 }} />
-      </button>
-      {dropdown}
-    </div>
-  );
-}
-
-function RoleSelect({ value, onChange, t, D, border, txt, muted }: {
-  value: string; onChange: (v: string) => void;
-  t: Record<string, string>;
-  D: boolean; border: string; txt: string; muted: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 220, openUp: false });
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-  const options = USER_ROLE_CANONICAL as unknown as string[];
-
-  const reposition = useCallback(() => {
-    if (!btnRef.current) return;
-    const r = btnRef.current.getBoundingClientRect();
-    const itemH = 36;
-    const listH = Math.min(options.length * itemH + 8, 220);
-    const spaceBelow = window.innerHeight - r.bottom - 8;
-    const spaceAbove = r.top - 8;
-    const openUp = spaceBelow < listH && spaceAbove > spaceBelow;
-    const maxHeight = Math.min(listH, openUp ? spaceAbove : spaceBelow);
-    setPos({
-      top: openUp ? r.top - 4 : r.bottom + 4,
-      left: r.left,
-      width: r.width,
-      maxHeight: Math.max(maxHeight, 80),
-      openUp,
-    });
-  }, [options.length]);
-
-  useEffect(() => {
-    if (!open) return;
-    reposition();
-    window.addEventListener('scroll', reposition, true);
-    window.addEventListener('resize', reposition);
-    return () => {
-      window.removeEventListener('scroll', reposition, true);
-      window.removeEventListener('resize', reposition);
-    };
-  }, [open, reposition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const fn = (e: MouseEvent) => {
-      if (
-        btnRef.current && !btnRef.current.contains(e.target as Node) &&
-        dropRef.current && !dropRef.current.contains(e.target as Node)
-      ) setOpen(false);
-    };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
-  }, [open]);
-
-  const dropdown = open ? ReactDOM.createPortal(
-    <div
-      ref={dropRef}
-      style={{
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        width: pos.width,
-        zIndex: 10000,
-        transform: pos.openUp ? 'translateY(-100%)' : undefined,
-        background: D ? '#1e1e1e' : '#fff',
-        border: `1px solid ${border}`,
-        borderRadius: 8,
-        boxShadow: D ? '0 12px 40px rgba(0,0,0,0.7)' : '0 12px 40px rgba(0,0,0,0.13)',
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ maxHeight: pos.maxHeight, overflowY: 'auto' }}>
-        {options.map(opt => (
-          <button
-            key={opt}
-            onClick={() => { onChange(opt); setOpen(false); }}
-            style={{
-              width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none',
-              background: value === opt ? (D ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.08)') : 'transparent',
-              color: value === opt ? '#6366f1' : txt,
-              fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-            }}
-          >
-            {value === opt ? <Check size={11} color="#6366f1" /> : <span style={{ width: 11 }} />}
-            {translateUserRole(opt, t)}
-          </button>
-        ))}
-      </div>
-    </div>,
-    document.body,
-  ) : null;
-
-  return (
-    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-      <button
-        ref={btnRef}
-        onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '6px 10px', borderRadius: 7, border: `1px solid ${border}`,
-          background: D ? 'rgba(255,255,255,0.04)' : '#fff',
-          color: value ? txt : muted, fontSize: 12.5, cursor: 'pointer',
-          textAlign: 'left', boxSizing: 'border-box' as const,
-        }}
-      >
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value ? translateUserRole(value, t) : (tr(t, 'userSelect', '— tanlang —'))}
         </span>
         <ChevronDown size={12} style={{ flexShrink: 0, marginLeft: 4, opacity: 0.5 }} />
       </button>
