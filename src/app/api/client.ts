@@ -56,7 +56,13 @@ export interface AppUserRecord {
   fullName: string;
   role: string;
   position?: string | null;
+  positionId?: string | null;
+  department?: string | null;
+  departmentId?: string | null;
   isActive: boolean;
+  companyId?: string | null;
+  companyName?: string | null;
+  companyIds?: string[];
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;
@@ -64,6 +70,23 @@ export interface AppUserRecord {
   lastDeviceModel?: string | null;
   lastDeviceOs?: string | null;
   devices?: AppUserDeviceRecord[];
+}
+
+export type PositionAppAccess = 'agent' | 'delivery' | 'manager';
+
+export interface BackendDepartment {
+  id: string;
+  code: number;
+  name: string;
+  isActive: boolean;
+}
+
+export interface BackendStaffPosition {
+  id: string;
+  code: number;
+  name: string;
+  appAccess: PositionAppAccess;
+  isActive: boolean;
 }
 
 export interface Distributor {
@@ -463,6 +486,56 @@ export const api = {
 
   getCompanies: () => request<BackendCompany[]>('/companies'),
 
+  getDepartments: () => request<BackendDepartment[]>('/departments'),
+
+  createDepartment: (body: { code?: number; name: string }) =>
+    request<BackendDepartment>('/departments', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateDepartment: (id: string, body: { code?: number; name?: string; isActive?: boolean }) =>
+    request<BackendDepartment>(`/departments/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteDepartment: (id: string) =>
+    request<{ ok: boolean }>(`/departments/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  getPositions: () => request<BackendStaffPosition[]>('/positions'),
+
+  createPosition: (body: {
+    code?: number;
+    name: string;
+    appAccess: PositionAppAccess;
+  }) =>
+    request<BackendStaffPosition>('/positions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updatePosition: (
+    id: string,
+    body: {
+      code?: number;
+      name?: string;
+      appAccess?: PositionAppAccess;
+      isActive?: boolean;
+    },
+  ) =>
+    request<BackendStaffPosition>(`/positions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deletePosition: (id: string) =>
+    request<{ ok: boolean }>(`/positions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
   createCompany: (body: {
     name: string;
     shortName?: string;
@@ -507,9 +580,13 @@ export const api = {
     role?: string;
     companyName?: string;
     companyId?: string;
+    companyIds?: string[];
     isActive?: boolean;
     phone?: string;
     position?: string;
+    positionId?: string;
+    department?: string;
+    departmentId?: string;
   }) =>
     request<AppUserRecord>('/users/app', {
       method: 'POST',
@@ -523,8 +600,13 @@ export const api = {
     role?: string;
     isActive?: boolean;
     companyName?: string;
+    companyId?: string;
+    companyIds?: string[];
     phone?: string;
     position?: string;
+    positionId?: string;
+    department?: string;
+    departmentId?: string;
   }) =>
     request<AppUserRecord>(`/users/app/${id}`, {
       method: 'PATCH',

@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
@@ -12,7 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -107,6 +111,7 @@ fun AppNavHost(
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val showBottomNav = showsBottomNav(currentRoute)
     val selectedTab = bottomNavSelectedTab(currentRoute)
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val currentUser by navViewModel.currentUser.collectAsState(initial = null)
     val isDeliveryPerson = currentUser?.isDeliveryPerson() == true
     val context = LocalContext.current
@@ -176,7 +181,7 @@ fun AppNavHost(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().imePadding()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NavHost(
                 navController = navController,
@@ -408,7 +413,7 @@ fun AppNavHost(
                     .zIndex(1000f),
             )
         }
-        if (showBottomNav) {
+        if (showBottomNav && !imeVisible) {
             BottomNavBar(
                 selected = selectedTab,
                 onTabSelected = { tab ->

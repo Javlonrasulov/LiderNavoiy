@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
 import { UserRole } from '../../common/enums';
 
 export class CreateAppUserDto {
@@ -33,6 +40,12 @@ export class CreateAppUserDto {
   @IsString()
   companyId?: string;
 
+  @ApiPropertyOptional({ example: ['boran', 'zarafshon'], type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
+
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()
@@ -47,6 +60,21 @@ export class CreateAppUserDto {
   @IsOptional()
   @IsString()
   position?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  positionId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
 }
 
 export class UpdateAppUserDto {
@@ -82,6 +110,17 @@ export class UpdateAppUserDto {
   @IsString()
   companyName?: string;
 
+  @ApiPropertyOptional({ example: 'boran' })
+  @IsOptional()
+  @IsString()
+  companyId?: string;
+
+  @ApiPropertyOptional({ example: ['boran', 'zarafshon'], type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -91,6 +130,21 @@ export class UpdateAppUserDto {
   @IsOptional()
   @IsString()
   position?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  positionId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
 }
 
 export class AppUserResponseDto {
@@ -99,7 +153,13 @@ export class AppUserResponseDto {
   fullName: string;
   role: UserRole;
   position?: string | null;
+  positionId?: string | null;
+  department?: string | null;
+  departmentId?: string | null;
   isActive: boolean;
+  companyId?: string | null;
+  companyName?: string | null;
+  companyIds?: string[];
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;

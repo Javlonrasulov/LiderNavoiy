@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
@@ -328,12 +328,30 @@ export class AuthService {
       profile?.position?.trim() || user.position?.trim() || null;
 
     let agentsCanAddClients = false;
-    if (profile?.companyId) {
+    const companyIds = [
+      ...new Set(
+        [
+          ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+          profile?.companyId,
+        ]
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const primaryCompanyId = companyIds[0] ?? profile?.companyId ?? undefined;
+    if (primaryCompanyId) {
       const company = await this.companyRepo.findOne({
-        where: { id: profile.companyId, isActive: true },
+        where: { id: primaryCompanyId, isActive: true },
         select: ['id', 'agentsCanAddClients'],
       });
       agentsCanAddClients = !!company?.agentsCanAddClients;
+    }
+    if (!agentsCanAddClients && companyIds.length > 1) {
+      const anyAllowed = await this.companyRepo.findOne({
+        where: { id: In(companyIds), isActive: true, agentsCanAddClients: true },
+        select: ['id'],
+      });
+      agentsCanAddClients = !!anyAllowed;
     }
 
     return {
@@ -352,7 +370,8 @@ export class AuthService {
             : false,
         permissions: user.permissions,
         distributorId: profile?.id,
-        companyId: profile?.companyId ?? undefined,
+        companyId: primaryCompanyId,
+        companyIds: companyIds.length ? companyIds : undefined,
         companyName: profile?.companyName ?? undefined,
         agentsCanAddClients,
         clientId: user.clientId ?? undefined,

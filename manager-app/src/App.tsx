@@ -51,6 +51,7 @@ export default function App() {
   const [editingClient, setEditingClient] = useState<import('./api/types').Client | null>(null)
   const [messagesUnread, setMessagesUnread] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
+  const [messagesChatOpen, setMessagesChatOpen] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -166,6 +167,7 @@ export default function App() {
     setTrackingEmp(null)
     setMessagesUnread(0)
     setOpenConversationId(null)
+    setMessagesChatOpen(false)
     setPhase('login')
   }
 
@@ -193,9 +195,10 @@ export default function App() {
   }
 
   const showBottomNav =
-    overlay === null ||
-    overlay === 'clientOrders' ||
-    overlay === 'products'
+    !messagesChatOpen &&
+    (overlay === null ||
+      overlay === 'clientOrders' ||
+      overlay === 'products')
 
   return (
     <div className="app-shell" style={{ background: bg }}>
@@ -268,6 +271,7 @@ export default function App() {
                 openConversationId={openConversationId}
                 onUnreadChange={setMessagesUnread}
                 onConversationOpened={() => setOpenConversationId(null)}
+                onChatOpenChange={setMessagesChatOpen}
               />
             )}
           </div>

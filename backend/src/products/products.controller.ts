@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { ProductsUploadService } from './products-upload.service';
@@ -10,6 +21,33 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { RequirePage } from '../common/guards/permissions.guard';
+import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
+
+function resolveAgentCompanyScope(
+  user: User,
+  queryCompanyId?: string,
+): string | string[] | null {
+  const q = queryCompanyId?.trim();
+  if (q) return q;
+
+  const isAgent = user.role === UserRole.DISTRIBUTOR;
+  if (!isAgent || !user.distributorProfile) return null;
+
+  const profile = user.distributorProfile;
+  const ids = [
+    ...new Set(
+      [
+        ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
+        profile.companyId,
+      ]
+        .map((id) => id?.trim())
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  if (ids.length === 0) return null;
+  return ids.length === 1 ? ids[0] : ids;
+}
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -24,26 +62,40 @@ export class ProductsController {
   @Get()
   @ApiOperation({ summary: 'List products' })
   findAll(
+    @Request() req: { user: User },
     @Query('category') category?: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.findAll(category, companyId?.trim() || null);
+    return this.service.findAll(
+      category,
+      resolveAgentCompanyScope(req.user, companyId),
+    );
   }
 
   @Get('top')
   @ApiOperation({ summary: 'Top selling products with ratings' })
   topProducts(
+    @Request() req: { user: User },
     @Query('companyId') companyId?: string,
     @Query('limit') limit?: string,
   ) {
     const n = Math.min(Math.max(parseInt(limit || '30', 10) || 30, 1), 100);
-    return this.service.findTopSelling(companyId?.trim() || null, n);
+    return this.service.findTopSelling(
+      resolveAgentCompanyScope(req.user, companyId),
+      n,
+    );
   }
 
   @Get('categories')
   @ApiOperation({ summary: 'List product categories' })
-  categories(@Query('companyId') companyId?: string) {
-    return this.service.getCategories(false, companyId?.trim() || null);
+  categories(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getCategories(
+      false,
+      resolveAgentCompanyScope(req.user, companyId),
+    );
   }
 
   @Get('category-meta')
@@ -82,10 +134,14 @@ export class ProductsController {
   @Get(':id/stats')
   @ApiOperation({ summary: 'Product detail with sales stats and rating' })
   productStats(
+    @Request() req: { user: User },
     @Param('id') id: string,
     @Query('companyId') companyId?: string,
   ) {
-    return this.service.getProductStats(id, companyId?.trim() || null);
+    const scope = resolveAgentCompanyScope(req.user, companyId);
+    const single =
+      typeof scope === 'string' ? scope : Array.isArray(scope) ? scope[0] : null;
+    return this.service.getProductStats(id, single);
   }
 
   @Get(':id')

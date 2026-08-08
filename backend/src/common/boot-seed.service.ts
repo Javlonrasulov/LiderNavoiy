@@ -97,6 +97,41 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`orders.companyId migrate: ${(err as Error).message}`);
     }
 
+    // distributor_profiles.companyIds — multi-org agent (simple-json: ["boran"])
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS "companyIds" text NULL
+      `);
+      await this.dataSource.query(`
+        UPDATE distributor_profiles
+        SET "companyIds" = '["' || replace("companyId", '"', '') || '"]'
+        WHERE "companyId" IS NOT NULL
+          AND "companyId" <> ''
+          AND ("companyIds" IS NULL OR "companyIds" = '' OR "companyIds" = 'null')
+      `);
+    } catch (err) {
+      this.logger.warn(`distributor_profiles.companyIds migrate: ${(err as Error).message}`);
+    }
+
+    // department / positionId on distributor_profiles
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS department varchar NULL
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS "departmentId" uuid NULL
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS "positionId" uuid NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`distributor_profiles department migrate: ${(err as Error).message}`);
+    }
+
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
     // Eski postgres enum -> varchar (on_way / packing uchun)

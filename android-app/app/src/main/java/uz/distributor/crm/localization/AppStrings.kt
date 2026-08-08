@@ -45,26 +45,9 @@ object AppStrings {
         AppLanguage.RUS -> "У $count товаров увеличился остаток"
     }
 
-    /** Masalan: "Coca Cola: +50 dona" yoki "Farxod: +18 kg" */
-    fun productStockImportLine(lang: AppLanguage, name: String, qty: Double, unit: String): String {
-        val qtyText = formatQty(qty)
-        val unitRaw = unit.trim().lowercase()
-        val unitText = when {
-            unitRaw.isBlank() -> when (lang) {
-                AppLanguage.UZ_LATIN -> "dona"
-                AppLanguage.UZ_CYRILLIC -> "дона"
-                AppLanguage.RUS -> "шт"
-            }
-            unitRaw == "dona" || unitRaw == "шт" || unitRaw == "sht" || unitRaw == "pcs" -> when (lang) {
-                AppLanguage.UZ_LATIN -> "dona"
-                AppLanguage.UZ_CYRILLIC -> "дона"
-                AppLanguage.RUS -> "шт"
-            }
-            unitRaw == "kg" || unitRaw == "кг" -> "kg"
-            else -> unit.trim()
-        }
-        return "$name: +$qtyText $unitText"
-    }
+    /** Omborga kirim — faqat mahsulot nomi (miqdorsiz). */
+    fun productStockImportLine(lang: AppLanguage, name: String): String =
+        name.trim().ifBlank { "—" }
 
     fun productsImportedTitle(lang: AppLanguage) = when (lang) {
         AppLanguage.UZ_LATIN -> "Omborga kirim bo'ldi:"
@@ -72,28 +55,13 @@ object AppStrings {
         AppLanguage.RUS -> "Поступление на склад:"
     }
 
-    fun newProductImportedLine(lang: AppLanguage, name: String, qty: Double, unit: String): String {
-        val qtyText = formatQty(qty)
-        val unitText = unit.trim().ifBlank {
-            when (lang) {
-                AppLanguage.UZ_LATIN -> "dona"
-                AppLanguage.UZ_CYRILLIC -> "дона"
-                AppLanguage.RUS -> "шт"
-            }
-        }
+    /** Yangi mahsulot — faqat nomi (miqdorsiz). */
+    fun newProductImportedLine(lang: AppLanguage, name: String): String {
+        val n = name.trim().ifBlank { "—" }
         return when (lang) {
-            AppLanguage.UZ_LATIN -> "Yangi: $name ($qtyText $unitText)"
-            AppLanguage.UZ_CYRILLIC -> "Янги: $name ($qtyText $unitText)"
-            AppLanguage.RUS -> "Новый: $name ($qtyText $unitText)"
-        }
-    }
-
-    private fun formatQty(qty: Double): String {
-        val rounded = kotlin.math.round(qty * 1000.0) / 1000.0
-        return if (rounded == rounded.toLong().toDouble()) {
-            rounded.toLong().toString()
-        } else {
-            rounded.toString().trimEnd('0').trimEnd('.')
+            AppLanguage.UZ_LATIN -> "Yangi: $n"
+            AppLanguage.UZ_CYRILLIC -> "Янги: $n"
+            AppLanguage.RUS -> "Новый: $n"
         }
     }
 
@@ -857,6 +825,47 @@ object AppStrings {
     fun no(lang: AppLanguage) = tr(lang, "Yo‘q", "Йўқ", "Нет")
     fun visitTabAddons(lang: AppLanguage) = tr(lang, "Qo'shimchalar", "Қўшимчалар", "Дополнения")
     fun visitTabCart(lang: AppLanguage) = tr(lang, "Savatcha", "Саватча", "Корзина")
+    fun noActivePromotions(lang: AppLanguage) = tr(
+        lang,
+        "Hozircha aktiv aksiya yo‘q",
+        "Ҳозирча актив акция йўқ",
+        "Пока нет активных акций",
+    )
+    fun promoOverallProgress(lang: AppLanguage) = tr(
+        lang,
+        "Umumiy progress",
+        "Умумий прогресс",
+        "Общий прогресс",
+    )
+    fun promoBonusLockedHint(lang: AppLanguage) = tr(
+        lang,
+        "100% bo‘lganda bonus qo‘shish mumkin",
+        "100% бўлганда бонус қўшиш мумкин",
+        "Бонус можно добавить при 100%",
+    )
+    fun promoBonusReadyHint(lang: AppLanguage) = tr(
+        lang,
+        "Bonus mahsulotlarni qo‘shing",
+        "Бонус маҳсулотларни қўшинг",
+        "Добавьте бонусные товары",
+    )
+    fun promoBonusModalSave(lang: AppLanguage) = tr(
+        lang,
+        "Saqlash",
+        "Сақлаш",
+        "Сохранить",
+    )
+    fun promoBonusModalSkip(lang: AppLanguage) = tr(
+        lang,
+        "Keyinroq",
+        "Кейинроқ",
+        "Позже",
+    )
+    fun promoProgressQty(lang: AppLanguage, have: String, need: String): String = when (lang) {
+        AppLanguage.UZ_LATIN -> "$have / $need"
+        AppLanguage.UZ_CYRILLIC -> "$have / $need"
+        AppLanguage.RUS -> "$have / $need"
+    }
     fun allGoods(lang: AppLanguage) = tr(lang, "Barcha tovarlar", "Барча товарлар", "Все товары")
     fun seeAllGoods(lang: AppLanguage) = tr(lang, "Hammasini ko'rish", "Ҳаммасини кўриш", "Смотреть все")
     fun productsCount(lang: AppLanguage, shown: Int, total: Int) = when (lang) {
@@ -869,6 +878,22 @@ object AppStrings {
     fun stock(lang: AppLanguage) = tr(lang, "Sklad", "Склад", "Склад")
     fun priceLabel(lang: AppLanguage) = tr(lang, "Narx", "Нарх", "Цена")
     fun quantityLabel(lang: AppLanguage) = tr(lang, "Miqdor", "Миқдор", "Количество")
+    fun promoQuantityLabel(lang: AppLanguage) = tr(
+        lang,
+        "Aksiya miqdori",
+        "Акция миқдори",
+        "Кол-во акции",
+    )
+    fun promoQtyLockedHint(lang: AppLanguage, n: String): String = when (lang) {
+        AppLanguage.UZ_LATIN -> "Oddiy miqdor kamida $n ta bo‘lguncha aksiya yozib bo‘lmaydi"
+        AppLanguage.UZ_CYRILLIC -> "Оддий миқдор камида $n та бўлгунча акция ёзиб бўлмайди"
+        AppLanguage.RUS -> "Пока обычное кол-во меньше $n, акцию ввести нельзя"
+    }
+    fun promoQtyMaxHint(lang: AppLanguage, n: String): String = when (lang) {
+        AppLanguage.UZ_LATIN -> "Maksimum $n (admin)"
+        AppLanguage.UZ_CYRILLIC -> "Максимум $n (админ)"
+        AppLanguage.RUS -> "Максимум $n (админ)"
+    }
     fun commentPlaceholder(lang: AppLanguage) = tr(lang, "Izoh...", "Изоҳ...", "Комментарий...")
     fun addToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shish", "Саватга қўшиш", "В корзину")
     fun addedToCart(lang: AppLanguage) = tr(lang, "Savatga qo'shildi", "Саватга қўшилди", "Добавлено в корзину")

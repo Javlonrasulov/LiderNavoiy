@@ -22,6 +22,8 @@ import { LinesModule } from './lines/lines.module';
 import { ClientCategoriesModule } from './client-categories/client-categories.module';
 import { ExchangeRatesModule } from './exchange-rates/exchange-rates.module';
 import { CompaniesModule } from './companies/companies.module';
+import { DepartmentsModule } from './departments/departments.module';
+import { PositionsModule } from './positions/positions.module';
 import { PlansModule } from './plans/plans.module';
 import { PromotionsModule } from './promotions/promotions.module';
 import { TerminalsModule } from './terminals/terminals.module';
@@ -98,6 +100,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ClientCategoriesModule,
     ExchangeRatesModule,
     CompaniesModule,
+    DepartmentsModule,
+    PositionsModule,
     PlansModule,
     PromotionsModule,
     TerminalsModule,

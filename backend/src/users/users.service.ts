@@ -50,8 +50,13 @@ export class UsersService {
           role: dto.role,
           isActive: dto.isActive ?? true,
           companyName: dto.companyName,
+          companyId: dto.companyId,
+          companyIds: dto.companyIds,
           phone: dto.phone,
           position: dto.position,
+          positionId: dto.positionId,
+          department: dto.department,
+          departmentId: dto.departmentId,
         });
       }
       throw new ConflictException('Username already exists');
@@ -67,9 +72,13 @@ export class UsersService {
     const saved = await this.userRepo.save(user);
     await this.upsertDistributorProfile(saved, {
       companyId: dto.companyId,
+      companyIds: dto.companyIds,
       companyName: dto.companyName,
       phone: dto.phone,
       position: dto.position,
+      positionId: dto.positionId,
+      department: dto.department,
+      departmentId: dto.departmentId,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
@@ -93,21 +102,43 @@ export class UsersService {
 
     const saved = await this.userRepo.save(user);
     await this.upsertDistributorProfile(saved, {
+      companyId: dto.companyId,
+      companyIds: dto.companyIds,
       companyName: dto.companyName,
       phone: dto.phone,
       position: dto.position,
+      positionId: dto.positionId,
+      department: dto.department,
+      departmentId: dto.departmentId,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
+  }
+
+  private normalizeCompanyIds(
+    companyIds?: string[] | null,
+    companyId?: string | null,
+  ): string[] {
+    const fromList = (companyIds ?? [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
+    const unique = [...new Set(fromList)];
+    if (unique.length > 0) return unique;
+    const primary = companyId?.trim();
+    return primary ? [primary] : [];
   }
 
   private async upsertDistributorProfile(
     user: User,
     data: {
       companyId?: string;
+      companyIds?: string[];
       companyName?: string;
       phone?: string;
       position?: string;
+      positionId?: string;
+      department?: string;
+      departmentId?: string;
     },
   ): Promise<void> {
     if (user.role !== UserRole.DISTRIBUTOR && user.role !== UserRole.MANAGER) {
@@ -117,28 +148,50 @@ export class UsersService {
     const hasProfileData =
       data.companyName !== undefined ||
       data.companyId !== undefined ||
+      data.companyIds !== undefined ||
       data.phone !== undefined ||
       data.position !== undefined ||
+      data.positionId !== undefined ||
+      data.department !== undefined ||
+      data.departmentId !== undefined ||
       user.role === UserRole.DISTRIBUTOR;
 
     if (!hasProfileData) return;
+
+    const normalizedIds =
+      data.companyIds !== undefined || data.companyId !== undefined
+        ? this.normalizeCompanyIds(data.companyIds, data.companyId)
+        : null;
+    const primaryId = normalizedIds?.[0];
 
     let profile = await this.profileRepo.findOne({ where: { userId: user.id } });
     if (!profile) {
       profile = this.profileRepo.create({
         userId: user.id,
-        companyId: data.companyId ?? 'boran',
+        companyId: primaryId ?? 'boran',
+        companyIds: normalizedIds?.length ? normalizedIds : [primaryId ?? 'boran'],
         companyName: data.companyName ?? null,
         phone: data.phone?.trim() || null,
         position: data.position?.trim() || null,
+        positionId: data.positionId?.trim() || null,
+        department: data.department?.trim() || null,
+        departmentId: data.departmentId?.trim() || null,
         status: DistributorStatus.OFFLINE,
         isOnline: false,
       });
     } else {
-      if (data.companyId !== undefined) profile.companyId = data.companyId;
+      if (normalizedIds) {
+        profile.companyIds = normalizedIds.length ? normalizedIds : null;
+        profile.companyId = primaryId ?? profile.companyId;
+      }
       if (data.companyName !== undefined) profile.companyName = data.companyName;
       if (data.phone !== undefined) profile.phone = data.phone.trim() || null;
       if (data.position !== undefined) profile.position = data.position.trim() || null;
+      if (data.positionId !== undefined) profile.positionId = data.positionId.trim() || null;
+      if (data.department !== undefined) profile.department = data.department.trim() || null;
+      if (data.departmentId !== undefined) {
+        profile.departmentId = data.departmentId.trim() || null;
+      }
     }
 
     await this.profileRepo.save(profile);
@@ -351,13 +404,24 @@ export class UsersService {
       }];
     }
 
+    const companyIds = this.normalizeCompanyIds(
+      profile?.companyIds,
+      profile?.companyId,
+    );
+
     return {
       id: user.id,
       username: user.username,
       fullName: user.fullName,
       role: user.role,
       position: profile?.position ?? null,
+      positionId: profile?.positionId ?? null,
+      department: profile?.department ?? null,
+      departmentId: profile?.departmentId ?? null,
       isActive: user.isActive,
+      companyId: profile?.companyId ?? companyIds[0] ?? null,
+      companyName: profile?.companyName ?? null,
+      companyIds,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,
       isOnline,

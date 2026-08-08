@@ -97,12 +97,26 @@ export class ClientsService {
     return clients;
   }
 
-  async findAll(companyId?: string, lineCode?: string, distributorId?: string) {
+  async findAll(
+    companyId?: string | string[],
+    lineCode?: string,
+    distributorId?: string,
+  ) {
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
-    if (companyId) {
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (ids.length === 1) {
       qb.andWhere(
         '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
-        { companyId },
+        { companyId: ids[0] },
+      );
+    } else if (ids.length > 1) {
+      qb.andWhere(
+        '(c.companyId IN (:...companyIds) OR (c.companyId IS NULL AND distributor.companyId IN (:...companyIds)))',
+        { companyIds: ids },
       );
     }
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });

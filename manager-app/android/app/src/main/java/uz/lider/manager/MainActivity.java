@@ -57,8 +57,9 @@ public class MainActivity extends BridgeActivity {
           "r.style.setProperty('--safe-right','%.2fpx');" +
           "r.style.setProperty('--ime-bottom','%.2fpx');" +
           "r.setAttribute('data-native-insets','1');" +
+          "r.setAttribute('data-keyboard-open', %.2f > 40 ? '1' : '0');" +
         "})();",
-        top, safeBottom, left, right, imeBottom
+        top, safeBottom, left, right, imeBottom, imeBottom
       );
       webView.evaluateJavascript(js, null);
       return windowInsets;

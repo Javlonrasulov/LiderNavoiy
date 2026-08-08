@@ -35,6 +35,7 @@ export function initSafeAreaInsets() {
       if (nativeIme > 8) return
     }
     root.style.setProperty('--ime-bottom', `${covered > 40 ? covered : 0}px`)
+    root.setAttribute('data-keyboard-open', covered > 40 ? '1' : '0')
   }
 
   ensureMinBottom()

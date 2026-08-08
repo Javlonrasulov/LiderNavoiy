@@ -11,11 +11,9 @@ import kotlinx.coroutines.launch
 import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.data.repository.PromotionsRepository
 import uz.lider.client.domain.model.Promotion
-import uz.lider.client.presentation.components.formatMoney
 import javax.inject.Inject
 
 data class PromotionsUiState(
-    val bonusPointsLabel: String = "0",
     val promotions: List<Promotion> = emptyList(),
     val canSeePromotions: Boolean = false,
     val loading: Boolean = true,
@@ -43,8 +41,6 @@ class PromotionsViewModel @Inject constructor(
     suspend fun refresh() {
         val profile = profileRepository.getProfile()
         val canSee = profile?.canSeePromotions == true
-        val points = profile?.bonusPoints
-            ?: ((profile?.totalPurchases ?: 0.0) / 1000.0).toInt().coerceAtLeast(0)
         val promotions = if (canSee) {
             promotionsRepository.getPromotions()
         } else {
@@ -52,7 +48,6 @@ class PromotionsViewModel @Inject constructor(
         }
         _uiState.update {
             it.copy(
-                bonusPointsLabel = formatMoney(points.toDouble()),
                 promotions = promotions,
                 canSeePromotions = canSee,
                 loading = false,

@@ -156,6 +156,16 @@ data class ProductPromotion(
 
     fun conditionProductIds(): Set<String> = resolvedConditions().map { it.productId }.toSet()
 
+    fun conditionBuyQtyFor(productId: String): Double =
+        resolvedConditions().find { it.productId == productId }?.buyQuantity ?: 0.0
+
+    /** Shart mahsuloti uchun asosiy sovg‘a (bir xil mahsulot bo‘lsa — shu, aks holda birinchi). */
+    fun primaryRewardFor(productId: String): PromotionReward? {
+        val list = resolvedRewards()
+        if (list.isEmpty()) return null
+        return list.find { it.productId == productId } ?: list.first()
+    }
+
     fun isSatisfied(paidQtyByProduct: Map<String, Double>): Boolean {
         val conds = resolvedConditions()
         if (conds.isEmpty()) return false
@@ -163,6 +173,32 @@ data class ProductPromotion(
     }
 
     fun hasReward(): Boolean = resolvedRewards().isNotEmpty()
+
+    /** Bitta shart uchun progress 0..1 */
+    fun conditionFillRatio(productId: String, paidQtyByProduct: Map<String, Double>): Float {
+        val need = conditionBuyQtyFor(productId)
+        if (need <= 0) return 0f
+        val have = paidQtyByProduct[productId] ?: 0.0
+        return (have / need).coerceIn(0.0, 1.0).toFloat()
+    }
+
+    /**
+     * Umumiy progress 0..1 — barcha shartlar og‘irligi buyQuantity bo‘yicha.
+     * Masalan: 8/10 + 0/10 → 40%.
+     */
+    fun overallFillRatio(paidQtyByProduct: Map<String, Double>): Float {
+        val conds = resolvedConditions()
+        if (conds.isEmpty()) return 0f
+        var needSum = 0.0
+        var haveSum = 0.0
+        for (c in conds) {
+            if (c.buyQuantity <= 0) continue
+            needSum += c.buyQuantity
+            haveSum += (paidQtyByProduct[c.productId] ?: 0.0).coerceAtMost(c.buyQuantity)
+        }
+        if (needSum <= 0) return 0f
+        return (haveSum / needSum).coerceIn(0.0, 1.0).toFloat()
+    }
 }
 
 data class Message(

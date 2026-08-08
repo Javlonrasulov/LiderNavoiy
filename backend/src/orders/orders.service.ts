@@ -135,9 +135,11 @@ export class OrdersService {
       if (!match) {
         throw new BadRequestException('Promo line product must match a reward product');
       }
-      if (Math.abs(Number(line.quantity) - Number(match.quantity)) > 0.001) {
+      const lineQty = Number(line.quantity);
+      const maxQty = Number(match.quantity);
+      if (!(lineQty > 0) || lineQty - maxQty > 0.001) {
         throw new BadRequestException(
-          `Promo quantity must be ${match.quantity} (admin belgilagan)`,
+          `Promo quantity must be between 0 and ${maxQty} (admin belgilagan)`,
         );
       }
       if (Math.abs(Number(line.price) - Number(match.price)) > 0.01) {

@@ -444,7 +444,10 @@ fun ClientNavHost(
                     DebtScreen(onBack = { navController.popBackStack() })
                 }
                 composable(ClientRoutes.PROMOTIONS) {
-                    PromotionsScreen(onBack = { navController.popBackStack() })
+                    PromotionsScreen(
+                        onBack = { navController.popBackStack() },
+                        onUseNow = { navController.navigateClientRoute(ClientRoutes.CATALOG) },
+                    )
                 }
                 composable(ClientRoutes.NOTIFICATIONS) {
                     NotificationsScreen(onBack = { navController.popBackStack() })

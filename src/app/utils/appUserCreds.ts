@@ -61,6 +61,8 @@ export interface AppUserListRow {
   isOnline?: boolean;
   device?: string;
   devices: AppUserDeviceRow[];
+  companyId?: string | null;
+  companyIds?: string[];
 }
 
 function formatDeviceLabel(brand?: string | null, model?: string | null, os?: string | null): string {
@@ -203,6 +205,17 @@ export function appUserToRow(
   t?: Record<string, string>,
 ): AppUserListRow {
   const deviceInfo = formatLastDevice(app, t);
+  const companyIds = [
+    ...new Set(
+      [
+        ...(app.companyIds ?? []),
+        app.companyId,
+      ]
+        .map((id) => id?.trim())
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const orgLabel = app.companyName || (companyIds.length ? companyIds.join(', ') : '');
   return {
     id: localId,
     code: String(localId).padStart(4, '0'),
@@ -211,7 +224,7 @@ export function appUserToRow(
     lastAct: formatLastActive(app, t),
     role: mapBackendRoleToDisplay(app.role, app.position, app.username),
     status: app.isActive ? 'open' : 'closed',
-    org: '',
+    org: orgLabel.length > 14 ? `${orgLabel.slice(0, 13)}...` : orgLabel,
     emp: app.fullName.length > 14 ? `${app.fullName.slice(0, 13)}...` : app.fullName,
     onTrade: app.username,
     backendUserId: app.id,
@@ -222,6 +235,8 @@ export function appUserToRow(
     isOnline: app.isOnline,
     device: deviceInfo.summary,
     devices: deviceInfo.devices,
+    companyId: app.companyId ?? companyIds[0] ?? null,
+    companyIds,
   };
 }
 
@@ -277,11 +292,13 @@ export function getSotrPosOptions(t: Record<string, string>) {
 }
 
 export function sotrudnikDeptLabel(emp: SotrudnikRow, t: Record<string, string>): string {
-  return translateSotrDept(emp.deptKey, t) || emp.department;
+  if (emp.department?.trim()) return emp.department.trim();
+  return translateSotrDept(emp.deptKey, t) || '';
 }
 
 export function sotrudnikPosLabel(emp: SotrudnikRow, t: Record<string, string>): string {
-  return translateSotrPos(emp.posKey, t) || emp.position;
+  if (emp.position?.trim()) return emp.position.trim();
+  return translateSotrPos(emp.posKey, t) || '';
 }
 
 export function appUserToSotrudnikRow(
@@ -296,11 +313,14 @@ export function appUserToSotrudnikRow(
     posKey === 'salesAgent' ? 'sales' :
     'office';
 
+  const rawPosition = (app.position ?? distributor?.position ?? '').trim();
+  const displayPosition = rawPosition.replace(/\s*·\s*delivery\s*$/i, '').trim();
+
   return {
     tabel: index,
     name: app.fullName,
     department: '',
-    position: '',
+    position: displayPosition,
     deptKey,
     posKey,
     phone: distributor?.phone || '',

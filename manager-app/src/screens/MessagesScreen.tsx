@@ -47,6 +47,7 @@ interface Props {
   openConversationId?: string | null
   onUnreadChange?: (count: number) => void
   onConversationOpened?: () => void
+  onChatOpenChange?: (open: boolean) => void
 }
 
 function initials(name: string) {
@@ -103,6 +104,7 @@ export default function MessagesScreen({
   openConversationId,
   onUnreadChange,
   onConversationOpened,
+  onChatOpenChange,
 }: Props) {
   const c = theme(dark)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
@@ -299,6 +301,11 @@ export default function MessagesScreen({
     void openConversation(openConversationId)
     onConversationOpened?.()
   }, [openConversationId, openConversation, onConversationOpened])
+
+  useEffect(() => {
+    onChatOpenChange?.(!!activeId)
+    return () => onChatOpenChange?.(false)
+  }, [activeId, onChatOpenChange])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -545,7 +552,7 @@ export default function MessagesScreen({
             flex: 1,
             overflowY: 'auto',
             padding: selectionMode
-              ? '12px 16px calc(100px + var(--safe-bottom))'
+              ? '12px 16px calc(16px + var(--safe-bottom))'
               : '12px 16px',
             display: 'flex',
             flexDirection: 'column',
@@ -679,9 +686,10 @@ export default function MessagesScreen({
             style={{
               borderTop: `1px solid ${c.border}`,
               background: c.card,
-              /* Navbar balandligi — input navbar ustida, orqasiga o'tmasin */
-              padding: '10px 12px calc(var(--bottom-nav-height) + var(--ime-bottom))',
+              /* Chatda navbar yo'q: klaviatura (--ime-bottom) yoki tizim tugmalari (--safe-bottom) */
+              padding: '10px 12px max(var(--ime-bottom), var(--safe-bottom))',
               position: 'relative',
+              flexShrink: 0,
             }}
           >
             {pendingFile && (

@@ -145,12 +145,6 @@ class DashboardRefreshRepository @Inject constructor(
                 ?: before.productNames[id]
                 ?: id
 
-        fun unitOf(id: String): String =
-            byId[id]?.unit
-                ?: after.productUnits[id]
-                ?: before.productUnits[id]
-                ?: ""
-
         val newClients = after.clientIds - before.clientIds
         if (newClients.isNotEmpty()) {
             updates.add(AppStrings.newClientsAdded(lang, newClients.size))
@@ -158,23 +152,20 @@ class DashboardRefreshRepository @Inject constructor(
 
         val newProductIds = after.productStock.keys - before.productStock.keys
         for (id in newProductIds) {
-            val qty = after.productStock[id] ?: 0.0
-            updates.add(
-                AppStrings.newProductImportedLine(lang, nameOf(id), qty, unitOf(id)),
-            )
+            updates.add(AppStrings.newProductImportedLine(lang, nameOf(id)))
         }
 
         val stockIncreases = after.productStock.mapNotNull { (id, stock) ->
             val prev = before.productStock[id] ?: return@mapNotNull null
             val delta = stock - prev
             if (delta <= 0.0001) return@mapNotNull null
-            Triple(nameOf(id), delta, unitOf(id))
+            nameOf(id) to delta
         }.sortedByDescending { it.second }
 
         if (stockIncreases.isNotEmpty()) {
             updates.add(AppStrings.productsImportedTitle(lang))
-            stockIncreases.take(30).forEach { (name, qty, unit) ->
-                updates.add(AppStrings.productStockImportLine(lang, name, qty, unit))
+            stockIncreases.take(30).forEach { (name, _) ->
+                updates.add(AppStrings.productStockImportLine(lang, name))
             }
             if (stockIncreases.size > 30) {
                 updates.add("+${stockIncreases.size - 30}")

@@ -89,6 +89,7 @@ export class AuthResponseDto {
     permissions?: string[] | null;
     distributorId?: string;
     companyId?: string;
+    companyIds?: string[];
     companyName?: string;
     /** Agent/dostavkachi mijoz qo‘sha oladimi (kompaniya sozlamasi, default false) */
     agentsCanAddClients?: boolean;

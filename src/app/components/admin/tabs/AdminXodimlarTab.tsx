@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
-import { UserCheck, Users, Truck, ClipboardList, Layers, Contact } from 'lucide-react';
+import { UserCheck, Users, Truck, ClipboardList, Layers, Contact, Briefcase } from 'lucide-react';
 import { type AgentRow } from '../../../data/adminData';
 import { AdminAgentsTab } from './AdminAgentsTab';
 import { AdminSotrudnikiTab } from './AdminSotrudnikiTab';
 import { AdminDostavkaTab } from './AdminDostavkaTab';
 import { AdminPlanTab } from './AdminPlanTab';
 import { AdminDepartmentsTab } from './AdminDepartmentsTab';
+import { AdminPositionsTab } from './AdminPositionsTab';
 import { AdminUsersTab } from './AdminUsersTab';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
 
-type XodimlarSubTab = 'agents' | 'dostavka' | 'sotrudniki' | 'plan' | 'departments' | 'users';
+type XodimlarSubTab = 'agents' | 'dostavka' | 'sotrudniki' | 'plan' | 'departments' | 'positions' | 'users';
 
 interface Props {
   D: boolean;
@@ -59,6 +60,7 @@ export function AdminXodimlarTab({
   const tabs: { id: XodimlarSubTab; label: string; shortLabel: string; tinyLabel: string; icon: React.ComponentType<any> }[] = [
     { id: 'sotrudniki',  label: t.navSotrudniki  || "Xodimlar ro'yxati", shortLabel: t.shortLabelRoyyxat  || "Ro'yxat",  tinyLabel: t.shortLabelRoyyxat  || "Ro'yxat",  icon: Users         },
     { id: 'departments', label: t.navDepartments || "Bo'linmalar",       shortLabel: t.shortLabelDept     || "Bo'linma", tinyLabel: t.shortLabelDept     || "Bo'linma", icon: Layers        },
+    { id: 'positions',   label: t.navPositions   || 'Lavozimlar',        shortLabel: t.shortLabelPos      || 'Lavozim',  tinyLabel: t.shortLabelPos      || 'Lavozim',  icon: Briefcase     },
     { id: 'users',       label: t.navUsers       || 'Foydalanuvchilar',  shortLabel: t.shortLabelUsers    || 'Foydal.',  tinyLabel: t.shortLabelUsers    || 'Foydal.',  icon: Contact       },
     { id: 'agents',      label: t.navAgents      || 'Agentlar',          shortLabel: t.shortLabelAgents   || 'Agentlar', tinyLabel: t.shortLabelAgents   || 'Agentlar', icon: UserCheck     },
     { id: 'dostavka',    label: t.dostavkaNav    || 'Yetkazish',         shortLabel: t.shortLabelDostavka || 'Yetkazish', tinyLabel: t.shortLabelDostavka || 'Yetkazish', icon: Truck         },
@@ -167,6 +169,9 @@ export function AdminXodimlarTab({
       )}
       {subTab === 'departments' && (
         <AdminDepartmentsTab D={D} t={t} />
+      )}
+      {subTab === 'positions' && (
+        <AdminPositionsTab D={D} t={t} />
       )}
       {subTab === 'agents' && (
         <AdminSotrudnikiTab

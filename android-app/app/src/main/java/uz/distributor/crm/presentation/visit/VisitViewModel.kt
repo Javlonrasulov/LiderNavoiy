@@ -15,11 +15,12 @@ import uz.distributor.crm.data.repository.PromotionsRepository
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.domain.model.ProductPromotion
+import uz.distributor.crm.domain.model.PromotionReward
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import javax.inject.Inject
 
-enum class VisitViewLevel { CATEGORIES, PRODUCTS, PRODUCT_DETAIL }
+enum class VisitViewLevel { CATEGORIES, PRODUCTS, PRODUCT_DETAIL, PROMOTIONS }
 
 enum class VisitRefreshButtonState { IDLE, LOADING, SUCCESS }
 
@@ -33,6 +34,7 @@ data class VisitUiState(
     val selectedCategory: String? = null,
     val selectedProductId: String? = null,
     val detailQuantity: Double = 0.0,
+    val detailPromoQuantity: Double = 0.0,
     val detailNote: String = "",
     val selectedSectionExpanded: Boolean = true,
     val allSectionExpanded: Boolean = true,
@@ -56,10 +58,12 @@ data class VisitUiState(
     val activePromotions: List<ProductPromotion> = emptyList(),
     /** Agent X bosib yopgan banner promo id lari */
     val dismissedBannerIds: Set<String> = emptySet(),
-    /** Sessionda Yo‘q deb belgilangan aksiyalar */
-    val declinedPromoIds: Set<String> = emptySet(),
-    /** Ha/Yo‘q dialog uchun kutayotgan aksiya */
-    val pendingPromoOffer: ProductPromotion? = null,
+    /** Sessionda modal yopilgan / saqlangan aksiyalar (qayta ochilmasin) */
+    val bonusModalShownIds: Set<String> = emptySet(),
+    /** 100% bo‘lganda ochiladigan sovg‘a modal */
+    val bonusModalPromotion: ProductPromotion? = null,
+    /** Modal ichidagi draft miqdorlar (rewardProductId → qty) */
+    val bonusModalDraftQtys: Map<String, Double> = emptyMap(),
 ) {
     val filteredProducts: List<Product>
         get() = VisitViewModel.filterProducts(products, searchQuery, showAllProducts)
@@ -95,6 +99,60 @@ data class VisitUiState(
 
     fun cartQtyFor(productId: String): Double =
         cart.find { it.productId == productId && it.promotionId == null }?.quantity ?: 0.0
+
+    fun paidQtyMap(): Map<String, Double> {
+        val map = mutableMapOf<String, Double>()
+        for (item in cart) {
+            if (item.promotionId != null) continue
+            map[item.productId] = (map[item.productId] ?: 0.0) + item.quantity
+        }
+        return map
+    }
+
+    /** Tanlangan mahsulot shart sifatida qatnashgan aksiya */
+    val detailPromotion: ProductPromotion?
+        get() {
+            val pid = selectedProductId ?: return null
+            val promo = promotionsByProductId[pid] ?: return null
+            return promo.takeIf { it.hasReward() }
+        }
+
+    val detailPromoReward: PromotionReward?
+        get() {
+            val pid = selectedProductId ?: return null
+            return detailPromotion?.primaryRewardFor(pid)
+        }
+
+    val detailPromoThreshold: Double
+        get() {
+            val pid = selectedProductId ?: return 0.0
+            return detailPromotion?.conditionBuyQtyFor(pid) ?: 0.0
+        }
+
+    val detailPromoMax: Double
+        get() = detailPromoReward?.quantity ?: 0.0
+
+    val detailPromoUnlocked: Boolean
+        get() {
+            val promo = detailPromotion ?: return false
+            return promo.isSatisfied(paidQtyMapWithDetail())
+        }
+
+    fun cartPromoQtyFor(promotionId: String, productId: String): Double =
+        cart.find { it.promotionId == promotionId && it.productId == productId }?.quantity ?: 0.0
+
+    private fun paidQtyMapWithDetail(): Map<String, Double> {
+        val map = mutableMapOf<String, Double>()
+        for (item in cart) {
+            if (item.promotionId != null) continue
+            map[item.productId] = (map[item.productId] ?: 0.0) + item.quantity
+        }
+        val pid = selectedProductId
+        if (pid != null) {
+            map[pid] = detailQuantity
+        }
+        return map
+    }
 
     val visiblePromoBanners: List<ProductPromotion>
         get() = activePromotions.filter {
@@ -165,6 +223,25 @@ class VisitViewModel @Inject constructor(
         }
     }
 
+    fun openPromotionsTab() {
+        _uiState.update {
+            it.copy(
+                viewLevel = VisitViewLevel.PROMOTIONS,
+                selectedCategory = null,
+                products = emptyList(),
+                selectedProductId = null,
+                detailQuantity = 0.0,
+                detailPromoQuantity = 0.0,
+                detailNote = "",
+                showCartSheet = false,
+            )
+        }
+    }
+
+    fun openProductsTab() {
+        backToCategories()
+    }
+
     fun openProduct(product: Product, focusQuantity: Boolean = false) {
         viewModelScope.launch { applyOpenProduct(product, focusQuantity) }
     }
@@ -183,7 +260,15 @@ class VisitViewModel @Inject constructor(
         } else {
             productRepository.getByCategory(category)
         }
-        val cartQty = _uiState.value.cartQtyFor(product.id)
+        val state = _uiState.value
+        val cartQty = state.cartQtyFor(product.id)
+        val promo = state.promotionsByProductId[product.id]?.takeIf { it.hasReward() }
+        val reward = promo?.primaryRewardFor(product.id)
+        val promoQty = if (promo != null && reward != null) {
+            state.cartPromoQtyFor(promo.id, reward.productId)
+        } else {
+            0.0
+        }
         _uiState.update {
             it.copy(
                 viewLevel = VisitViewLevel.PRODUCT_DETAIL,
@@ -191,6 +276,7 @@ class VisitViewModel @Inject constructor(
                 products = products,
                 selectedProductId = product.id,
                 detailQuantity = cartQty,
+                detailPromoQuantity = promoQty,
                 detailNote = "",
                 detailCartJustSaved = false,
                 focusDetailQuantity = focusQuantity,
@@ -224,6 +310,7 @@ class VisitViewModel @Inject constructor(
                 viewLevel = VisitViewLevel.PRODUCTS,
                 selectedProductId = null,
                 detailQuantity = 0.0,
+                detailPromoQuantity = 0.0,
                 detailNote = "",
             )
         }
@@ -241,7 +328,10 @@ class VisitViewModel @Inject constructor(
     fun setDetailQuantity(qty: Double) {
         val clamped = qty.coerceAtLeast(0.0)
         _uiState.update { it.copy(detailQuantity = clamped) }
-        viewModelScope.launch { persistDetailQuantity(clamped) }
+        viewModelScope.launch {
+            persistDetailQuantity(clamped)
+            syncPromoQtyAfterPaidChange()
+        }
     }
 
     fun incrementDetailQty(step: Double = detailQtyStep()) {
@@ -251,6 +341,26 @@ class VisitViewModel @Inject constructor(
     fun decrementDetailQty(step: Double = detailQtyStep()) {
         val minQty = step
         setDetailQuantity((_uiState.value.detailQuantity - step).coerceAtLeast(minQty))
+    }
+
+    fun setDetailPromoQuantity(qty: Double) {
+        val state = _uiState.value
+        if (!state.detailPromoUnlocked) return
+        val max = state.detailPromoMax
+        if (max <= 0) return
+        val clamped = qty.coerceIn(0.0, max)
+        _uiState.update { it.copy(detailPromoQuantity = clamped) }
+        viewModelScope.launch { persistDetailPromoQuantity(clamped) }
+    }
+
+    fun incrementDetailPromoQty(step: Double = detailQtyStep()) {
+        if (!_uiState.value.detailPromoUnlocked) return
+        setDetailPromoQuantity(_uiState.value.detailPromoQuantity + step)
+    }
+
+    fun decrementDetailPromoQty(step: Double = detailQtyStep()) {
+        if (!_uiState.value.detailPromoUnlocked) return
+        setDetailPromoQuantity((_uiState.value.detailPromoQuantity - step).coerceAtLeast(0.0))
     }
 
     private fun detailQtyStep(): Double {
@@ -282,6 +392,37 @@ class VisitViewModel @Inject constructor(
         if (clientId.isBlank()) return
         cartRepository.setCartQty(clientId, product, qty)
         refreshCart()
+    }
+
+    private suspend fun persistDetailPromoQuantity(qty: Double) {
+        val state = _uiState.value
+        val promo = state.detailPromotion ?: return
+        val reward = state.detailPromoReward ?: return
+        val clientId = state.clientId
+        if (clientId.isBlank()) return
+        if (!state.detailPromoUnlocked) return
+        val rewardProduct = state.allProducts.find { it.id == reward.productId }
+            ?: productRepository.getProduct(reward.productId)
+            ?: return
+        cartRepository.setPromoRewardQty(clientId, promo, rewardProduct, qty)
+        refreshCart()
+    }
+
+    /** Oddiy miqdor thresholddan pastga tushsa — aksiya miqdorini tozalash */
+    private suspend fun syncPromoQtyAfterPaidChange() {
+        val state = _uiState.value
+        if (state.detailPromotion == null) return
+        if (!state.detailPromoUnlocked && state.detailPromoQuantity > 0) {
+            _uiState.update { it.copy(detailPromoQuantity = 0.0) }
+            // evaluatePromotions cart dagi promo qatorni olib tashlaydi
+        } else if (state.detailPromoUnlocked) {
+            val promo = state.detailPromotion ?: return
+            val reward = state.detailPromoReward ?: return
+            val cartPromo = state.cartPromoQtyFor(promo.id, reward.productId)
+            if (kotlin.math.abs(cartPromo - state.detailPromoQuantity) > 0.0001) {
+                _uiState.update { it.copy(detailPromoQuantity = cartPromo) }
+            }
+        }
     }
 
     fun removeFromCart(productId: String) {
@@ -435,32 +576,101 @@ class VisitViewModel @Inject constructor(
         _uiState.update { it.copy(dismissedBannerIds = it.dismissedBannerIds + promoId) }
     }
 
-    fun acceptPromoOffer() {
-        val offer = _uiState.value.pendingPromoOffer ?: return
-        viewModelScope.launch {
-            val clientId = _uiState.value.clientId
-            val rewards = offer.resolvedRewards()
-            if (rewards.isEmpty()) return@launch
-            val productsById = mutableMapOf<String, uz.distributor.crm.domain.model.Product>()
-            for (r in rewards) {
-                val product = _uiState.value.allProducts.find { it.id == r.productId }
-                    ?: productRepository.getProduct(r.productId)
-                if (product != null) productsById[product.id] = product
-            }
-            cartRepository.setPromoRewards(clientId, offer, productsById)
-            _uiState.update { it.copy(pendingPromoOffer = null) }
-            refreshCart()
+    fun setBonusModalQty(rewardProductId: String, qty: Double) {
+        val promo = _uiState.value.bonusModalPromotion ?: return
+        val reward = promo.resolvedRewards().find { it.productId == rewardProductId } ?: return
+        val clamped = qty.coerceIn(0.0, reward.quantity)
+        _uiState.update {
+            it.copy(bonusModalDraftQtys = it.bonusModalDraftQtys + (rewardProductId to clamped))
         }
     }
 
-    fun declinePromoOffer() {
-        val offer = _uiState.value.pendingPromoOffer ?: return
+    fun incrementBonusModalQty(rewardProductId: String) {
+        val state = _uiState.value
+        val current = state.bonusModalDraftQtys[rewardProductId] ?: 0.0
+        setBonusModalQty(rewardProductId, current + 1.0)
+    }
+
+    fun decrementBonusModalQty(rewardProductId: String) {
+        val state = _uiState.value
+        val current = state.bonusModalDraftQtys[rewardProductId] ?: 0.0
+        setBonusModalQty(rewardProductId, (current - 1.0).coerceAtLeast(0.0))
+    }
+
+    fun dismissBonusModal() {
+        val promo = _uiState.value.bonusModalPromotion ?: return
         _uiState.update {
             it.copy(
-                pendingPromoOffer = null,
-                declinedPromoIds = it.declinedPromoIds + offer.id,
+                bonusModalPromotion = null,
+                bonusModalDraftQtys = emptyMap(),
+                bonusModalShownIds = it.bonusModalShownIds + promo.id,
             )
         }
+    }
+
+    fun saveBonusModal() {
+        val state = _uiState.value
+        val promo = state.bonusModalPromotion ?: return
+        viewModelScope.launch {
+            val clientId = state.clientId
+            if (clientId.isBlank()) return@launch
+            if (!promo.isSatisfied(state.paidQtyMap())) return@launch
+            for (reward in promo.resolvedRewards()) {
+                val product = state.allProducts.find { it.id == reward.productId }
+                    ?: productRepository.getProduct(reward.productId)
+                    ?: continue
+                val qty = state.bonusModalDraftQtys[reward.productId] ?: 0.0
+                cartRepository.setPromoRewardQty(clientId, promo, product, qty.coerceIn(0.0, reward.quantity))
+            }
+            _uiState.update {
+                it.copy(
+                    bonusModalPromotion = null,
+                    bonusModalDraftQtys = emptyMap(),
+                    bonusModalShownIds = it.bonusModalShownIds + promo.id,
+                )
+            }
+            refreshCart()
+            val primary = promo.primaryRewardFor(state.selectedProductId.orEmpty())
+            if (primary != null && state.selectedProductId != null) {
+                val saved = _uiState.value.cartPromoQtyFor(promo.id, primary.productId)
+                _uiState.update { it.copy(detailPromoQuantity = saved) }
+            }
+        }
+    }
+
+    /** Aksiya tabidan sovg‘a miqdorini o‘zgartirish (faqat 100% da) */
+    fun setPromotionRewardQty(promotionId: String, rewardProductId: String, qty: Double) {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val clientId = state.clientId
+            if (clientId.isBlank()) return@launch
+            val promo = state.activePromotions.find { it.id == promotionId } ?: return@launch
+            if (!promo.hasReward()) return@launch
+            if (!promo.isSatisfied(state.paidQtyMap())) return@launch
+            val reward = promo.resolvedRewards().find { it.productId == rewardProductId } ?: return@launch
+            val product = state.allProducts.find { it.id == rewardProductId }
+                ?: productRepository.getProduct(rewardProductId)
+                ?: return@launch
+            val clamped = qty.coerceIn(0.0, reward.quantity)
+            cartRepository.setPromoRewardQty(clientId, promo, product, clamped)
+            refreshCart()
+            if (state.selectedProductId != null && state.detailPromoReward?.productId == rewardProductId) {
+                _uiState.update { it.copy(detailPromoQuantity = clamped) }
+            }
+        }
+    }
+
+    fun incrementPromotionRewardQty(promotionId: String, rewardProductId: String) {
+        val state = _uiState.value
+        val current = state.cartPromoQtyFor(promotionId, rewardProductId)
+        val step = 1.0
+        setPromotionRewardQty(promotionId, rewardProductId, current + step)
+    }
+
+    fun decrementPromotionRewardQty(promotionId: String, rewardProductId: String) {
+        val state = _uiState.value
+        val current = state.cartPromoQtyFor(promotionId, rewardProductId)
+        setPromotionRewardQty(promotionId, rewardProductId, (current - 1.0).coerceAtLeast(0.0))
     }
 
     private suspend fun refreshCart() {
@@ -473,7 +683,7 @@ class VisitViewModel @Inject constructor(
 
     /**
      * Shartlar bajarilmasa — promo line olib tashlanadi.
-     * Bajarilsa va hali qo‘shilmagan — Ha/Yo‘q dialog.
+     * 100% bo‘lganda — sovg‘a modal (sahifadan qat’i nazar).
      */
     private suspend fun evaluatePromotions() {
         val state = _uiState.value
@@ -487,6 +697,7 @@ class VisitViewModel @Inject constructor(
         }
 
         val presentPromoIds = state.cart.mapNotNull { it.promotionId }.toSet()
+        var shownIds = state.bonusModalShownIds
 
         for (promo in state.activePromotions) {
             if (!promo.hasReward()) continue
@@ -494,32 +705,59 @@ class VisitViewModel @Inject constructor(
             if (!ok && promo.id in presentPromoIds) {
                 cartRepository.removePromoReward(clientId, promo.id)
             }
-            if (!ok && promo.id in state.declinedPromoIds) {
-                _uiState.update { it.copy(declinedPromoIds = it.declinedPromoIds - promo.id) }
+            if (!ok && promo.id in shownIds) {
+                shownIds = shownIds - promo.id
             }
         }
 
-        // cart o‘zgargan bo‘lishi mumkin
         val cartAfter = cartRepository.getCartForClient(clientId)
         val totalAfter = cartRepository.getTotalForClient(clientId)
+
         val paidAfter = mutableMapOf<String, Double>()
         for (item in cartAfter) {
             if (item.promotionId != null) continue
             paidAfter[item.productId] = (paidAfter[item.productId] ?: 0.0) + item.quantity
         }
-        val presentAfter = cartAfter.mapNotNull { it.promotionId }.toSet()
-        val declined = _uiState.value.declinedPromoIds
 
-        var nextOffer: ProductPromotion? = _uiState.value.pendingPromoOffer
-        if (nextOffer != null && (!nextOffer.isSatisfied(paidAfter) || nextOffer.id in presentAfter)) {
-            nextOffer = null
+        var nextDetailPromoQty = state.detailPromoQuantity
+        val selectedId = state.selectedProductId
+        val detailPromo = selectedId?.let { state.promotionsByProductId[it]?.takeIf { p -> p.hasReward() } }
+        if (detailPromo != null && selectedId != null) {
+            val reward = detailPromo.primaryRewardFor(selectedId)
+            if (reward != null) {
+                val stillPresent = cartAfter.any {
+                    it.promotionId == detailPromo.id && it.productId == reward.productId
+                }
+                if (!stillPresent && nextDetailPromoQty > 0) {
+                    nextDetailPromoQty = 0.0
+                } else if (stillPresent) {
+                    nextDetailPromoQty = cartAfter
+                        .find { it.promotionId == detailPromo.id && it.productId == reward.productId }
+                        ?.quantity ?: 0.0
+                }
+            }
         }
-        if (nextOffer == null) {
-            nextOffer = state.activePromotions.firstOrNull { promo ->
+
+        var bonusModal = state.bonusModalPromotion
+        var bonusDrafts = state.bonusModalDraftQtys
+        if (bonusModal != null && !bonusModal.isSatisfied(paidAfter)) {
+            bonusModal = null
+            bonusDrafts = emptyMap()
+        }
+        if (bonusModal == null) {
+            val candidate = state.activePromotions.firstOrNull { promo ->
                 promo.hasReward() &&
                     promo.isSatisfied(paidAfter) &&
-                    promo.id !in presentAfter &&
-                    promo.id !in declined
+                    promo.id !in shownIds
+            }
+            if (candidate != null) {
+                bonusModal = candidate
+                bonusDrafts = candidate.resolvedRewards().associate { reward ->
+                    val have = cartAfter
+                        .find { it.promotionId == candidate.id && it.productId == reward.productId }
+                        ?.quantity ?: 0.0
+                    reward.productId to have
+                }
             }
         }
 
@@ -527,7 +765,10 @@ class VisitViewModel @Inject constructor(
             it.copy(
                 cart = cartAfter,
                 cartTotal = totalAfter,
-                pendingPromoOffer = nextOffer,
+                detailPromoQuantity = nextDetailPromoQty,
+                bonusModalShownIds = shownIds,
+                bonusModalPromotion = bonusModal,
+                bonusModalDraftQtys = bonusDrafts,
             )
         }
     }
@@ -562,7 +803,7 @@ class VisitViewModel @Inject constructor(
 
         val added = after.filter { it.id !in beforeMap }
         for (p in added) {
-            updates.add(AppStrings.newProductImportedLine(lang, p.name, p.stockBalance, p.unit))
+            updates.add(AppStrings.newProductImportedLine(lang, p.name))
         }
 
         val removed = before.filter { it.id !in afterIds }.map { it.name }
@@ -574,13 +815,13 @@ class VisitViewModel @Inject constructor(
             val prev = beforeMap[product.id] ?: return@mapNotNull null
             val delta = product.stockBalance - prev.stockBalance
             if (delta <= 0.0001) return@mapNotNull null
-            Triple(product.name, delta, product.unit)
+            product.name to delta
         }.sortedByDescending { it.second }
 
         if (stockUp.isNotEmpty()) {
             updates.add(AppStrings.productsImportedTitle(lang))
-            stockUp.take(20).forEach { (name, qty, unit) ->
-                updates.add(AppStrings.productStockImportLine(lang, name, qty, unit))
+            stockUp.take(20).forEach { (name, _) ->
+                updates.add(AppStrings.productStockImportLine(lang, name))
             }
             if (stockUp.size > 20) {
                 updates.add("+${stockUp.size - 20}")

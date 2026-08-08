@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Save, Trash2, ChevronDown, Check, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { X, Save, Trash2, ChevronDown, Check, Eye, EyeOff } from 'lucide-react';
 import {
   USER_ROLE_CANONICAL,
   translateUserRole,
@@ -8,9 +8,10 @@ import {
   userStatusClosedLabel,
 } from '../../../data/adminData';
 import { getStoredAppPassword, translateApiError } from '../../../utils/appUserCreds';
+import { useCompanies } from '../../CompaniesContext';
 
 /* ═══════════ Types ═══════════ */
-type ModalTab = 'asosiy' | 'boglanish' | 'ontrade' | 'opsiya';
+type ModalTab = 'asosiy' | 'boglanish' | 'ontrade';
 
 export interface UserFormRow {
   id: number;
@@ -28,6 +29,8 @@ export interface UserFormRow {
   acceptPay: boolean;
   consig: boolean;
   gps: boolean;
+  companyId?: string | null;
+  companyIds?: string[];
 }
 
 interface FormData {
@@ -41,11 +44,7 @@ interface FormData {
   org: string;
   ombor: string;
   grafik: string;
-  directions: string[];
-  kassalar: string[];
-  omborlar: string[];
-  tashkilotlar: string[];
-  perms: Record<string, string>;
+  companyIds: string[];
   appLogin: string;
   appPassword: string;
   appAcceptPay: boolean;
@@ -68,18 +67,6 @@ function tr(t: Record<string, string>, key: string, fallback: string) {
   return t[key] || fallback;
 }
 
-function trOpt(t: Record<string, string>, opt: string): string {
-  const map: Record<string, string> = {
-    Bevosita: tr(t, 'userOptDirect', 'Bevosita'),
-    Tasdiqlash: tr(t, 'userOptConfirm', 'Tasdiqlash'),
-    Ruxsat: tr(t, 'userOptAllowed', 'Ruxsat'),
-    Taqiqlangan: tr(t, 'userOptForbidden', 'Taqiqlangan'),
-    'Talab qilinadi': tr(t, 'userOptRequired', 'Talab qilinadi'),
-    'Talab qilinmaydi': tr(t, 'userOptNotRequired', 'Talab qilinmaydi'),
-  };
-  return map[opt] || opt;
-}
-
 function grafikList(t: Record<string, string>) {
   return [
     tr(t, 'userGrafikRegion', 'Hudud'),
@@ -89,44 +76,12 @@ function grafikList(t: Record<string, string>) {
 }
 
 /* ═══════════ Constants ═══════════ */
-const ORG_LIST    = ['OOO "BORAN LEADERS"', 'LEADERS BARAKA'];
 const OMBOR_LIST  = ['Ombor SHERIN', 'Ombor SOF IN', 'Brak'];
 const XODIM_LIST  = [
   'Abduxakimov Diyorbek', 'Amriddinov Sardor', 'Baxodirov Utkir',
   'Buronov Feruz', 'Juraboev Fayzillo', 'Zaripov Begzod',
   'Irgashev Azizjon', 'Ismatov Asadbek', 'Patipov Umrzok',
 ];
-
-const DIRECTIONS   = ['SHERIN', 'SOF IN'];
-const KASSALAR_LST = ['Asosiy kassa', 'Kassa SOF IN', 'Klik', 'Kassa SHERIN'];
-const OMBORLAR_LST = ['Ombor SHERIN', 'Ombor SOF IN', 'Brak'];
-const TASHKILOT_LST= ['OOO "BORAN LEADERS"', 'LEADERS BARAKA'];
-
-const PERMISSIONS = [
-  { key: 'yangiMijoz',      labelKey: 'userPermNewClient',       fallback: "Yangi mijoz qo'shish",        opts: ['Bevosita', 'Tasdiqlash'] as const },
-  { key: 'konsignatsiya',   labelKey: 'userPermConsignment',     fallback: 'Konsignatsiya',               opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'arizaQabul',      labelKey: 'userPermOrderAccept',     fallback: 'Ariza qabul',                 opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'tovarYetkazish',  labelKey: 'userPermDelivery',        fallback: 'Tovar yetkazish',             opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'tolovQabul',      labelKey: 'userPermPayment',         fallback: "To'lov qabul",                opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'fotoHisobot',     labelKey: 'userPermPhotoReport',     fallback: 'Ariza foto-hisobot',          opts: ['Talab qilinadi', 'Talab qilinmaydi'] as const },
-  { key: 'treking',         labelKey: 'userPermTracking',        fallback: "Treker ko'rish",              opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'yetkazishReys',   labelKey: 'userPermDeliveryTrip',    fallback: "Yetkazish reysini ko'rish",   opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'aktSverki',       labelKey: 'userPermReconciliation',  fallback: "Akt sverki ko'rish",          opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'reysYuklash',     labelKey: 'userPermTripLoad',        fallback: 'Reys yuklash',                opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'grafikMijozlar',  labelKey: 'userPermScheduleClients', fallback: "Grafik bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'grafikTashqari',  labelKey: 'userPermOffSchedule',     fallback: 'Grafik tashqari mijozlar',    opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'reklamaMijozlar', labelKey: 'userPermPromoClients',    fallback: "Reklama bo'yicha mijozlar",   opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'gpsMijozlar',     labelKey: 'userPermGpsClients',      fallback: "GPS bo'yicha mijozlar",       opts: ['Ruxsat', 'Taqiqlangan'] as const },
-  { key: 'qrMijozlar',      labelKey: 'userPermQrClients',       fallback: "QR kod bo'yicha mijozlar",    opts: ['Ruxsat', 'Taqiqlangan'] as const },
-];
-
-const DEFAULT_PERMS: Record<string, string> = {
-  yangiMijoz: 'Tasdiqlash', konsignatsiya: 'Taqiqlangan',
-  arizaQabul: 'Ruxsat', tovarYetkazish: 'Ruxsat', tolovQabul: 'Ruxsat',
-  fotoHisobot: 'Talab qilinmaydi', treking: 'Ruxsat', yetkazishReys: 'Ruxsat',
-  aktSverki: 'Ruxsat', reysYuklash: 'Ruxsat', grafikMijozlar: 'Ruxsat',
-  grafikTashqari: 'Ruxsat', reklamaMijozlar: 'Ruxsat', gpsMijozlar: 'Ruxsat', qrMijozlar: 'Ruxsat',
-};
 
 /* ═══════════ Dropdown helper ═══════════ */
 function SelectField({
@@ -229,8 +184,10 @@ function TextField({
 function CheckTable({
   title, items, selected, onToggle, D, border, txt, muted, surface,
 }: {
-  title: string; items: string[]; selected: string[];
-  onToggle: (item: string) => void;
+  title: string;
+  items: Array<{ id: string; label: string }>;
+  selected: string[];
+  onToggle: (id: string) => void;
   D: boolean; border: string; txt: string; muted: string; surface: string;
 }) {
   const indigo = '#6366f1';
@@ -238,6 +195,7 @@ function CheckTable({
     <div style={{
       border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
+      background: surface,
     }}>
       {/* table header */}
       <div style={{
@@ -252,11 +210,11 @@ function CheckTable({
       </div>
       {/* rows */}
       {items.map((item, idx) => {
-        const isChecked = selected.includes(item);
+        const isChecked = selected.includes(item.id);
         return (
           <div
-            key={item}
-            onClick={() => onToggle(item)}
+            key={item.id}
+            onClick={() => onToggle(item.id)}
             style={{
               display: 'grid', gridTemplateColumns: '28px 24px 1fr',
               padding: '7px 8px', cursor: 'pointer',
@@ -285,7 +243,7 @@ function CheckTable({
               fontWeight: isChecked ? 600 : 400,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {item}
+              {item.label}
             </span>
           </div>
         );
@@ -296,11 +254,11 @@ function CheckTable({
 
 /* ═══════════ MAIN COMPONENT ═══════════ */
 export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Props) {
+  const { companies } = useCompanies();
   const [tab, setTab] = useState<ModalTab>('asosiy');
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
-  const [showActions, setShowActions] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -314,10 +272,23 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const statusOpen  = userStatusOpenLabel(t);
   const statusClosed = userStatusClosedLabel(t);
   const grafikOptions = grafikList(t);
+  const orgNames = companies.map(c => c.name);
+  const orgNameById = (id: string) =>
+    companies.find(c => c.id === id)?.name || id;
 
   /* ── form state ── */
   const [form, setForm] = useState<FormData>(() => {
     if (user) {
+      const companyIds = [
+        ...new Set(
+          [
+            ...(user.companyIds ?? []),
+            user.companyId,
+          ]
+            .map(id => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
       return {
         code: user.code,
         uid: String(user.id),
@@ -326,14 +297,10 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         fio: user.name,
         role: user.role,
         telegramId: user.tg || '',
-        org: user.org,
+        org: user.org.replace(/\.\.\.$/, ''),
         ombor: '',
         grafik: grafikOptions[0],
-        directions: user.dirs ? user.dirs.split(', ') : [],
-        kassalar: [],
-        omborlar: [],
-        tashkilotlar: user.org ? [user.org.replace('...', '')] : [],
-        perms: { ...DEFAULT_PERMS, ...(user.acceptPay ? { tolovQabul: 'Ruxsat' } : {}) },
+        companyIds,
         appLogin: user.onTrade || '',
         appPassword: getStoredAppPassword(user.onTrade || ''),
         appAcceptPay: user.acceptPay,
@@ -344,8 +311,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     return {
       code: '', uid: '', status: statusOpen, xodim: '', fio: '',
       role: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
-      directions: [], kassalar: [], omborlar: [], tashkilotlar: [],
-      perms: { ...DEFAULT_PERMS },
+      companyIds: [],
       appLogin: '', appPassword: '',
       appAcceptPay: true, appConsig: false, appOffline: true,
     };
@@ -355,11 +321,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     setSaveError(null);
     setSaving(true);
     try {
-      const payload: FormData = {
-        ...form,
-        perms: { ...form.perms, gpsMijozlar: 'Ruxsat' },
-      };
-      const result = await onSave(payload);
+      const result = await onSave(form);
       if (result !== false) {
         if (closeAfter) onClose();
       }
@@ -374,19 +336,44 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const upd = (key: keyof FormData, val: string) =>
     setForm(f => ({ ...f, [key]: val }));
 
-  const toggleList = (key: 'directions' | 'kassalar' | 'omborlar' | 'tashkilotlar', item: string) =>
-    setForm(f => {
-      const arr = f[key] as string[];
-      return { ...f, [key]: arr.includes(item) ? arr.filter(x => x !== item) : [...arr, item] };
-    });
+  const setCompanyIds = (ids: string[]) => {
+    const unique = [...new Set(ids.filter(Boolean))];
+    setForm(f => ({
+      ...f,
+      companyIds: unique,
+      org: unique.map(orgNameById).join(', '),
+    }));
+  };
 
-  const togglePerm = (key: string) =>
+  const toggleCompany = (id: string) => {
     setForm(f => {
-      const perm = PERMISSIONS.find(p => p.key === key)!;
-      const current = f.perms[key];
-      const next = perm.opts.find(o => o !== current) || perm.opts[0];
-      return { ...f, perms: { ...f.perms, [key]: next } };
+      const next = f.companyIds.includes(id)
+        ? f.companyIds.filter(x => x !== id)
+        : [...f.companyIds, id];
+      return {
+        ...f,
+        companyIds: next,
+        org: next.map(orgNameById).join(', '),
+      };
     });
+  };
+
+  const selectPrimaryOrgByName = (name: string) => {
+    const company = companies.find(c => c.name === name);
+    if (!company) {
+      upd('org', name);
+      return;
+    }
+    setForm(f => {
+      const rest = f.companyIds.filter(id => id !== company.id);
+      const next = [company.id, ...rest];
+      return {
+        ...f,
+        companyIds: next,
+        org: next.map(orgNameById).join(', '),
+      };
+    });
+  };
 
   /* ── design tokens ── */
   const txt     = D ? '#f0f0f0' : '#111827';
@@ -405,7 +392,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     { id: 'asosiy',    label: tr(t, 'userTabMain', 'Asosiy') },
     { id: 'boglanish', label: tr(t, 'userTabLinks', "Bog'lanishlar") },
     { id: 'ontrade',   label: tr(t, 'userTabApp', 'Ilova') },
-    { id: 'opsiya',    label: tr(t, 'userTabOptions', 'Opsiyalar') },
   ];
 
   /* ─── Tab content renderers ─── */
@@ -500,10 +486,15 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       {/* Tashkilot */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
         <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldOrg', 'Tashkilot:')}</span>
-        <SelectInline value={form.org} onChange={v => upd('org', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
-          options={ORG_LIST} D={D} border={border} txt={txt} muted={muted} />
+        <SelectInline
+          value={form.companyIds[0] ? orgNameById(form.companyIds[0]) : form.org}
+          onChange={selectPrimaryOrgByName}
+          placeholder={tr(t, 'userSelect', '— tanlang —')}
+          options={orgNames}
+          D={D} border={border} txt={txt} muted={muted}
+        />
         <LookupBtn D={D} border={border} muted={muted} />
-        <ClearBtn show={!!form.org} onClear={() => upd('org', '')} muted={muted} />
+        <ClearBtn show={form.companyIds.length > 0 || !!form.org} onClear={() => setCompanyIds([])} muted={muted} />
       </div>
 
       {/* Ombor */}
@@ -528,26 +519,20 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const renderBoglanish = () => (
     <div style={{
       padding: isMobile ? '12px 14px' : '12px 20px',
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-      gap: 12,
+      maxWidth: 520,
     }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <CheckTable title={tr(t, 'userFldDirections', "Yo'nalishlar")} items={DIRECTIONS} selected={form.directions}
-          onToggle={i => toggleList('directions', i)}
-          D={D} border={border} txt={txt} muted={muted} surface={surface} />
-        <CheckTable title={tr(t, 'userFldWarehouses', 'Omborlar')} items={OMBORLAR_LST} selected={form.omborlar}
-          onToggle={i => toggleList('omborlar', i)}
-          D={D} border={border} txt={txt} muted={muted} surface={surface} />
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <CheckTable title={tr(t, 'userFldCashiers', 'Kassalar')} items={KASSALAR_LST} selected={form.kassalar}
-          onToggle={i => toggleList('kassalar', i)}
-          D={D} border={border} txt={txt} muted={muted} surface={surface} />
-        <CheckTable title={tr(t, 'userFldOrgs', 'Tashkilotlar')} items={TASHKILOT_LST} selected={form.tashkilotlar}
-          onToggle={i => toggleList('tashkilotlar', i)}
-          D={D} border={border} txt={txt} muted={muted} surface={surface} />
-      </div>
+      <CheckTable
+        title={tr(t, 'userFldOrgs', 'Tashkilotlar')}
+        items={companies.map(c => ({ id: c.id, label: c.name }))}
+        selected={form.companyIds}
+        onToggle={toggleCompany}
+        D={D} border={border} txt={txt} muted={muted} surface={surface}
+      />
+      {companies.length === 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: muted }}>
+          {tr(t, 'userNoOrgs', 'Tashkilotlar topilmadi')}
+        </div>
+      )}
     </div>
   );
 
@@ -646,63 +631,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     </div>
   );
 
-  const renderOpsiya = () => (
-    <div style={{ padding: 0 }}>
-      <div style={{ border: `1px solid ${border}`, borderRadius: 0, overflow: 'hidden' }}>
-        {/* Column headers */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 110px 130px',
-          padding: isMobile ? '6px 12px' : '6px 20px',
-          background: D ? '#1e1e1e' : '#f3f4f6',
-          borderBottom: `1px solid ${border}`,
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tr(t, 'userPermSetting', 'Sozlama')}</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>{tr(t, 'userPermOpt1', '1-variant')}</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>{tr(t, 'userPermOpt2', '2-variant')}</span>
-        </div>
-        {PERMISSIONS.map((perm, i) => {
-          const current = form.perms[perm.key];
-          return (
-            <div
-              key={perm.key}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: isMobile ? '1fr' : '1fr 110px 130px',
-                padding: isMobile ? '8px 12px' : '7px 20px',
-                borderBottom: i < PERMISSIONS.length - 1 ? `1px solid ${border}` : 'none',
-                background: i % 2 === 0 ? 'transparent' : (D ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.012)'),
-                alignItems: 'center',
-                gap: isMobile ? 6 : 0,
-              }}
-            >
-              <span style={{ fontSize: 12.5, color: txt, fontWeight: 500 }}>{tr(t, perm.labelKey, perm.fallback)}:</span>
-              {isMobile ? (
-                /* mobile: horizontal option buttons */
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {perm.opts.map(opt => (
-                    <PermBtn key={opt} label={trOpt(t, opt)} active={current === opt}
-                      onClick={() => togglePerm(perm.key)}
-                      D={D} border={border} txt={txt} muted={muted} t={t} />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {perm.opts.map(opt => (
-                    <div key={opt} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <PermBtn label={trOpt(t, opt)} active={current === opt}
-                        onClick={() => setForm(f => ({ ...f, perms: { ...f.perms, [perm.key]: opt } }))}
-                        D={D} border={border} txt={txt} muted={muted} t={t} />
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
   return (
     /* ── Overlay ── */
     <div
@@ -790,48 +718,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
                 </button>
               )}
 
-              {/* Actions dropdown */}
-              <div style={{ position: 'relative', flexShrink: 0 }}>
-                <button
-                  onClick={() => setShowActions(o => !o)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '6px 10px', borderRadius: 9,
-                    border: `1px solid ${border}`,
-                    background: 'transparent', color: muted,
-                    fontSize: 11, cursor: 'pointer',
-                  }}
-                >
-                  {!isMobile && <span>{tr(t, 'userActions', 'Amallar')}</span>}
-                  <ChevronDown size={12} />
-                </button>
-                {showActions && (
-                  <div style={{
-                    position: 'absolute', top: '110%', right: 0, zIndex: 600,
-                    background: D ? '#1e1e1e' : '#fff',
-                    border: `1px solid ${border}`, borderRadius: 10,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                    minWidth: 160, overflow: 'hidden',
-                  }}>
-                    {[
-                      tr(t, 'userActionCopy', "Nusxa ko'chirish"),
-                      tr(t, 'userActionResetPwd', 'Parolni tiklash'),
-                      tr(t, 'userActionCopyPerms', 'Huquqlarni nusxalash'),
-                      tr(t, 'userActionActivate', 'Faollashtirish'),
-                    ].map(action => (
-                      <button key={action} onClick={() => setShowActions(false)} style={{
-                        width: '100%', textAlign: 'left', padding: '9px 14px',
-                        border: 'none', background: 'transparent', color: txt,
-                        fontSize: 12.5, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <ChevronRight size={11} color={muted} />
-                        {action}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               {/* Close */}
               <button
                 onClick={onClose}
@@ -882,12 +768,11 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         <div style={{
           flex: 1, overflowY: 'auto', overflowX: 'hidden',
           background: bg,
-          paddingTop: tab === 'boglanish' || tab === 'opsiya' ? 0 : 4,
+          paddingTop: tab === 'boglanish' ? 0 : 4,
         }}>
           {tab === 'asosiy'    && renderAsosiy()}
           {tab === 'boglanish' && renderBoglanish()}
           {tab === 'ontrade'   && renderOntrade()}
-          {tab === 'opsiya'    && renderOpsiya()}
         </div>
 
         {/* ══ FOOTER ══ */}
@@ -903,9 +788,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
               {/* Permission badges summary */}
               {[
-                { label: tr(t, 'userAcceptPay', "To'lov"), active: form.perms.tolovQabul === 'Ruxsat', color: green },
-                { label: tr(t, 'userConsig', 'Konsig'), active: form.perms.konsignatsiya === 'Ruxsat', color: '#f59e0b' },
-                { label: tr(t, 'userGPS', 'GPS'), active: form.perms.gpsMijozlar === 'Ruxsat', color: '#3b82f6' },
+                { label: tr(t, 'userAcceptPay', "To'lov"), active: form.appAcceptPay, color: green },
+                { label: tr(t, 'userConsig', 'Konsig'), active: form.appConsig, color: '#f59e0b' },
+                { label: tr(t, 'userGPS', 'GPS'), active: true, color: '#3b82f6' },
               ].map(b => (
                 <span key={b.label} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -1229,40 +1114,6 @@ function RoleSelect({ value, onChange, t, D, border, txt, muted }: {
       </button>
       {dropdown}
     </div>
-  );
-}
-
-function PermBtn({ label, active, onClick, D, border, txt, muted, t }: {
-  label: string; active: boolean; onClick: () => void;
-  D: boolean; border: string; txt: string; muted: string;
-  t: Record<string, string>;
-}) {
-  const isPositive = label === trOpt(t, 'Ruxsat') || label === trOpt(t, 'Bevosita') || label === trOpt(t, 'Talab qilinadi');
-  const activeColor = isPositive ? '#22c55e' : '#ef4444';
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '4px 10px', borderRadius: 7, border: 'none',
-        background: active
-          ? (D ? `${activeColor}22` : `${activeColor}14`)
-          : (D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'),
-        color: active ? activeColor : muted,
-        fontSize: 11.5, fontWeight: active ? 700 : 500, cursor: 'pointer',
-        outline: active ? `1.5px solid ${activeColor}44` : 'none',
-        transition: 'all 0.12s',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span style={{
-        width: 6, height: 6, borderRadius: '50%',
-        background: active ? activeColor : (D ? '#374151' : '#d1d5db'),
-        display: 'inline-block', flexShrink: 0,
-        boxShadow: active ? `0 0 5px ${activeColor}` : 'none',
-      }} />
-      {label}
-    </button>
   );
 }
 

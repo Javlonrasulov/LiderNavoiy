@@ -1,22 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, X, Check, AlertTriangle, Layers } from 'lucide-react';
-import { api, type BackendDepartment } from '../../../api/client';
+import { Plus, Edit2, Trash2, X, Check, AlertTriangle, Briefcase } from 'lucide-react';
+import {
+  api,
+  type BackendStaffPosition,
+  type PositionAppAccess,
+} from '../../../api/client';
 
 interface Props {
   D: boolean;
   t: Record<string, string>;
 }
 
-export function AdminDepartmentsTab({ D, t }: Props) {
-  const [rows, setRows] = useState<BackendDepartment[]>([]);
+const ACCESS_OPTIONS: PositionAppAccess[] = ['agent', 'delivery', 'manager'];
+
+export function AdminPositionsTab({ D, t }: Props) {
+  const [rows, setRows] = useState<BackendStaffPosition[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
-  const [editRow, setEditRow] = useState<BackendDepartment | null>(null);
-  const [editDraft, setEditDraft] = useState<BackendDepartment | null>(null);
-  const [deleteRow, setDeleteRow] = useState<BackendDepartment | null>(null);
+  const [editRow, setEditRow] = useState<BackendStaffPosition | null>(null);
+  const [editDraft, setEditDraft] = useState<BackendStaffPosition | null>(null);
+  const [deleteRow, setDeleteRow] = useState<BackendStaffPosition | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
   const [addCode, setAddCode] = useState('');
+  const [addAccess, setAddAccess] = useState<PositionAppAccess>('agent');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -32,8 +39,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const list = await api.getDepartments();
-      setRows(list);
+      setRows(await api.getPositions());
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Yuklab bo\'lmadi');
       setRows([]);
@@ -55,24 +61,32 @@ export function AdminDepartmentsTab({ D, t }: Props) {
   const indigo = '#6366f1';
   const red = '#ef4444';
 
+  const accessLabel = (a: PositionAppAccess) => {
+    if (a === 'delivery') return t.posAccessDelivery || 'Agent ilova · dostavchik';
+    if (a === 'manager') return t.posAccessManager || 'Manager ilova';
+    return t.posAccessAgent || 'Agent ilova · agent';
+  };
+
   const T = {
-    title: t.deptTitle || 'Подразделения',
-    code: t.deptCode || 'Код',
-    name: t.deptName || 'Наименование',
+    title: t.posTitle || 'Lavozimlar',
+    code: t.deptCode || 'Kod',
+    name: t.empPositionCol || 'Lavozim',
+    app: t.posAppCol || 'Ilova',
     add: t.deptAdd || "Qo'shish",
-    addTitle: t.deptAddTitle || "Yangi bo'linma",
-    editTitle: t.deptEditTitle || "Bo'linmani tahrirlash",
-    deleteTitle: t.deptDeleteTitle || "O'chirishni tasdiqlaysizmi?",
-    deleteConfirm: t.deptDeleteConfirm || "bo'linmasi o'chiriladi.",
+    addTitle: t.posAddTitle || "Yangi lavozim",
+    editTitle: t.posEditTitle || 'Lavozimni tahrirlash',
+    deleteTitle: t.posDeleteTitle || "O'chirishni tasdiqlaysizmi?",
+    deleteConfirm: t.posDeleteConfirm || "lavozimi o'chiriladi.",
     deleteBtn: t.deptDelete || "O'chirish",
     cancel: t.deptCancel || 'Bekor',
-    empty: t.deptEmpty || "Hali bo'linmalar qo'shilmagan",
+    empty: t.posEmpty || "Hali lavozimlar qo'shilmagan",
     hint: t.deptHint || "Qatorni bosing — tahrirlash va o'chirish tugmalari paydo bo'ladi",
     count: t.deptCount || 'ta',
-    namePlaceholder: t.deptNamePlaceholder || "Bo'linma nomi",
+    namePlaceholder: t.posNamePlaceholder || 'Lavozim nomi',
     save: t.save || 'Saqlash',
     codeLbl: t.deptCodeLabel || 'Kod',
     nameLbl: t.deptNameLabel || 'Nom',
+    appLbl: t.posAppLabel || 'Qaysi ilova',
     edit: t.editLabel || "O'zgartirish",
   };
 
@@ -83,12 +97,14 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     setSaving(true);
     setError(null);
     try {
-      await api.createDepartment({
+      await api.createPosition({
         name: addName.trim(),
         code: Number(addCode) || undefined,
+        appAccess: addAccess,
       });
       setAddName('');
       setAddCode('');
+      setAddAccess('agent');
       setShowAdd(false);
       await refresh();
     } catch (e) {
@@ -99,13 +115,14 @@ export function AdminDepartmentsTab({ D, t }: Props) {
   };
 
   const saveEdit = async () => {
-    if (!editDraft || saving) return;
+    if (!editDraft?.name.trim() || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await api.updateDepartment(editDraft.id, {
+      await api.updatePosition(editDraft.id, {
         code: editDraft.code,
         name: editDraft.name.trim(),
+        appAccess: editDraft.appAccess,
       });
       setEditRow(null);
       setEditDraft(null);
@@ -122,7 +139,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     setSaving(true);
     setError(null);
     try {
-      await api.deleteDepartment(deleteRow.id);
+      await api.deletePosition(deleteRow.id);
       if (selected === deleteRow.id) setSelected(null);
       setDeleteRow(null);
       await refresh();
@@ -143,12 +160,54 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     marginBottom: 5, display: 'block', letterSpacing: '0.04em', textTransform: 'uppercase',
   };
 
+  const AccessPicker = ({
+    value, onChange,
+  }: { value: PositionAppAccess; onChange: (v: PositionAppAccess) => void }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {ACCESS_OPTIONS.map(opt => {
+        const active = value === opt;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 12px', borderRadius: 10, textAlign: 'left',
+              border: `1.5px solid ${active ? indigo : border}`,
+              background: active
+                ? (D ? 'rgba(99,102,241,0.16)' : 'rgba(99,102,241,0.08)')
+                : (D ? 'rgba(255,255,255,0.03)' : '#fff'),
+              color: active ? (D ? '#c7d2fe' : '#4338ca') : txt,
+              fontSize: 12.5, fontWeight: active ? 700 : 500,
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{
+              width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+              border: `2px solid ${active ? indigo : (D ? '#4b5563' : '#d1d5db')}`,
+              background: active ? indigo : 'transparent',
+              boxShadow: active ? 'inset 0 0 0 3px ' + (D ? '#161616' : '#fff') : 'none',
+            }} />
+            {accessLabel(opt)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const FormModal = ({
-    title, codeVal, nameVal, onCode, onName, onSave, onClose,
+    title, codeVal, nameVal, access, onCode, onName, onAccess, onSave, onClose,
   }: {
-    title: string; codeVal: string; nameVal: string;
-    onCode: (v: string) => void; onName: (v: string) => void;
-    onSave: () => void; onClose: () => void;
+    title: string;
+    codeVal: string;
+    nameVal: string;
+    access: PositionAppAccess;
+    onCode: (v: string) => void;
+    onName: (v: string) => void;
+    onAccess: (v: PositionAppAccess) => void;
+    onSave: () => void;
+    onClose: () => void;
   }) => (
     <div
       style={{
@@ -161,8 +220,9 @@ export function AdminDepartmentsTab({ D, t }: Props) {
       <div
         style={{
           background: bg, borderRadius: 20, border: `1px solid ${border}`,
-          width: '100%', maxWidth: 380, margin: 16, padding: 24,
+          width: '100%', maxWidth: 400, margin: 16, padding: 24,
           boxShadow: D ? '0 24px 64px rgba(0,0,0,0.7)' : '0 24px 64px rgba(0,0,0,0.14)',
+          maxHeight: '90vh', overflowY: 'auto',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -172,7 +232,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
               width: 36, height: 36, borderRadius: 11, background: `${indigo}18`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Layers size={16} color={indigo} />
+              <Briefcase size={16} color={indigo} />
             </div>
             <span style={{ fontSize: 15, fontWeight: 700, color: txt }}>{title}</span>
           </div>
@@ -188,18 +248,25 @@ export function AdminDepartmentsTab({ D, t }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label style={lblSt}>{T.codeLbl}</label>
-            <input style={inputSt} type="number" min={1} value={codeVal} onChange={e => onCode(e.target.value)} placeholder="1" />
+            <input
+              style={inputSt} type="number" min={1}
+              value={codeVal} onChange={e => onCode(e.target.value)}
+              placeholder="1"
+            />
           </div>
           <div>
             <label style={lblSt}>{T.nameLbl}</label>
             <input
               style={inputSt}
-              value={nameVal}
-              onChange={e => onName(e.target.value)}
+              value={nameVal} onChange={e => onName(e.target.value)}
               placeholder={T.namePlaceholder}
               onKeyDown={e => e.key === 'Enter' && onSave()}
               autoFocus
             />
+          </div>
+          <div>
+            <label style={lblSt}>{T.appLbl}</label>
+            <AccessPicker value={access} onChange={onAccess} />
           </div>
         </div>
 
@@ -211,14 +278,13 @@ export function AdminDepartmentsTab({ D, t }: Props) {
           }}>
             {T.cancel}
           </button>
-          <button onClick={onSave} disabled={saving} style={{
+          <button onClick={onSave} style={{
             flex: 2, padding: '10px', borderRadius: 11, border: 'none',
             background: indigo, color: '#fff', fontSize: 13, fontWeight: 700,
-            cursor: saving ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-            opacity: saving ? 0.7 : 1,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
           }}>
-            <Check size={14} /> {saving ? '...' : T.save}
+            <Check size={14} /> {T.save}
           </button>
         </div>
       </div>
@@ -226,25 +292,31 @@ export function AdminDepartmentsTab({ D, t }: Props) {
   );
 
   const sorted = [...rows].sort((a, b) => a.code - b.code);
+  const colSpan = isMobile ? 2 : 4;
 
   return (
     <>
       {showAdd && (
         <FormModal
           title={T.addTitle}
-          codeVal={addCode} nameVal={addName}
-          onCode={setAddCode} onName={setAddName}
+          codeVal={addCode} nameVal={addName} access={addAccess}
+          onCode={setAddCode} onName={setAddName} onAccess={setAddAccess}
           onSave={() => { void saveAdd(); }}
-          onClose={() => { setShowAdd(false); setAddName(''); setAddCode(''); }}
+          onClose={() => {
+            setShowAdd(false); setAddName(''); setAddCode(''); setAddAccess('agent');
+          }}
         />
       )}
 
       {editRow && editDraft && (
         <FormModal
           title={T.editTitle}
-          codeVal={String(editDraft.code)} nameVal={editDraft.name}
+          codeVal={String(editDraft.code)}
+          nameVal={editDraft.name}
+          access={editDraft.appAccess}
           onCode={v => setEditDraft(d => d ? { ...d, code: Number(v) || d.code } : d)}
           onName={v => setEditDraft(d => d ? { ...d, name: v } : d)}
+          onAccess={v => setEditDraft(d => d ? { ...d, appAccess: v } : d)}
           onSave={() => { void saveEdit(); }}
           onClose={() => { setEditRow(null); setEditDraft(null); }}
         />
@@ -263,17 +335,21 @@ export function AdminDepartmentsTab({ D, t }: Props) {
             style={{
               background: bg, borderRadius: 20, border: `1px solid ${border}`,
               width: '100%', maxWidth: 340, margin: 16, padding: '28px 24px',
+              boxShadow: D ? '0 24px 64px rgba(0,0,0,0.7)' : '0 24px 64px rgba(0,0,0,0.14)',
               textAlign: 'center',
             }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{
               width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px',
-              background: `${red}18`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: `${red}18`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <AlertTriangle size={22} color={red} />
             </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: txt, marginBottom: 8 }}>{T.deleteTitle}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: txt, marginBottom: 8 }}>
+              {T.deleteTitle}
+            </div>
             <div style={{ fontSize: 13, color: muted, marginBottom: 22, lineHeight: 1.6 }}>
               <strong style={{ color: txt }}>«{deleteRow.name}»</strong> {T.deleteConfirm}
             </div>
@@ -285,9 +361,10 @@ export function AdminDepartmentsTab({ D, t }: Props) {
               }}>
                 {T.cancel}
               </button>
-              <button onClick={() => { void confirmDelete(); }} disabled={saving} style={{
+              <button onClick={() => { void confirmDelete(); }} style={{
                 flex: 1, padding: '10px', borderRadius: 11, border: 'none',
-                background: red, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                background: red, color: '#fff', fontSize: 13, fontWeight: 700,
+                cursor: 'pointer',
               }}>
                 {T.deleteBtn}
               </button>
@@ -311,6 +388,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
               padding: '8px 16px', borderRadius: 11, border: 'none',
               background: indigo, color: '#fff',
               fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
             }}
           >
             <Plus size={14} />
@@ -324,7 +402,10 @@ export function AdminDepartmentsTab({ D, t }: Props) {
           </div>
         )}
 
-        <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 18, overflow: 'hidden' }}>
+        <div style={{
+          background: bg, border: `1px solid ${border}`,
+          borderRadius: 18, overflow: 'hidden',
+        }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{
@@ -333,33 +414,44 @@ export function AdminDepartmentsTab({ D, t }: Props) {
               }}>
                 <th style={{
                   padding: '11px 14px 11px 16px', textAlign: 'left',
-                  fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', width: 80,
+                  fontSize: 11, fontWeight: 700, color: muted,
+                  letterSpacing: '0.04em', textTransform: 'uppercase', width: 70,
                 }}>
                   {T.code}
                 </th>
                 <th style={{
                   padding: '11px 14px', textAlign: 'left',
-                  fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase',
+                  fontSize: 11, fontWeight: 700, color: muted,
+                  letterSpacing: '0.04em', textTransform: 'uppercase',
                 }}>
                   {T.name}
                 </th>
-                {!isMobile && <th style={{ width: 200, padding: '11px 14px' }} />}
+                {!isMobile && (
+                  <th style={{
+                    padding: '11px 14px', textAlign: 'left',
+                    fontSize: 11, fontWeight: 700, color: muted,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                  }}>
+                    {T.app}
+                  </th>
+                )}
+                {!isMobile && <th style={{ width: 180, padding: '11px 14px' }} />}
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={isMobile ? 2 : 3} style={{ padding: '40px', textAlign: 'center', color: muted, fontSize: 13 }}>
+                  <td colSpan={colSpan} style={{ padding: '40px', textAlign: 'center', fontSize: 13, color: muted }}>
                     {t.loading || 'Yuklanmoqda...'}
                   </td>
                 </tr>
               )}
-              {!loading && sorted.map((dept, i) => {
-                const isSel = selected === dept.id;
+              {!loading && sorted.map((pos, i) => {
+                const isSel = selected === pos.id;
                 return (
                   <tr
-                    key={dept.id}
-                    onClick={() => setSelected(isSel ? null : dept.id)}
+                    key={pos.id}
+                    onClick={() => setSelected(isSel ? null : pos.id)}
                     style={{
                       background: isSel ? selBg : i % 2 === 0 ? bg : rowAlt,
                       borderBottom: i < sorted.length - 1
@@ -380,7 +472,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                         fontSize: 13, fontWeight: 700,
                         color: isSel ? indigo : D ? '#9ca3af' : '#6b7280',
                       }}>
-                        {dept.code}
+                        {pos.code}
                       </span>
                     </td>
                     <td style={{ padding: '10px 14px' }}>
@@ -388,12 +480,17 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                         fontSize: 13.5, fontWeight: isSel ? 700 : 500,
                         color: isSel ? indigo : txt, display: 'block',
                       }}>
-                        {dept.name}
+                        {pos.name}
                       </span>
+                      {isMobile && (
+                        <span style={{ fontSize: 11, color: muted, marginTop: 3, display: 'block' }}>
+                          {accessLabel(pos.appAccess)}
+                        </span>
+                      )}
                       {isMobile && isSel && (
                         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                           <button
-                            onClick={e => { e.stopPropagation(); setEditRow(dept); setEditDraft({ ...dept }); }}
+                            onClick={e => { e.stopPropagation(); setEditRow(pos); setEditDraft({ ...pos }); }}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                               padding: '7px 10px', borderRadius: 8, border: 'none',
@@ -404,7 +501,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                             <Edit2 size={12} />{T.edit}
                           </button>
                           <button
-                            onClick={e => { e.stopPropagation(); setDeleteRow(dept); }}
+                            onClick={e => { e.stopPropagation(); setDeleteRow(pos); }}
                             style={{
                               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                               padding: '7px 10px', borderRadius: 8, border: 'none',
@@ -419,12 +516,23 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                     </td>
                     {!isMobile && (
                       <td style={{ padding: '10px 14px' }}>
+                        <span style={{
+                          fontSize: 12, color: muted, fontWeight: 500,
+                          padding: '4px 8px', borderRadius: 8,
+                          background: D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                        }}>
+                          {accessLabel(pos.appAccess)}
+                        </span>
+                      </td>
+                    )}
+                    {!isMobile && (
+                      <td style={{ padding: '10px 14px' }}>
                         <div style={{
                           display: 'flex', gap: 6, justifyContent: 'flex-end',
                           opacity: isSel ? 1 : 0, transition: 'opacity 0.15s',
                         }}>
                           <button
-                            onClick={e => { e.stopPropagation(); setEditRow(dept); setEditDraft({ ...dept }); }}
+                            onClick={e => { e.stopPropagation(); setEditRow(pos); setEditDraft({ ...pos }); }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 5,
                               padding: '5px 11px', borderRadius: 8, border: 'none',
@@ -435,7 +543,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
                             <Edit2 size={12} />{T.edit}
                           </button>
                           <button
-                            onClick={e => { e.stopPropagation(); setDeleteRow(dept); }}
+                            onClick={e => { e.stopPropagation(); setDeleteRow(pos); }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 5,
                               padding: '5px 11px', borderRadius: 8, border: 'none',
@@ -453,7 +561,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
               })}
               {!loading && sorted.length === 0 && (
                 <tr>
-                  <td colSpan={isMobile ? 2 : 3} style={{ padding: '52px 20px', textAlign: 'center', fontSize: 13, color: muted }}>
+                  <td colSpan={colSpan} style={{ padding: '52px 20px', textAlign: 'center', fontSize: 13, color: muted }}>
                     {T.empty}
                   </td>
                 </tr>
@@ -463,7 +571,9 @@ export function AdminDepartmentsTab({ D, t }: Props) {
         </div>
 
         {!isMobile && (
-          <div style={{ fontSize: 11.5, color: muted, textAlign: 'center' }}>{T.hint}</div>
+          <div style={{ fontSize: 11.5, color: muted, textAlign: 'center' }}>
+            {T.hint}
+          </div>
         )}
       </div>
     </>

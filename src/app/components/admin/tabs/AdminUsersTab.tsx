@@ -15,6 +15,7 @@ import {
   translateApiError,
   type AppUserListRow,
 } from '../../../utils/appUserCreds';
+import { useCompanies } from '../../CompaniesContext';
 
 interface Props {
   D: boolean;
@@ -43,7 +44,8 @@ function formToUserRow(
   backendUserId?: string,
   prevDevice?: string,
 ): UserRow {
-  const org = data.org.length > 14 ? `${data.org.slice(0, 13)}...` : data.org;
+  const orgLabel = data.org.trim();
+  const org = orgLabel.length > 14 ? `${orgLabel.slice(0, 13)}...` : orgLabel;
   const emp = data.xodim.length > 14 ? `${data.xodim.slice(0, 13)}...` : data.xodim;
   const appLogin = data.appLogin.trim();
   return {
@@ -58,12 +60,14 @@ function formToUserRow(
     emp,
     onTrade: appLogin,
     backendUserId: backendUserId || '',
-    dirs: data.directions.join(', '),
-    acceptPay: data.appAcceptPay ?? data.perms.tolovQabul === 'Ruxsat',
-    consig: data.appConsig ?? data.perms.konsignatsiya === 'Ruxsat',
+    dirs: '',
+    acceptPay: data.appAcceptPay,
+    consig: data.appConsig,
     gps: true,
     device: prevDevice || '',
     devices: [],
+    companyId: data.companyIds[0] ?? null,
+    companyIds: data.companyIds,
   };
 }
 
@@ -78,6 +82,8 @@ async function syncAppCredentials(
   const isActive = data.status === userStatusOpenLabel(t);
   const role = mapAdminRoleToBackend(data.role);
   const position = mapAdminRoleToPosition(data.role);
+  const companyIds = [...new Set(data.companyIds.map(id => id.trim()).filter(Boolean))];
+  const companyId = companyIds[0];
   const companyName = data.org.replace(/\.\.\.$/, '').trim() || undefined;
 
   if (!username) return existing?.backendUserId;
@@ -97,6 +103,8 @@ async function syncAppCredentials(
       fullName,
       role,
       companyName,
+      companyId,
+      companyIds: companyIds.length ? companyIds : undefined,
       isActive,
       position,
     });
@@ -110,6 +118,8 @@ async function syncAppCredentials(
     role,
     isActive,
     companyName,
+    companyId,
+    companyIds,
     position,
   };
   if (password) payload.password = password;
@@ -246,6 +256,7 @@ function MobileUserCard({ u, D, isSelected, onSelect, t }: {
 
 /* ═══════════════════════ MAIN ═══════════════════════ */
 export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
+  const { companies } = useCompanies();
   const [isMobile, setIsMobile] = useState<boolean>(
     () => typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -265,7 +276,17 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
     }
     setLoadingUsers(true);
     try {
-      const rows = await fetchUsersFromBackend(t);
+      const appUsers = await api.listAppUsers();
+      const nameById = new Map(companies.map(c => [c.id, c.name]));
+      const rows = appUsers.map((u, i) => {
+        const row = appUserToRow(u, i + 1, t);
+        const ids = row.companyIds ?? [];
+        if (ids.length > 0) {
+          const label = ids.map(id => nameById.get(id) || id).join(', ');
+          row.org = label.length > 14 ? `${label.slice(0, 13)}...` : label;
+        }
+        return row;
+      });
       setUsers(rows);
       setBackendReady(true);
       setSelected(prev => {
@@ -279,7 +300,7 @@ export function AdminUsersTab({ D, t, card, divider, sub }: Props) {
     } finally {
       setLoadingUsers(false);
     }
-  }, [t]);
+  }, [t, companies]);
 
   useEffect(() => {
     refreshUsers();

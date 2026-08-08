@@ -1,5 +1,11 @@
 ﻿package uz.distributor.crm.presentation.clients
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,6 +13,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -16,23 +24,39 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.components.NavGlassInfoToast
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
+
+private const val TOAST_ENTER_MS = 320
+private const val TOAST_EXIT_MS = 380
+
+private data class ClientsInfoToast(
+    val id: Int,
+    val visible: Boolean,
+    val title: String,
+    val detail: String? = null,
+)
 
 @Composable
 fun ClientsScreen(
@@ -45,7 +69,31 @@ fun ClientsScreen(
     val fmt = remember { DecimalFormat("#,##0.00") }
     val lang = LocalAppLanguage.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val scope = rememberCoroutineScope()
+    var toastIdSeq by remember { mutableIntStateOf(0) }
+    var activeToasts by remember { mutableStateOf<List<ClientsInfoToast>>(emptyList()) }
+
+    fun showInfoToast(title: String, detail: String? = null) {
+        toastIdSeq += 1
+        activeToasts = activeToasts + ClientsInfoToast(
+            id = toastIdSeq,
+            visible = true,
+            title = title,
+            detail = detail,
+        )
+    }
+
+    activeToasts.forEach { toast ->
+        key(toast.id) {
+            LaunchedEffect(toast.id) {
+                delay(2600)
+                activeToasts = activeToasts.map {
+                    if (it.id == toast.id) it.copy(visible = false) else it
+                }
+                delay(TOAST_EXIT_MS.toLong())
+                activeToasts = activeToasts.filter { it.id != toast.id }
+            }
+        }
+    }
 
     val pageBg = sherinPageBackground(isDark)
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
@@ -55,7 +103,6 @@ fun ClientsScreen(
     val tabInactiveBg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
 
     var showDayMenu by remember { mutableStateOf(false) }
-    val snackbarHostState = remember { SnackbarHostState() }
     val dayOptions = (0..6).map { day ->
         val count = state.dayClientCounts[day] ?: 0
         day to "${AppStrings.dayName(day, lang)} ($count)"
@@ -98,11 +145,10 @@ fun ClientsScreen(
                                 if (state.canAddClients) {
                                     onAddClientClick()
                                 } else {
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            message = AppStrings.addClientDeniedDetail(lang),
-                                        )
-                                    }
+                                    showInfoToast(
+                                        AppStrings.addClientDeniedTitle(lang),
+                                        AppStrings.addClientDeniedDetail(lang),
+                                    )
                                 }
                             },
                             icon = Icons.Default.Add,
@@ -231,12 +277,33 @@ fun ClientsScreen(
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
+        Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp),
-        )
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(top = 10.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            activeToasts.forEach { toast ->
+                key(toast.id) {
+                    AnimatedVisibility(
+                        visible = toast.visible,
+                        enter = fadeIn(tween(TOAST_ENTER_MS)) +
+                            slideInVertically(tween(TOAST_ENTER_MS)) { -it },
+                        exit = fadeOut(tween(TOAST_EXIT_MS)) +
+                            slideOutVertically(tween(TOAST_EXIT_MS)) { -it },
+                    ) {
+                        NavGlassInfoToast(
+                            title = toast.title,
+                            detail = toast.detail,
+                            isDark = isDark,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -340,6 +407,14 @@ private fun ClientSearchPanel(
     val fieldBg = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6)
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
     val subColor = Color(0xFF9CA3AF)
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -347,7 +422,7 @@ private fun ClientSearchPanel(
         color = panelBg,
         shadowElevation = 12.dp,
     ) {
-        Column(Modifier.padding(20.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -358,14 +433,18 @@ private fun ClientSearchPanel(
                     Icon(Icons.Default.Close, null, tint = subColor)
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
                 placeholder = { Text(AppStrings.searchClientHint(lang), color = subColor) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = subColor) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
                 shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = fieldBg,
@@ -374,7 +453,7 @@ private fun ClientSearchPanel(
                     unfocusedBorderColor = Color.Transparent,
                 ),
             )
-            if (query.isBlank()) {
+            if (query.isBlank() && !imeVisible) {
                 Spacer(Modifier.height(32.dp))
                 Column(
                     Modifier.fillMaxWidth(),
@@ -385,6 +464,8 @@ private fun ClientSearchPanel(
                     Text(AppStrings.searchClientHint(lang), color = subColor, fontSize = 14.sp)
                 }
                 Spacer(Modifier.height(24.dp))
+            } else {
+                Spacer(Modifier.height(8.dp))
             }
         }
     }

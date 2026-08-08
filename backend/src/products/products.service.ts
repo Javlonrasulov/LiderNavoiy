@@ -54,22 +54,31 @@ export class ProductsService {
 
   private applyCompanyFilter(
     qb: ReturnType<Repository<Product>['createQueryBuilder']>,
-    companyId?: string | null,
+    companyId?: string | string[] | null,
   ) {
+    if (Array.isArray(companyId)) {
+      const ids = companyId.map((id) => id?.trim()).filter(Boolean);
+      if (ids.length === 1) {
+        qb.andWhere('p.companyId = :companyId', { companyId: ids[0] });
+      } else if (ids.length > 1) {
+        qb.andWhere('p.companyId IN (:...companyIds)', { companyIds: ids });
+      }
+      return qb;
+    }
     if (companyId) {
       qb.andWhere('p.companyId = :companyId', { companyId });
     }
     return qb;
   }
 
-  findAll(category?: string, companyId?: string | null) {
+  findAll(category?: string, companyId?: string | string[] | null) {
     const qb = this.repo.createQueryBuilder('p').where('p.isActive = true');
     this.applyCompanyFilter(qb, companyId);
     if (category) qb.andWhere('p.category = :category', { category });
     return qb.orderBy('p.name', 'ASC').getMany();
   }
 
-  findInStock(category?: string, companyId?: string | null) {
+  findInStock(category?: string, companyId?: string | string[] | null) {
     const qb = this.repo
       .createQueryBuilder('p')
       .where('p.isActive = true')
@@ -79,13 +88,13 @@ export class ProductsService {
     return qb.orderBy('p.name', 'ASC').getMany();
   }
 
-  async findInStockMap(companyId?: string | null): Promise<Map<string, Product>> {
+  async findInStockMap(companyId?: string | string[] | null): Promise<Map<string, Product>> {
     const products = await this.findInStock(undefined, companyId);
     return new Map(products.map((p) => [p.id, p]));
   }
 
   async findActiveMaps(
-    companyId?: string | null,
+    companyId?: string | string[] | null,
   ): Promise<{ byId: Map<string, Product>; byCode: Map<string, Product> }> {
     const products = await this.findAll(undefined, companyId);
     return {
@@ -98,7 +107,7 @@ export class ProductsService {
     return this.repo.findOne({ where: { id } });
   }
 
-  getCategories(inStockOnly = false, companyId?: string | null) {
+  getCategories(inStockOnly = false, companyId?: string | string[] | null) {
     const qb = this.repo
       .createQueryBuilder('p')
       .select('DISTINCT p.category', 'category')
@@ -209,15 +218,23 @@ export class ProductsService {
 
   /** Buyurtmalardan mahsulot bo‘yicha sotuv agregatsiyasi */
   private async aggregateSalesByProduct(
-    companyId?: string | null,
+    companyId?: string | string[] | null,
     productIds?: string[],
   ): Promise<Map<string, { soldQuantity: number; soldAmount: number; orderCount: number }>> {
     const params: unknown[] = [OrderStatus.CANCELLED, OrderStatus.DRAFT];
     let filterSql = `o.status NOT IN ($1, $2)`;
 
-    if (companyId) {
-      params.push(companyId);
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (ids.length === 1) {
+      params.push(ids[0]);
       filterSql += ` AND o."companyId" = $${params.length}`;
+    } else if (ids.length > 1) {
+      params.push(ids);
+      filterSql += ` AND o."companyId" = ANY($${params.length}::text[])`;
     }
     if (productIds?.length) {
       params.push(productIds);
@@ -282,7 +299,7 @@ export class ProductsService {
     return map;
   }
 
-  async findTopSelling(companyId?: string | null, limit = 30): Promise<ProductWithStats[]> {
+  async findTopSelling(companyId?: string | string[] | null, limit = 30): Promise<ProductWithStats[]> {
     const salesMap = await this.aggregateSalesByProduct(companyId);
     const ranked = [...salesMap.entries()]
       .filter(([, s]) => s.soldQuantity > 0)

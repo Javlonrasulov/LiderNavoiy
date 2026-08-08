@@ -52,6 +52,27 @@ export class ClientsController {
     return undefined;
   }
 
+  private scopeCompanyIds(user: User, queryCompanyId?: string): string | string[] | undefined {
+    const q = queryCompanyId?.trim();
+    if (q) return q;
+    if (user.role !== UserRole.DISTRIBUTOR || !user.distributorProfile) {
+      return undefined;
+    }
+    const profile = user.distributorProfile;
+    const ids = [
+      ...new Set(
+        [
+          ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
+          profile.companyId,
+        ]
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (ids.length === 0) return undefined;
+    return ids.length === 1 ? ids[0] : ids;
+  }
+
   private assertAdminOrManager(user: User) {
     if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
       throw new ForbiddenException("Faqat admin/manager uchun");
@@ -72,7 +93,11 @@ export class ClientsController {
       (req.user.role === UserRole.ADMIN || req.user.role === UserRole.MANAGER
         ? distributorId
         : undefined);
-    return this.service.findAll(companyId, lineCode, filterDistributorId);
+    return this.service.findAll(
+      this.scopeCompanyIds(req.user, companyId),
+      lineCode,
+      filterDistributorId,
+    );
   }
 
   @Get('trash')

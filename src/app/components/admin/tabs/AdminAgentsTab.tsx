@@ -3,17 +3,25 @@ import ReactDOM from 'react-dom';
 import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown } from 'lucide-react';
 import { type SotrudnikRow } from '../../../data/adminData';
 import { COMPANIES } from '../../AdminAuthContext';
-import { api, type AppUserRecord, type Distributor } from '../../../api/client';
+import {
+  api,
+  type AppUserRecord,
+  type BackendDepartment,
+  type BackendStaffPosition,
+  type Distributor,
+} from '../../../api/client';
 import {
   appUserToSotrudnikRow,
-  getSotrDeptOptions,
-  getSotrPosOptions,
-  mapPosKeyToBackend,
   sotrudnikDeptLabel,
   sotrudnikPosLabel,
   translateApiError,
 } from '../../../utils/appUserCreds';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
+import {
+  appAccessToBackendRole,
+  appAccessToPosKey,
+  positionPayloadForAccess,
+} from '../../../utils/positionsStore';
 
 interface Props {
   D: boolean;
@@ -168,12 +176,15 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [showAdd, setShowAdd]     = useState(false);
   const [addDraft, setAddDraft]   = useState<SotrudnikRow>({
     tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-    deptKey: 'sales', posKey: 'salesAgent',
+    deptKey: '', posKey: 'salesAgent',
   });
   const [addLogin, setAddLogin]   = useState('');
   const [addPassword, setAddPassword] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
+  const [deptOptions, setDeptOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [posList, setPosList] = useState<BackendStaffPosition[]>([]);
+  const [departments, setDepartments] = useState<BackendDepartment[]>([]);
 
   const [isSmall, setIsSmall] = useState(false);
 
@@ -186,6 +197,57 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
+
+  const refreshCatalog = useCallback(async () => {
+    if (!hasApiToken()) {
+      setDeptOptions([{ value: '', label: t.empDeptNone || '— tanlanmagan —' }]);
+      setPosList([]);
+      setDepartments([]);
+      return;
+    }
+    try {
+      const [depts, positions] = await Promise.all([
+        api.getDepartments(),
+        api.getPositions(),
+      ]);
+      setDepartments(depts);
+      setPosList(positions);
+      setDeptOptions([
+        { value: '', label: t.empDeptNone || '— tanlanmagan —' },
+        ...depts.map(d => ({ value: d.id, label: d.name })),
+      ]);
+    } catch {
+      setDeptOptions([{ value: '', label: t.empDeptNone || '— tanlanmagan —' }]);
+      setPosList([]);
+      setDepartments([]);
+    }
+  }, [t.empDeptNone]);
+
+  useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
+
+  const posOptions = useMemo(
+    () => posList.map(p => ({ value: p.id, label: p.name })),
+    [posList],
+  );
+
+  const findPositionById = useCallback(
+    (id?: string) => posList.find(p => p.id === id),
+    [posList],
+  );
+
+  const findPositionByName = useCallback(
+    (name?: string) => {
+      const n = (name || '').trim().toLowerCase();
+      if (!n) return undefined;
+      return posList.find(p => p.name.trim().toLowerCase() === n);
+    },
+    [posList],
+  );
+
+  const findDepartmentById = useCallback(
+    (id?: string) => departments.find(d => d.id === id),
+    [departments],
+  );
 
   const refreshEmployees = useCallback(async () => {
     if (!hasApiToken()) {
@@ -230,11 +292,25 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         if (companyIds.size > 0 && d?.companyId && !companyIds.has(d.companyId)) return false;
         return true;
       })
-      .map((u, i) => appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t));
-  }, [apiUsers, apiDistributors, selectedCompanyIds, t]);
+      .map((u, i) => {
+        const row = appUserToSotrudnikRow(u, distByUserId.get(u.id), i + 1, t);
+        if (u.department) row.department = u.department;
+        if (u.departmentId) {
+          row.deptKey = u.departmentId;
+          row.department = findDepartmentById(u.departmentId)?.name || u.department || '';
+        }
+        const matched =
+          (u.positionId && findPositionById(u.positionId)) ||
+          findPositionByName(row.position);
+        if (matched) {
+          row.positionId = matched.id;
+          row.posKey = appAccessToPosKey(matched.appAccess);
+          row.position = matched.name;
+        }
+        return row;
+      });
+  }, [apiUsers, apiDistributors, selectedCompanyIds, t, findDepartmentById, findPositionById, findPositionByName]);
 
-  const deptOptions = getSotrDeptOptions(t);
-  const posOptions = getSotrPosOptions(t);
   const listEmptyMessage = !backendReady
     ? (t.userErrAdminLoginRequired || "Backend bilan bog'lanish uchun admin login qiling")
     : loadingRows
@@ -268,24 +344,58 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   });
 
   // ── actions ──────────────────────────────────────────────────────────────
+  const resolvePositionMeta = (draft: SotrudnikRow) => {
+    const byId = findPositionById(draft.positionId);
+    if (byId) return byId;
+    const byName = findPositionByName(draft.position);
+    if (byName) return byName;
+    const access =
+      draft.posKey === 'manager' || draft.posKey === 'director' ? 'manager' as const
+        : draft.posKey === 'delivery' ? 'delivery' as const
+          : 'agent' as const;
+    return {
+      id: '',
+      code: 0,
+      name: draft.position || sotrudnikPosLabel(draft, t) || 'Savdo agenti',
+      appAccess: access,
+      isActive: true,
+    };
+  };
+
+  const resolveDepartmentMeta = (draft: SotrudnikRow) => {
+    const byId = findDepartmentById(draft.deptKey);
+    if (byId) return byId;
+    const byName = departments.find(
+      d => d.name.trim().toLowerCase() === (draft.department || '').trim().toLowerCase(),
+    );
+    return byName;
+  };
+
   const saveEdit = async () => {
     if (!editDraft?.backendUserId || !editDraft.name.trim()) return;
     setSaving(true);
     setSaveError(null);
     try {
       const phone = editDraft.phone.trim() || undefined;
+      const meta = resolvePositionMeta(editDraft);
+      const dept = resolveDepartmentMeta(editDraft);
+      const role = appAccessToBackendRole(meta.appAccess);
+      const position = positionPayloadForAccess(meta.name, meta.appAccess);
       await api.updateAppUser(editDraft.backendUserId, {
         fullName: editDraft.name.trim(),
-        role: mapPosKeyToBackend(editDraft.posKey),
+        role,
         phone,
-        position: sotrudnikPosLabel(editDraft, t) || undefined,
+        position,
+        positionId: meta.id || undefined,
+        department: dept?.name || editDraft.department || undefined,
+        departmentId: dept?.id || editDraft.deptKey || undefined,
       });
       const distributorId = editDraft.distributorId
         ?? apiDistributors.find(d => d.userId === editDraft.backendUserId)?.id;
       if (distributorId) {
         await api.updateDistributor(distributorId, {
           phone: phone ?? '',
-          position: sotrudnikPosLabel(editDraft, t) || undefined,
+          position,
         });
       }
       await refreshEmployees();
@@ -319,14 +429,21 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     setSaveError(null);
     try {
       const orgId = selectedIds[0] || 'boran';
+      const meta = resolvePositionMeta(addDraft);
+      const dept = resolveDepartmentMeta(addDraft);
+      const role = appAccessToBackendRole(meta.appAccess);
+      const position = positionPayloadForAccess(meta.name, meta.appAccess);
       await api.createAppUser({
         username: addLogin.trim(),
         password: addPassword.trim(),
         fullName: addDraft.name.trim(),
-        role: mapPosKeyToBackend(addDraft.posKey),
+        role,
         companyId: orgId,
         phone: addDraft.phone.trim() || undefined,
-        position: sotrudnikPosLabel(addDraft, t) || undefined,
+        position,
+        positionId: meta.id || undefined,
+        department: dept?.name || addDraft.department || undefined,
+        departmentId: dept?.id || addDraft.deptKey || undefined,
       });
       await refreshEmployees();
       setShowAdd(false);
@@ -334,7 +451,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       setAddPassword('');
       setAddDraft({
         tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-        deptKey: 'sales', posKey: 'salesAgent',
+        deptKey: '', posKey: 'salesAgent', positionId: '',
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
@@ -465,8 +582,15 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           <div>
             <label style={labelStyle}>{t.empDeptCol || "Bo'linma"}</label>
             <PortalSelect
-              value={draft.deptKey ?? ''}
-              onChange={v => onChangeDraft({ ...draft, deptKey: v, department: '' })}
+              value={draft.deptKey || ''}
+              onChange={v => {
+                const dept = findDepartmentById(v);
+                onChangeDraft({
+                  ...draft,
+                  deptKey: v,
+                  department: dept?.name || '',
+                });
+              }}
               options={deptOptions}
               placeholder={t.empDeptNone || '— tanlanmagan —'}
               D={D} border={border} txt={txt} muted={muted}
@@ -476,10 +600,21 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
           <div>
             <label style={labelStyle}>{t.empPositionCol || 'Lavozim'}</label>
             <PortalSelect
-              value={draft.posKey ?? 'salesAgent'}
-              onChange={v => onChangeDraft({ ...draft, posKey: v, position: '' })}
+              value={
+                draft.positionId
+                || (findPositionByName(draft.position)?.id ?? '')
+              }
+              onChange={v => {
+                const pos = findPositionById(v);
+                onChangeDraft({
+                  ...draft,
+                  positionId: v,
+                  position: pos?.name || '',
+                  posKey: pos ? appAccessToPosKey(pos.appAccess) : 'salesAgent',
+                });
+              }}
               options={posOptions}
-              placeholder={t.sotrPosSalesAgent || 'Savdo agenti'}
+              placeholder={t.empPosNone || '— lavozim tanlang —'}
               D={D} border={border} txt={txt} muted={muted}
             />
           </div>
@@ -596,7 +731,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 setSaveError(null);
                 setAddDraft({
                   tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-                  deptKey: 'sales', posKey: 'salesAgent',
+                  deptKey: '', posKey: 'salesAgent', positionId: '',
                 });
                 setShowAdd(true);
               }}
@@ -669,7 +804,23 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 paddingTop: 8, borderTop: `1px solid ${D ? 'rgba(255,255,255,0.06)' : '#f3f4f6'}`,
               }}>
                 <button
-                  onClick={() => { setEditRow(emp); setEditDraft({ ...emp, phone: formatUzPhoneInput(emp.phone || '') }); }}
+                  onClick={() => {
+                    const matched = findPositionByName(emp.position);
+                    const deptMatched =
+                      (emp.deptKey && findDepartmentById(emp.deptKey)) ||
+                      departments.find(
+                        d => d.name.trim().toLowerCase() === (emp.department || '').trim().toLowerCase(),
+                      );
+                    setEditRow(emp);
+                    setEditDraft({
+                      ...emp,
+                      phone: formatUzPhoneInput(emp.phone || ''),
+                      positionId: matched?.id || emp.positionId,
+                      posKey: matched ? appAccessToPosKey(matched.appAccess) : emp.posKey,
+                      deptKey: deptMatched?.id || emp.deptKey || '',
+                      department: deptMatched?.name || emp.department,
+                    });
+                  }}
                   style={{
                     flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                     padding: isSmall ? '7px 6px' : '8px', borderRadius: 9, border: `1px solid ${border}`,
@@ -754,7 +905,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                 setSaveError(null);
                 setAddDraft({
                   tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-                  deptKey: 'sales', posKey: 'salesAgent',
+                  deptKey: '', posKey: 'salesAgent', positionId: '',
                 });
                 setShowAdd(true);
               }}
@@ -905,7 +1056,23 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {/* Edit */}
                         <button
-                          onClick={() => { setEditRow(emp); setEditDraft({ ...emp, phone: formatUzPhoneInput(emp.phone || '') }); }}
+                          onClick={() => {
+                    const matched = findPositionByName(emp.position);
+                    const deptMatched =
+                      (emp.deptKey && findDepartmentById(emp.deptKey)) ||
+                      departments.find(
+                        d => d.name.trim().toLowerCase() === (emp.department || '').trim().toLowerCase(),
+                      );
+                    setEditRow(emp);
+                    setEditDraft({
+                      ...emp,
+                      phone: formatUzPhoneInput(emp.phone || ''),
+                      positionId: matched?.id || emp.positionId,
+                      posKey: matched ? appAccessToPosKey(matched.appAccess) : emp.posKey,
+                      deptKey: deptMatched?.id || emp.deptKey || '',
+                      department: deptMatched?.name || emp.department,
+                    });
+                  }}
                           title={t.empEditBtn || "O'zgartirish"}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 5,

@@ -103,6 +103,40 @@ class CartRepository @Inject constructor(
         setPromoRewards(clientId, promotion, mapOf(product.id to product))
     }
 
+    /**
+     * Bitta sovg‘a qatorini miqdorga qo‘yish (0 → o‘chirish).
+     * Miqdor admin belgilagan maksimumdan oshmasin.
+     */
+    suspend fun setPromoRewardQty(
+        clientId: String,
+        promotion: ProductPromotion,
+        product: Product,
+        qty: Double,
+    ) {
+        if (clientId.isBlank() || promotion.id.isBlank()) return
+        val reward = promotion.resolvedRewards().find { it.productId == product.id } ?: return
+        val normalized = (Math.round(qty * 1000.0) / 1000.0).coerceAtLeast(0.0)
+        if (normalized <= 0) {
+            db.cartDao().delete(clientId, product.id, promotion.id)
+            return
+        }
+        val clamped = normalized.coerceAtMost(reward.quantity)
+        db.cartDao().insert(
+            CartItemEntity(
+                clientId = clientId,
+                productId = product.id,
+                promotionId = promotion.id,
+                productCode = product.code,
+                productName = product.name,
+                price = reward.price,
+                quantity = clamped,
+                unit = product.unit,
+                category = product.category,
+                isFree = reward.price <= 0.0,
+            ),
+        )
+    }
+
     suspend fun removePromoReward(clientId: String, promotionId: String) {
         if (clientId.isBlank() || promotionId.isBlank()) return
         db.cartDao().deletePromo(clientId, promotionId)

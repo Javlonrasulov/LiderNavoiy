@@ -1,5 +1,6 @@
 package uz.distributor.crm.presentation.visit
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -115,6 +116,7 @@ fun VisitScreen(
         when (state.viewLevel) {
             VisitViewLevel.PRODUCT_DETAIL -> viewModel.backFromProductDetail()
             VisitViewLevel.PRODUCTS -> viewModel.backToCategories()
+            VisitViewLevel.PROMOTIONS -> viewModel.backToCategories()
             VisitViewLevel.CATEGORIES -> onBack()
         }
     }
@@ -123,9 +125,12 @@ fun VisitScreen(
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
         when (state.viewLevel) {
-            VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
+            VisitViewLevel.CATEGORIES, VisitViewLevel.PROMOTIONS -> VisitCategoriesHeader(
                 isDark = isDark,
+                activeTab = if (state.viewLevel == VisitViewLevel.PROMOTIONS) 1 else 0,
                 onBack = handleBack,
+                onProductTabClick = viewModel::openProductsTab,
+                onPromoTabClick = viewModel::openPromotionsTab,
                 onCartTabClick = viewModel::openCartSheet,
             )
             VisitViewLevel.PRODUCT_DETAIL -> {
@@ -162,7 +167,7 @@ fun VisitScreen(
             )
         }
 
-        if (state.viewLevel == VisitViewLevel.CATEGORIES) {
+        if (state.viewLevel == VisitViewLevel.CATEGORIES || state.viewLevel == VisitViewLevel.PROMOTIONS) {
             VisitSummaryBar(
                 cartTotal = state.cartTotal,
                 totalFmt = totalFmt,
@@ -170,50 +175,6 @@ fun VisitScreen(
                 refreshState = state.refreshButtonState,
                 onRefresh = viewModel::refresh,
                 onCartClick = viewModel::openCartSheet,
-            )
-        }
-
-        if (state.visiblePromoBanners.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                state.visiblePromoBanners.take(3).forEach { promo ->
-                    PromoRulesBanner(
-                        promotion = promo,
-                        onDismiss = { viewModel.dismissPromoBanner(promo.id) },
-                    )
-                }
-            }
-        }
-
-        state.pendingPromoOffer?.let { offer ->
-            val rewards = offer.resolvedRewards()
-            val rewardLabel = rewards.joinToString(", ") { r ->
-                val name = r.productName.ifBlank { "…" }
-                val q = if (r.quantity % 1.0 == 0.0) r.quantity.toInt().toString() else r.quantity.toString()
-                val pricePart = if (r.price <= 0) AppStrings.promoFree(lang)
-                else "${priceFmt.format(r.price.toLong())} ${AppStrings.sumCurrency(lang)}"
-                "$name × $q ($pricePart)"
-            }.ifBlank { "…" }
-            AlertDialog(
-                onDismissRequest = viewModel::declinePromoOffer,
-                title = { Text(AppStrings.promoOfferTitle(lang)) },
-                text = {
-                    Text(AppStrings.promoOfferBodyMulti(lang, rewardLabel))
-                },
-                confirmButton = {
-                    TextButton(onClick = viewModel::acceptPromoOffer) {
-                        Text(AppStrings.yes(lang))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::declinePromoOffer) {
-                        Text(AppStrings.no(lang))
-                    }
-                },
             )
         }
 
@@ -313,12 +274,84 @@ fun VisitScreen(
                     }
                 }
             }
+            state.viewLevel == VisitViewLevel.PROMOTIONS -> {
+                val promos = state.activePromotions.filter { it.hasReward() }
+                val paidQty = state.paidQtyMap()
+                val productNames = state.allProducts.associate { it.id to it.name }
+                if (promos.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(AppStrings.noActivePromotions(lang), color = subColor)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(promos, key = { it.id }) { promo ->
+                            PromoProgressCard(
+                                promotion = promo,
+                                paidQtyByProduct = paidQty,
+                                productNames = productNames,
+                                cartPromoQty = { rewardProductId ->
+                                    state.cartPromoQtyFor(promo.id, rewardProductId)
+                                },
+                                onIncrementReward = { rewardProductId ->
+                                    viewModel.incrementPromotionRewardQty(promo.id, rewardProductId)
+                                },
+                                onDecrementReward = { rewardProductId ->
+                                    viewModel.decrementPromotionRewardQty(promo.id, rewardProductId)
+                                },
+                                onRewardQtyChange = { rewardProductId, qty ->
+                                    viewModel.setPromotionRewardQty(promo.id, rewardProductId, qty)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
             state.viewLevel == VisitViewLevel.PRODUCT_DETAIL -> {
                 val product = state.selectedProduct
                 if (product != null) {
                     VisitProductDetailContent(
                         product = product,
                         quantity = state.detailQuantity,
+                        promoQuantity = state.detailPromoQuantity,
+                        promoEnabled = state.detailPromotion != null,
+                        promoUnlocked = state.detailPromoUnlocked,
+                        promoThreshold = state.detailPromoThreshold,
+                        promoMax = state.detailPromoMax,
+                        promoRewardName = state.detailPromoReward?.productName.orEmpty()
+                            .ifBlank {
+                                state.allProducts.find { it.id == state.detailPromoReward?.productId }?.name.orEmpty()
+                            },
+                        detailPromotion = state.detailPromotion?.takeIf {
+                            it.id !in state.dismissedBannerIds
+                        },
+                        paidQtyByProduct = run {
+                            val map = state.paidQtyMap().toMutableMap()
+                            map[product.id] = state.detailQuantity
+                            map
+                        },
+                        productNames = state.allProducts.associate { it.id to it.name },
+                        cartPromoQty = { promoId, rewardProductId ->
+                            state.cartPromoQtyFor(promoId, rewardProductId)
+                        },
+                        onIncrementPromoReward = { promoId, rewardProductId ->
+                            viewModel.incrementPromotionRewardQty(promoId, rewardProductId)
+                        },
+                        onDecrementPromoReward = { promoId, rewardProductId ->
+                            viewModel.decrementPromotionRewardQty(promoId, rewardProductId)
+                        },
+                        onSetPromoRewardQty = { promoId, rewardProductId, qty ->
+                            viewModel.setPromotionRewardQty(promoId, rewardProductId, qty)
+                        },
+                        onDismissPromo = { promoId ->
+                            viewModel.dismissPromoBanner(promoId)
+                        },
                         note = state.detailNote,
                         lineTotal = state.detailLineTotal,
                         currentIndex = state.selectedProductIndex,
@@ -333,6 +366,10 @@ fun VisitScreen(
                         onIncrement = { viewModel.incrementDetailQty() },
                         onPresetQty = viewModel::setDetailQuantity,
                         onQuantityChange = viewModel::setDetailQuantity,
+                        onPromoDecrement = { viewModel.decrementDetailPromoQty() },
+                        onPromoIncrement = { viewModel.incrementDetailPromoQty() },
+                        onPromoPresetQty = viewModel::setDetailPromoQuantity,
+                        onPromoQuantityChange = viewModel::setDetailPromoQuantity,
                         onNoteChange = viewModel::setDetailNote,
                         onPrev = { viewModel.navigateProduct(-1) },
                         onNext = { viewModel.navigateProduct(1) },
@@ -444,6 +481,167 @@ fun VisitScreen(
             onRemoveItem = viewModel::removeFromCart,
         )
     }
+
+    state.bonusModalPromotion?.let { promo ->
+        PromoBonusModal(
+            promotion = promo,
+            draftQtys = state.bonusModalDraftQtys,
+            productNames = state.allProducts.associate { it.id to it.name },
+            lang = lang,
+            onIncrement = viewModel::incrementBonusModalQty,
+            onDecrement = viewModel::decrementBonusModalQty,
+            onQuantityChange = viewModel::setBonusModalQty,
+            onSave = viewModel::saveBonusModal,
+            onDismiss = viewModel::dismissBonusModal,
+        )
+    }
+    }
+}
+
+@Composable
+private fun PromoBonusModal(
+    promotion: ProductPromotion,
+    draftQtys: Map<String, Double>,
+    productNames: Map<String, String>,
+    lang: AppLanguage,
+    onIncrement: (rewardProductId: String) -> Unit,
+    onDecrement: (rewardProductId: String) -> Unit,
+    onQuantityChange: (rewardProductId: String, qty: Double) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val startColor = remember(promotion.colorStart) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorStart))
+        }.getOrDefault(Color(0xFF6366F1))
+    }
+    val endColor = remember(promotion.colorEnd) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorEnd))
+        }.getOrDefault(Color(0xFF9333EA))
+    }
+    val rewards = promotion.resolvedRewards()
+
+    fun fmtQty(v: Double): String =
+        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.verticalGradient(listOf(startColor, endColor)))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        promotion.title,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        AppStrings.promoBonusReadyHint(lang),
+                        color = Color.White.copy(0.9f),
+                        fontSize = 13.sp,
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                }
+            }
+
+            rewards.forEach { reward ->
+                val name = reward.productName.ifBlank {
+                    productNames[reward.productId].orEmpty()
+                }.ifBlank { "…" }
+                val current = draftQtys[reward.productId] ?: 0.0
+                val maxQ = reward.quantity
+                val priceLabel = if (reward.price <= 0) AppStrings.promoFree(lang)
+                else reward.price.toLong().toString()
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(0.18f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${promotion.emoji} $name",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "max ${fmtQty(maxQ)} · $priceLabel",
+                            color = Color.White.copy(0.8f),
+                            fontSize = 11.sp,
+                        )
+                    }
+                    VisitQtyButton(
+                        icon = Icons.Default.Remove,
+                        enabled = current > 0,
+                        tint = Color.White,
+                        bg = Color.White.copy(0.22f),
+                        onClick = { onDecrement(reward.productId) },
+                    )
+                    VisitCompactEditableQty(
+                        quantity = current,
+                        maxQuantity = maxQ,
+                        textColor = Color.White,
+                        onQuantityChange = { qty -> onQuantityChange(reward.productId, qty) },
+                    )
+                    VisitQtyButton(
+                        icon = Icons.Default.Add,
+                        enabled = current < maxQ,
+                        tint = Color.White,
+                        bg = Color.White.copy(0.28f),
+                        onClick = { onIncrement(reward.productId) },
+                    )
+                }
+            }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(0.5f)),
+                ) {
+                    Text(AppStrings.promoBonusModalSkip(lang))
+                }
+                Button(
+                    onClick = onSave,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = startColor,
+                    ),
+                ) {
+                    Text(AppStrings.promoBonusModalSave(lang), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 }
 
@@ -568,6 +766,20 @@ private fun VisitProductDetailHeader(
 private fun VisitProductDetailContent(
     product: Product,
     quantity: Double,
+    promoQuantity: Double,
+    promoEnabled: Boolean,
+    promoUnlocked: Boolean,
+    promoThreshold: Double,
+    promoMax: Double,
+    promoRewardName: String,
+    detailPromotion: ProductPromotion?,
+    paidQtyByProduct: Map<String, Double>,
+    productNames: Map<String, String>,
+    cartPromoQty: (promoId: String, rewardProductId: String) -> Double,
+    onIncrementPromoReward: (promoId: String, rewardProductId: String) -> Unit,
+    onDecrementPromoReward: (promoId: String, rewardProductId: String) -> Unit,
+    onSetPromoRewardQty: (promoId: String, rewardProductId: String, qty: Double) -> Unit,
+    onDismissPromo: (promoId: String) -> Unit,
     note: String,
     lineTotal: Double,
     currentIndex: Int,
@@ -582,6 +794,10 @@ private fun VisitProductDetailContent(
     onIncrement: () -> Unit,
     onPresetQty: (Double) -> Unit,
     onQuantityChange: (Double) -> Unit,
+    onPromoDecrement: () -> Unit,
+    onPromoIncrement: () -> Unit,
+    onPromoPresetQty: (Double) -> Unit,
+    onPromoQuantityChange: (Double) -> Unit,
     onNoteChange: (String) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -602,6 +818,16 @@ private fun VisitProductDetailContent(
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
     val presets = listOf(1.0, 5.0, 10.0, 25.0, 50.0)
     val hasQty = quantity > 0.0
+    val thresholdLabel = if (promoThreshold % 1.0 == 0.0) {
+        promoThreshold.toInt().toString()
+    } else {
+        stockFmt.format(promoThreshold)
+    }
+    val promoMaxLabel = if (promoMax % 1.0 == 0.0) {
+        promoMax.toInt().toString()
+    } else {
+        stockFmt.format(promoMax)
+    }
 
     Column(
         modifier = modifier
@@ -609,6 +835,29 @@ private fun VisitProductDetailContent(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (detailPromotion != null) {
+            PromoProgressCard(
+                promotion = detailPromotion,
+                paidQtyByProduct = paidQtyByProduct,
+                productNames = productNames,
+                cartPromoQty = { rewardProductId ->
+                    cartPromoQty(detailPromotion.id, rewardProductId)
+                },
+                onIncrementReward = { rewardProductId ->
+                    onIncrementPromoReward(detailPromotion.id, rewardProductId)
+                },
+                onDecrementReward = { rewardProductId ->
+                    onDecrementPromoReward(detailPromotion.id, rewardProductId)
+                },
+                onRewardQtyChange = { rewardProductId, qty ->
+                    onSetPromoRewardQty(detailPromotion.id, rewardProductId, qty)
+                },
+                showPerConditionProgress = true,
+                showBonusSection = true,
+                onDismiss = { onDismissPromo(detailPromotion.id) },
+            )
+        }
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             VisitDetailInfoCard(
                 modifier = Modifier.weight(1f),
@@ -638,76 +887,129 @@ private fun VisitProductDetailContent(
             )
         }
 
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = cardBg,
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
-        ) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    AppStrings.quantityLabel(lang),
-                    color = subColor,
-                    fontSize = 13.sp,
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    VisitQtyButton(
-                        icon = Icons.Default.Remove,
-                        enabled = quantity > qtyStepForProduct(product.unit),
-                        tint = if (quantity > qtyStepForProduct(product.unit)) titleColor else subColor,
-                        bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
-                        onClick = onDecrement,
+        if (promoEnabled) {
+            VisitQuantityCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = AppStrings.quantityLabel(lang),
+                quantity = quantity,
+                unit = product.unit,
+                presets = presets,
+                enabled = true,
+                accent = Color(0xFF3B82F6),
+                stockFmt = stockFmt,
+                titleColor = titleColor,
+                subColor = subColor,
+                cardBg = cardBg,
+                borderColor = borderColor,
+                isDark = isDark,
+                focusQuantity = focusQuantity,
+                onFocusHandled = onFocusQuantityHandled,
+                onDecrement = onDecrement,
+                onIncrement = onIncrement,
+                onPresetQty = onPresetQty,
+                onQuantityChange = onQuantityChange,
+            )
+            VisitQuantityCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = AppStrings.promoQuantityLabel(lang),
+                quantity = promoQuantity,
+                unit = product.unit,
+                presets = presets.filter { it <= promoMax || promoMax <= 0 },
+                enabled = promoUnlocked,
+                accent = Color(0xFF8B5CF6),
+                stockFmt = stockFmt,
+                titleColor = titleColor,
+                subColor = subColor,
+                cardBg = cardBg,
+                borderColor = borderColor,
+                isDark = isDark,
+                focusQuantity = false,
+                onFocusHandled = {},
+                onDecrement = onPromoDecrement,
+                onIncrement = onPromoIncrement,
+                onPresetQty = onPromoPresetQty,
+                onQuantityChange = onPromoQuantityChange,
+                hint = if (!promoUnlocked) {
+                    AppStrings.promoQtyLockedHint(lang, thresholdLabel)
+                } else {
+                    buildString {
+                        if (promoRewardName.isNotBlank()) append(promoRewardName).append(" · ")
+                        append(AppStrings.promoQtyMaxHint(lang, promoMaxLabel))
+                    }
+                },
+            )
+        } else {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = cardBg,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        AppStrings.quantityLabel(lang),
+                        color = subColor,
+                        fontSize = 13.sp,
                     )
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        VisitEditableQuantity(
-                            quantity = quantity,
-                            unit = product.unit,
-                            stockFmt = stockFmt,
-                            titleColor = titleColor,
-                            requestFocus = focusQuantity,
-                            onFocusHandled = onFocusQuantityHandled,
-                            onQuantityChange = onQuantityChange,
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        VisitQtyButton(
+                            icon = Icons.Default.Remove,
+                            enabled = quantity > qtyStepForProduct(product.unit),
+                            tint = if (quantity > qtyStepForProduct(product.unit)) titleColor else subColor,
+                            bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
+                            onClick = onDecrement,
+                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            VisitEditableQuantity(
+                                quantity = quantity,
+                                unit = product.unit,
+                                stockFmt = stockFmt,
+                                titleColor = titleColor,
+                                requestFocus = focusQuantity,
+                                onFocusHandled = onFocusQuantityHandled,
+                                onQuantityChange = onQuantityChange,
+                            )
+                        }
+                        VisitQtyButton(
+                            icon = Icons.Default.Add,
+                            enabled = true,
+                            tint = Color.White,
+                            bg = Color(0xFF3B82F6),
+                            onClick = onIncrement,
                         )
                     }
-                    VisitQtyButton(
-                        icon = Icons.Default.Add,
-                        enabled = true,
-                        tint = Color.White,
-                        bg = Color(0xFF3B82F6),
-                        onClick = onIncrement,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    presets.forEach { preset ->
-                        val selected = quantity == preset
-                        Surface(
-                            onClick = { onPresetQty(preset) },
-                            shape = RoundedCornerShape(10.dp),
-                            color = when {
-                                selected -> Color(0xFF3B82F6)
-                                isDark -> Color(0xFF374151)
-                                else -> Color(0xFFF3F4F6)
-                            },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(
-                                preset.toInt().toString(),
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                textAlign = TextAlign.Center,
-                                color = if (selected) Color.White else titleColor,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 14.sp,
-                            )
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        presets.forEach { preset ->
+                            val selected = quantity == preset
+                            Surface(
+                                onClick = { onPresetQty(preset) },
+                                shape = RoundedCornerShape(10.dp),
+                                color = when {
+                                    selected -> Color(0xFF3B82F6)
+                                    isDark -> Color(0xFF374151)
+                                    else -> Color(0xFFF3F4F6)
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text(
+                                    preset.toInt().toString(),
+                                    modifier = Modifier.padding(vertical = 10.dp),
+                                    textAlign = TextAlign.Center,
+                                    color = if (selected) Color.White else titleColor,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp,
+                                )
+                            }
                         }
                     }
                 }
@@ -1233,12 +1535,123 @@ private fun VisitDetailInfoCard(
 }
 
 @Composable
+private fun VisitQuantityCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    quantity: Double,
+    unit: String,
+    presets: List<Double>,
+    enabled: Boolean,
+    accent: Color,
+    stockFmt: DecimalFormat,
+    titleColor: Color,
+    subColor: Color,
+    cardBg: Color,
+    borderColor: Color,
+    isDark: Boolean,
+    focusQuantity: Boolean,
+    onFocusHandled: () -> Unit,
+    onDecrement: () -> Unit,
+    onIncrement: () -> Unit,
+    onPresetQty: (Double) -> Unit,
+    onQuantityChange: (Double) -> Unit,
+    hint: String? = null,
+) {
+    val mutedTitle = if (enabled) titleColor else subColor
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (enabled) cardBg else if (isDark) Color(0xFF1F2937) else Color(0xFFF9FAFB),
+        modifier = modifier.border(
+            1.dp,
+            if (enabled) borderColor else borderColor.copy(alpha = 0.6f),
+            RoundedCornerShape(16.dp),
+        ),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, color = subColor, fontSize = 13.sp)
+            if (!hint.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(hint, color = subColor, fontSize = 11.sp, lineHeight = 14.sp)
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                VisitQtyButton(
+                    icon = Icons.Default.Remove,
+                    enabled = enabled && quantity > 0,
+                    tint = if (enabled && quantity > 0) mutedTitle else subColor,
+                    bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
+                    onClick = onDecrement,
+                )
+                VisitEditableQuantity(
+                    quantity = quantity,
+                    unit = unit,
+                    stockFmt = stockFmt,
+                    titleColor = mutedTitle,
+                    requestFocus = focusQuantity && enabled,
+                    enabled = enabled,
+                    onFocusHandled = onFocusHandled,
+                    onQuantityChange = onQuantityChange,
+                )
+                VisitQtyButton(
+                    icon = Icons.Default.Add,
+                    enabled = enabled,
+                    tint = Color.White,
+                    bg = if (enabled) accent else Color(0xFF9CA3AF),
+                    onClick = onIncrement,
+                )
+            }
+            if (presets.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    presets.forEach { preset ->
+                        val selected = quantity == preset
+                        Surface(
+                            onClick = { if (enabled) onPresetQty(preset) },
+                            enabled = enabled,
+                            shape = RoundedCornerShape(10.dp),
+                            color = when {
+                                !enabled -> if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
+                                selected -> accent
+                                isDark -> Color(0xFF374151)
+                                else -> Color(0xFFF3F4F6)
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(
+                                if (preset % 1.0 == 0.0) preset.toInt().toString() else stockFmt.format(preset),
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                textAlign = TextAlign.Center,
+                                color = when {
+                                    !enabled -> subColor
+                                    selected -> Color.White
+                                    else -> titleColor
+                                },
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun VisitEditableQuantity(
     quantity: Double,
     unit: String,
     stockFmt: DecimalFormat,
     titleColor: Color,
     requestFocus: Boolean = false,
+    enabled: Boolean = true,
     onFocusHandled: () -> Unit = {},
     onQuantityChange: (Double) -> Unit,
 ) {
@@ -1266,7 +1679,7 @@ private fun VisitEditableQuantity(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clickable {
+            .clickable(enabled = enabled) {
                 if (!isEditing) {
                     isEditing = true
                     inputText = if (quantity > 0.0) formatQuantityInput(quantity, stockFmt) else ""
@@ -1367,6 +1780,110 @@ private fun VisitQtyButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(24.dp))
+    }
+}
+
+/** +/- orasidagi miqdor — bosilganda raqamli klaviatura */
+@Composable
+private fun VisitCompactEditableQty(
+    quantity: Double,
+    maxQuantity: Double,
+    textColor: Color,
+    onQuantityChange: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    var isEditing by remember { mutableStateOf(false) }
+    var inputText by remember { mutableStateOf("") }
+
+    fun displayQty(v: Double): String =
+        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
+
+    LaunchedEffect(quantity, isEditing) {
+        if (!isEditing) {
+            inputText = displayQty(quantity)
+        } else {
+            val parsed = parseQuantityInput(inputText)
+            if (parsed == null || kotlin.math.abs(parsed - quantity) > 0.0001) {
+                // Tugmalar orqali o'zgarganda sinxronlash
+                if (parsed != null && kotlin.math.abs(parsed - quantity) > 0.0001) {
+                    inputText = displayQty(quantity)
+                }
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .widthIn(min = 40.dp)
+            .padding(horizontal = 8.dp)
+            .clickable {
+                if (!isEditing) {
+                    isEditing = true
+                    inputText = if (quantity > 0) displayQty(quantity) else ""
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isEditing) {
+            LaunchedEffect(isEditing) {
+                kotlinx.coroutines.delay(50)
+                try {
+                    focusRequester.requestFocus()
+                } catch (_: IllegalStateException) {
+                }
+            }
+            BasicTextField(
+                value = inputText,
+                onValueChange = { raw ->
+                    val normalized = raw.replace(',', '.')
+                    if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
+                        inputText = normalized
+                        val parsed = parseQuantityInput(normalized)
+                        if (parsed != null) {
+                            onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
+                        }
+                    }
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor,
+                    textAlign = TextAlign.Center,
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { focusManager.clearFocus() },
+                ),
+                modifier = Modifier
+                    .widthIn(min = 36.dp, max = 72.dp)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            isEditing = true
+                        } else {
+                            isEditing = false
+                            val finalQty = (parseQuantityInput(inputText) ?: 0.0)
+                                .coerceIn(0.0, maxQuantity)
+                            onQuantityChange(finalQty)
+                            inputText = displayQty(finalQty)
+                        }
+                    },
+            )
+        } else {
+            Text(
+                displayQty(quantity),
+                color = textColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -1656,7 +2173,10 @@ private fun VisitSelectedProductCard(
 @Composable
 private fun VisitCategoriesHeader(
     isDark: Boolean,
+    activeTab: Int,
     onBack: () -> Unit,
+    onProductTabClick: () -> Unit,
+    onPromoTabClick: () -> Unit,
     onCartTabClick: () -> Unit,
 ) {
     val lang = LocalAppLanguage.current
@@ -1685,7 +2205,12 @@ private fun VisitCategoriesHeader(
                 )
             }
             Spacer(Modifier.height(16.dp))
-            VisitTabRow(activeTab = 0, onCartTabClick = onCartTabClick)
+            VisitTabRow(
+                activeTab = activeTab,
+                onProductTabClick = onProductTabClick,
+                onPromoTabClick = onPromoTabClick,
+                onCartTabClick = onCartTabClick,
+            )
         }
     }
 }
@@ -1807,21 +2332,29 @@ private fun VisitProductsHeader(
 }
 
 @Composable
-private fun VisitTabRow(activeTab: Int, onCartTabClick: () -> Unit = {}) {
+private fun VisitTabRow(
+    activeTab: Int,
+    onProductTabClick: () -> Unit = {},
+    onPromoTabClick: () -> Unit = {},
+    onCartTabClick: () -> Unit = {},
+) {
     val lang = LocalAppLanguage.current
     val tabs = listOf(
         AppStrings.visitTabProduct(lang),
         AppStrings.visitTabPromotion(lang),
-        AppStrings.visitTabAddons(lang),
         AppStrings.visitTabCart(lang),
     )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
         tabs.forEachIndexed { index, label ->
-            val enabled = index == 0 || index == 3
             Column(
-                modifier = Modifier.clickable(enabled = enabled) {
+                modifier = Modifier.clickable {
                     when (index) {
-                        3 -> onCartTabClick()
+                        0 -> onProductTabClick()
+                        1 -> onPromoTabClick()
+                        2 -> onCartTabClick()
                     }
                 },
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -2324,9 +2857,17 @@ private fun PromoBadge(promotion: ProductPromotion) {
 }
 
 @Composable
-private fun PromoRulesBanner(
+private fun PromoProgressCard(
     promotion: ProductPromotion,
-    onDismiss: () -> Unit,
+    paidQtyByProduct: Map<String, Double>,
+    productNames: Map<String, String>,
+    cartPromoQty: (rewardProductId: String) -> Double,
+    onIncrementReward: (rewardProductId: String) -> Unit,
+    onDecrementReward: (rewardProductId: String) -> Unit,
+    onRewardQtyChange: (rewardProductId: String, qty: Double) -> Unit = { _, _ -> },
+    showPerConditionProgress: Boolean = false,
+    showBonusSection: Boolean = true,
+    onDismiss: (() -> Unit)? = null,
 ) {
     val lang = LocalAppLanguage.current
     val startColor = remember(promotion.colorStart) {
@@ -2339,12 +2880,223 @@ private fun PromoRulesBanner(
             Color(android.graphics.Color.parseColor(promotion.colorEnd))
         }.getOrDefault(Color(0xFF9333EA))
     }
-    val rules = promotion.resolvedConditions().joinToString(", ") { c ->
-        val name = c.productName.ifBlank { "…" }
-        val n = if (c.buyQuantity % 1.0 == 0.0) c.buyQuantity.toInt().toString()
-        else c.buyQuantity.toString()
-        "$name: ${AppStrings.promoConditionQty(lang, n)}"
+    val conditions = promotion.resolvedConditions()
+    val rewards = promotion.resolvedRewards()
+    val overall = promotion.overallFillRatio(paidQtyByProduct)
+    val overallPct = (overall * 100).toInt()
+    val unlocked = promotion.isSatisfied(paidQtyByProduct)
+
+    fun fmtQty(v: Double): String =
+        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
+
+    fun resolveName(productId: String, fallback: String): String =
+        fallback.ifBlank { productNames[productId].orEmpty() }.ifBlank { "…" }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brush.horizontalGradient(listOf(startColor, endColor)))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                promotion.title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "$overallPct%",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+            )
+            if (onDismiss != null) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+
+        PromoProgressBar(progress = overall)
+
+        if (showPerConditionProgress) {
+            conditions.forEach { condition ->
+                val have = paidQtyByProduct[condition.productId] ?: 0.0
+                val need = condition.buyQuantity
+                val ratio = promotion.conditionFillRatio(condition.productId, paidQtyByProduct)
+                val pct = (ratio * 100).toInt()
+                val name = resolveName(condition.productId, condition.productName)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            name,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${AppStrings.promoProgressQty(lang, fmtQty(have.coerceAtMost(need)), fmtQty(need))} · $pct%",
+                            color = Color.White.copy(0.95f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    PromoProgressBar(progress = ratio)
+                }
+            }
+        } else {
+            conditions.forEach { condition ->
+                val name = resolveName(condition.productId, condition.productName)
+                val needLabel = fmtQty(condition.buyQuantity)
+                Text(
+                    "$name: ${AppStrings.promoConditionQty(lang, needLabel)}",
+                    color = Color.White.copy(0.95f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (showBonusSection) {
+            HorizontalDivider(color = Color.White.copy(0.25f), thickness = 1.dp)
+
+            Text(
+                if (unlocked) AppStrings.promoBonusReadyHint(lang)
+                else AppStrings.promoBonusLockedHint(lang),
+                color = Color.White.copy(0.9f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
+
+            rewards.forEach { reward ->
+                val name = resolveName(reward.productId, reward.productName)
+                val maxQ = reward.quantity
+                val current = cartPromoQty(reward.productId)
+                val priceLabel = if (reward.price <= 0) AppStrings.promoFree(lang)
+                else reward.price.toLong().toString()
+                val maxLabel = fmtQty(maxQ)
+
+                if (unlocked) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(0.18f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "${promotion.emoji} $name",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "max $maxLabel · $priceLabel",
+                                color = Color.White.copy(0.8f),
+                                fontSize = 11.sp,
+                            )
+                        }
+                        VisitQtyButton(
+                            icon = Icons.Default.Remove,
+                            enabled = current > 0,
+                            tint = Color.White,
+                            bg = Color.White.copy(0.22f),
+                            onClick = { onDecrementReward(reward.productId) },
+                        )
+                        VisitCompactEditableQty(
+                            quantity = current,
+                            maxQuantity = maxQ,
+                            textColor = Color.White,
+                            onQuantityChange = { qty -> onRewardQtyChange(reward.productId, qty) },
+                        )
+                        VisitQtyButton(
+                            icon = Icons.Default.Add,
+                            enabled = current < maxQ,
+                            tint = Color.White,
+                            bg = Color.White.copy(0.28f),
+                            onClick = { onIncrementReward(reward.productId) },
+                        )
+                    }
+                } else {
+                    Text(
+                        "${promotion.emoji} $name ×$maxLabel ($priceLabel)",
+                        color = Color.White.copy(0.9f),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun PromoProgressBar(progress: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(0.25f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White),
+        )
+    }
+}
+
+@Composable
+private fun PromoRulesBanner(
+    promotion: ProductPromotion,
+    onDismiss: (() -> Unit)? = null,
+) {
+    val lang = LocalAppLanguage.current
+    val startColor = remember(promotion.colorStart) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorStart))
+        }.getOrDefault(Color(0xFF6366F1))
+    }
+    val endColor = remember(promotion.colorEnd) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorEnd))
+        }.getOrDefault(Color(0xFF9333EA))
+    }
+    val conditions = promotion.resolvedConditions()
     val reward = promotion.resolvedRewards().joinToString(", ") { r ->
         val name = r.productName.ifBlank { "…" }
         val q = if (r.quantity % 1.0 == 0.0) r.quantity.toInt().toString() else r.quantity.toString()
@@ -2375,7 +3127,10 @@ private fun PromoRulesBanner(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 promotion.title,
                 color = Color.White,
@@ -2384,9 +3139,12 @@ private fun PromoRulesBanner(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (rules.isNotBlank()) {
+            conditions.forEach { c ->
+                val name = c.productName.ifBlank { "…" }
+                val n = if (c.buyQuantity % 1.0 == 0.0) c.buyQuantity.toInt().toString()
+                else c.buyQuantity.toString()
                 Text(
-                    rules,
+                    "$name: ${AppStrings.promoConditionQty(lang, n)}",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 11.sp,
                     maxLines = 2,
@@ -2402,8 +3160,10 @@ private fun PromoRulesBanner(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = onDismiss) {
-            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+        if (onDismiss != null) {
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+            }
         }
     }
 }
