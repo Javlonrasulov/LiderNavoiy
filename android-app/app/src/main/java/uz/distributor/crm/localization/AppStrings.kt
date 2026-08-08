@@ -820,6 +820,31 @@ object AppStrings {
     fun visitProducts(lang: AppLanguage) = tr(lang, "Tashrif — Mahsulotlar", "Ташриф — Маҳсулотлар", "Визит — Товары")
     fun visitTabProduct(lang: AppLanguage) = tr(lang, "Mahsulot", "Маҳсулот", "Товар")
     fun visitTabPromotion(lang: AppLanguage) = tr(lang, "Aksiya", "Акция", "Акция")
+    fun promoOfferTitle(lang: AppLanguage) = tr(
+        lang,
+        "Aksiya yigildi",
+        "Акция йиғилди",
+        "Акция собрана",
+    )
+    fun promoOfferBody(
+        lang: AppLanguage,
+        productName: String,
+        qty: Double,
+        priceLabel: String,
+    ): String {
+        val q = if (qty % 1.0 == 0.0) qty.toInt().toString() else qty.toString()
+        return when (lang) {
+            AppLanguage.UZ_LATIN ->
+                "Sovg‘a: $productName × $q ($priceLabel). Qo‘shasizmi?"
+            AppLanguage.UZ_CYRILLIC ->
+                "Совға: $productName × $q ($priceLabel). Қўшасизми?"
+            AppLanguage.RUS ->
+                "Подарок: $productName × $q ($priceLabel). Добавить?"
+        }
+    }
+    fun promoFree(lang: AppLanguage) = tr(lang, "tekin", "текин", "бесплатно")
+    fun yes(lang: AppLanguage) = tr(lang, "Ha", "Ҳа", "Да")
+    fun no(lang: AppLanguage) = tr(lang, "Yo‘q", "Йўқ", "Нет")
     fun visitTabAddons(lang: AppLanguage) = tr(lang, "Qo'shimchalar", "Қўшимчалар", "Дополнения")
     fun visitTabCart(lang: AppLanguage) = tr(lang, "Savatcha", "Саватча", "Корзина")
     fun allGoods(lang: AppLanguage) = tr(lang, "Barcha tovarlar", "Барча товарлар", "Все товары")

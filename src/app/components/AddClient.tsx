@@ -57,6 +57,10 @@ const TRANS = {
     addContact: "Kontakt qo'shish",
     photoSection: "Fotosuratlar", addPhoto: "Rasm qo'shish",
     statusSection: "Holat", registrationDate: "Ro'yxatga olingan", comment: "Izoh",
+    canSeePromotions: "Aksiyalarni ko'rish",
+    canSeePromotionsOn: "Yoqilgan",
+    canSeePromotionsOff: "O'chirilgan",
+    canSeePromotionsHint: "Yoqilsa, mijoz APK da admin yoqqan aksiyalarni ko'radi",
     category: "Kategoriya", agent: "Agent",
     directionNo: "№", directionName: "Yo'nalish",
     appLoginTitle: "Mijoz ilovasi (APK) kirish",
@@ -101,6 +105,10 @@ const TRANS = {
     addContact: "Контакт қўшиш",
     photoSection: "Фотосуратлар", addPhoto: "Расм қўшиш",
     statusSection: "Ҳолат", registrationDate: "Рўйхатга олинган", comment: "Изоҳ",
+    canSeePromotions: "Акцияларни кўриш",
+    canSeePromotionsOn: "Ёқилган",
+    canSeePromotionsOff: "Ўчирилган",
+    canSeePromotionsHint: "Ёқилса, мижоз APK да админ ёққан акцияларни кўради",
     category: "Категория", agent: "Агент",
     directionNo: "№", directionName: "Йўналиш",
     appLoginTitle: "Мижоз иловаси (APK) кириш",
@@ -145,6 +153,10 @@ const TRANS = {
     addContact: "Добавить контакт",
     photoSection: "Фотографии", addPhoto: "Добавить фото",
     statusSection: "Статус", registrationDate: "Дата регистрации", comment: "Комментарий",
+    canSeePromotions: "Показ акций",
+    canSeePromotionsOn: "Включено",
+    canSeePromotionsOff: "Выключено",
+    canSeePromotionsHint: "Если включено, клиент видит акции, активированные админом",
     category: "Категория", agent: "Агент",
     directionNo: "№", directionName: "Направление",
     appLoginTitle: "Вход в приложение клиента (APK)",
@@ -443,6 +455,7 @@ function clientToForm(client: ClientRow) {
       inn: client.inn, territory: client.territory, settlement: '', pinfl: '', telegram: '',
       actDate: '', actSum: '', agent: client.agent || '', distributorId: client.distributorId || '',
       noDelay: false, routeList: false, sizeW: '', sizeH: '', regDate: '', comment: '',
+      canSeePromotions: !!client.canSeePromotions,
     },
     contacts: client.contact
       ? [{ name: client.contact, phone: formatUzPhoneInput(client.phone || ''), role: '' }]
@@ -478,6 +491,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     actDate: '', actSum: '', agent: '', distributorId: '',
     noDelay: false, routeList: false,
     sizeW: '', sizeH: '', regDate: '', comment: '',
+    canSeePromotions: false,
   });
   const [directions, setDirections] = useState<Record<string, boolean>>({
     SHERIN: true, "SOF IN": false, "NAVOIY NORTH": false,
@@ -655,6 +669,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       agent: form.agent,
       distributorId: form.distributorId || agents.find(a => a.name === form.agent)?.id,
       category: form.category,
+      canSeePromotions: form.canSeePromotions === true,
       hasAppLogin,
       appLoginChanged: loginChanged,
       appUsername: shouldSave ? loginTrim : undefined,
@@ -1428,6 +1443,27 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
                   </button>
                 ))}
               </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              padding: '12px 16px', borderBottom: `1px solid ${divClr}`, background: bg }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, color: lblClr, fontWeight: 600 }}>{t.canSeePromotions}</div>
+                <div style={{ fontSize: 11, color: lblClr, opacity: 0.75, marginTop: 3, lineHeight: 1.35 }}>
+                  {t.canSeePromotionsHint}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => set('canSeePromotions', !form.canSeePromotions)}
+                style={{
+                  flexShrink: 0, minWidth: 108, padding: '6px 12px', borderRadius: 20,
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                  background: form.canSeePromotions ? 'rgba(16,185,129,0.14)' : inpBg,
+                  color: form.canSeePromotions ? '#059669' : lblClr,
+                }}
+              >
+                {form.canSeePromotions ? t.canSeePromotionsOn : t.canSeePromotionsOff}
+              </button>
             </div>
             <FormGrid2 divClr={divClr}>
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>

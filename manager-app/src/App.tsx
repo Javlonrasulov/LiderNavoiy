@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadLang, t, type Lang } from './i18n'
 import { getStoredUser, clearSession } from './api/client'
 import { isManagerRole, logout } from './api/auth'
@@ -20,6 +20,9 @@ import FactoryOrdersScreen from './screens/FactoryOrdersScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
 import { ToastHost } from './components/Toast'
 import { initManagerPush, syncPushLanguage } from './push/registerPush'
+import { App as CapApp } from '@capacitor/app'
+import { Capacitor } from '@capacitor/core'
+import { dispatchHardwareBack } from './utils/hardwareBack'
 
 type Phase = 'splash' | 'login' | 'app'
 type Overlay = 'addClient' | 'products' | 'clientOrders' | 'factoryOrders' | 'employeeTracking' | 'profile' | null
@@ -45,6 +48,7 @@ export default function App() {
   const [lang, setLang] = useState<Lang>(loadLang)
   const [user, setUser] = useState<AuthUser | null>(() => getStoredUser())
   const [clientsKey, setClientsKey] = useState(0)
+  const [editingClient, setEditingClient] = useState<import('./api/types').Client | null>(null)
   const [messagesUnread, setMessagesUnread] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
 
@@ -101,6 +105,44 @@ export default function App() {
       },
     })
   }, [phase])
+
+  // Tizim Back: ichki ekranlar → overlay → tab → (ikkita Back = chiqish)
+  const overlayRef = useRef(overlay)
+  const activeTabRef = useRef(activeTab)
+  overlayRef.current = overlay
+  activeTabRef.current = activeTab
+
+  useEffect(() => {
+    if (phase !== 'app') return
+    if (!Capacitor.isNativePlatform()) return
+
+    let lastExitAt = 0
+    const sub = CapApp.addListener('backButton', () => {
+      if (dispatchHardwareBack()) return
+
+      if (overlayRef.current) {
+        setOverlay(null)
+        setTrackingEmp(null)
+        setEditingClient(null)
+        return
+      }
+      if (activeTabRef.current !== 'home') {
+        setActiveTab('home')
+        return
+      }
+      const now = Date.now()
+      if (now - lastExitAt < 1600) {
+        void CapApp.exitApp()
+        return
+      }
+      lastExitAt = now
+    })
+
+    return () => {
+      void sub.then(h => h.remove())
+    }
+  }, [phase])
+
 
   const tr = t[lang]
   const bg = dark ? '#080812' : '#F8F9FC'
@@ -208,7 +250,14 @@ export default function App() {
                 dark={dark}
                 lang={lang}
                 tr={tr}
-                onAdd={() => setOverlay('addClient')}
+                onAdd={() => {
+                  setEditingClient(null)
+                  setOverlay('addClient')
+                }}
+                onEdit={(cl) => {
+                  setEditingClient(cl)
+                  setOverlay('addClient')
+                }}
               />
             )}
             {activeTab === 'plan' && <PlanScreen dark={dark} lang={lang} tr={tr} />}
@@ -286,8 +335,13 @@ export default function App() {
               dark={dark}
               tr={tr}
               user={user}
-              onBack={() => setOverlay(null)}
+              editClient={editingClient}
+              onBack={() => {
+                setEditingClient(null)
+                setOverlay(null)
+              }}
               onCreated={() => {
+                setEditingClient(null)
                 setClientsKey(k => k + 1)
                 setActiveTab('clients')
                 setOverlay(null)

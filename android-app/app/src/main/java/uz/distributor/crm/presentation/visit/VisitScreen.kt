@@ -173,6 +173,55 @@ fun VisitScreen(
             )
         }
 
+        if (state.visiblePromoBanners.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                state.visiblePromoBanners.take(3).forEach { promo ->
+                    PromoRulesBanner(
+                        promotion = promo,
+                        onDismiss = { viewModel.dismissPromoBanner(promo.id) },
+                    )
+                }
+            }
+        }
+
+        state.pendingPromoOffer?.let { offer ->
+            val rewardLabel = offer.rewardProductName.ifBlank { "…" }
+            val priceLabel = if (offer.rewardPrice <= 0) {
+                AppStrings.promoFree(lang)
+            } else {
+                "${priceFmt.format(offer.rewardPrice.toLong())} ${AppStrings.sumCurrency(lang)}"
+            }
+            AlertDialog(
+                onDismissRequest = viewModel::declinePromoOffer,
+                title = { Text(AppStrings.promoOfferTitle(lang)) },
+                text = {
+                    Text(
+                        AppStrings.promoOfferBody(
+                            lang,
+                            rewardLabel,
+                            offer.rewardQuantity,
+                            priceLabel,
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = viewModel::acceptPromoOffer) {
+                        Text(AppStrings.yes(lang))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::declinePromoOffer) {
+                        Text(AppStrings.no(lang))
+                    }
+                },
+            )
+        }
+
         if (state.showRefreshResult && state.refreshUpdates.isNotEmpty()) {
             VisitRefreshResultCard(
                 updates = state.refreshUpdates,
@@ -1069,9 +1118,16 @@ private fun VisitDetailCartRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "${priceFmt.format((item.price * item.quantity).toLong())} ${AppStrings.sumCurrency(lang)}",
+                    when {
+                        item.promotionId != null && (item.isFree || item.price == 0.0) ->
+                            "Aksiya · bepul × $qtyDisplay"
+                        item.promotionId != null ->
+                            "Aksiya · ${priceFmt.format(item.price.toLong())} × $qtyDisplay"
+                        else ->
+                            "${priceFmt.format((item.price * item.quantity).toLong())} ${AppStrings.sumCurrency(lang)}"
+                    },
                     fontSize = 10.sp,
-                    color = subColor,
+                    color = if (item.promotionId != null) Color(0xFF7C3AED) else subColor,
                 )
             }
             Surface(
@@ -2241,6 +2297,12 @@ private fun PromoBadge(promotion: ProductPromotion) {
     }
     val label = when {
         promotion.subtitle.isNotBlank() -> promotion.subtitle
+        promotion.hasReward() -> {
+            val cond = promotion.resolvedConditions().joinToString("+") {
+                "≥${it.buyQuantity.toInt()}"
+            }
+            "+${promotion.rewardQuantity.toInt()}" + if (cond.isNotBlank()) " ($cond)" else ""
+        }
         promotion.discountPercent > 0 -> "-${promotion.discountPercent.toInt()}%"
         else -> promotion.title
     }
@@ -2258,5 +2320,73 @@ private fun PromoBadge(promotion: ProductPromotion) {
             color = Color.White,
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun PromoRulesBanner(
+    promotion: ProductPromotion,
+    onDismiss: () -> Unit,
+) {
+    val startColor = remember(promotion.colorStart) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorStart))
+        }.getOrDefault(Color(0xFF6366F1))
+    }
+    val endColor = remember(promotion.colorEnd) {
+        runCatching {
+            Color(android.graphics.Color.parseColor(promotion.colorEnd))
+        }.getOrDefault(Color(0xFF9333EA))
+    }
+    val rules = promotion.resolvedConditions().joinToString(", ") { c ->
+        val name = c.productName.ifBlank { "…" }
+        "$name ≥ ${c.buyQuantity.toInt()}"
+    }
+    val reward = buildString {
+        append(promotion.emoji)
+        append(' ')
+        append(promotion.rewardProductName.ifBlank { "…" })
+        append(" ×")
+        append(promotion.rewardQuantity.toInt())
+        if (promotion.rewardPrice <= 0) append(" (tekin)")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Brush.horizontalGradient(listOf(startColor, endColor)))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                promotion.title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (rules.isNotBlank()) {
+                Text(
+                    rules,
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                reward,
+                color = Color.White.copy(alpha = 0.95f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onDismiss) {
+            Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+        }
     }
 }

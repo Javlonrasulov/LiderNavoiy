@@ -219,6 +219,7 @@ class ProfileRepository @Inject constructor(
             agentUserId = agentUserId,
             hasAssignedAgent = hasAssignedAgent,
             deliveryPerson = deliveryPerson?.toDomain(),
+            canSeePromotions = canSeePromotions == true,
             organizations = orgs,
             activeOrganization = activeOrganization?.toDomain(),
         )

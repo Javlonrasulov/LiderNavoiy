@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Translations } from '../i18n'
 import { theme } from '../theme'
+import { pushBackHandler } from '../utils/hardwareBack'
 import {
   ArrowLeft,
   Check,
@@ -127,6 +128,33 @@ export default function MessagesScreen({
   const docInputRef = useRef<HTMLInputElement>(null)
   const socketRef = useRef<MessagesSocket | null>(null)
   const activeIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    return pushBackHandler(() => {
+      if (showDeleteDialog) {
+        setShowDeleteDialog(false)
+        return true
+      }
+      if (contextMenu) {
+        setContextMenu(null)
+        return true
+      }
+      if (selectedIds.size > 0) {
+        setSelectedIds(new Set())
+        return true
+      }
+      if (showAttach) {
+        setShowAttach(false)
+        return true
+      }
+      if (activeId) {
+        setActiveId(null)
+        activeIdRef.current = null
+        return true
+      }
+      return false
+    })
+  }, [activeId, selectedIds, showAttach, showDeleteDialog, contextMenu])
 
   const activeConv = conversations.find(x => x.id === activeId) ?? null
   const selectionMode = selectedIds.size > 0
@@ -651,8 +679,8 @@ export default function MessagesScreen({
             style={{
               borderTop: `1px solid ${c.border}`,
               background: c.card,
-              /* Past navbar balandligi — input navbar ustiga yopishadi, bo'sh joy qolmaydi */
-              padding: '10px 12px calc(62px + var(--bottom-nav-pad) + var(--ime-bottom))',
+              /* Navbar balandligi — input navbar ustida, orqasiga o'tmasin */
+              padding: '10px 12px calc(var(--bottom-nav-height) + var(--ime-bottom))',
               position: 'relative',
             }}
           >

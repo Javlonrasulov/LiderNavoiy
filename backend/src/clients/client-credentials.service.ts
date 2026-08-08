@@ -25,7 +25,7 @@ export class ClientCredentialsService {
 
   private async resolveClient(clientId: string, user: User): Promise<Client> {
     const client = await this.clientRepo.findOne({ where: { id: clientId } });
-    if (!client) throw new NotFoundException('Client not found');
+    if (!client || client.deletedAt) throw new NotFoundException('Client not found');
 
     if (user.role === UserRole.DISTRIBUTOR) {
       const distributorId = user.distributorProfile?.id;

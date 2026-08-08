@@ -659,7 +659,23 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
 
     if (backendReady) {
       try {
-        await api.updateOrder(selectedAgent, { status: 'packing' });
+        const itemsPayload = rows
+          .filter((r) => r.productId)
+          .map((r) => ({
+            productId: r.productId!,
+            productCode: r.productCode || '',
+            productName: r.name,
+            quantity: r.zakaz,
+            price: r.cena,
+            unit: r.ed,
+            isFree: r.isFree === true,
+            promotionId: r.promotionId || undefined,
+            actualQuantity: r.ves,
+          }));
+        await api.updateOrder(selectedAgent, {
+          status: 'packing',
+          ...(itemsPayload.length > 0 ? { items: itemsPayload } : {}),
+        });
         setApiOrders(prev =>
           prev.map(o => (o.id === selectedAgent ? { ...o, status: 'ready' as OrderStatus } : o)),
         );
@@ -694,7 +710,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     }));
     setActiveFilter('ready-load');
     return true;
-  }, [selectedAgent, selectedItem, backendReady, rows.length]);
+  }, [selectedAgent, selectedItem, backendReady, rows]);
 
   const handleRefresh = () => {
     setQoldiqLoading(true);
@@ -1286,7 +1302,14 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
                 <div className="flex items-start gap-2">
                   <span className={`text-[10px] font-mono w-5 flex-shrink-0 mt-0.5 ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-[11px] truncate mb-1.5 ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>{r.name}</p>
+                    <p className={`text-[11px] truncate mb-1.5 ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
+                      {r.name}
+                      {(r.promotionId || r.isFree) && (
+                        <span className={`ml-1.5 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${D ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
+                          {t.taroziAksiya ?? 'Aksiya'}{r.isFree || r.cena === 0 ? ' · 0' : ''}
+                        </span>
+                      )}
+                    </p>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[11px] font-bold ${isDanger ? dangerTxt : D ? 'text-gray-100' : 'text-gray-800'}`}>
                         {r.zakaz} {r.ed === 'dona' ? 'шт' : r.ed}
@@ -1342,7 +1365,14 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
                         : D ? 'hover:bg-gray-800/50 cursor-pointer' : 'hover:bg-gray-50 cursor-pointer'}`}
                 style={{gridTemplateColumns: gridCols, minHeight: 34}}>
                 <span className={`font-mono text-[11px] ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
-                <span className={`truncate text-[11px] ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>{r.name}</span>
+                <span className={`truncate text-[11px] ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
+                  {r.name}
+                  {(r.promotionId || r.isFree) && (
+                    <span className={`ml-1.5 inline-block px-1 py-0.5 rounded text-[9px] font-bold align-middle ${D ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
+                      {t.taroziAksiya ?? 'Aksiya'}
+                    </span>
+                  )}
+                </span>
                 {showQoldiq && (
                   <span className={`text-right text-[11px] font-medium pr-2 truncate
                     ${isDanger ? dangerTxt : r.qoldiq < r.zakaz ? D ? 'text-rose-400' : 'text-rose-500' : D ? 'text-amber-400' : 'text-amber-700'}`}>

@@ -100,8 +100,29 @@ export class Client {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
+  /** Mijoz APK da admin yoqgan aksiyalarni ko‘ra oladimi (default o‘chirilgan) */
+  @Column({ default: false })
+  canSeePromotions: boolean;
+
   @Column({ default: true })
   isActive: boolean;
+
+  /** Mijozni qo'shgan foydalanuvchi */
+  @Column({ type: 'uuid', nullable: true })
+  createdById: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  createdByName: string | null;
+
+  /** Korzinka: o'chirilgan vaqt (null = faol) */
+  @Column({ type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  deletedById: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  deletedByName: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -1,39 +1,15 @@
-# Lider Manager (Capacitor)
+# Lider Manager
 
-Milliy Libos dizayni asosida menejer ilovasi. API: `https://lider-navoiy.uz/api/v1/`
+Manager ilovasi (Capacitor + React). API: `https://lider-navoiy.uz/api/v1/`
 
-## Til
+## Android
 
-- Default: Oʻzbekcha (kirill)
-- Oʻzbekcha (lotin)
-- Русский
-
-## Ekranlar
-
-- Asosiy — KPI + xodimlar xaritasi
-- Xodimlar — agent / yetkazib berish
-- Mijozlar + qoʻshish
-- Reja
-- Mahsulotlar (tez amallar)
-- Profil — dark/light, til
-
-## Login
-
-Faqat `admin` yoki `manager` roli.
-
-## Dev
+**Muhim:** Android Studio faqat `android/` ichidagi fayllarni build qiladi. Web o‘zgarishdan keyin avval:
 
 ```bash
-cd manager-app
-pnpm install
-pnpm dev
+pnpm sync:android
 ```
 
-## APK
+keyin Android Studio → **Run**.
 
-```bash
-cd manager-app
-pnpm build:apk
-```
-
-Natija: `Lider-Manager-debug.apk` va `../apks/lider-manager-debug.apk`
+Package / applicationId: `uz.lider.manager`

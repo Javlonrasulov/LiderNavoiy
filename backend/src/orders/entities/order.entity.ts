@@ -107,9 +107,12 @@ export interface OrderItem {
   price: number;
   unit: string;
 
-  /** Free (aksiya) bo'lsa true */
+  /** Free (aksiya) bo'lsa true — rewardPrice === 0 */
   isFree?: boolean;
 
   /** Promo referensi (ixtiyoriy) */
   promotionId?: string;
+
+  /** Tarozi / ombor yozgan haqiqiy miqdor (ves) */
+  actualQuantity?: number | null;
 }

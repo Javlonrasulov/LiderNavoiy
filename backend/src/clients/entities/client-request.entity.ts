@@ -92,6 +92,9 @@ export class ClientRequest {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
+  @Column({ default: false })
+  canSeePromotions: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   agentName: string | null;
 

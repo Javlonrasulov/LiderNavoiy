@@ -9,6 +9,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -17,6 +18,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import uz.lider.client.BuildConfig
 import uz.lider.client.data.local.TokenHolder
 import uz.lider.client.data.remote.ApiService
+import uz.lider.client.data.remote.AuthApiService
 import uz.lider.client.data.remote.TokenRefreshInterceptor
 import uz.lider.client.data.remote.dto.FlexibleDoubleAdapter
 import uz.lider.client.security.ApiDns
@@ -35,6 +37,52 @@ object AppModule {
         .registerTypeAdapter(Double::class.javaObjectType, FlexibleDoubleAdapter())
         .registerTypeAdapter(Double::class.javaPrimitiveType, FlexibleDoubleAdapter())
         .create()
+
+    /** Login/refresh/logout — interceptor yo‘q, deadlock bo‘lmasin. */
+    @Provides
+    @Singleton
+    @Named("authOkHttp")
+    fun provideAuthOkHttpClient(): OkHttpClient {
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
+        val builder = OkHttpClient.Builder()
+            .dns(ApiDns)
+            .dispatcher(Dispatcher().apply {
+                maxRequests = 8
+                maxRequestsPerHost = 4
+            })
+            .addInterceptor(logging)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(25, TimeUnit.SECONDS)
+            .writeTimeout(25, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+        TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
+        return builder.build()
+    }
+
+    @Provides
+    @Singleton
+    @Named("authRetrofit")
+    fun provideAuthRetrofit(
+        @Named("authOkHttp") client: OkHttpClient,
+        gson: Gson,
+    ): Retrofit =
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE_URL)
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+
+    @Provides
+    @Singleton
+    fun provideAuthApiService(@Named("authRetrofit") retrofit: Retrofit): AuthApiService =
+        retrofit.create(AuthApiService::class.java)
 
     @Provides
     @Singleton
@@ -62,13 +110,18 @@ object AppModule {
         }
         val builder = OkHttpClient.Builder()
             .dns(ApiDns)
+            .dispatcher(Dispatcher().apply {
+                // Parallel dashboard so‘rovlari + 401 storm uchun zaxira
+                maxRequests = 64
+                maxRequestsPerHost = 32
+            })
             .addInterceptor(authInterceptor)
             .addInterceptor(tokenRefreshInterceptor)
             .addInterceptor(logging)
             .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .writeTimeout(45, TimeUnit.SECONDS)
+            .callTimeout(55, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
         TlsPins.pinnerOrNull()?.let { builder.certificatePinner(it) }
         return builder.build()

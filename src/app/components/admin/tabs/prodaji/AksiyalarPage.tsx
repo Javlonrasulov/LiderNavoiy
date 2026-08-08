@@ -64,6 +64,19 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
       setRows(data.map((p) => ({
         ...p,
         discountPercent: Number(p.discountPercent) || 0,
+        buyQuantity: p.buyQuantity != null ? Number(p.buyQuantity) : null,
+        freeQuantity: p.freeQuantity != null ? Number(p.freeQuantity) : null,
+        conditions: Array.isArray(p.conditions)
+          ? p.conditions.map((c) => ({
+              productId: c.productId,
+              productName: c.productName,
+              buyQuantity: Number(c.buyQuantity) || 0,
+            }))
+          : undefined,
+        rewardProductId: p.rewardProductId ?? null,
+        rewardProductName: p.rewardProductName ?? null,
+        rewardQuantity: p.rewardQuantity != null ? Number(p.rewardQuantity) : null,
+        rewardPrice: p.rewardPrice != null ? Number(p.rewardPrice) : null,
       })));
     } catch (e) {
       setError(e instanceof Error ? e.message : (t.aksiyaLoadFail ?? 'Yuklab bo\'lmadi'));
@@ -292,12 +305,19 @@ export function AksiyalarPage({ D, t }: AksiyalarPageProps) {
                     >
                       {row.isActive ? (t.aksiyaActive ?? 'Aktiv') : (t.aksiyaInactive ?? 'Nofaol')}
                     </span>
-                    {row.productName && (
+                    {(row.conditions && row.conditions.length > 0) || row.productName ? (
                       <span style={{ fontSize: 12, color: muted }}>
-                        {t.aksiyaProduct ?? 'Mahsulot'}: <b style={{ color: txt, fontWeight: 600 }}>{row.productName}</b>
+                        {t.aksiyaProduct ?? 'Mahsulot'}:{' '}
+                        <b style={{ color: txt, fontWeight: 600 }}>
+                          {row.conditions && row.conditions.length > 0
+                            ? row.conditions.map((c) => `${c.productName}≥${c.buyQuantity}`).join(', ')
+                            : row.productName}
+                        </b>
+                        {row.rewardProductName && (
+                          <> → {row.rewardProductName}×{row.rewardQuantity ?? '?'}</>
+                        )}
                       </span>
-                    )}
-                    {!row.productName && (
+                    ) : (
                       <span style={{ fontSize: 12, color: muted }}>
                         {t.aksiyaGeneral ?? 'Umumiy chegirma'}
                       </span>

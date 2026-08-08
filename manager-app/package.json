@@ -8,18 +8,23 @@
     "build": "vite build",
     "preview": "vite preview",
     "format": "oxfmt",
+    "sync:android": "pnpm build && npx cap sync android",
     "build:apk": "pnpm build && npx cap sync android && node scripts/build-apk.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.28.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

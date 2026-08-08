@@ -13,6 +13,8 @@ import uz.distributor.crm.data.remote.dto.CreateVisitRequest
 import uz.distributor.crm.data.remote.dto.OrderItemDto
 import uz.distributor.crm.data.remote.dto.UpdateOrderItemsRequest
 import uz.distributor.crm.domain.model.CartItem
+import uz.distributor.crm.domain.model.Product
+import uz.distributor.crm.domain.model.ProductPromotion
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -32,48 +34,80 @@ class CartRepository @Inject constructor(
         emit(db.cartDao().getAll().map { it.toDomain() })
     }
 
-    /** Barcha klientlar bo'yicha savatcha (dashboard badge va h.k.) */
     suspend fun getCart(): List<CartItem> = db.cartDao().getAll().map { it.toDomain() }
 
     suspend fun getCartForClient(clientId: String): List<CartItem> =
         db.cartDao().getByClient(clientId).map { it.toDomain() }
 
-    /** Klient ID → mahsulotlar */
     suspend fun getCartGroupedByClient(): Map<String, List<CartItem>> =
         getCart().groupBy { it.clientId }.filterKeys { it.isNotBlank() }
 
-    suspend fun addToCart(clientId: String, product: uz.distributor.crm.domain.model.Product, qty: Double) {
+    suspend fun addToCart(clientId: String, product: Product, qty: Double) {
         setCartQty(clientId, product, qty)
     }
 
-    suspend fun setCartQty(clientId: String, product: uz.distributor.crm.domain.model.Product, qty: Double) {
+    suspend fun setCartQty(clientId: String, product: Product, qty: Double) {
         if (clientId.isBlank()) return
         if (qty <= 0) {
-            db.cartDao().delete(clientId, product.id)
+            db.cartDao().deletePaid(clientId, product.id)
         } else {
             db.cartDao().insert(
                 CartItemEntity(
                     clientId = clientId,
                     productId = product.id,
+                    promotionId = "",
                     productCode = product.code,
                     productName = product.name,
                     price = product.price,
                     quantity = qty,
                     unit = product.unit,
                     category = product.category,
+                    isFree = false,
                 ),
             )
         }
     }
 
+    /** Aksiya sovg‘a qatorini qo‘shish / yangilash */
+    suspend fun setPromoReward(
+        clientId: String,
+        promotion: ProductPromotion,
+        product: Product,
+    ) {
+        if (clientId.isBlank() || !promotion.hasReward()) return
+        val qty = promotion.rewardQuantity
+        val price = promotion.rewardPrice
+        db.cartDao().insert(
+            CartItemEntity(
+                clientId = clientId,
+                productId = product.id,
+                promotionId = promotion.id,
+                productCode = product.code,
+                productName = product.name,
+                price = price,
+                quantity = qty,
+                unit = product.unit,
+                category = product.category,
+                isFree = price <= 0.0,
+            ),
+        )
+    }
+
+    suspend fun removePromoReward(clientId: String, promotionId: String) {
+        if (clientId.isBlank() || promotionId.isBlank()) return
+        db.cartDao().deletePromo(clientId, promotionId)
+    }
+
     suspend fun removeFromCart(clientId: String, productId: String) {
-        db.cartDao().delete(clientId, productId)
+        // Oddiy qatorni o‘chirish; promo qatorlar alohida
+        db.cartDao().deletePaid(clientId, productId)
     }
 
     suspend fun updateQty(clientId: String, productId: String, qty: Double) {
-        val item = db.cartDao().getByClient(clientId).find { it.productId == productId } ?: return
+        val item = db.cartDao().getByClient(clientId)
+            .find { it.productId == productId && it.promotionId.isBlank() } ?: return
         val normalized = (Math.round(qty * 1000.0) / 1000.0)
-        if (normalized <= 0) db.cartDao().delete(clientId, productId)
+        if (normalized <= 0) db.cartDao().deletePaid(clientId, productId)
         else db.cartDao().insert(item.copy(quantity = normalized))
     }
 
@@ -81,7 +115,6 @@ class CartRepository @Inject constructor(
 
     suspend fun clearClientCart(clientId: String) = db.cartDao().clearClient(clientId)
 
-    /** Klient buyurtmasini tahrirlash uchun shu klient savatchasini seed qiladi */
     suspend fun seedCartFromOrderItems(clientId: String, items: List<OrderItemDto>) {
         if (clientId.isBlank()) return
         db.cartDao().clearClient(clientId)
@@ -91,12 +124,14 @@ class CartRepository @Inject constructor(
                 CartItemEntity(
                     clientId = clientId,
                     productId = it.productId,
+                    promotionId = it.promotionId.orEmpty(),
                     productCode = it.productCode,
                     productName = it.productName,
                     price = it.price,
                     quantity = it.quantity,
                     unit = it.unit,
                     category = null,
+                    isFree = it.isFree || (it.promotionId != null && it.price == 0.0),
                 ),
             )
         }
@@ -107,13 +142,24 @@ class CartRepository @Inject constructor(
     suspend fun getTotalForClient(clientId: String): Double =
         db.cartDao().getByClient(clientId).sumOf { it.price * it.quantity }
 
-    /** Pending klient buyurtmasini savatcha mazmuni bilan yangilaydi (yangi order yaratmaydi) */
+    private fun toOrderItems(items: List<CartItemEntity>): List<OrderItemDto> =
+        items.map {
+            OrderItemDto(
+                productId = it.productId,
+                productCode = it.productCode,
+                productName = it.productName,
+                quantity = it.quantity,
+                price = it.price,
+                unit = it.unit,
+                isFree = it.isFree || it.promotionId.isNotBlank() && it.price == 0.0,
+                promotionId = it.promotionId.takeIf { id -> id.isNotBlank() },
+            )
+        }
+
     suspend fun saveCartToClientOrder(orderId: String, clientId: String): Result<Unit> {
         val items = db.cartDao().getByClient(clientId)
         if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
-        val orderItems = items.map {
-            OrderItemDto(it.productId, it.productCode, it.productName, it.quantity, it.price, it.unit)
-        }
+        val orderItems = toOrderItems(items)
         return try {
             api.updateClientOrderItems(orderId, UpdateOrderItemsRequest(orderItems))
             db.cartDao().clearClient(clientId)
@@ -130,9 +176,7 @@ class CartRepository @Inject constructor(
         val items = db.cartDao().getByClient(clientId)
         if (items.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
 
-        val orderItems = items.map {
-            OrderItemDto(it.productId, it.productCode, it.productName, it.quantity, it.price, it.unit)
-        }
+        val orderItems = toOrderItems(items)
         val total = items.sumOf { it.price * it.quantity }
         val offlineId = UUID.randomUUID().toString()
 
@@ -168,7 +212,6 @@ class CartRepository @Inject constructor(
         }
     }
 
-    /** Barcha klientlarning joriy savatchalarini yuboradi */
     suspend fun submitAllDrafts(): Result<Int> {
         val grouped = getCartGroupedByClient()
         if (grouped.isEmpty()) return Result.failure(Exception("Savatcha bo'sh"))
@@ -217,5 +260,7 @@ class CartRepository @Inject constructor(
         quantity = quantity,
         unit = unit,
         category = category,
+        isFree = isFree || (promotionId.isNotBlank() && price == 0.0),
+        promotionId = promotionId.takeIf { it.isNotBlank() },
     )
 }

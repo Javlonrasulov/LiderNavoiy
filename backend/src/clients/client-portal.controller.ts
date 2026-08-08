@@ -196,8 +196,12 @@ export class ClientPortalController {
 
   @Get('promotions')
   @ApiOperation({ summary: 'Active promotions for client app' })
-  promotions() {
-    return this.service.listPromotions();
+  promotions(
+    @Request() req: { user: User },
+    @Headers() headers: Record<string, string | undefined>,
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.listPromotions(req.user, this.companyId(headers, companyId));
   }
 
   @Get('product-ratings')

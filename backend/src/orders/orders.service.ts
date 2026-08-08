@@ -18,7 +18,6 @@ import { User } from '../auth/entities/user.entity';
 import { VisitsService } from '../visits/visits.service';
 import { OrderItem } from './entities/order.entity';
 import { PromotionsService } from '../promotions/promotions.service';
-import { Promotion } from '../promotions/entities/promotion.entity';
 import { Product } from '../products/entities/product.entity';
 import { Visit } from '../visits/entities/visit.entity';
 import { TrackingGateway } from '../tracking/tracking.gateway';
@@ -45,20 +44,116 @@ export class OrdersService {
     private readonly trackingGateway: TrackingGateway,
   ) {}
 
+  /**
+   * Order itemlarni normalizatsiya + promo qatorlarini soft validatsiya.
+   * Promo line: promotionId + reward product/qty/price; shartlar >= bo‘lishi kerak.
+   */
+  private async normalizeAndValidatePromoItems(items: OrderItemDto[]): Promise<OrderItem[]> {
+    if (!items?.length) {
+      throw new BadRequestException('Order must have at least one item');
+    }
+
+    const normalized: OrderItem[] = items.map((it) => {
+      const price = Number(it.price);
+      const promotionId = it.promotionId || undefined;
+      const isFree =
+        it.isFree === true || (promotionId != null && price === 0);
+      return {
+        productId: it.productId,
+        productCode: it.productCode,
+        productName: it.productName,
+        quantity: Number(it.quantity),
+        price,
+        unit: it.unit,
+        isFree: isFree || undefined,
+        promotionId,
+        actualQuantity:
+          it.actualQuantity != null ? Number(it.actualQuantity) : null,
+      };
+    });
+
+    for (const it of normalized) {
+      if (!it.productId || !(it.quantity > 0)) {
+        throw new BadRequestException('Invalid order item');
+      }
+    }
+
+    const promoLines = normalized.filter((it) => it.promotionId);
+    if (promoLines.length === 0) return normalized;
+
+    const paidQty = new Map<string, number>();
+    for (const it of normalized) {
+      if (it.promotionId) continue;
+      paidQty.set(it.productId, (paidQty.get(it.productId) ?? 0) + Number(it.quantity));
+    }
+
+    for (const line of promoLines) {
+      let promo;
+      try {
+        promo = await this.promotionsService.findOne(line.promotionId!);
+      } catch {
+        throw new BadRequestException(`Promotion not found: ${line.promotionId}`);
+      }
+
+      const conditions =
+        Array.isArray(promo.conditions) && promo.conditions.length > 0
+          ? promo.conditions
+          : promo.productId && Number(promo.buyQuantity) > 0
+            ? [
+                {
+                  productId: promo.productId,
+                  productName: promo.productName ?? '',
+                  buyQuantity: Number(promo.buyQuantity),
+                },
+              ]
+            : [];
+
+      for (const c of conditions) {
+        const have = paidQty.get(c.productId) ?? 0;
+        if (have < Number(c.buyQuantity)) {
+          throw new BadRequestException(
+            `Aksiya sharti bajarilmagan: ${c.productName || c.productId} ≥ ${c.buyQuantity}`,
+          );
+        }
+      }
+
+      const rewardId = promo.rewardProductId || promo.productId;
+      const rewardQty = Number(promo.rewardQuantity ?? promo.freeQuantity ?? 0);
+      const rewardPrice = Number(promo.rewardPrice ?? 0);
+
+      if (rewardId && line.productId !== rewardId) {
+        throw new BadRequestException('Promo line product must match reward product');
+      }
+      if (rewardQty > 0 && Math.abs(Number(line.quantity) - rewardQty) > 0.001) {
+        throw new BadRequestException(
+          `Promo quantity must be ${rewardQty} (admin belgilagan)`,
+        );
+      }
+      if (Math.abs(Number(line.price) - rewardPrice) > 0.01) {
+        throw new BadRequestException(
+          `Promo price must be ${rewardPrice} (admin belgilagan)`,
+        );
+      }
+    }
+
+    return normalized;
+  }
+
   async create(
     distributorId: string,
     dto: CreateOrderDto,
     offline = false,
     source: OrderSource = OrderSource.AGENT,
   ) {
-    const totalAmount = dto.items.reduce((sum, i) => sum + i.quantity * i.price, 0);
+    const items = await this.normalizeAndValidatePromoItems(dto.items);
+    const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.price), 0);
     const client = await this.clientRepo.findOne({ where: { id: dto.clientId } });
     const order = this.repo.create({
       distributorId,
       clientId: dto.clientId,
       companyId: client?.companyId ?? null,
       visitId: dto.visitId ?? null,
-      items: dto.items,
+      items,
       totalAmount,
       status: OrderStatus.PENDING,
       source,
@@ -76,7 +171,7 @@ export class OrdersService {
         actorName: client?.name?.trim() || client?.fullName?.trim() || 'Mijoz',
         actorRole: UserRole.CLIENT,
         action: 'client_submitted',
-        afterItems: Array.isArray(dto.items) ? (dto.items as OrderItem[]) : [],
+        afterItems: items,
         itemChanges: [],
         summary: `Mijoz ${(client?.name ?? client?.fullName ?? '').trim() || '—'} tomonidan buyurtma yuborildi`,
       }).catch(() => {});
@@ -720,16 +815,7 @@ export class OrdersService {
       ? order.items.map((it) => ({ ...it }))
       : [];
 
-    const normalized: OrderItem[] = items.map((it) => ({
-      productId: it.productId,
-      productCode: it.productCode,
-      productName: it.productName,
-      quantity: Number(it.quantity),
-      price: Number(it.price),
-      unit: it.unit,
-      isFree: it.isFree === true,
-      promotionId: it.promotionId,
-    }));
+    const normalized = await this.normalizeAndValidatePromoItems(items);
 
     for (const it of normalized) {
       if (!it.productId || !(it.quantity > 0)) {
@@ -799,68 +885,15 @@ export class OrdersService {
       ? order.items.map((it) => ({ ...it }))
       : [];
 
-    // 1) Buy X get Y free qoidalarini hisoblab order items'ga bepul line qo‘shamiz
-    const originalItems: OrderItem[] = Array.isArray(order.items) ? order.items : [];
-
-    const activePromos = await this.promotionsService.findActiveForClient();
-    const promoByProductId = new Map<string, Promotion>();
-    for (const p of activePromos) {
-      if (!p.productId) continue;
-      if (p.buyQuantity == null || p.freeQuantity == null) continue;
-      const buyQ = Number(p.buyQuantity);
-      const freeQ = Number(p.freeQuantity);
-      if (!(buyQ > 0 && freeQ > 0)) continue;
-      // sortOrder ASC bo‘yicha keladi, shuning uchun birinchisini olamiz
-      if (!promoByProductId.has(p.productId)) promoByProductId.set(p.productId, p);
-    }
-
-    // mahsulot bo‘yicha paid quantity'ni yig‘ib olamiz (free line'lar bo‘lsa — ignor qilamiz)
-    const paidByProductId = new Map<
-      string,
-      { item: OrderItem; totalPaidQty: number }
-    >();
-    for (const it of originalItems) {
-      if (!it.productId) continue;
-      if (it.isFree === true) continue;
-      const prev = paidByProductId.get(it.productId);
-      if (prev) {
-        prev.totalPaidQty += Number(it.quantity);
-      } else {
-        paidByProductId.set(it.productId, {
-          item: it,
-          totalPaidQty: Number(it.quantity),
-        });
-      }
-    }
-
-    const expandedItems: OrderItem[] = originalItems.map((it) => ({
-      ...it,
-      isFree: it.isFree === true,
-      promotionId: it.promotionId,
-    }));
-
-    for (const [productId, group] of paidByProductId.entries()) {
-      const promo = promoByProductId.get(productId);
-      if (!promo) continue;
-      const buyQ = Number(promo.buyQuantity ?? 0);
-      const freeQ = Number(promo.freeQuantity ?? 0);
-      if (!(buyQ > 0 && freeQ > 0)) continue;
-
-      const bundleCount = Math.floor(group.totalPaidQty / buyQ);
-      const freeQty = bundleCount * freeQ;
-      if (freeQty <= 0) continue;
-
-      expandedItems.push({
-        productId,
-        productCode: group.item.productCode,
-        productName: group.item.productName,
-        quantity: freeQty,
-        price: 0,
-        unit: group.item.unit,
-        isFree: true,
-        promotionId: promo.id,
-      });
-    }
+    // Sovg‘a/aksiya avtomatik qo‘shilmaydi — agent/admin buyurtmada belgilagan itemlar saqlanadi
+    const expandedItems: OrderItem[] = (Array.isArray(order.items) ? order.items : []).map(
+      (it) => ({
+        ...it,
+        isFree: it.isFree === true,
+        promotionId: it.promotionId,
+        actualQuantity: it.actualQuantity ?? null,
+      }),
+    );
 
     order.items = expandedItems;
     order.totalAmount = expandedItems.reduce(
@@ -871,14 +904,14 @@ export class OrdersService {
     // Use the order's agent for visit/stock — manager ham shu agent nomidan yuboradi
     const actingDistributorId = order.distributorId;
 
-    // 2) Ombor(stock)ni ham bepul miqdor bo‘yicha kamaytiramiz + visit/order’ni saqlaymiz
+    // Ombor(stock)ni kamaytiramiz + visit/order’ni saqlaymiz
     const queryRunner = this.repo.manager.connection.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     let saved: Order;
     try {
-      // stock decrement: product stockBalance -= sum(quantity) (paid + free)
+      // stock decrement: product stockBalance -= sum(quantity)
       const qtyByProductId = new Map<string, number>();
       for (const it of expandedItems) {
         if (!it.productId) continue;
@@ -1356,6 +1389,47 @@ export class OrdersService {
     if (dto.status !== undefined) order.status = dto.status;
     if (dto.deliveryDistributorId !== undefined) {
       order.deliveryDistributorId = dto.deliveryDistributorId;
+    }
+
+    // Tarozi: haqiqiy miqdor (ves) ni actualQuantity sifatida saqlash
+    if (dto.items !== undefined && Array.isArray(dto.items)) {
+      const byKey = new Map<string, OrderItemDto>();
+      for (const it of dto.items) {
+        const key = `${it.productId}|${it.promotionId ?? ''}|${it.isFree === true ? '1' : '0'}`;
+        byKey.set(key, it);
+      }
+      const merged: OrderItem[] = (Array.isArray(order.items) ? order.items : []).map((existing) => {
+        const key = `${existing.productId}|${existing.promotionId ?? ''}|${existing.isFree === true ? '1' : '0'}`;
+        const incoming = byKey.get(key);
+        if (!incoming) {
+          // productId bo‘yicha fallback (eski klientlar)
+          const byProduct = dto.items!.find((x) => x.productId === existing.productId);
+          if (byProduct && byProduct.actualQuantity != null) {
+            return { ...existing, actualQuantity: Number(byProduct.actualQuantity) };
+          }
+          return existing;
+        }
+        const actual =
+          incoming.actualQuantity != null
+            ? Number(incoming.actualQuantity)
+            : Number(incoming.quantity);
+        return {
+          ...existing,
+          actualQuantity: Number.isFinite(actual) ? actual : existing.actualQuantity ?? null,
+          // Tarozi narxni o‘zgartirmaydi — aksiya narxi saqlanadi
+          isFree: existing.isFree === true,
+          promotionId: existing.promotionId,
+        };
+      });
+      order.items = merged;
+      // Jami: haqiqiy miqdor bo‘lsa u bilan, aks holda da’vo miqdori
+      order.totalAmount = merged.reduce((sum, it) => {
+        const qty =
+          it.actualQuantity != null && Number(it.actualQuantity) > 0
+            ? Number(it.actualQuantity)
+            : Number(it.quantity);
+        return sum + qty * Number(it.price);
+      }, 0);
     }
 
     const becomingOnWay =

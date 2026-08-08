@@ -117,7 +117,7 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
     id: string;
     orderId: string;
     status: string;
-    items: Array<{ productName: string; quantity: number; price: number }>;
+    items: Array<{ productName: string; quantity: number; price: number; isFree?: boolean; promotionId?: string }>;
     totalAmount: number;
     clientName?: string | null;
     clientCode?: string | null;
@@ -1006,6 +1006,11 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
                 {r.items.map((it, i) => (
                   <div key={i} style={{ fontSize: 12, color: muted }}>
                     • {it.productName} × {it.quantity}
+                    {(it.promotionId || it.isFree) && (
+                      <span style={{ marginLeft: 6, color: '#7c3aed', fontWeight: 600 }}>
+                        Aksiya{it.isFree || Number(it.price) === 0 ? ' · tekin' : ` · ${Number(it.price).toLocaleString('ru-RU')}`}
+                      </span>
+                    )}
                   </div>
                 ))}
                 {r.note && (

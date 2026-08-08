@@ -175,6 +175,13 @@ export interface Client {
   clientClass?: string | null;
   priceCategory?: string | null;
   isActive?: boolean;
+  canSeePromotions?: boolean;
+  createdAt?: string;
+  createdById?: string | null;
+  createdByName?: string | null;
+  deletedAt?: string | null;
+  deletedById?: string | null;
+  deletedByName?: string | null;
   updatedAt?: string;
   distributor?: {
     id: string;
@@ -227,6 +234,9 @@ export interface BackendOrderItem {
   quantity: number;
   price: number;
   unit: string;
+  isFree?: boolean;
+  promotionId?: string;
+  actualQuantity?: number | null;
 }
 
 export interface BackendOrderItemChange {
@@ -655,6 +665,25 @@ export const api = {
     return request<Client[]>(`/clients${qs ? `?${qs}` : ''}`);
   },
 
+  getTrashClients: (companyId?: string) => {
+    const q = new URLSearchParams();
+    if (companyId) q.set('companyId', companyId);
+    const qs = q.toString();
+    return request<Client[]>(`/clients/trash${qs ? `?${qs}` : ''}`);
+  },
+
+  deleteClient: (id: string) =>
+    request<{ ok: boolean; id: string }>(`/clients/${id}`, { method: 'DELETE' }),
+
+  deleteClientsBulk: (clientIds: string[]) =>
+    request<{ deletedCount: number; results: { id: string; ok: boolean }[] }>(
+      '/clients/trash/bulk',
+      { method: 'POST', body: JSON.stringify({ clientIds }) },
+    ),
+
+  restoreClient: (id: string) =>
+    request<Client>(`/clients/${id}/restore`, { method: 'POST' }),
+
   getClient: (id: string) => request<Client>(`/clients/${id}`),
 
   searchClients: (q: string) => request<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`),
@@ -961,6 +990,11 @@ export const api = {
       freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
+      conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewardProductId?: string | null;
+      rewardProductName?: string | null;
+      rewardQuantity?: number | string | null;
+      rewardPrice?: number | string | null;
       colorStart: string;
       colorEnd: string;
       emoji: string | null;
@@ -979,6 +1013,10 @@ export const api = {
     buyQuantity?: number | null;
     freeQuantity?: number | null;
     productId?: string | null;
+    conditions?: Array<{ productId: string; productName?: string; buyQuantity: number }>;
+    rewardProductId?: string | null;
+    rewardQuantity?: number | null;
+    rewardPrice?: number | null;
     colorStart?: string;
     colorEnd?: string;
     emoji?: string;
@@ -996,6 +1034,11 @@ export const api = {
       freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
+      conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewardProductId?: string | null;
+      rewardProductName?: string | null;
+      rewardQuantity?: number | string | null;
+      rewardPrice?: number | string | null;
       colorStart: string;
       colorEnd: string;
       emoji: string | null;
@@ -1015,6 +1058,10 @@ export const api = {
     buyQuantity?: number | null;
     freeQuantity?: number | null;
     productId?: string | null;
+    conditions?: Array<{ productId: string; productName?: string; buyQuantity: number }>;
+    rewardProductId?: string | null;
+    rewardQuantity?: number | null;
+    rewardPrice?: number | null;
     colorStart?: string;
     colorEnd?: string;
     emoji?: string;
@@ -1032,6 +1079,11 @@ export const api = {
       freeQuantity: number | string | null;
       productId: string | null;
       productName: string | null;
+      conditions?: Array<{ productId: string; productName: string; buyQuantity: number | string }>;
+      rewardProductId?: string | null;
+      rewardProductName?: string | null;
+      rewardQuantity?: number | string | null;
+      rewardPrice?: number | string | null;
       colorStart: string;
       colorEnd: string;
       emoji: string | null;
@@ -1163,7 +1215,21 @@ export const api = {
   },
 
   /** Admin: buyurtma statusini yangilash (Tarozi → yuklashga tayyor va hokazo) */
-  updateOrder: (id: string, body: { status?: string; deliveryDistributorId?: string | null }) =>
+  updateOrder: (id: string, body: {
+    status?: string;
+    deliveryDistributorId?: string | null;
+    items?: Array<{
+      productId: string;
+      productCode: string;
+      productName: string;
+      quantity: number;
+      price: number;
+      unit: string;
+      isFree?: boolean;
+      promotionId?: string;
+      actualQuantity?: number | null;
+    }>;
+  }) =>
     request<BackendOrder>(`/orders/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),

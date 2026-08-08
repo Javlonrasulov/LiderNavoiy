@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Plus, X } from '../icons'
+import { pushBackHandler } from '../utils/hardwareBack'
 import {
   createClient,
   createClientCategory,
   createLine,
+  fetchClient,
   fetchClientCategories,
   fetchLines,
+  updateClient,
   type ClientCategory,
   type SalesLine,
 } from '../api/manager'
 import { ApiError } from '../api/client'
-import type { AuthUser } from '../api/types'
+import type { AuthUser, Client } from '../api/types'
 import type { Translations } from '../i18n'
+import { localizeApiError } from '../i18n'
 import { theme } from '../theme'
 import ClientPinMap from '../components/ClientPinMap'
 import { showToast } from '../components/Toast'
@@ -21,6 +25,7 @@ interface Props {
   dark: boolean
   tr: Translations
   user: AuthUser | null
+  editClient?: Client | null
   onBack: () => void
   onCreated: () => void
 }
@@ -62,9 +67,10 @@ function phoneToStorage(formatted: string): string | undefined {
   return `+${full.slice(0, 12)}`
 }
 
-export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: Props) {
+export default function AddClientScreen({ dark, tr, user, editClient = null, onBack, onCreated }: Props) {
   const c = theme(dark)
   const companyId = user?.companyId ?? undefined
+  const isEdit = !!editClient?.id
 
   const [name, setName] = useState('')
   const [fullName, setFullName] = useState('')
@@ -77,9 +83,11 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
   const [radius, setRadius] = useState(100)
+  const [canSeePromotions, setCanSeePromotions] = useState(false)
   const [geoLoading, setGeoLoading] = useState(false)
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [prefillLoading, setPrefillLoading] = useState(isEdit)
 
   const [lines, setLines] = useState<SalesLine[]>([])
   const [linesLoading, setLinesLoading] = useState(true)
@@ -92,6 +100,24 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
   const [picker, setPicker] = useState<PickerKind>(null)
   const modalSheetRef = useRef<HTMLDivElement>(null)
   const modalInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    return pushBackHandler(() => {
+      if (mapFullscreen) {
+        setMapFullscreen(false)
+        return true
+      }
+      if (modal) {
+        setModal(null)
+        return true
+      }
+      if (picker) {
+        setPicker(null)
+        return true
+      }
+      return false
+    })
+  }, [mapFullscreen, modal, picker])
 
   useEffect(() => {
     void (async () => {
@@ -113,6 +139,52 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
       }
     })()
   }, [companyId])
+
+  useEffect(() => {
+    if (!editClient?.id) {
+      setPrefillLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const apply = (cl: Client) => {
+      setName(cl.name || '')
+      setFullName(cl.fullName || '')
+      setInn(cl.inn || '')
+      setPhone(formatUzPhone(cl.phone || '+998'))
+      setExtraPhones(
+        Array.isArray(cl.extraPhones)
+          ? cl.extraPhones
+              .filter(p => p?.phone)
+              .map(p => ({ phone: formatUzPhone(p.phone), note: p.note || '' }))
+          : [],
+      )
+      setAddress(cl.address || '')
+      setLineCode(cl.lineCode || '')
+      setCategory(cl.category || '')
+      setLat(cl.latitude ?? null)
+      setLng(cl.longitude ?? null)
+      setRadius(
+        cl.orderRadiusMeters != null && Number(cl.orderRadiusMeters) >= 50
+          ? Math.round(Number(cl.orderRadiusMeters))
+          : 100,
+      )
+      setCanSeePromotions(cl.canSeePromotions === true)
+    }
+
+    apply(editClient)
+    setPrefillLoading(true)
+    void fetchClient(editClient.id)
+      .then(full => {
+        if (!cancelled) apply(full)
+      })
+      .catch(() => { /* list dagi ma'lumot bilan davom */ })
+      .finally(() => {
+        if (!cancelled) setPrefillLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [editClient?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modal/picker ochiqda fon scroll qulflansin; klaviatura ochilganda input ko‘rinsin
   useEffect(() => {
@@ -189,7 +261,7 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
       setModal(null)
       setModalName('')
     } catch (e) {
-      showToast(e instanceof ApiError ? e.message : tr.loginError)
+      showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
     } finally {
       setModalSaving(false)
     }
@@ -255,12 +327,12 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           note: p.note.trim() || undefined,
         }))
         .filter(p => !!p.phone)
-      const created = await createClient({
+      const body = {
         name: name.trim(),
         fullName: fullName.trim(),
         inn: inn.trim() || undefined,
         phone: phoneClean,
-        extraPhones: extras.length ? extras : undefined,
+        extraPhones: extras,
         address: address.trim(),
         companyId,
         lineCode: lineCode.trim(),
@@ -268,12 +340,24 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
         latitude: lat,
         longitude: lng,
         orderRadiusMeters: radius,
-      })
-      const pending = created.status === 'pending'
-      showToast(pending ? tr.clientRequestSubmitted : tr.clientCreated, 'success')
+        canSeePromotions,
+      }
+
+      if (isEdit && editClient) {
+        const updated = await updateClient(editClient.id, body)
+        const pending = updated.status === 'pending'
+        showToast(pending ? tr.clientRequestSubmitted : tr.clientUpdated, 'success')
+      } else {
+        const created = await createClient({
+          ...body,
+          extraPhones: extras.length ? extras : undefined,
+        })
+        const pending = created.status === 'pending'
+        showToast(pending ? tr.clientRequestSubmitted : tr.clientCreated, 'success')
+      }
       onCreated()
     } catch (e) {
-      showToast(e instanceof ApiError ? e.message : tr.loginError)
+      showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
     } finally {
       setLoading(false)
     }
@@ -357,7 +441,9 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           }}>
             <ArrowLeft size={18} color={c.text} />
           </button>
-          <h1 style={{ flex: 1, fontSize: 20, fontWeight: 800, color: c.text, margin: 0 }}>{tr.addClient}</h1>
+          <h1 style={{ flex: 1, fontSize: 20, fontWeight: 800, color: c.text, margin: 0 }}>
+            {isEdit ? tr.editClient : tr.addClient}
+          </h1>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           {headerBtn(tr.addLine, () => openModal('line'))}
@@ -366,6 +452,10 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
       </div>
 
       <div style={{ padding: '8px 20px calc(28px + max(28px, var(--safe-bottom)))' }}>
+        {prefillLoading ? (
+          <p style={{ textAlign: 'center', color: c.mutedText, padding: 32 }}>{tr.loading}</p>
+        ) : (
+          <>
         {field(tr.name, name, setName, true)}
         {field(tr.fullName, fullName, setFullName, true)}
 
@@ -519,6 +609,31 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
             />
             <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.4 }}>{tr.orderRadiusHint}</p>
           </div>
+
+          <div style={{
+            marginTop: 14, padding: '12px 14px', borderRadius: 14,
+            border: `1px solid ${c.border}`, background: c.muted,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+          }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.text }}>{tr.canSeePromotions}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.35 }}>
+                {tr.canSeePromotionsHint}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCanSeePromotions(v => !v)}
+              style={{
+                flexShrink: 0, height: 36, minWidth: 96, padding: '0 12px', borderRadius: 12,
+                border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
+                background: canSeePromotions ? 'rgba(16,185,129,0.16)' : (dark ? '#252540' : '#E5E7EB'),
+                color: canSeePromotions ? '#059669' : c.mutedText,
+              }}
+            >
+              {canSeePromotions ? tr.canSeePromotionsOn : tr.canSeePromotionsOff}
+            </button>
+          </div>
         </div>
 
         <button type="button" className="btn-primary" disabled={loading} onClick={() => void submit()}
@@ -529,6 +644,8 @@ export default function AddClientScreen({ dark, tr, user, onBack, onCreated }: P
           style={{ width: '100%', height: 48, marginTop: 10, border: 'none', borderRadius: 16, background: c.muted, color: c.mutedText, fontWeight: 700, cursor: 'pointer' }}>
           {tr.cancel}
         </button>
+          </>
+        )}
       </div>
 
       {mapFullscreen && createPortal(

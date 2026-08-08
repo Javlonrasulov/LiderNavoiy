@@ -1,4 +1,4 @@
-package uz.distributor.crm.presentation.clients
+﻿package uz.distributor.crm.presentation.clients
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -68,7 +68,7 @@ fun ClientsScreen(
             .fillMaxSize()
             .background(pageBg),
     ) {
-        Column(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
                 Column(
                     Modifier
@@ -274,7 +274,7 @@ private fun ClientListRow(
     onClick: () -> Unit,
 ) {
     val blue = Color(0xFF2563EB)
-    // Qarz: manfiy balance yoki musbat qarz qoldig‘i
+    // Qarz: manfiy balance yoki musbat qarz qoldigвЂi
     val amount = kotlin.math.abs(client.balance)
     val amountColor = if (amount > 0.005) Color(0xFFB91C1C) else if (isDark) Color.White else Color.Black
     val subtitle = client.territory?.takeIf { it.isNotBlank() }
@@ -282,7 +282,7 @@ private fun ClientListRow(
         ?: client.address?.takeIf { it.isNotBlank() }
     val bottomLeft = buildString {
         client.lineCode?.takeIf { it.isNotBlank() }?.let { append("$it - ") }
-        append(client.territory?.takeIf { it.isNotBlank() } ?: client.address?.takeIf { it.isNotBlank() } ?: "—")
+        append(client.territory?.takeIf { it.isNotBlank() } ?: client.address?.takeIf { it.isNotBlank() } ?: "вЂ”")
     }
 
     Column(

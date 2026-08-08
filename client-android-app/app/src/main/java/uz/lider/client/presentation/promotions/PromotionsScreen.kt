@@ -80,6 +80,23 @@ fun PromotionsScreen(
                 modifier = Modifier.padding(padding),
             ) {
             Column(Modifier.fillMaxSize()) {
+                if (!promoState.loading && !promoState.canSeePromotions) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            localized("promo_disabled"),
+                            color = textMuted,
+                            fontSize = 15.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                    }
+                    return@Column
+                }
+
                 // ── Glass pill tab bar ────────────────────────────────────────
                 Box(
                     Modifier

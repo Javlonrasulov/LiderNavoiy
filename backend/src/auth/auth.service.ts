@@ -99,6 +99,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.client?.deletedAt) {
+      await this.loginSecurity.recordFailure(username, meta.ip, meta.userAgent);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     await this.loginSecurity.recordSuccess(username, meta.ip, meta.userAgent);
 
     user.lastLoginAt = new Date();

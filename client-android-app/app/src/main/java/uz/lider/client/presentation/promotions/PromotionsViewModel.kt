@@ -17,6 +17,7 @@ import javax.inject.Inject
 data class PromotionsUiState(
     val bonusPointsLabel: String = "0",
     val promotions: List<Promotion> = emptyList(),
+    val canSeePromotions: Boolean = false,
     val loading: Boolean = true,
 )
 
@@ -35,29 +36,25 @@ class PromotionsViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.update { it.copy(loading = true) }
-            val profile = profileRepository.getProfile()
-            val points = profile?.bonusPoints
-                ?: ((profile?.totalPurchases ?: 0.0) / 1000.0).toInt().coerceAtLeast(0)
-            val promotions = promotionsRepository.getPromotions()
-            _uiState.update {
-                it.copy(
-                    bonusPointsLabel = formatMoney(points.toDouble()),
-                    promotions = promotions,
-                    loading = false,
-                )
-            }
+            refresh()
         }
     }
 
     suspend fun refresh() {
         val profile = profileRepository.getProfile()
+        val canSee = profile?.canSeePromotions == true
         val points = profile?.bonusPoints
             ?: ((profile?.totalPurchases ?: 0.0) / 1000.0).toInt().coerceAtLeast(0)
-        val promotions = promotionsRepository.getPromotions()
+        val promotions = if (canSee) {
+            promotionsRepository.getPromotions()
+        } else {
+            emptyList()
+        }
         _uiState.update {
             it.copy(
                 bonusPointsLabel = formatMoney(points.toDouble()),
                 promotions = promotions,
+                canSeePromotions = canSee,
                 loading = false,
             )
         }

@@ -1,4 +1,4 @@
-/** Shared palette used by Milliy Libos screens — do not invent new colors. */
+/** Shared palette for Lider Manager screens — do not invent new colors. */
 export function theme(dark: boolean) {
   return {
     bg: dark ? '#080812' : '#F8F9FC',

@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Plus, Search } from '../icons'
+import { PenSquare, Plus, Search } from '../icons'
 import { fetchClients } from '../api/manager'
 import type { Client } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
+import ClientStatsPanel from '../components/ClientStatsPanel'
+import { pushBackHandler } from '../utils/hardwareBack'
 
 interface Props {
   dark: boolean
   lang: Lang
   tr: Translations
   onAdd: () => void
+  onEdit: (client: Client) => void
 }
 
-export default function ClientsScreen({ dark, lang, tr, onAdd }: Props) {
+export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit }: Props) {
   const c = theme(dark)
   const [list, setList] = useState<Client[]>([])
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<Client | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -31,6 +35,16 @@ export default function ClientsScreen({ dark, lang, tr, onAdd }: Props) {
   }
 
   useEffect(() => { void load() }, [])
+
+  useEffect(() => {
+    return pushBackHandler(() => {
+      if (selected) {
+        setSelected(null)
+        return true
+      }
+      return false
+    })
+  }, [selected])
 
   const filtered = list.filter(cl => {
     const hay = `${cl.name} ${cl.fullName || ''} ${cl.phone || ''} ${cl.code || ''}`.toLowerCase()
@@ -64,19 +78,59 @@ export default function ClientsScreen({ dark, lang, tr, onAdd }: Props) {
         {loading && <p style={{ textAlign: 'center', color: c.mutedText, padding: 24 }}>{tr.loading}</p>}
 
         {!loading && filtered.map(cl => (
-          <div key={cl.id} className="card-hover" style={{
-            borderRadius: 20, padding: 16, background: c.card, border: `1px solid ${c.border}`,
-          }}>
+          <div
+            key={cl.id}
+            role="button"
+            tabIndex={0}
+            className="card-hover"
+            onClick={() => setSelected(cl)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') setSelected(cl)
+            }}
+            style={{
+              borderRadius: 20, padding: 16, background: c.card, border: `1px solid ${c.border}`,
+              textAlign: 'left', cursor: 'pointer', width: '100%',
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 15, fontWeight: 800, color: c.text }}>{cl.name}</p>
-                {cl.fullName && <p style={{ fontSize: 12, color: c.mutedText, marginTop: 2 }}>{cl.fullName}</p>}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{
+                  fontSize: 18, fontWeight: 800, color: c.primary, lineHeight: 1.25,
+                  letterSpacing: '-0.02em',
+                }}>
+                  {cl.name}
+                </p>
+                {cl.fullName && cl.fullName !== cl.name && (
+                  <p style={{ fontSize: 12, color: c.mutedText, marginTop: 3 }}>{cl.fullName}</p>
+                )}
               </div>
-              {cl.code && (
-                <span style={{ fontSize: 11, fontWeight: 800, color: c.primary, background: 'rgba(108,92,231,0.12)', padding: '4px 8px', borderRadius: 8, height: 'fit-content' }}>
-                  {cl.code}
-                </span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexShrink: 0 }}>
+                {cl.code && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 800, color: c.primary,
+                    background: 'rgba(108,92,231,0.12)', padding: '4px 8px',
+                    borderRadius: 8, height: 'fit-content',
+                  }}>
+                    {cl.code}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  title={tr.editClient}
+                  aria-label={tr.editClient}
+                  onClick={e => {
+                    e.stopPropagation()
+                    onEdit(cl)
+                  }}
+                  style={{
+                    width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: 'rgba(108,92,231,0.12)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                >
+                  <PenSquare size={15} color={c.primary} />
+                </button>
+              </div>
             </div>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <Meta label={tr.phone} value={cl.phone || '—'} muted={c.mutedText} text={c.text} />
@@ -86,7 +140,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd }: Props) {
                 label={tr.debt}
                 value={cl.debt != null ? formatMoney(cl.debt, lang) : '—'}
                 muted={c.mutedText}
-                text={c.text}
+                text={c.red}
               />
             </div>
           </div>
@@ -96,6 +150,16 @@ export default function ClientsScreen({ dark, lang, tr, onAdd }: Props) {
           <p style={{ textAlign: 'center', color: c.mutedText, padding: 32 }}>{tr.noData}</p>
         )}
       </div>
+
+      {selected && (
+        <ClientStatsPanel
+          client={selected}
+          dark={dark}
+          lang={lang}
+          tr={tr}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   )
 }

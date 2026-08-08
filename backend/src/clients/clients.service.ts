@@ -29,6 +29,11 @@ function sameCoord(a: number | null | undefined, b: number | null | undefined): 
   return Math.abs(Number(a) - Number(b)) < 1e-7;
 }
 
+function actorLabel(actor?: User | null): string | null {
+  if (!actor) return null;
+  return actor.fullName?.trim() || actor.username?.trim() || null;
+}
+
 @Injectable()
 export class ClientsService {
   constructor(
@@ -38,6 +43,8 @@ export class ClientsService {
     private readonly membershipRepo: Repository<UserClientMembership>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly linesService: LinesService,
   ) {}
 
@@ -46,6 +53,10 @@ export class ClientsService {
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.distributor', 'distributor')
       .leftJoinAndSelect('distributor.user', 'agentUser');
+  }
+
+  private notDeleted(qb: ReturnType<ClientsService['baseQuery']>) {
+    return qb.andWhere('c.deletedAt IS NULL');
   }
 
   /** client.balance ko‘pincha 0 — qarzni yetkazilgan to‘lanmagan buyurtmalardan hisoblaymiz. */
@@ -74,7 +85,6 @@ export class ClientsService {
       const unpaid = unpaidMap.get(c.id) ?? 0;
       const fromBalance = Math.abs(stored);
       const debt = Math.max(fromBalance, unpaid);
-      // Ro‘yxat abs(balance) ko‘rsatadi; detail Qarz = balance < 0
       if (Math.abs(stored) < 0.005 && debt > 0.005) {
         c.balance = -debt;
       } else if (stored > 0.005 && unpaid > stored) {
@@ -88,7 +98,7 @@ export class ClientsService {
   }
 
   async findAll(companyId?: string, lineCode?: string, distributorId?: string) {
-    const qb = this.baseQuery().where('c.isActive = true');
+    const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
     if (companyId) {
       qb.andWhere(
         '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
@@ -101,10 +111,34 @@ export class ClientsService {
     return this.withDebts(clients);
   }
 
-  async findOne(id: string, distributorId?: string) {
-    const client = await this.baseQuery().where('c.id = :id', { id }).getOne();
+  /** Faqat admin korzinka — o'chirilgan mijozlar */
+  async findTrash(companyId?: string) {
+    const qb = this.baseQuery().where('c.deletedAt IS NOT NULL');
+    if (companyId) {
+      qb.andWhere(
+        '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
+        { companyId },
+      );
+    }
+    const clients = await qb.orderBy('c.deletedAt', 'DESC').getMany();
+    return this.withDebts(clients);
+  }
+
+  async findOne(
+    id: string,
+    distributorId?: string,
+    opts?: { includeDeleted?: boolean },
+  ) {
+    const qb = this.baseQuery().where('c.id = :id', { id });
+    if (!opts?.includeDeleted) {
+      this.notDeleted(qb);
+    }
+    const client = await qb.getOne();
     if (!client) throw new NotFoundException('Client not found');
     if (distributorId && client.distributorId !== distributorId) {
+      throw new NotFoundException('Client not found');
+    }
+    if (client.deletedAt && !opts?.includeDeleted) {
       throw new NotFoundException('Client not found');
     }
     const [enriched] = await this.withDebts([client]);
@@ -114,8 +148,7 @@ export class ClientsService {
   findByInn(inn: string) {
     const normalized = normalizeInn(inn);
     if (!normalized) return null;
-    return this.baseQuery()
-      .where('c.isActive = true')
+    return this.notDeleted(this.baseQuery().where('c.isActive = true'))
       .andWhere('c.inn = :inn', { inn: normalized })
       .getOne();
   }
@@ -123,8 +156,7 @@ export class ClientsService {
   findByInnInCompany(inn: string, companyId: string, excludeClientId?: string) {
     const normalized = normalizeInn(inn);
     if (!normalized || !companyId) return Promise.resolve(null);
-    const qb = this.baseQuery()
-      .where('c.isActive = true')
+    const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'))
       .andWhere('c.inn = :inn', { inn: normalized })
       .andWhere(
         '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
@@ -137,8 +169,7 @@ export class ClientsService {
   }
 
   async search(query: string, distributorId?: string) {
-    const qb = this.baseQuery()
-      .where('c.isActive = true')
+    const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'))
       .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
     if (distributorId) qb.andWhere('c.distributorId = :distributorId', { distributorId });
     const clients = await qb.limit(50).getMany();
@@ -149,11 +180,20 @@ export class ClientsService {
     return this.linesService.findAll(companyId);
   }
 
-  async create(dto: CreateClientDto, actor?: User) {
+  async create(
+    dto: CreateClientDto,
+    actor?: User,
+    createdByOverride?: { id?: string | null; name?: string | null },
+  ) {
     const code =
       dto.code?.trim() ||
       `A${Date.now().toString(36).slice(-7).toUpperCase()}`;
     const hasLocation = dto.latitude != null || dto.longitude != null;
+    const createdById = createdByOverride?.id ?? actor?.id ?? null;
+    const createdByName =
+      createdByOverride?.name?.trim() ||
+      actorLabel(actor) ||
+      null;
     const client = this.repo.create({
       code,
       onTradeId: dto.onTradeId?.trim() || code,
@@ -179,9 +219,7 @@ export class ClientsService {
           : 100,
       locationUpdatedAt: hasLocation ? new Date() : null,
       locationUpdatedById: hasLocation ? actor?.id ?? null : null,
-      locationUpdatedByName: hasLocation
-        ? actor?.fullName?.trim() || actor?.username?.trim() || null
-        : null,
+      locationUpdatedByName: hasLocation ? actorLabel(actor) : null,
       category: dto.category ?? 'Standard',
       distributorId: dto.distributorId ?? null,
       inn: normalizeInn(dto.inn),
@@ -190,7 +228,13 @@ export class ClientsService {
       clientClass: dto.clientClass ?? null,
       priceCategory: dto.priceCategory ?? null,
       photoUrl: dto.photoUrl ?? null,
+      canSeePromotions: dto.canSeePromotions === true,
       isActive: true,
+      createdById,
+      createdByName,
+      deletedAt: null,
+      deletedById: null,
+      deletedByName: null,
     });
     const saved = await this.repo.save(client);
     return this.findOne(saved.id);
@@ -232,8 +276,7 @@ export class ClientsService {
     if (locationChanged) {
       client.locationUpdatedAt = new Date();
       client.locationUpdatedById = actor?.id ?? null;
-      client.locationUpdatedByName =
-        actor?.fullName?.trim() || actor?.username?.trim() || null;
+      client.locationUpdatedByName = actorLabel(actor);
     }
 
     if (dto.category !== undefined) client.category = dto.category;
@@ -244,8 +287,55 @@ export class ClientsService {
     if (dto.clientClass !== undefined) client.clientClass = dto.clientClass;
     if (dto.priceCategory !== undefined) client.priceCategory = dto.priceCategory;
     if (dto.photoUrl !== undefined) client.photoUrl = dto.photoUrl;
+    if (dto.canSeePromotions !== undefined) client.canSeePromotions = !!dto.canSeePromotions;
     if (dto.isActive !== undefined) client.isActive = dto.isActive;
     await this.repo.save(client);
+    return this.findOne(id);
+  }
+
+  /** Korzinkaga o'tkazish — ma'lumotlar saqlanadi, APKlar ko'rmaydi */
+  async softDelete(id: string, actor: User) {
+    const client = await this.findOne(id);
+    client.deletedAt = new Date();
+    client.deletedById = actor.id;
+    client.deletedByName = actorLabel(actor);
+    await this.repo.save(client);
+    await this.userRepo.update({ clientId: id }, { isActive: false });
+    return { ok: true as const, id: client.id };
+  }
+
+  async softDeleteMany(ids: string[], actor: User) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) {
+      throw new BadRequestException('clientIds kerak');
+    }
+    const results: { id: string; ok: boolean }[] = [];
+    for (const id of unique) {
+      try {
+        await this.softDelete(id, actor);
+        results.push({ id, ok: true });
+      } catch {
+        results.push({ id, ok: false });
+      }
+    }
+    return {
+      deletedCount: results.filter((r) => r.ok).length,
+      results,
+    };
+  }
+
+  /** Korzinkadan qaytarish */
+  async restore(id: string) {
+    const client = await this.findOne(id, undefined, { includeDeleted: true });
+    if (!client.deletedAt) {
+      throw new BadRequestException('Mijoz korzinkada emas');
+    }
+    client.deletedAt = null;
+    client.deletedById = null;
+    client.deletedByName = null;
+    client.isActive = true;
+    await this.repo.save(client);
+    await this.userRepo.update({ clientId: id }, { isActive: true });
     return this.findOne(id);
   }
 
@@ -276,8 +366,7 @@ export class ClientsService {
       if (ids.length === 0) {
         throw new BadRequestException('clientIds yoki transferAll kerak');
       }
-      clients = await this.baseQuery()
-        .where('c.id IN (:...ids)', { ids })
+      clients = await this.notDeleted(this.baseQuery().where('c.id IN (:...ids)', { ids }))
         .andWhere('c.isActive = true')
         .getMany();
       if (clients.length === 0) {
@@ -325,7 +414,6 @@ export class ClientsService {
       }
 
       client.companyId = targetCompanyId;
-      // Boshqa org agentiga bog'liq qolmasin
       client.distributorId = null;
       await this.repo.save(client);
       await this.syncMembershipCompany(client.id, targetCompanyId);
@@ -349,7 +437,6 @@ export class ClientsService {
         where: { userId: row.userId, companyId: targetCompanyId },
       });
       if (clash) {
-        // Foydalanuvchi allaqachon maqsad orgda boshqa mijozga bog'langan
         if (clash.clientId !== clientId) {
           await this.membershipRepo.remove(row);
         }

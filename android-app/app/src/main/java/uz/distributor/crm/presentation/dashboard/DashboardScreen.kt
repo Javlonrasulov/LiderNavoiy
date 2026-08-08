@@ -128,8 +128,7 @@ fun DashboardScreen(
     val displayCompanyName = state.user?.companyName?.takeIf { it.isNotBlank() }
         ?: AppStrings.loginTitle(lang)
 
-    val isDelivery = state.user?.isDeliveryPerson() == true
-    val cartValue = if (!isDelivery && state.cartTotal > 0) {
+    val cartValue = if (state.cartTotal > 0) {
         "${formatter.format(state.cartTotal.toLong())} (${state.cartItemsCount} ${AppStrings.items(lang)})"
     } else "0"
 
@@ -152,8 +151,8 @@ fun DashboardScreen(
                 cartValue,
                 Icons.Default.ShoppingCart,
                 Color(0xFF3B82F6),
-                cartBadge = if (!isDelivery && state.cartItemsCount > 0) "${state.cartItemsCount}" else null,
-                onClick = if (isDelivery) ({}) else onOrderSummaryClick,
+                cartBadge = if (state.cartItemsCount > 0) "${state.cartItemsCount}" else null,
+                onClick = onOrderSummaryClick,
             ),
         )
         add(StatItem(AppStrings.products(lang), "${state.productCount}", Icons.Default.LocalOffer, Color(0xFF8B5CF6), onClick = onProductsClick))

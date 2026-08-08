@@ -104,7 +104,7 @@ class DashboardViewModel @Inject constructor(
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
             // Dostavkachi agent savatchasini ko‘rmasin (qurilmadagi eski cart)
-            val (cartTotal, cartItemsCount) = resolveCartTotals(user)
+            val (cartTotal, cartItemsCount) = resolveCartTotals()
 
             try {
                 val result = dashboardRefreshRepository.refreshAndDetectChanges(lang)
@@ -156,7 +156,7 @@ class DashboardViewModel @Inject constructor(
             val user = authRepository.getUserFlow().first()
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
-            val (cartTotal, cartItemsCount) = resolveCartTotals(user)
+            val (cartTotal, cartItemsCount) = resolveCartTotals()
 
             try {
                 withTimeout(25_000) {
@@ -191,9 +191,8 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Agent savatchasi faqat agent uchun; dostavkachida 0. */
-    private suspend fun resolveCartTotals(user: AuthUser?): Pair<Double, Int> {
-        if (user?.isDeliveryPerson() == true) return 0.0 to 0
+    /** Agent va yetkazib beruvchi — bir xil savat. */
+    private suspend fun resolveCartTotals(): Pair<Double, Int> {
         val cart = cartRepository.getCart()
         return cart.sumOf { it.price * it.quantity } to cart.size
     }

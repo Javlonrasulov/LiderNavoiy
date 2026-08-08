@@ -15,7 +15,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -58,6 +60,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestNotificationPermission()
         handlePushIntent(intent)
+        // Ilova ochiq turganda tokenni oldindan yangilab turish (JWT ~4 soat)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    runCatching {
+                        withTimeout(20_000) {
+                            val outcome = authRepository.ensureFreshAccessToken()
+                            Log.d(TAG, "ensureFresh=$outcome")
+                        }
+                    }
+                    // Access muddatidan ancha oldin — 4 soatlik JWT uchun ~1 soatda bir
+                    kotlinx.coroutines.delay(50L * 60L * 1000L)
+                }
+            }
+        }
         setContent {
             val themeMode by appSettingsRepository.themeMode.collectAsState(initial = ThemeMode.DARK)
             val language  by appSettingsRepository.language.collectAsState(initial = AppLanguage.DEFAULT)

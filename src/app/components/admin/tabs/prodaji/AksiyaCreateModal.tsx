@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Search, Check } from 'lucide-react';
+import { X, Search, Check, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../../../api/client';
 import { PromoDateCalendar } from './PromoDateCalendar';
+
+export type PromotionConditionRow = {
+  productId: string;
+  productName: string;
+  buyQuantity: number;
+};
 
 export type PromotionRow = {
   id: string;
@@ -12,6 +18,11 @@ export type PromotionRow = {
   freeQuantity?: number | null;
   productId: string | null;
   productName: string | null;
+  conditions?: PromotionConditionRow[];
+  rewardProductId?: string | null;
+  rewardProductName?: string | null;
+  rewardQuantity?: number | null;
+  rewardPrice?: number | null;
   colorStart: string;
   colorEnd: string;
   emoji: string | null;
@@ -51,6 +62,24 @@ function fromDateInput(v: string) {
   return `${v}T00:00:00.000Z`;
 }
 
+function initialConditions(initial: PromotionRow | null): PromotionConditionRow[] {
+  if (initial?.conditions && initial.conditions.length > 0) {
+    return initial.conditions.map((c) => ({
+      productId: c.productId,
+      productName: c.productName,
+      buyQuantity: Number(c.buyQuantity) || 0,
+    }));
+  }
+  if (initial?.productId) {
+    return [{
+      productId: initial.productId,
+      productName: initial.productName || '',
+      buyQuantity: Number(initial.buyQuantity) || 0,
+    }];
+  }
+  return [];
+}
+
 interface Props {
   D: boolean;
   t: Record<string, string>;
@@ -63,13 +92,26 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [subtitle, setSubtitle] = useState(initial?.subtitle ?? '');
   const [discountPercent, setDiscountPercent] = useState(
-    initial ? String(initial.discountPercent || '') : '20',
+    initial ? String(initial.discountPercent || '') : '',
   );
-  const [buyQuantity, setBuyQuantity] = useState(
-    initial?.buyQuantity != null ? String(initial.buyQuantity) : '',
+  const [conditions, setConditions] = useState<PromotionConditionRow[]>(() =>
+    initialConditions(initial),
   );
-  const [freeQuantity, setFreeQuantity] = useState(
-    initial?.freeQuantity != null ? String(initial.freeQuantity) : '',
+  const [rewardProductId, setRewardProductId] = useState<string | null>(
+    initial?.rewardProductId ?? null,
+  );
+  const [rewardProductName, setRewardProductName] = useState(
+    initial?.rewardProductName ?? '',
+  );
+  const [rewardQuantity, setRewardQuantity] = useState(
+    initial?.rewardQuantity != null
+      ? String(initial.rewardQuantity)
+      : initial?.freeQuantity != null
+        ? String(initial.freeQuantity)
+        : '1',
+  );
+  const [rewardPrice, setRewardPrice] = useState(
+    initial?.rewardPrice != null ? String(initial.rewardPrice) : '0',
   );
   const [colorStart, setColorStart] = useState(initial?.colorStart ?? '#4F46E5');
   const [colorEnd, setColorEnd] = useState(initial?.colorEnd ?? '#9333EA');
@@ -77,13 +119,14 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
   const [validFrom, setValidFrom] = useState(toDateInput(initial?.validFrom));
   const [validTo, setValidTo] = useState(toDateInput(initial?.validTo));
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
-  const [productId, setProductId] = useState<string | null>(initial?.productId ?? null);
-  const [productName, setProductName] = useState(initial?.productName ?? '');
   const [productSearch, setProductSearch] = useState('');
+  const [rewardSearch, setRewardSearch] = useState('');
   const [products, setProducts] = useState<ProductOpt[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** qaysi condition qatoriga mahsulot tanlanmoqda; null = reward */
+  const [pickingFor, setPickingFor] = useState<'condition' | 'reward'>('condition');
 
   const card = D ? '#1c1c1e' : '#ffffff';
   const brd = D ? '#2a2a2e' : '#e5e7eb';
@@ -109,32 +152,41 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
     return () => { cancelled = true; };
   }, []);
 
+  const activeSearch = pickingFor === 'reward' ? rewardSearch : productSearch;
   const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase();
+    const q = activeSearch.trim().toLowerCase();
     if (!q) return products.slice(0, 40);
     return products
       .filter((p) =>
         p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q),
       )
       .slice(0, 40);
-  }, [products, productSearch]);
+  }, [products, activeSearch]);
 
-  const selectedUnit = products.find((p) => p.id === productId)?.unit ?? '';
-  const buyQ = buyQuantity === '' ? 0 : Number(buyQuantity);
-  const freeQ = freeQuantity === '' ? 0 : Number(freeQuantity);
+  const rewardQ = rewardQuantity === '' ? 0 : Number(rewardQuantity);
+  const rewardP = rewardPrice === '' ? 0 : Number(rewardPrice);
 
-  const autoFreeSubtitle =
-    buyQ > 0 && freeQ > 0
-      ? (selectedUnit
-        ? `${buyQ}${selectedUnit} + ${freeQ}${selectedUnit}`
-        : `${buyQ} + ${freeQ}`)
+  const autoSubtitle = useMemo(() => {
+    if (conditions.length === 0) return '';
+    const parts = conditions
+      .filter((c) => c.buyQuantity > 0)
+      .map((c) => `${c.productName || '…'}: ≥${c.buyQuantity}`);
+    const gift = rewardProductName
+      ? ` → ${rewardProductName} ×${rewardQ || '?'}${rewardP === 0 ? ' (tekin)' : ` @${rewardP}`}`
       : '';
+    return parts.join(', ') + gift;
+  }, [conditions, rewardProductName, rewardQ, rewardP]);
 
-  const previewSubtitle = subtitle.trim()
-    || autoFreeSubtitle
-    || (productName
-      ? `${productName}${Number(discountPercent) > 0 ? `ga ${discountPercent}% chegirma` : ''}`
-      : (Number(discountPercent) > 0 ? `${discountPercent}% chegirma` : ''));
+  const previewSubtitle = subtitle.trim() || autoSubtitle
+    || (Number(discountPercent) > 0 ? `${discountPercent}% chegirma` : '');
+
+  const addConditionProduct = (p: ProductOpt) => {
+    if (conditions.some((c) => c.productId === p.id)) return;
+    setConditions((prev) => [
+      ...prev,
+      { productId: p.id, productName: p.name, buyQuantity: 10 },
+    ]);
+  };
 
   const handleSave = async () => {
     const trimmedTitle = title.trim();
@@ -148,20 +200,29 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       return;
     }
 
-    const buyQ = buyQuantity === '' ? null : Number(buyQuantity);
-    const freeQ = freeQuantity === '' ? null : Number(freeQuantity);
+    const cleanConditions = conditions.filter((c) => c.productId && Number(c.buyQuantity) > 0);
+    for (const c of cleanConditions) {
+      if (Number.isNaN(Number(c.buyQuantity)) || Number(c.buyQuantity) <= 0) {
+        setError(t.aksiyaBuyInvalid ?? 'Buy qty noto‘g‘ri');
+        return;
+      }
+    }
 
-    if (buyQuantity !== '' && Number.isNaN(buyQ as number)) {
-      setError(t.aksiyaBuyInvalid ?? 'Buy qty noto‘g‘ri');
-      return;
-    }
-    if (freeQuantity !== '' && Number.isNaN(freeQ as number)) {
-      setError(t.aksiyaFreeInvalid ?? 'Free qty noto‘g‘ri');
-      return;
-    }
-    if (freeQ != null && freeQ > 0 && (buyQ == null || buyQ <= 0)) {
-      setError(t.aksiyaBuyRequiredForFree ?? 'Free uchun buy qty ham kiritilishi kerak');
-      return;
+    if (cleanConditions.length > 0) {
+      if (!rewardProductId) {
+        setError(t.aksiyaRewardRequired ?? 'Sovg‘a mahsulot majburiy');
+        return;
+      }
+      const rq = Number(rewardQuantity);
+      if (!rq || Number.isNaN(rq) || rq <= 0) {
+        setError(t.aksiyaRewardQtyInvalid ?? 'Sovg‘a miqdori noto‘g‘ri');
+        return;
+      }
+      const rp = Number(rewardPrice);
+      if (Number.isNaN(rp) || rp < 0) {
+        setError(t.aksiyaRewardPriceInvalid ?? 'Aksiya narxi noto‘g‘ri');
+        return;
+      }
     }
 
     setSaving(true);
@@ -169,10 +230,15 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
     const body = {
       title: trimmedTitle,
       subtitle: subtitle.trim() || previewSubtitle || undefined,
-      discountPercent: freeQ != null && freeQ > 0 ? 0 : (Number.isFinite(pct) ? pct : 0),
-      productId: productId || null,
-      buyQuantity: buyQ,
-      freeQuantity: freeQ,
+      discountPercent: Number.isFinite(pct) ? pct : 0,
+      conditions: cleanConditions.map((c) => ({
+        productId: c.productId,
+        productName: c.productName,
+        buyQuantity: Number(c.buyQuantity),
+      })),
+      rewardProductId: rewardProductId || null,
+      rewardQuantity: rewardQuantity === '' ? null : Number(rewardQuantity),
+      rewardPrice: rewardPrice === '' ? 0 : Number(rewardPrice),
       colorStart,
       colorEnd,
       emoji: emoji || '🎁',
@@ -216,12 +282,11 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: '100%', maxWidth: 720, maxHeight: '92vh', overflow: 'auto',
+          width: '100%', maxWidth: 780, maxHeight: '92vh', overflow: 'auto',
           borderRadius: 18, border: `1px solid ${brd}`, background: card,
           boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
         }}
       >
-        {/* Header */}
         <div
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -253,7 +318,6 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
         </div>
 
         <div style={{ padding: 18, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 18 }}>
-          {/* Form */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <label style={labelStyle}>{t.aksiyaTitle ?? 'Sarlavha'} *</label>
@@ -270,33 +334,153 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               <input
                 value={subtitle}
                 onChange={(e) => setSubtitle(e.target.value)}
-                placeholder="Coca Colaga 20% chegirma"
+                placeholder={autoSubtitle || 'Shartlar matni'}
                 style={fieldStyle}
               />
             </div>
 
+            {/* Shartli mahsulotlar */}
+            <div>
+              <label style={labelStyle}>
+                {t.aksiyaConditions ?? 'Shartli mahsulotlar'}
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+                {conditions.map((c) => (
+                  <div
+                    key={c.productId}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 88px 32px',
+                      gap: 8,
+                      alignItems: 'center',
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      background: D ? '#1e1b4b' : '#eef2ff',
+                      border: `1px solid ${D ? '#312e81' : '#c7d2fe'}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 600, color: txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {c.productName}
+                    </span>
+                    <input
+                      type="number"
+                      min={0.001}
+                      step={1}
+                      value={c.buyQuantity || ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setConditions((prev) =>
+                          prev.map((x) =>
+                            x.productId === c.productId
+                              ? { ...x, buyQuantity: v === '' ? 0 : Number(v) }
+                              : x,
+                          ),
+                        );
+                      }}
+                      title={t.aksiyaBuyQty ?? 'Min miqdor'}
+                      placeholder="10"
+                      style={{ ...fieldStyle, padding: '6px 8px', fontSize: 12 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConditions((prev) => prev.filter((x) => x.productId !== c.productId))
+                      }
+                      style={{
+                        border: 'none', background: 'transparent', color: muted,
+                        cursor: 'pointer', display: 'flex', justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px', borderRadius: 10, border: `1px solid ${brd}`,
+                  background: soft, marginBottom: 6,
+                }}
+              >
+                <Search size={14} color={muted} />
+                <input
+                  value={productSearch}
+                  onFocus={() => setPickingFor('condition')}
+                  onChange={(e) => {
+                    setPickingFor('condition');
+                    setProductSearch(e.target.value);
+                  }}
+                  placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
+                  style={{
+                    flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                    color: txt, fontSize: 13,
+                  }}
+                />
+              </div>
+              {pickingFor === 'condition' && (
+                <div
+                  style={{
+                    maxHeight: 120, overflow: 'auto', borderRadius: 10,
+                    border: `1px solid ${brd}`, background: inputBg,
+                  }}
+                >
+                  {productsLoading ? (
+                    <div style={{ padding: 10, fontSize: 12, color: muted }}>{t.aksiyaLoading ?? '…'}</div>
+                  ) : filteredProducts.map((p) => {
+                    const active = conditions.some((c) => c.productId === p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => addConditionProduct(p)}
+                        disabled={active}
+                        style={{
+                          width: '100%', textAlign: 'left', padding: '7px 10px',
+                          border: 'none', borderBottom: `1px solid ${brd}`,
+                          background: active ? (D ? '#1e1b4b' : '#eef2ff') : 'transparent',
+                          color: txt, cursor: active ? 'default' : 'pointer', fontSize: 12,
+                          display: 'flex', alignItems: 'center', gap: 8, opacity: active ? 0.6 : 1,
+                        }}
+                      >
+                        {active ? <Check size={13} color="#6366f1" /> : <Plus size={13} color={muted} />}
+                        <span style={{ flex: 1 }}>
+                          <b>{p.name}</b>
+                          <span style={{ color: muted }}> · {p.code}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
+                {t.aksiyaConditionsHint ?? 'Har bir mahsulot uchun minimal miqdor (≥). Barchasi bajarilganda aksiya taklif qilinadi.'}
+              </div>
+            </div>
+
+            {/* Sovg‘a */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
-                <label style={labelStyle}>{t.aksiyaBuyQty ?? 'Buy qty'}</label>
+                <label style={labelStyle}>{t.aksiyaRewardQty ?? 'Sovg‘a miqdori'}</label>
                 <input
                   type="number"
                   min={0}
-                  step={0.1}
-                  value={buyQuantity}
-                  onChange={(e) => setBuyQuantity(e.target.value)}
-                  placeholder="10"
+                  step={1}
+                  value={rewardQuantity}
+                  onChange={(e) => setRewardQuantity(e.target.value)}
+                  placeholder="1"
                   style={fieldStyle}
                 />
               </div>
               <div>
-                <label style={labelStyle}>{t.aksiyaFreeQty ?? 'Free qty'}</label>
+                <label style={labelStyle}>{t.aksiyaRewardPrice ?? 'Aksiya narxi (0=tekin)'}</label>
                 <input
                   type="number"
                   min={0}
-                  step={0.1}
-                  value={freeQuantity}
-                  onChange={(e) => setFreeQuantity(e.target.value)}
-                  placeholder="1"
+                  step={1}
+                  value={rewardPrice}
+                  onChange={(e) => setRewardPrice(e.target.value)}
+                  placeholder="0"
                   style={fieldStyle}
                 />
               </div>
@@ -311,7 +495,7 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   max={100}
                   value={discountPercent}
                   onChange={(e) => setDiscountPercent(e.target.value)}
-                  placeholder="20"
+                  placeholder="0"
                   style={fieldStyle}
                 />
               </div>
@@ -395,12 +579,30 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
             </label>
           </div>
 
-          {/* Right: product + preview */}
+          {/* Right: reward + preview */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <label style={labelStyle}>
-                {t.aksiyaProductOptional ?? 'Mahsulot (ixtiyoriy)'}
+                {t.aksiyaRewardProduct ?? 'Sovg‘a mahsulot'} *
               </label>
+              {rewardProductId && (
+                <div
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', borderRadius: 10, marginBottom: 8,
+                    background: D ? '#14532d' : '#ecfdf5', border: `1px solid ${D ? '#166534' : '#a7f3d0'}`,
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: txt, fontWeight: 600 }}>{rewardProductName}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setRewardProductId(null); setRewardProductName(''); }}
+                    style={{ border: 'none', background: 'transparent', color: muted, cursor: 'pointer' }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <div
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
@@ -410,8 +612,12 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
               >
                 <Search size={14} color={muted} />
                 <input
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
+                  value={rewardSearch}
+                  onFocus={() => setPickingFor('reward')}
+                  onChange={(e) => {
+                    setPickingFor('reward');
+                    setRewardSearch(e.target.value);
+                  }}
                   placeholder={t.aksiyaProductSearch ?? 'Mahsulot qidirish...'}
                   style={{
                     flex: 1, border: 'none', outline: 'none', background: 'transparent',
@@ -419,71 +625,52 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   }}
                 />
               </div>
-
-              {productId && (
+              {pickingFor === 'reward' && (
                 <div
                   style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 10px', borderRadius: 10, marginBottom: 8,
-                    background: D ? '#1e1b4b' : '#eef2ff', border: `1px solid ${D ? '#312e81' : '#c7d2fe'}`,
+                    maxHeight: 160, overflow: 'auto', borderRadius: 10,
+                    border: `1px solid ${brd}`, background: inputBg,
                   }}
                 >
-                  <span style={{ fontSize: 13, color: txt, fontWeight: 600 }}>{productName}</span>
-                  <button
-                    type="button"
-                    onClick={() => { setProductId(null); setProductName(''); }}
-                    style={{ border: 'none', background: 'transparent', color: muted, cursor: 'pointer' }}
-                  >
-                    <X size={14} />
-                  </button>
+                  {productsLoading ? (
+                    <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.aksiyaLoading ?? 'Yuklanmoqda...'}</div>
+                  ) : filteredProducts.length === 0 ? (
+                    <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.noDataFound ?? 'Topilmadi'}</div>
+                  ) : (
+                    filteredProducts.map((p) => {
+                      const active = rewardProductId === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setRewardProductId(p.id);
+                            setRewardProductName(p.name);
+                          }}
+                          style={{
+                            width: '100%', textAlign: 'left', padding: '8px 10px',
+                            border: 'none', borderBottom: `1px solid ${brd}`,
+                            background: active ? (D ? '#14532d' : '#ecfdf5') : 'transparent',
+                            color: txt, cursor: 'pointer', fontSize: 12,
+                            display: 'flex', alignItems: 'center', gap: 8,
+                          }}
+                        >
+                          {active && <Check size={13} color="#059669" />}
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600 }}>{p.name}</span>
+                            <span style={{ color: muted }}> · {p.code}</span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               )}
-
-              <div
-                style={{
-                  maxHeight: 160, overflow: 'auto', borderRadius: 10,
-                  border: `1px solid ${brd}`, background: inputBg,
-                }}
-              >
-                {productsLoading ? (
-                  <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.aksiyaLoading ?? 'Yuklanmoqda...'}</div>
-                ) : filteredProducts.length === 0 ? (
-                  <div style={{ padding: 12, fontSize: 12, color: muted }}>{t.noDataFound ?? 'Topilmadi'}</div>
-                ) : (
-                  filteredProducts.map((p) => {
-                    const active = productId === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setProductId(p.id);
-                          setProductName(p.name);
-                        }}
-                        style={{
-                          width: '100%', textAlign: 'left', padding: '8px 10px',
-                          border: 'none', borderBottom: `1px solid ${brd}`,
-                          background: active ? (D ? '#1e1b4b' : '#eef2ff') : 'transparent',
-                          color: txt, cursor: 'pointer', fontSize: 12,
-                          display: 'flex', alignItems: 'center', gap: 8,
-                        }}
-                      >
-                        {active && <Check size={13} color="#6366f1" />}
-                        <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ fontWeight: 600 }}>{p.name}</span>
-                          <span style={{ color: muted }}> · {p.code}</span>
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
               <div style={{ fontSize: 11, color: muted, marginTop: 6 }}>
-                {t.aksiyaProductHint ?? 'Tanlamasangiz — umumiy chegirma sifatida chiqadi'}
+                {t.aksiyaRewardHint ?? 'Aksiya yigilganda agentga shu mahsulot taklif qilinadi (Ha/Yo‘q).'}
               </div>
             </div>
 
-            {/* Live preview */}
             <div>
               <label style={labelStyle}>{t.aksiyaPreview ?? 'Klientda ko\'rinishi'}</label>
               <div
@@ -505,7 +692,17 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
                   <span style={{ fontSize: 28, lineHeight: 1 }}>{emoji || '🎁'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 8 }}>
-                  {Number(discountPercent) > 0 ? (
+                  {rewardQ > 0 ? (
+                    <div
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 10px', borderRadius: 999,
+                        background: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 700,
+                      }}
+                    >
+                      +{rewardQ}{rewardP === 0 ? ' tekin' : ` @${rewardP}`}
+                    </div>
+                  ) : Number(discountPercent) > 0 ? (
                     <div
                       style={{
                         display: 'inline-block',
@@ -531,7 +728,6 @@ export function AksiyaCreateModal({ D, t, initial, onClose, onSaved }: Props) {
           <div style={{ padding: '0 18px 10px', color: '#ef4444', fontSize: 13 }}>{error}</div>
         )}
 
-        {/* Footer */}
         <div
           style={{
             display: 'flex', justifyContent: 'flex-end', gap: 8,

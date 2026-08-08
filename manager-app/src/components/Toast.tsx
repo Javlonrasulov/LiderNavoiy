@@ -68,7 +68,7 @@ function ToastCard({ item }: { item: ToastItem }) {
     color: s.color,
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
-    transform: item.visible ? 'translateY(0)' : 'translateY(18px)',
+    transform: item.visible ? 'translateY(0)' : 'translateY(-18px)',
     opacity: item.visible ? 1 : 0,
     transition: `transform ${item.visible ? ENTER_MS : EXIT_MS}ms ease, opacity ${item.visible ? ENTER_MS : EXIT_MS}ms ease`,
   }
@@ -118,14 +118,14 @@ export function ToastHost() {
         position: 'fixed',
         left: 0,
         right: 0,
-        bottom: 0,
+        top: 0,
         zIndex: 9999,
         pointerEvents: 'none',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: 8,
-        padding: '0 16px calc(16px + max(28px, var(--safe-bottom)) + var(--ime-bottom, 0px))',
+        padding: 'calc(12px + var(--safe-top, env(safe-area-inset-top, 0px))) 16px 0',
       }}
     >
       {items.map(item => (

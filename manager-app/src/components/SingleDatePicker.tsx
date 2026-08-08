@@ -92,7 +92,9 @@ export default function SingleDatePicker({
   const [viewMonth, setViewMonth] = useState(() =>
     value ? parseInt(value.split('-')[1], 10) - 1 : new Date().getMonth(),
   )
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent | TouchEvent) => {
@@ -112,6 +114,29 @@ export default function SingleDatePicker({
     setViewYear(y)
     setViewMonth(m - 1)
   }, [value, open])
+
+  useEffect(() => {
+    if (!open) {
+      setPanelPos(null)
+      return
+    }
+    const update = () => {
+      const el = btnRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const width = Math.max(r.width, 280)
+      let left = r.left
+      if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8)
+      setPanelPos({ top: r.bottom + 8, left, width })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open])
 
   const now = new Date()
   const atOrBeyondCurrentMonth =
@@ -162,6 +187,7 @@ export default function SingleDatePicker({
   return (
     <div ref={ref} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(o => !o)}
         style={{
@@ -196,25 +222,34 @@ export default function SingleDatePicker({
         />
       </button>
 
-      {open && (
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: '100%',
-            marginTop: 8,
-            zIndex: 80,
-            minWidth: 280,
-            borderRadius: 16,
-            border: `1px solid ${c.border}`,
-            background: dark ? '#161616' : '#ffffff',
-            boxShadow: dark
-              ? '0 16px 40px rgba(0,0,0,0.55)'
-              : '0 16px 40px rgba(15,23,42,0.18)',
-            overflow: 'hidden',
-          }}
-        >
+      {open && panelPos && (
+        <>
+          <div
+            role="presentation"
+            onClick={() => setOpen(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 4000,
+              background: 'rgba(0,0,0,0.25)',
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: panelPos.top,
+              left: panelPos.left,
+              width: panelPos.width,
+              zIndex: 4001,
+              borderRadius: 16,
+              border: `1px solid ${c.border}`,
+              background: dark ? '#161616' : '#ffffff',
+              boxShadow: dark
+                ? '0 16px 40px rgba(0,0,0,0.55)'
+                : '0 16px 40px rgba(15,23,42,0.18)',
+              overflow: 'hidden',
+            }}
+          >
           <div style={{ padding: 12 }}>
             <div
               style={{
@@ -408,7 +443,8 @@ export default function SingleDatePicker({
               {tr.trackToday}
             </button>
           </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   )

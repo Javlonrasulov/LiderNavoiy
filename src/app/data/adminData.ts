@@ -1,4 +1,4 @@
-﻿// ─── Shared admin data, types, translations, utils ────────────────────────
+// ─── Shared admin data, types, translations, utils ────────────────────────
 
 import { demo, demoRec, demoRecKeys } from './demoLimit';
 
@@ -69,6 +69,12 @@ export type ClientRow = {
   locationUpdatedAt?: string;
   /** Lokatsiyani o'zgartirgan foydalanuvchi */
   locationUpdatedBy?: string;
+  /** Mijoz APK da aksiyalarni ko‘ra oladimi */
+  canSeePromotions?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  deletedAt?: string;
+  deletedBy?: string;
 };
 
 // ─── UTILS ───
@@ -438,6 +444,14 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     gpsMissingMsg: "Bu mijozda GPS koordinatalari saqlanmagan. Xarita ko'rsatib bo'lmaydi.",
     closeBtn: 'Yopish',
     transferBtn: "O'tkazish",
+    clientTrashTitle: 'Korzinka',
+    clientDeleteBtn: "O'chirish",
+    clientRestoreBtn: 'Qaytarish',
+    clientTrashConfirm: "Mijozni korzinkaga o'tkazasizmi? Agent va manager APKlarida ko'rinmaydi, ma'lumotlar saqlanadi.",
+    clientTrashErr: "O'chirishda xatolik",
+    clientRestoreErr: 'Qaytarishda xatolik',
+    colCreatedBy: "Qo'shgan",
+    colDeletedBy: "O'chirgan",
     transferTitle: "Boshqa tashkilotga o'tkazish",
     transferHint: "INN bo'yicha dublikat tekshiriladi",
     transferTarget: 'Maqsad tashkilot',
@@ -804,9 +818,18 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     aksiyaDeleting: "O'chirilmoqda...",
     aksiyaTitleRequired: 'Sarlavha majburiy',
     aksiyaDiscountInvalid: "Chegirma 0–100 oralig'ida bo'lishi kerak",
-    aksiyaBuyQty: 'Buy qty', aksiyaFreeQty: 'Free qty',
+    aksiyaBuyQty: 'Min miqdor', aksiyaFreeQty: 'Sovg‘a miqdori',
     aksiyaBuyInvalid: "Buy qty noto'g'ri", aksiyaFreeInvalid: "Free qty noto'g'ri",
     aksiyaBuyRequiredForFree: 'Free uchun buy qty ham kiritilishi kerak',
+    aksiyaConditions: 'Shartli mahsulotlar',
+    aksiyaConditionsHint: 'Har bir mahsulot uchun minimal miqdor (≥). Barchasi bajarilganda aksiya taklif qilinadi.',
+    aksiyaRewardProduct: 'Sovg‘a mahsulot',
+    aksiyaRewardQty: 'Sovg‘a miqdori',
+    aksiyaRewardPrice: 'Aksiya narxi (0=tekin)',
+    aksiyaRewardRequired: 'Sovg‘a mahsulot majburiy',
+    aksiyaRewardQtyInvalid: 'Sovg‘a miqdori noto‘g‘ri',
+    aksiyaRewardPriceInvalid: 'Aksiya narxi noto‘g‘ri',
+    aksiyaRewardHint: 'Aksiya yigilganda agentga shu mahsulot taklif qilinadi (Ha/Yo‘q).',
     otgrProcess: 'Jarayonda', otgrDone: 'Yuborilgan', otgrCancelled: 'Bekor',
     otgrDate: 'Sana', otgrNum: '№', otgrTransport: 'Transport', otgrDriver: 'Haydovchi',
     otgrReys: '№ Reys', otgrKolTT: 'Kol TT', otgrKol3k: 'Kol-3k', otgrObrn: 'Obr-n', otgrNeobr: 'Ne obr',
@@ -1161,6 +1184,14 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     gpsMissingMsg: 'Бу мижозда GPS координаталари сақланмаган. Харита кўрсатиб бўлмайди.',
     closeBtn: 'Ёпиш',
     transferBtn: 'Ўтказиш',
+    clientTrashTitle: 'Корзинка',
+    clientDeleteBtn: 'Ўчириш',
+    clientRestoreBtn: 'Қайтариш',
+    clientTrashConfirm: 'Мижозни корзинкага ўтказасизми? Агент ва менеджер АПКларида кўринмайди, маълумотлар сақланади.',
+    clientTrashErr: 'Ўчиришда хатолик',
+    clientRestoreErr: 'Қайтаришда хатолик',
+    colCreatedBy: 'Қўшган',
+    colDeletedBy: 'Ўчирган',
     transferTitle: 'Бошқа ташкилотга ўтказиш',
     transferHint: 'ИНН бўйича дубликат текширилади',
     transferTarget: 'Мақсад ташкилот',
@@ -1526,9 +1557,18 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     aksiyaDeleting: 'Ўчирилмоқда...',
     aksiyaTitleRequired: 'Сарлавҳа мажбурий',
     aksiyaDiscountInvalid: 'Чегирма 0–100 оралиғида бўлиши керак',
-    aksiyaBuyQty: 'Buy qty', aksiyaFreeQty: 'Free qty',
+    aksiyaBuyQty: 'Мин миқдор', aksiyaFreeQty: 'Совға миқдори',
     aksiyaBuyInvalid: 'Buy qty нотўғри', aksiyaFreeInvalid: 'Free qty нотўғри',
     aksiyaBuyRequiredForFree: 'Free учун buy qty ҳам киритилиши керак',
+    aksiyaConditions: 'Шартли маҳсулотлар',
+    aksiyaConditionsHint: 'Ҳар бир маҳсулот учун минимал миқдор (≥). Барчаси бажарилганда акция таклиф қилинади.',
+    aksiyaRewardProduct: 'Совға маҳсулот',
+    aksiyaRewardQty: 'Совға миқдори',
+    aksiyaRewardPrice: 'Акция нархи (0=текин)',
+    aksiyaRewardRequired: 'Совға маҳсулот мажбурий',
+    aksiyaRewardQtyInvalid: 'Совға миқдори нотўғри',
+    aksiyaRewardPriceInvalid: 'Акция нархи нотўғри',
+    aksiyaRewardHint: 'Акция йиғилганда агентга шу маҳсулот таклиф қилинади (Ҳа/Йўқ).',
     otgrProcess: 'Жараёнда', otgrDone: 'Юборилган', otgrCancelled: 'Бекор',
     otgrDate: 'Сана', otgrNum: '№', otgrTransport: 'Транспорт', otgrDriver: 'Ҳайдовчи',
     otgrReys: '№ Рейс', otgrKolTT: 'Кол ТТ', otgrKol3k: 'Кол-3к', otgrObrn: 'Обр-н', otgrNeobr: 'Не обр',
@@ -1880,6 +1920,14 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     gpsMissingMsg: 'У этого клиента нет GPS-координат. Карту показать нельзя.',
     closeBtn: 'Закрыть',
     transferBtn: 'Перенести',
+    clientTrashTitle: 'Корзина',
+    clientDeleteBtn: 'Удалить',
+    clientRestoreBtn: 'Восстановить',
+    clientTrashConfirm: 'Переместить клиента в корзину? В APK агента и менеджера не будет виден, данные сохранятся.',
+    clientTrashErr: 'Ошибка удаления',
+    clientRestoreErr: 'Ошибка восстановления',
+    colCreatedBy: 'Добавил',
+    colDeletedBy: 'Удалил',
     transferTitle: 'Перенос в другую организацию',
     transferHint: 'Дубликаты проверяются по ИНН',
     transferTarget: 'Целевая организация',
@@ -2244,9 +2292,18 @@ export const AP: Record<LangAdmin, Record<string, string>> = {
     aksiyaDeleting: 'Удаление...',
     aksiyaTitleRequired: 'Заголовок обязателен',
     aksiyaDiscountInvalid: 'Скидка должна быть от 0 до 100',
-    aksiyaBuyQty: 'Buy qty', aksiyaFreeQty: 'Free qty',
+    aksiyaBuyQty: 'Мин. кол-во', aksiyaFreeQty: 'Кол-во подарка',
     aksiyaBuyInvalid: 'Неверный Buy qty', aksiyaFreeInvalid: 'Неверный Free qty',
     aksiyaBuyRequiredForFree: 'Для Free нужно указать Buy qty',
+    aksiyaConditions: 'Условия по товарам',
+    aksiyaConditionsHint: 'Минимальное кол-во (≥) по каждому товару. Акция предлагается, когда все выполнены.',
+    aksiyaRewardProduct: 'Подарочный товар',
+    aksiyaRewardQty: 'Кол-во подарка',
+    aksiyaRewardPrice: 'Цена акции (0=бесплатно)',
+    aksiyaRewardRequired: 'Подарочный товар обязателен',
+    aksiyaRewardQtyInvalid: 'Неверное кол-во подарка',
+    aksiyaRewardPriceInvalid: 'Неверная цена акции',
+    aksiyaRewardHint: 'Когда условия собраны, агенту предлагается этот товар (Да/Нет).',
     otgrProcess: 'В процессе', otgrDone: 'Отправлен', otgrCancelled: 'Отменён',
     otgrDate: 'Дата', otgrNum: '№', otgrTransport: 'Транспорт', otgrDriver: 'Водитель',
     otgrReys: '№ Рейс', otgrKolTT: 'Кол ТТ', otgrKol3k: 'Кол-3к', otgrObrn: 'Обр-н', otgrNeobr: 'Не обр',

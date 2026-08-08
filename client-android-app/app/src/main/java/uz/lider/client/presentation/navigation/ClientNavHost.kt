@@ -38,6 +38,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
@@ -50,6 +53,7 @@ import uz.lider.client.data.repository.AuthRepository
 import uz.lider.client.data.repository.CartRepository
 import uz.lider.client.data.repository.DebtRepository
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
+import uz.lider.client.data.repository.ProfileRepository
 import uz.lider.client.data.repository.RecentPaymentSignal
 import uz.lider.client.presentation.analytics.AnalyticsScreen
 import uz.lider.client.presentation.auth.LoginScreen
@@ -89,17 +93,32 @@ class ClientNavigationViewModel @Inject constructor(
     cartRepository: CartRepository,
     private val paymentPhotoAlertStore: PaymentPhotoAlertStore,
     private val debtRepository: DebtRepository,
+    private val profileRepository: ProfileRepository,
 ) : ViewModel() {
     val sessionExpired = authRepository.sessionExpired
     val cartItems = cartRepository.items
     val user = authRepository.getUserFlow()
     val paymentPhotoModalEvents = paymentPhotoAlertStore.modalEvents
 
+    private val _canSeePromotions = MutableStateFlow(false)
+    val canSeePromotions: StateFlow<Boolean> = _canSeePromotions.asStateFlow()
+
     @Volatile
     private var paymentPollStarted = false
 
     init {
         viewModelScope.launch { paymentPhotoAlertStore.clearIfExpired() }
+        viewModelScope.launch {
+            user.collectLatest { u ->
+                if (u == null) {
+                    _canSeePromotions.value = false
+                    return@collectLatest
+                }
+                val canSee = runCatching { profileRepository.getProfile()?.canSeePromotions == true }
+                    .getOrDefault(false)
+                _canSeePromotions.value = canSee
+            }
+        }
     }
 
     /** Faqat login/splash dan keyin — aks holda 401/refresh splashni qotkazadi. */
@@ -223,6 +242,7 @@ fun ClientNavHost(
     val selectedTab = clientBottomNavSelectedTab(currentRoute) ?: ClientTab.DASHBOARD
     val cartItems by navViewModel.cartItems.collectAsState()
     val user by navViewModel.user.collectAsState(initial = null)
+    val canSeePromotions by navViewModel.canSeePromotions.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val loggedIn = currentRoute != null &&
@@ -314,6 +334,7 @@ fun ClientNavHost(
         drawerContent = {
             ClientDrawerContent(
                 user = user,
+                canSeePromotions = canSeePromotions,
                 onNavigate = { route -> navController.navigateClientRoute(route) },
                 onLogout = {
                     navViewModel.logout {

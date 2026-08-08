@@ -5,6 +5,7 @@ import type { Product, ProductStats } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import { resolveProductImageUrl } from '../utils/productImageUrl'
+import { pushBackHandler } from '../utils/hardwareBack'
 
 interface Props {
   dark: boolean
@@ -118,6 +119,17 @@ export default function ProductsScreen({ dark, lang, tr, onBack }: Props) {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    return pushBackHandler(() => {
+      if (detail || detailLoading) {
+        setDetail(null)
+        setDetailLoading(false)
+        return true
+      }
+      return false
+    })
+  }, [detail, detailLoading])
 
   const setMode = (mode: ViewMode) => {
     setViewMode(mode)

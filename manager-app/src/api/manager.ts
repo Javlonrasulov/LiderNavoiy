@@ -2,7 +2,10 @@ import { api } from './client'
 import type {
   AdminDashboard,
   Client,
+  ClientStatsPeriod,
+  ClientStatsResponse,
   CreateClientBody,
+  UpdateClientBody,
   DailyRouteResponse,
   Distributor,
   PlanRow,
@@ -61,8 +64,32 @@ export function fetchClients(companyId?: string) {
   return api<Client[]>(`clients${q}`)
 }
 
+/** Admin mijozlar-statistika bilan bir xil endpoint */
+export function fetchClientStats(
+  clientId: string,
+  params?: { period?: ClientStatsPeriod; from?: string; to?: string },
+) {
+  const q = new URLSearchParams()
+  if (params?.period) q.set('period', params.period)
+  if (params?.from) q.set('from', params.from)
+  if (params?.to) q.set('to', params.to)
+  const qs = q.toString()
+  return api<ClientStatsResponse>(`clients/${clientId}/stats${qs ? `?${qs}` : ''}`)
+}
+
 export function createClient(body: CreateClientBody) {
   return api<Client>('clients', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function fetchClient(id: string) {
+  return api<Client>(`clients/${encodeURIComponent(id)}`)
+}
+
+export function updateClient(id: string, body: UpdateClientBody) {
+  return api<Client>(`clients/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
 }
 
 export type SalesLine = {

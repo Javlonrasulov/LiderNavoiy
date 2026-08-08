@@ -144,6 +144,7 @@ export class GpsService {
       WHERE c.latitude IS NOT NULL
         AND c.longitude IS NOT NULL
         AND c.is_active = true
+        AND c.deleted_at IS NULL
         ${distributorFilter}
         AND ST_DWithin(
           ST_SetSRID(ST_MakePoint(c.longitude, c.latitude), 4326)::geography,

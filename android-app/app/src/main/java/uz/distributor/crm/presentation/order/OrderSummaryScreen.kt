@@ -1068,10 +1068,15 @@ private fun SentOrderItemRow(
                     if (isFree) "Bepul" else fmt.format((item.price * item.quantity).toLong()),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
-                    color = PrimaryBlue,
+                    color = if (!item.promotionId.isNullOrBlank()) Color(0xFF7C3AED) else PrimaryBlue,
                 )
                 Text(
-                    if (isFree) "Aksiya ketgani" else "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}",
+                    when {
+                        isFree -> "Aksiya"
+                        !item.promotionId.isNullOrBlank() ->
+                            "Aksiya · ${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}"
+                        else -> "${fmt.format(item.price.toLong())} × ${formatQty(item.quantity, stockFmt)}"
+                    },
                     color = SubText,
                     fontSize = 11.sp,
                 )

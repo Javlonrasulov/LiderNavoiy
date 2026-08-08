@@ -110,6 +110,8 @@ data class ClientProfile(
     /** null = server hali bu maydonni yubormagan */
     val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPerson? = null,
+    /** Admin/menejer yoqmagan bo‘lsa mijoz APK da aksiyalar ko‘rinmaydi */
+    val canSeePromotions: Boolean = false,
     val organizations: List<ClientOrganization> = emptyList(),
     val activeOrganization: ClientOrganization? = null,
 ) {

@@ -60,6 +60,10 @@ export interface TaroziProductRow {
   summa: number;
   qoldiq: number;
   danger: boolean;
+  productId?: string;
+  productCode?: string;
+  isFree?: boolean;
+  promotionId?: string | null;
 }
 
 function formatTashkentDate(iso: string): string {
@@ -225,17 +229,23 @@ export function orderItemsToTaroziProducts(items: BackendOrderItem[]): TaroziPro
   return items.map((item, i) => {
     const qty = Number(item.quantity) || 0;
     const price = Number(item.price) || 0;
+    const actual = item.actualQuantity != null ? Number(item.actualQuantity) : 0;
+    const isPromo = !!item.promotionId || item.isFree === true;
     return {
       id: i + 1,
       n: i + 1,
       name: item.productName || item.productCode || 'Tovar',
       zakaz: qty,
       cena: price,
-      ves: 0,
+      ves: actual > 0 ? actual : 0,
       ed: item.unit || 'dona',
-      summa: 0,
+      summa: actual > 0 ? Math.round(actual * price) : 0,
       qoldiq: 0,
       danger: false,
+      productId: item.productId,
+      productCode: item.productCode,
+      isFree: item.isFree === true || (isPromo && price === 0),
+      promotionId: item.promotionId ?? null,
     };
   });
 }

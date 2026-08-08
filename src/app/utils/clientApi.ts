@@ -96,6 +96,11 @@ export function apiClientToRow(c: BackendClient): ClientRow {
     rowType: 'normal',
     locationUpdatedAt: c.locationUpdatedAt ?? undefined,
     locationUpdatedBy: c.locationUpdatedByName?.trim() || undefined,
+    canSeePromotions: !!c.canSeePromotions,
+    createdAt: c.createdAt ?? undefined,
+    createdBy: c.createdByName?.trim() || undefined,
+    deletedAt: c.deletedAt ?? undefined,
+    deletedBy: c.deletedByName?.trim() || undefined,
   };
 }
 
@@ -118,6 +123,7 @@ export function rowToUpdatePayload(data: Partial<ClientRow> & { id: string }) {
     territory: data.territory,
     clientClass: data.cls,
     priceCategory: data.priceCat,
+    canSeePromotions: data.canSeePromotions === true,
   };
 }
 
@@ -144,6 +150,7 @@ export function formToCreatePayload(
     territory: data.territory,
     clientClass: data.cls,
     priceCategory: data.priceCat,
+    canSeePromotions: data.canSeePromotions === true,
   };
 }
 

@@ -7,8 +7,8 @@ android {
         applicationId "uz.lider.manager"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 4
+        versionName "1.0.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,6 +22,24 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+// Android Studio Run → avval web build + cap sync (oxirgi o‘zgarishlar APK ga tushsin)
+tasks.register("syncWebAssets", Exec) {
+    workingDir = file("..")
+    def isWin = System.getProperty("os.name").toLowerCase().contains("windows")
+    if (isWin) {
+        commandLine "cmd", "/c", "pnpm run build && npx cap sync android"
+    } else {
+        commandLine "sh", "-c", "pnpm run build && npx cap sync android"
+    }
+    ignoreExitValue = true
+    onlyIf {
+        file("../package.json").exists() && file("../src").exists()
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("syncWebAssets")
 }
 
 repositories {

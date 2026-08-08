@@ -75,19 +75,29 @@ function getProducts(id: string | number): ZProduct[] {
 }
 
 function itemsToProducts(items: BackendOrderItem[]): ZProduct[] {
-  return items.map((item, i) => ({
-    id: i + 1,
-    n: i + 1,
-    brand: item.productCode || '—',
-    group: item.unit || '—',
-    tovar: item.productName,
-    ostatok: 0,
-    kolvo: item.quantity,
-    tsenaPreys: item.price,
-    pctSkid: 0,
-    tsenaProd: item.price,
-    summa: item.quantity * item.price,
-  }));
+  return items.map((item, i) => {
+    const qty =
+      item.actualQuantity != null && Number(item.actualQuantity) > 0
+        ? Number(item.actualQuantity)
+        : Number(item.quantity) || 0;
+    const price = Number(item.price) || 0;
+    const isPromo = !!item.promotionId || item.isFree === true;
+    return {
+      id: i + 1,
+      n: i + 1,
+      brand: item.productCode || '—',
+      group: isPromo ? (item.isFree || price === 0 ? 'Aksiya' : 'Aksiya') : (item.unit || '—'),
+      tovar: isPromo
+        ? `${item.productName} [${item.isFree || price === 0 ? 'Aksiya · tekin' : 'Aksiya'}]`
+        : item.productName,
+      ostatok: 0,
+      kolvo: qty,
+      tsenaPreys: price,
+      pctSkid: 0,
+      tsenaProd: price,
+      summa: qty * price,
+    };
+  });
 }
 function fmtN(n: number) { return n.toLocaleString('ru-RU'); }
 function fmtS(n: number) { return n ? n.toLocaleString('ru-RU') : '—'; }

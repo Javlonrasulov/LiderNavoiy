@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsNumber,
@@ -8,7 +10,24 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+export class PromotionConditionDto {
+  @ApiProperty()
+  @IsUUID()
+  productId: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  productName?: string;
+
+  @ApiProperty({ example: 10 })
+  @IsNumber()
+  @Min(0.001)
+  buyQuantity: number;
+}
 
 export class CreatePromotionDto {
   @ApiProperty({ example: 'Yozgi chegirma' })
@@ -27,8 +46,9 @@ export class CreatePromotionDto {
   @Max(100)
   discountPercent?: number;
 
+  /** @deprecated — conditions ishlatiladi; backward compat */
   @ApiPropertyOptional({
-    description: 'Buy X miqdor (10 kg yoki 10 dona). Promo free qoidasi uchun',
+    description: 'Legacy buy qty (conditions bo‘lmasa)',
     example: 10,
   })
   @IsOptional()
@@ -36,8 +56,9 @@ export class CreatePromotionDto {
   @Min(0)
   buyQuantity?: number;
 
+  /** @deprecated — rewardQuantity */
   @ApiPropertyOptional({
-    description: 'Get Y miqdor (1 kg yoki 1 dona). Promo free qoidasi uchun',
+    description: 'Legacy free qty → rewardQuantity',
     example: 1,
   })
   @IsOptional()
@@ -45,10 +66,35 @@ export class CreatePromotionDto {
   @Min(0)
   freeQuantity?: number;
 
-  @ApiPropertyOptional({ description: 'Mahsulot ID (ixtiyoriy)' })
+  /** @deprecated — conditions[0] */
+  @ApiPropertyOptional({ description: 'Legacy shartli mahsulot' })
   @IsOptional()
   @IsUUID()
   productId?: string | null;
+
+  @ApiPropertyOptional({ type: [PromotionConditionDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PromotionConditionDto)
+  conditions?: PromotionConditionDto[];
+
+  @ApiPropertyOptional({ description: 'Sovg‘a mahsulot ID' })
+  @IsOptional()
+  @IsUUID()
+  rewardProductId?: string | null;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rewardQuantity?: number | null;
+
+  @ApiPropertyOptional({ example: 0, description: 'Aksiya narxi; 0 = tekin' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  rewardPrice?: number | null;
 
   @ApiPropertyOptional({ example: '#4F46E5' })
   @IsOptional()

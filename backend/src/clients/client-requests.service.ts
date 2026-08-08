@@ -127,6 +127,7 @@ export class ClientRequestsService {
       clientClass: dto.clientClass ?? null,
       priceCategory: dto.priceCategory ?? null,
       photoUrl: dto.photoUrl ?? null,
+      canSeePromotions: dto.canSeePromotions === true,
       agentName: agentName ?? null,
       note: dto.note ?? null,
     });
@@ -172,6 +173,10 @@ export class ClientRequestsService {
           ? dto.priceCategory
           : existing.priceCategory,
       photoUrl: dto.photoUrl !== undefined ? dto.photoUrl : existing.photoUrl,
+      canSeePromotions:
+        dto.canSeePromotions !== undefined
+          ? dto.canSeePromotions === true
+          : existing.canSeePromotions === true,
     };
 
     const dup = await this.checkInnDuplicate(merged.inn, undefined, targetClientId);
@@ -206,6 +211,7 @@ export class ClientRequestsService {
       pendingExisting.clientClass = merged.clientClass ?? null;
       pendingExisting.priceCategory = merged.priceCategory ?? null;
       pendingExisting.photoUrl = merged.photoUrl ?? null;
+      pendingExisting.canSeePromotions = merged.canSeePromotions === true;
       pendingExisting.agentName = agentName ?? pendingExisting.agentName;
       pendingExisting.distributorId =
         distributorId ?? pendingExisting.distributorId;
@@ -234,6 +240,7 @@ export class ClientRequestsService {
       clientClass: merged.clientClass ?? null,
       priceCategory: merged.priceCategory ?? null,
       photoUrl: merged.photoUrl ?? null,
+      canSeePromotions: merged.canSeePromotions === true,
       agentName: agentName ?? null,
       note: null,
     });
@@ -278,6 +285,7 @@ export class ClientRequestsService {
         clientClass: request.clientClass ?? undefined,
         priceCategory: request.priceCategory ?? undefined,
         photoUrl: request.photoUrl ?? undefined,
+        canSeePromotions: request.canSeePromotions === true,
       };
       const client = await this.clientsService.update(
         request.targetClientId,
@@ -312,9 +320,13 @@ export class ClientRequestsService {
       clientClass: request.clientClass ?? undefined,
       priceCategory: request.priceCategory ?? undefined,
       photoUrl: request.photoUrl ?? undefined,
+      canSeePromotions: request.canSeePromotions === true,
     };
 
-    const client = await this.clientsService.create(createDto);
+    const client = await this.clientsService.create(createDto, actor, {
+      id: request.distributor?.userId ?? actor?.id ?? null,
+      name: request.agentName ?? actor?.fullName ?? actor?.username ?? null,
+    });
     request.status = ClientRequestStatus.APPROVED;
     request.approvedClientId = client.id;
     request.reviewedBy = reviewerName;

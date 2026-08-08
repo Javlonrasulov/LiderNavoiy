@@ -49,6 +49,8 @@
   --header-pad-top: calc(12px + var(--safe-top));
   /* Pastki menyu: telefon navigation / gestura bari ustiga chiqmasin */
   --bottom-nav-pad: calc(12px + var(--safe-bottom));
+  /* BottomNav to'liq balandligi (paddingTop + icon + label + pad) + 8px bo'shliq */
+  --bottom-nav-height: calc(70px + var(--bottom-nav-pad));
   --screen-pad-x: max(16px, var(--safe-left), var(--safe-right));
 }
 

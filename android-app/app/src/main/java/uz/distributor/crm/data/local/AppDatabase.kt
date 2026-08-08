@@ -50,16 +50,19 @@ data class ProductEntity(
     val cachedAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(tableName = "cart_items", primaryKeys = ["clientId", "productId"])
+@Entity(tableName = "cart_items", primaryKeys = ["clientId", "productId", "promotionId"])
 data class CartItemEntity(
     val clientId: String,
     val productId: String,
+    /** "" = oddiy qator; promo id = aksiya sovg‘asi */
+    val promotionId: String = "",
     val productCode: String,
     val productName: String,
     val price: Double,
     val quantity: Double,
     val unit: String,
     val category: String?,
+    val isFree: Boolean = false,
 )
 
 @Entity(tableName = "pending_orders")
@@ -120,8 +123,12 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
     @Query("SELECT * FROM cart_items") suspend fun getAll(): List<CartItemEntity>
     @Query("SELECT * FROM cart_items WHERE clientId = :clientId")
     suspend fun getByClient(clientId: String): List<CartItemEntity>
-    @Query("DELETE FROM cart_items WHERE clientId = :clientId AND productId = :productId")
-    suspend fun delete(clientId: String, productId: String)
+    @Query("DELETE FROM cart_items WHERE clientId = :clientId AND productId = :productId AND promotionId = :promotionId")
+    suspend fun delete(clientId: String, productId: String, promotionId: String = "")
+    @Query("DELETE FROM cart_items WHERE clientId = :clientId AND productId = :productId AND promotionId = ''")
+    suspend fun deletePaid(clientId: String, productId: String)
+    @Query("DELETE FROM cart_items WHERE clientId = :clientId AND promotionId = :promotionId")
+    suspend fun deletePromo(clientId: String, promotionId: String)
     @Query("DELETE FROM cart_items WHERE clientId = :clientId")
     suspend fun clearClient(clientId: String)
     @Query("DELETE FROM cart_items") suspend fun clear()
@@ -144,7 +151,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 @Database(
     entities = [PendingLocationEntity::class, ClientEntity::class, ProductEntity::class,
         CartItemEntity::class, PendingOrderEntity::class, PendingVisitEntity::class],
-    version = 6, exportSchema = false,
+    version = 7, exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingLocationDao(): PendingLocationDao

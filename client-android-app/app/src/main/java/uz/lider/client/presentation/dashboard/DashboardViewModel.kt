@@ -58,6 +58,7 @@ data class DashboardUiState(
     val clientName: String = "",
     val allOrders: List<ClientOrder> = emptyList(),
     val promotions: List<uz.lider.client.domain.model.Promotion> = emptyList(),
+    val canSeePromotions: Boolean = false,
     /** null = sana filtri yo‘q — chip ko‘rinmaydi, barcha savdolar */
     val dateRange: DashboardDateRange? = null,
     val purchasesCompanyId: String? = null,
@@ -184,6 +185,10 @@ class DashboardViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
+            // Token muddati tugagan bo‘lsa — avval yangilash (401 storm oldini olish)
+            runCatching {
+                withTimeout(20_000) { authRepository.ensureFreshAccessToken() }
+            }
             val authUser = runCatching {
                 withTimeout(8_000) { authRepository.getUserFlow().first() }
             }.getOrNull()
@@ -227,6 +232,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     suspend fun refresh() {
+        runCatching {
+            withTimeout(20_000) { authRepository.ensureFreshAccessToken() }
+        }
         val ok = try {
             withTimeout(45_000) {
                 reloadQuiet()
@@ -258,14 +266,16 @@ class DashboardViewModel @Inject constructor(
         }.getOrNull()
         val profileDeferred = async { runCatching { profileRepository.getProfileStrict() } }
         val ordersDeferred = async { runCatching { orderRepository.getOrdersStrict(companyId = null) } }
-        val promotionsDeferred = async {
-            runCatching { promotionsRepository.getPromotions() }.getOrElse { emptyList() }
-        }
         val apiDashDeferred = async { runCatching { profileRepository.fetchDashboardSummaryStrict() } }
         val profileR = profileDeferred.await()
         val ordersR = ordersDeferred.await()
-        val promotions = promotionsDeferred.await()
         val apiDashR = apiDashDeferred.await()
+        val canSeePromotions = profileR.getOrNull()?.canSeePromotions == true
+        val promotions = if (canSeePromotions) {
+            runCatching { promotionsRepository.getPromotions() }.getOrElse { emptyList() }
+        } else {
+            emptyList()
+        }
 
         val anyOk = profileR.isSuccess || ordersR.isSuccess || apiDashR.isSuccess
         if (!anyOk) {
@@ -336,6 +346,7 @@ class DashboardViewModel @Inject constructor(
                 clientName = resolveClientName(apiProfile),
                 allOrders = allOrders,
                 promotions = promotions,
+                canSeePromotions = canSeePromotions,
                 dateRange = range,
                 purchasesCompanyId = companyId,
                 filtered = displayFiltered,

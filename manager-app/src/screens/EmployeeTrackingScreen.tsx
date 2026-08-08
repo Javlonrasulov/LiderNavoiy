@@ -159,6 +159,8 @@ export default function EmployeeTrackingScreen({
           borderBottom: `1px solid ${c.border}`,
           background: c.card,
           flexShrink: 0,
+          position: 'relative',
+          zIndex: 20,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -279,6 +281,8 @@ export default function EmployeeTrackingScreen({
           flex: 1,
           overflowY: 'auto',
           padding: '12px max(16px, var(--safe-right)) calc(24px + var(--safe-bottom)) max(16px, var(--safe-left))',
+          position: 'relative',
+          zIndex: 1,
         }}
         className="no-scrollbar"
       >

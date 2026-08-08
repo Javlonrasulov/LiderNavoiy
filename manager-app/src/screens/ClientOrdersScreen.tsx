@@ -582,9 +582,13 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
         <div style={{
           position: 'absolute', inset: 0, zIndex: 70,
           background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
+          paddingBottom: 'var(--ime-bottom, 0px)',
+          transition: 'padding-bottom 160ms ease-out',
         }}>
           <div style={{
-            width: '100%', maxHeight: '90%', overflowY: 'auto',
+            width: '100%',
+            maxHeight: 'min(90%, calc(100% - var(--ime-bottom, 0px)))',
+            overflowY: 'auto',
             background: c.card, borderRadius: '24px 24px 0 0',
             padding: '16px 16px calc(20px + var(--safe-bottom))',
           }}>

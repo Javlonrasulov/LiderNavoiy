@@ -105,18 +105,48 @@ data class CartItem(
     val promotionId: String? = null,
 )
 
-/** Admindan kelgan mahsulot aksiyasi (masalan: 10+1, 20% chegirma) */
+/** Shartli mahsulot (min miqdor) */
+data class PromotionCondition(
+    val productId: String,
+    val productName: String = "",
+    val buyQuantity: Double,
+)
+
+/** Admindan kelgan aksiya */
 data class ProductPromotion(
     val id: String,
     val title: String,
     val subtitle: String = "",
     val discountPercent: Double = 0.0,
     val productId: String? = null,
-    /** Admin tanlagan gradient boshlanish rangi, masalan "#4F46E5" */
+    val buyQuantity: Double = 0.0,
+    val conditions: List<PromotionCondition> = emptyList(),
+    val rewardProductId: String? = null,
+    val rewardProductName: String = "",
+    val rewardQuantity: Double = 0.0,
+    val rewardPrice: Double = 0.0,
     val colorStart: String = "#6366F1",
     val colorEnd: String = "#9333EA",
     val emoji: String = "🎁",
-)
+) {
+    fun resolvedConditions(): List<PromotionCondition> {
+        if (conditions.isNotEmpty()) return conditions
+        val pid = productId ?: return emptyList()
+        if (buyQuantity <= 0) return emptyList()
+        return listOf(PromotionCondition(pid, "", buyQuantity))
+    }
+
+    fun conditionProductIds(): Set<String> = resolvedConditions().map { it.productId }.toSet()
+
+    fun isSatisfied(paidQtyByProduct: Map<String, Double>): Boolean {
+        val conds = resolvedConditions()
+        if (conds.isEmpty()) return false
+        return conds.all { c -> (paidQtyByProduct[c.productId] ?: 0.0) >= c.buyQuantity }
+    }
+
+    fun hasReward(): Boolean =
+        !rewardProductId.isNullOrBlank() && rewardQuantity > 0
+}
 
 data class Message(
     val id: String,

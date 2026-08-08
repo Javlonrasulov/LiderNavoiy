@@ -37,6 +37,11 @@ export class OrderItemDto {
   @IsOptional()
   @IsString()
   promotionId?: string;
+
+  @ApiPropertyOptional({ description: 'Tarozi haqiqiy miqdor (ves)' })
+  @IsOptional()
+  @IsNumber()
+  actualQuantity?: number | null;
 }
 
 export class CreateOrderDto {
@@ -79,6 +84,14 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsUUID()
   deliveryDistributorId?: string | null;
+
+  /** Tarozi: itemlar uchun actualQuantity yozish */
+  @ApiPropertyOptional({ type: [OrderItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items?: OrderItemDto[];
 }
 
 export class ReorderDeliveryDto {

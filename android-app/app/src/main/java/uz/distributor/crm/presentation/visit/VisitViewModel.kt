@@ -52,6 +52,14 @@ data class VisitUiState(
     val showCartSheet: Boolean = false,
     /** productId → aksiya (admindan kelgan, mahsulot yonida badge sifatida ko'rsatiladi) */
     val promotionsByProductId: Map<String, ProductPromotion> = emptyMap(),
+    /** Barcha aktiv aksiyalar (banner + Ha/Yo‘q) */
+    val activePromotions: List<ProductPromotion> = emptyList(),
+    /** Agent X bosib yopgan banner promo id lari */
+    val dismissedBannerIds: Set<String> = emptySet(),
+    /** Sessionda Yo‘q deb belgilangan aksiyalar */
+    val declinedPromoIds: Set<String> = emptySet(),
+    /** Ha/Yo‘q dialog uchun kutayotgan aksiya */
+    val pendingPromoOffer: ProductPromotion? = null,
 ) {
     val filteredProducts: List<Product>
         get() = VisitViewModel.filterProducts(products, searchQuery, showAllProducts)
@@ -64,7 +72,7 @@ data class VisitUiState(
         }
 
     val cartProductIds: Set<String>
-        get() = cart.map { it.productId }.toSet()
+        get() = cart.filter { it.promotionId == null }.map { it.productId }.toSet()
 
     val selectedInList: List<Product>
         get() = filteredProducts.filter { it.id in cartProductIds }
@@ -77,7 +85,7 @@ data class VisitUiState(
             ?: allProducts.find { it.id == selectedProductId }
 
     fun cartCountForCategory(category: String): Int =
-        cart.count { it.category == category }
+        cart.count { it.category == category && it.promotionId == null }
 
     val selectedProductIndex: Int
         get() = filteredProducts.indexOfFirst { it.id == selectedProductId }
@@ -86,7 +94,12 @@ data class VisitUiState(
         get() = (selectedProduct?.price ?: 0.0) * detailQuantity
 
     fun cartQtyFor(productId: String): Double =
-        cart.find { it.productId == productId }?.quantity ?: 0.0
+        cart.find { it.productId == productId && it.promotionId == null }?.quantity ?: 0.0
+
+    val visiblePromoBanners: List<ProductPromotion>
+        get() = activePromotions.filter {
+            it.hasReward() && it.id !in dismissedBannerIds
+        }
 }
 
 @HiltViewModel
@@ -379,14 +392,21 @@ class VisitViewModel @Inject constructor(
             val clientDeferred = async {
                 if (clientId.isNotBlank()) clientRepository.getClientDetail(clientId) else null
             }
-            val promotionsDeferred = async { promotionsRepository.getProductPromotionMap() }
+            val promotionsDeferred = async { promotionsRepository.getActivePromotions() }
             val refreshed = productRepository.refreshFromApi()
             val allProducts = productRepository.getProducts()
             val cats = productRepository.getCategories()
             val client = clientDeferred.await()
-            val promotionsByProductId = promotionsDeferred.await()
+            val activePromotions = promotionsDeferred.await()
+            val promotionsByProductId = LinkedHashMap<String, ProductPromotion>()
+            for (promo in activePromotions) {
+                for (pid in promo.conditionProductIds()) {
+                    if (!promotionsByProductId.containsKey(pid)) {
+                        promotionsByProductId[pid] = promo
+                    }
+                }
+            }
             val categoryCounts = buildCategoryCounts(cats, allProducts)
-            refreshCart()
             _uiState.update {
                 it.copy(
                     clientName = client?.name,
@@ -398,6 +418,7 @@ class VisitViewModel @Inject constructor(
                     searchQuery = "",
                     selectedProductId = null,
                     isLoading = false,
+                    activePromotions = activePromotions,
                     promotionsByProductId = promotionsByProductId,
                     error = when {
                         categoryCounts.isEmpty() && !refreshed -> "products_load_failed"
@@ -406,6 +427,36 @@ class VisitViewModel @Inject constructor(
                     },
                 )
             }
+            refreshCart()
+        }
+    }
+
+    fun dismissPromoBanner(promoId: String) {
+        _uiState.update { it.copy(dismissedBannerIds = it.dismissedBannerIds + promoId) }
+    }
+
+    fun acceptPromoOffer() {
+        val offer = _uiState.value.pendingPromoOffer ?: return
+        viewModelScope.launch {
+            val clientId = _uiState.value.clientId
+            val rewardId = offer.rewardProductId ?: return@launch
+            val product = _uiState.value.allProducts.find { it.id == rewardId }
+                ?: productRepository.getProduct(rewardId)
+            if (product != null) {
+                cartRepository.setPromoReward(clientId, offer, product)
+            }
+            _uiState.update { it.copy(pendingPromoOffer = null) }
+            refreshCart()
+        }
+    }
+
+    fun declinePromoOffer() {
+        val offer = _uiState.value.pendingPromoOffer ?: return
+        _uiState.update {
+            it.copy(
+                pendingPromoOffer = null,
+                declinedPromoIds = it.declinedPromoIds + offer.id,
+            )
         }
     }
 
@@ -414,6 +465,68 @@ class VisitViewModel @Inject constructor(
         val cart = if (clientId.isBlank()) emptyList() else cartRepository.getCartForClient(clientId)
         val total = if (clientId.isBlank()) 0.0 else cartRepository.getTotalForClient(clientId)
         _uiState.update { it.copy(cart = cart, cartTotal = total) }
+        evaluatePromotions()
+    }
+
+    /**
+     * Shartlar bajarilmasa — promo line olib tashlanadi.
+     * Bajarilsa va hali qo‘shilmagan — Ha/Yo‘q dialog.
+     */
+    private suspend fun evaluatePromotions() {
+        val state = _uiState.value
+        val clientId = state.clientId
+        if (clientId.isBlank()) return
+
+        val paidQty = mutableMapOf<String, Double>()
+        for (item in state.cart) {
+            if (item.promotionId != null) continue
+            paidQty[item.productId] = (paidQty[item.productId] ?: 0.0) + item.quantity
+        }
+
+        val presentPromoIds = state.cart.mapNotNull { it.promotionId }.toSet()
+
+        for (promo in state.activePromotions) {
+            if (!promo.hasReward()) continue
+            val ok = promo.isSatisfied(paidQty)
+            if (!ok && promo.id in presentPromoIds) {
+                cartRepository.removePromoReward(clientId, promo.id)
+            }
+            if (!ok && promo.id in state.declinedPromoIds) {
+                _uiState.update { it.copy(declinedPromoIds = it.declinedPromoIds - promo.id) }
+            }
+        }
+
+        // cart o‘zgargan bo‘lishi mumkin
+        val cartAfter = cartRepository.getCartForClient(clientId)
+        val totalAfter = cartRepository.getTotalForClient(clientId)
+        val paidAfter = mutableMapOf<String, Double>()
+        for (item in cartAfter) {
+            if (item.promotionId != null) continue
+            paidAfter[item.productId] = (paidAfter[item.productId] ?: 0.0) + item.quantity
+        }
+        val presentAfter = cartAfter.mapNotNull { it.promotionId }.toSet()
+        val declined = _uiState.value.declinedPromoIds
+
+        var nextOffer: ProductPromotion? = _uiState.value.pendingPromoOffer
+        if (nextOffer != null && (!nextOffer.isSatisfied(paidAfter) || nextOffer.id in presentAfter)) {
+            nextOffer = null
+        }
+        if (nextOffer == null) {
+            nextOffer = state.activePromotions.firstOrNull { promo ->
+                promo.hasReward() &&
+                    promo.isSatisfied(paidAfter) &&
+                    promo.id !in presentAfter &&
+                    promo.id !in declined
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                cart = cartAfter,
+                cartTotal = totalAfter,
+                pendingPromoOffer = nextOffer,
+            )
+        }
     }
 
     private fun buildCategoryCounts(

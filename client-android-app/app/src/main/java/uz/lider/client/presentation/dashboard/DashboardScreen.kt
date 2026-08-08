@@ -579,74 +579,76 @@ fun DashboardScreen(
                         Spacer(Modifier.height(20.dp))
                     }
 
-                    item {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                t("dash_latest_promotions"),
-                                color = LiquidTheme.text,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 16.sp,
-                            )
+                    if (state.canSeePromotions) {
+                        item {
                             Row(
-                                Modifier.clickable { onNavigate(ClientRoutes.PROMOTIONS) },
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(t("dash_see_all"), color = LiquidGlass.Indigo, fontSize = 14.sp)
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowForward,
-                                    null,
-                                    tint = LiquidGlass.Indigo,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        val promos = state.promotions
-                        if (promos.isEmpty()) {
-                            Box(
-                                Modifier
-                                    .padding(horizontal = 16.dp)
-                                    .fillMaxWidth()
-                                    .liquidGlassThemed()
-                                    .padding(20.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
                                 Text(
-                                    t("promo_empty"),
-                                    color = LiquidTheme.textMuted,
-                                    fontSize = 13.sp,
-                                    textAlign = TextAlign.Center,
+                                    t("dash_latest_promotions"),
+                                    color = LiquidTheme.text,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
                                 )
-                            }
-                        } else {
-                            Row(
-                                Modifier
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                promos.take(6).forEach { promo ->
-                                    PromoCard(
-                                        title = promo.title,
-                                        desc = promo.subtitle.ifBlank {
-                                            promo.productName.orEmpty()
-                                        },
-                                        emoji = promo.emoji.ifBlank { "🎁" },
-                                        colors = listOf(
-                                            parsePromoHex(promo.colorStart, LiquidGlass.Indigo),
-                                            parsePromoHex(promo.colorEnd, LiquidGlass.Violet),
-                                        ),
+                                Row(
+                                    Modifier.clickable { onNavigate(ClientRoutes.PROMOTIONS) },
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(t("dash_see_all"), color = LiquidGlass.Indigo, fontSize = 14.sp)
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowForward,
+                                        null,
+                                        tint = LiquidGlass.Indigo,
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }
+                            Spacer(Modifier.height(12.dp))
+                            val promos = state.promotions
+                            if (promos.isEmpty()) {
+                                Box(
+                                    Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .fillMaxWidth()
+                                        .liquidGlassThemed()
+                                        .padding(20.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        t("promo_empty"),
+                                        color = LiquidTheme.textMuted,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            } else {
+                                Row(
+                                    Modifier
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    promos.take(6).forEach { promo ->
+                                        PromoCard(
+                                            title = promo.title,
+                                            desc = promo.subtitle.ifBlank {
+                                                promo.productName.orEmpty()
+                                            },
+                                            emoji = promo.emoji.ifBlank { "🎁" },
+                                            colors = listOf(
+                                                parsePromoHex(promo.colorStart, LiquidGlass.Indigo),
+                                                parsePromoHex(promo.colorEnd, LiquidGlass.Violet),
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(20.dp))
                         }
-                        Spacer(Modifier.height(20.dp))
                     }
 
                     item {

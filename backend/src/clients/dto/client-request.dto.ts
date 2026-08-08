@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateClientRequestDto {
   @ApiProperty({ example: 'Yangi Do\'kon MCHJ' })
@@ -76,6 +76,11 @@ export class CreateClientRequestDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi' })
+  @IsOptional()
+  @IsBoolean()
+  canSeePromotions?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

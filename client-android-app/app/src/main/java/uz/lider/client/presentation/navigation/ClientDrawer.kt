@@ -56,6 +56,7 @@ import uz.lider.client.presentation.theme.LiquidTheme
 @Composable
 fun ClientDrawerContent(
     user: AuthUser?,
+    canSeePromotions: Boolean = false,
     onNavigate: (String) -> Unit,
     onLogout: () -> Unit,
     onClose: () -> Unit,
@@ -159,8 +160,10 @@ fun ClientDrawerContent(
             DrawerNavRow(Icons.Default.CreditCard, t("dash_payment")) {
                 onClose(); onNavigate(ClientRoutes.DEBT)
             }
-            DrawerNavRow(Icons.Default.LocalOffer, t("dash_promotions")) {
-                onClose(); onNavigate(ClientRoutes.PROMOTIONS)
+            if (canSeePromotions) {
+                DrawerNavRow(Icons.Default.LocalOffer, t("dash_promotions")) {
+                    onClose(); onNavigate(ClientRoutes.PROMOTIONS)
+                }
             }
             DrawerNavRow(Icons.Default.Notifications, t("notif_title")) {
                 onClose(); onNavigate(ClientRoutes.NOTIFICATIONS)

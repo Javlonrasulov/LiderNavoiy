@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import * as XLSX from 'xlsx';
-import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Plus, Search, X, BarChart3, ArrowRightLeft, Trash2, RotateCcw } from 'lucide-react';
 import { fmtFull, type ClientRow } from '../../../data/adminData';
 import { api } from '../../../api/client';
 import {
@@ -82,6 +82,8 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [statsClient, setStatsClient] = useState<ClientRow | null>(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferPickIds, setTransferPickIds] = useState<string[]>([]);
+  const [listMode, setListMode] = useState<'active' | 'trash'>('active');
+  const [actionBusy, setActionBusy] = useState(false);
   const clientFilterBtnRef = useRef<HTMLButtonElement>(null);
   const clientTableRef = useRef<HTMLDivElement>(null);
   const scrollClientTable = (dir: 'left' | 'right') => {
@@ -105,7 +107,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     setLoadError(null);
     try {
       const [rawClients, distributors] = await Promise.all([
-        api.getClients(companyId),
+        listMode === 'trash' ? api.getTrashClients(companyId) : api.getClients(companyId),
         api.getDistributors(companyId),
       ]);
       const agentList = distributorsToAgents(distributors);
@@ -113,13 +115,14 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       setLines(distributorsToLines(distributors));
       setClients(rawClients.map(apiClientToRow));
       setBackendReady(true);
+      setActiveClient(null);
+      setClientPage(1);
     } catch (e) {
       setClients([]);
       setAgents([]);
       setLines([]);
       setBackendReady(false);
       const msg = e instanceof Error ? e.message : String(e);
-      // 401 → SessionExpiredOverlay; sahifada demo/xato banner ko'rsatilmasin
       if (/\b401\b/i.test(msg) || /unauthorized/i.test(msg)) {
         setLoadError(null);
         return;
@@ -133,7 +136,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, listMode, t.userErrBackendDown]);
 
   useEffect(() => { refreshClients(); }, [refreshClients]);
 
@@ -210,6 +213,41 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Saqlashda xatolik');
       throw e;
+    }
+  };
+
+  const handleMoveToTrash = async () => {
+    if (!activeClient || actionBusy || listMode === 'trash') return;
+    const ok = window.confirm(
+      t.clientTrashConfirm ??
+        `"${activeClient.name}" mijozini korzinkaga o'tkazasizmi? Agent/manager APKlarida ko'rinmaydi.`,
+    );
+    if (!ok) return;
+    setActionBusy(true);
+    setSaveError(null);
+    try {
+      await api.deleteClient(activeClient.id);
+      setClients(prev => prev.filter(c => c.id !== activeClient.id));
+      setActiveClient(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : (t.clientTrashErr ?? "O'chirishda xatolik"));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleRestoreFromTrash = async () => {
+    if (!activeClient || actionBusy || listMode !== 'trash') return;
+    setActionBusy(true);
+    setSaveError(null);
+    try {
+      await api.restoreClient(activeClient.id);
+      setClients(prev => prev.filter(c => c.id !== activeClient.id));
+      setActiveClient(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : (t.clientRestoreErr ?? 'Qaytarishda xatolik'));
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -401,10 +439,38 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       {/* Header */}
       <div className="flex items-start justify-between gap-2 flex-shrink-0">
         <div>
-          <h2 className="text-xl font-bold">{t.allClientsTitle}</h2>
+          <h2 className="text-xl font-bold">
+            {listMode === 'trash'
+              ? (t.clientTrashTitle ?? 'Korzinka')
+              : t.allClientsTitle}
+          </h2>
           <p className={`text-sm ${sub} mt-0.5`}>
             {loading ? (t.loading || 'Yuklanmoqda...') : `${filtered.length} / ${clients.length}`}
           </p>
+          <div className="flex items-center gap-1.5 mt-2">
+            <button
+              type="button"
+              onClick={() => setListMode('active')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                listMode === 'active'
+                  ? 'bg-indigo-600 text-white'
+                  : D ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {t.allClientsTitle}
+            </button>
+            <button
+              type="button"
+              onClick={() => setListMode('trash')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                listMode === 'trash'
+                  ? 'bg-rose-600 text-white'
+                  : D ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <Trash2 size={11} /> {t.clientTrashTitle ?? 'Korzinka'}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {/* Filter button */}
@@ -604,20 +670,47 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               setTransferPickIds(activeClient ? [activeClient.id] : []);
               setShowTransfer(true);
             }}
+            disabled={listMode === 'trash'}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
-              ${D ? 'bg-teal-900/50 hover:bg-teal-800/50 text-teal-300' : 'bg-teal-50 hover:bg-teal-100 text-teal-700'}`}
+              ${listMode === 'trash'
+                ? 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')
+                : D ? 'bg-teal-900/50 hover:bg-teal-800/50 text-teal-300' : 'bg-teal-50 hover:bg-teal-100 text-teal-700'}`}
           >
             <ArrowRightLeft size={12} /> {t.transferBtn ?? "O'tkazish"}
           </button>
 
           <button
-            onClick={() => { if (activeClient) setEditingClient(activeClient); }}
+            onClick={() => { if (activeClient && listMode === 'active') setEditingClient(activeClient); }}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
-              ${activeClient
+              ${activeClient && listMode === 'active'
                 ? D ? 'bg-amber-900/60 hover:bg-amber-800/60 text-amber-300' : 'bg-amber-50 hover:bg-amber-100 text-amber-700'
                 : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')}`}>
             <Edit2 size={12} /> {t.editClientBtn ?? 'Tahrirlash'}
           </button>
+
+          {listMode === 'trash' ? (
+            <button
+              onClick={handleRestoreFromTrash}
+              disabled={!activeClient || actionBusy}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
+                ${activeClient && !actionBusy
+                  ? D ? 'bg-emerald-900/60 hover:bg-emerald-800/60 text-emerald-300' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                  : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')}`}
+            >
+              <RotateCcw size={12} /> {t.clientRestoreBtn ?? 'Qaytarish'}
+            </button>
+          ) : (
+            <button
+              onClick={handleMoveToTrash}
+              disabled={!activeClient || actionBusy}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors
+                ${activeClient && !actionBusy
+                  ? D ? 'bg-rose-900/60 hover:bg-rose-800/60 text-rose-300' : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
+                  : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')}`}
+            >
+              <Trash2 size={12} /> {t.clientDeleteBtn ?? "O'chirish"}
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -658,8 +751,11 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
           <button
             onClick={() => setShowAddClient(true)}
+            disabled={listMode === 'trash'}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors
-              ${D ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
+              ${listMode === 'trash'
+                ? 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')
+                : D ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
             <Plus size={13} /> {t.addClientBtn ?? "Mijoz qo'shish"}
           </button>
         </div>
@@ -774,7 +870,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           <button onClick={() => scrollClientTable('right')} className={`flex items-center justify-center w-7 h-7 rounded-lg border ${D ? 'border-gray-700 bg-white/[0.05] hover:bg-white/[0.1] text-gray-300' : 'border-gray-200 bg-gray-100 hover:bg-gray-200 text-gray-600'} transition-colors`}><ChevronRight size={14} /></button>
         </div>
         <div ref={clientTableRef} className="show-sb" style={{ maxHeight: 'calc(100vh - 230px)', overflowX: 'scroll', overflowY: 'auto' }}>
-          <table style={{ minWidth: 1550, borderCollapse: 'collapse', width: '100%' }}>
+          <table style={{ minWidth: 1900, borderCollapse: 'collapse', width: '100%' }}>
             <thead className={`sticky top-0 z-10 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>
               <tr className={`border-b ${D ? 'border-gray-700' : 'border-gray-200'}`}>
                 <th className={`${thCls} sticky left-0 z-20 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>{t.colCode}</th>
@@ -793,6 +889,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                 <th className={thCls}>{t.colID}</th>
                 <th className={thCls}>{t.colCategory}</th>
                 <th className={thCls}>{t.colLastVisit}</th>
+                <th className={thCls}>{t.colCreatedBy ?? "Qo'shgan"}</th>
+                {listMode === 'trash' && (
+                  <th className={thCls}>{t.colDeletedBy ?? "O'chirgan"}</th>
+                )}
                 <th className={`${thCls} border-r-0`}>{t.colNote}</th>
               </tr>
             </thead>
@@ -846,6 +946,28 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                       </span>
                     </td>
                     <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{formatDisplayDate(c.lastVisit)}</td>
+                    <td className={`${tdCls} ${rowText} text-[10px] max-w-[140px]`}>
+                      {c.createdAt ? (
+                        <div className="leading-tight">
+                          <div className="whitespace-nowrap">{formatDisplayDate(c.createdAt)}</div>
+                          <div className={`truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.createdBy || '—'}</div>
+                        </div>
+                      ) : (
+                        <span className={D ? 'text-gray-600' : 'text-gray-400'}>{c.createdBy || '—'}</span>
+                      )}
+                    </td>
+                    {listMode === 'trash' && (
+                      <td className={`${tdCls} ${rowText} text-[10px] max-w-[140px]`}>
+                        {c.deletedAt ? (
+                          <div className="leading-tight">
+                            <div className="whitespace-nowrap">{formatDisplayDate(c.deletedAt)}</div>
+                            <div className={`truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.deletedBy || '—'}</div>
+                          </div>
+                        ) : (
+                          <span className={D ? 'text-gray-600' : 'text-gray-400'}>—</span>
+                        )}
+                      </td>
+                    )}
                     <td className={`${tdCls} border-r-0 ${rowText}`}></td>
                   </tr>
                 );
@@ -952,6 +1074,22 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   <span>{t.colLastVisit}:</span>
                   <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{formatDisplayDate(activeClient.lastVisit)}</span>
                 </div>
+                {(activeClient.createdAt || activeClient.createdBy) && (
+                  <div className={`text-xs pt-0.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <span className="opacity-70">{t.colCreatedBy ?? "Qo'shgan"}: </span>
+                    <span className="font-medium">
+                      {[formatDisplayDate(activeClient.createdAt), activeClient.createdBy].filter(Boolean).join(' · ') || '—'}
+                    </span>
+                  </div>
+                )}
+                {listMode === 'trash' && (activeClient.deletedAt || activeClient.deletedBy) && (
+                  <div className={`text-xs pt-0.5 ${D ? 'text-rose-400/80' : 'text-rose-600'}`}>
+                    <span className="opacity-70">{t.colDeletedBy ?? "O'chirgan"}: </span>
+                    <span className="font-medium">
+                      {[formatDisplayDate(activeClient.deletedAt), activeClient.deletedBy].filter(Boolean).join(' · ') || '—'}
+                    </span>
+                  </div>
+                )}
                 {activeClient.gps && (
                   <div className={`text-xs pt-1 space-y-0.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
                     <div>

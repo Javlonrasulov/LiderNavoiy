@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -51,6 +52,12 @@ export class ClientsController {
     return undefined;
   }
 
+  private assertAdminOrManager(user: User) {
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.MANAGER) {
+      throw new ForbiddenException("Faqat admin/manager uchun");
+    }
+  }
+
   @Get()
   @ApiOperation({ summary: 'List clients' })
   findAll(
@@ -66,6 +73,16 @@ export class ClientsController {
         ? distributorId
         : undefined);
     return this.service.findAll(companyId, lineCode, filterDistributorId);
+  }
+
+  @Get('trash')
+  @ApiOperation({ summary: 'List soft-deleted clients (admin trash)' })
+  findTrash(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    this.assertAdminOrManager(req.user);
+    return this.service.findTrash(companyId);
   }
 
   @Get('search')
@@ -91,10 +108,18 @@ export class ClientsController {
     @Request() req: { user: User },
     @Body() dto: TransferClientsDto,
   ) {
-    if (req.user.role !== UserRole.ADMIN && req.user.role !== UserRole.MANAGER) {
-      throw new ForbiddenException('Faqat admin/manager o\'tkaza oladi');
-    }
+    this.assertAdminOrManager(req.user);
     return this.service.transfer(dto);
+  }
+
+  @Post('trash/bulk')
+  @ApiOperation({ summary: 'Move multiple clients to trash' })
+  softDeleteBulk(
+    @Request() req: { user: User },
+    @Body() body: { clientIds: string[] },
+  ) {
+    this.assertAdminOrManager(req.user);
+    return this.service.softDeleteMany(body.clientIds ?? [], req.user);
   }
 
   @Get('app-username-available')
@@ -156,6 +181,20 @@ export class ClientsController {
       to,
       this.scopeDistributorId(req.user),
     );
+  }
+
+  @Post(':id/restore')
+  @ApiOperation({ summary: 'Restore client from trash' })
+  restore(@Request() req: { user: User }, @Param('id') id: string) {
+    this.assertAdminOrManager(req.user);
+    return this.service.restore(id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Soft-delete client (move to trash)' })
+  softDelete(@Request() req: { user: User }, @Param('id') id: string) {
+    this.assertAdminOrManager(req.user);
+    return this.service.softDelete(id, req.user);
   }
 
   @Get(':id')
@@ -227,6 +266,7 @@ export class ClientsController {
         clientClass: clientDto.clientClass,
         priceCategory: clientDto.priceCategory,
         photoUrl: clientDto.photoUrl,
+        canSeePromotions: clientDto.canSeePromotions === true,
       };
       return this.requestsService.create(requestDto, distributorId, agentName);
     }

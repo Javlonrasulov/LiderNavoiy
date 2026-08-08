@@ -225,6 +225,7 @@ data class ClientProfileDto(
     val agentUserId: String? = null,
     val hasAssignedAgent: Boolean? = null,
     val deliveryPerson: ContactPersonDto? = null,
+    val canSeePromotions: Boolean? = null,
     val organizations: List<ClientOrganizationDto> = emptyList(),
     val activeOrganization: ClientOrganizationDto? = null,
 )

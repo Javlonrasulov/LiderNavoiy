@@ -219,8 +219,8 @@ export default function DayTrackingMap({
   }, [points, gpsTrail, empLocation, dark, tr.online, tr.offline])
 
   return (
-    <div style={{ position: 'relative', height, width: '100%' }}>
-      <div ref={divRef} style={{ width: '100%', height: '100%', borderRadius: 0 }} />
+    <div style={{ position: 'relative', height, width: '100%', zIndex: 0, isolation: 'isolate' }}>
+      <div ref={divRef} style={{ width: '100%', height: '100%', borderRadius: 0, zIndex: 0 }} />
       <MapLayerSwitcher
         activeLayer={activeLayer}
         onChange={setActiveLayer}

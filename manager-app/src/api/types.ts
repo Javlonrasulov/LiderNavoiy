@@ -161,6 +161,7 @@ export interface Client {
   code?: string | null
   fullName?: string | null
   phone?: string | null
+  extraPhones?: { phone: string; note?: string }[] | null
   address?: string | null
   companyId?: string | null
   lineCode?: string | null
@@ -168,10 +169,51 @@ export interface Client {
   distributorId?: string | null
   latitude?: number | null
   longitude?: number | null
+  orderRadiusMeters?: number | null
+  inn?: string | null
+  canSeePromotions?: boolean | null
   debt?: number | null
   balance?: number | null
   /** Client request status when awaiting admin approval */
   status?: string | null
+}
+
+export type ClientStatsPeriod = 'hafta' | 'oy' | '6oy' | 'custom'
+
+export interface ClientStatsProduct {
+  id: string
+  name: string
+  unit: string
+  qty: number
+  price: number
+  total: number
+  trend: number
+  buyLevel: 'top' | 'avg' | 'none'
+}
+
+export interface ClientStatsCategory {
+  id: string
+  name: string
+  icon: string
+  color: string
+  totalSum: number
+  totalKg: number
+  avgPrice: number
+  share: number
+  trend: number
+  weekly: { label: string; value: number }[]
+  products: ClientStatsProduct[]
+}
+
+export interface ClientStatsResponse {
+  clientId: string
+  period: string
+  from: string
+  to: string
+  totalSum: number
+  totalKg: number
+  monthlyTrend: { label: string; year: number; month: number; value: number }[]
+  categories: ClientStatsCategory[]
 }
 
 export interface PlanRow {
@@ -199,4 +241,7 @@ export interface CreateClientBody {
   orderRadiusMeters?: number
   inn?: string
   contactPerson?: string
+  canSeePromotions?: boolean
 }
+
+export type UpdateClientBody = Partial<CreateClientBody>

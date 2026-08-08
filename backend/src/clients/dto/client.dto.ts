@@ -128,6 +128,14 @@ export class CreateClientDto {
   @IsString()
   photoUrl?: string;
 
+  @ApiPropertyOptional({
+    description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  canSeePromotions?: boolean;
+
   @ApiPropertyOptional({ example: 'sherinmarket' })
   @IsOptional()
   @IsString()
@@ -246,6 +254,11 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi' })
+  @IsOptional()
+  @IsBoolean()
+  canSeePromotions?: boolean;
 
   @ApiPropertyOptional({ example: 'sherinmarket' })
   @IsOptional()

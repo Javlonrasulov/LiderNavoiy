@@ -67,7 +67,7 @@ export class ClientPortalService {
   async ensureMemberships(user: User): Promise<UserClientMembership[]> {
     const primaryId = this.primaryClientId(user);
     const primary = await this.clientRepo.findOne({ where: { id: primaryId } });
-    if (!primary) throw new NotFoundException('Client not found');
+    if (!primary || primary.deletedAt) throw new NotFoundException('Client not found');
 
     const links: Array<{ clientId: string; companyId: string }> = [];
     if (primary.companyId) {
@@ -80,6 +80,7 @@ export class ClientPortalService {
       const qb = this.clientRepo
         .createQueryBuilder('c')
         .where('c.isActive = true')
+        .andWhere('c.deletedAt IS NULL')
         .andWhere('c.id != :id', { id: primary.id })
         .andWhere('c.companyId IS NOT NULL');
       if (phone && inn) {
@@ -372,6 +373,7 @@ export class ClientPortalService {
       totalPurchases: Number(totalPurchases?.total ?? 0),
       bonusPoints: Math.max(0, Math.floor(Number(totalPurchases?.total ?? 0) / 1000)),
       debt,
+      canSeePromotions: client.canSeePromotions === true,
       organizations,
       activeOrganization: activeOrg,
     };
@@ -829,7 +831,9 @@ export class ClientPortalService {
     return this.productsService.getCategories(true, scope);
   }
 
-  listPromotions() {
+  async listPromotions(user: User, companyId?: string | null) {
+    const client = await this.resolveActiveClient(user, companyId);
+    if (!client.canSeePromotions) return [];
     return this.promotionsService.findActiveForClient();
   }
 
