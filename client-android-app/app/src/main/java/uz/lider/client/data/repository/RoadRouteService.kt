@@ -71,20 +71,22 @@ class RoadRouteService @Inject constructor() {
         val straightKm = haversineM(fromLat, fromLng, dest.latitude, dest.longitude) / 1000.0
         if (straightKm > 120.0) return@withContext null
 
+        // Cache — mutex; OSRM so‘rovlari parallel (jonli GPS kutmasin).
         mutex.withLock {
-            cached?.takeIf { it.matches(fromLat, fromLng, stops) }?.route?.let { return@withContext it }
+            cached?.takeIf { it.matches(fromLat, fromLng, stops) }?.route
+        }?.let { return@withContext it }
 
-            // Parallel so‘rovlar public OSRM ni bloklaydi — ketma-ket.
-            // Multi-stop muvaffaqiyatsiz bo‘lsa — faqat magazin (oxirgi) ga tushirilmasin:
-            // avval oyog‘ma-oyoq stitch, u ham bo‘lmasa null (UI fallbackViaWaypoints).
-            val resolved = fetchDrivingRouteOsrm(fromLat, fromLng, stops)
-                ?: stitchLegs(fromLat, fromLng, stops)
+        // Multi-stop muvaffaqiyatsiz bo‘lsa — oyog‘ma-oyoq stitch; u ham bo‘lmasa null
+        // (UI to‘g‘ri chiziq chizmasin, eski yo‘lni saqlasin).
+        val resolved = fetchDrivingRouteOsrm(fromLat, fromLng, stops)
+            ?: stitchLegs(fromLat, fromLng, stops)
 
-            if (resolved != null) {
+        if (resolved != null) {
+            mutex.withLock {
                 cached = CachedRoute(fromLat, fromLng, stops, resolved)
             }
-            resolved
         }
+        resolved
     }
 
     /**

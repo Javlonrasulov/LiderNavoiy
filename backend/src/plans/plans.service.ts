@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, Not, Repository } from 'typeorm';
-import { AgentPlan, PlanCategoryAmount } from './entities/agent-plan.entity';
-import { UpsertPlanDto } from './dto/plan.dto';
+import { AgentPlan, PlanCategoryAmount, PlanProductAmount, PlanUnit } from './entities/agent-plan.entity';
+import { UpsertPlanDto, PLAN_UNITS } from './dto/plan.dto';
 import { Order } from '../orders/entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { ProductCategory } from '../products/entities/product-category.entity';
@@ -22,6 +22,14 @@ const EXCLUDED_ORDER_STATUSES = [OrderStatus.CANCELLED, OrderStatus.DRAFT];
 
 const FALLBACK_COLORS = ['#10b981', '#f59e0b', '#3b82f6', '#6366f1', '#ef4444', '#8b5cf6'];
 
+export interface PlanProductView {
+  productId: string;
+  productName: string;
+  plan: number;
+  done: number;
+  pct: number;
+}
+
 export interface PlanCategoryView {
   key: string;
   name: string;
@@ -29,6 +37,7 @@ export interface PlanCategoryView {
   plan: number;
   done: number;
   pct: number;
+  products?: PlanProductView[];
 }
 
 export interface AgentPlanView {
@@ -39,6 +48,7 @@ export interface AgentPlanView {
   totalPlan: number;
   totalDone: number;
   donePct: number;
+  unit: PlanUnit;
   categories: PlanCategoryView[];
 }
 
@@ -90,6 +100,65 @@ function resolveTargetMonth(dto: UpsertPlanDto): { year: number; month: number }
   return { year, month };
 }
 
+function normalizePlanUnit(raw?: string | null): PlanUnit {
+  const u = (raw ?? 'som').trim().toLowerCase();
+  if ((PLAN_UNITS as readonly string[]).includes(u)) return u as PlanUnit;
+  return 'som';
+}
+
+/** Buyurtma/mahsulot birligini standartga keltirish. */
+function normalizeItemUnit(raw?: string | null): 'kg' | 'ton' | 'dona' | 'other' {
+  const u = (raw ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  if (!u) return 'other';
+  if (u === 'kg' || u === 'кг' || u === 'килограмм' || u === 'kilogram') return 'kg';
+  if (
+    u === 'ton' || u === 't' || u === 'tn' || u === 'tonna' || u === 'тонна'
+    || u === 'тонн' || u === 'т'
+  ) {
+    return 'ton';
+  }
+  if (
+    u === 'dona' || u === 'pcs' || u === 'pc' || u === 'piece' || u === 'шт'
+    || u === 'дона' || u === 'штук' || u === 'донача'
+  ) {
+    return 'dona';
+  }
+  return 'other';
+}
+
+function itemContribution(
+  planUnit: PlanUnit,
+  itemUnit: string | null | undefined,
+  quantity: number,
+  price: number,
+): number {
+  const qty = Number(quantity) || 0;
+  const pr = Number(price) || 0;
+  if (planUnit === 'som') return pr * qty;
+
+  const u = normalizeItemUnit(itemUnit);
+  if (planUnit === 'kg') {
+    if (u === 'kg') return qty;
+    if (u === 'ton') return qty * 1000;
+    return 0;
+  }
+  if (planUnit === 'ton') {
+    if (u === 'ton') return qty;
+    if (u === 'kg') return qty / 1000;
+    return 0;
+  }
+  // dona
+  if (u === 'dona') return qty;
+  return 0;
+}
+
+function unitLabel(unit: PlanUnit, lang: 'uz' | 'cyr' | 'ru' = 'uz'): string {
+  if (unit === 'kg') return 'kg';
+  if (unit === 'ton') return lang === 'ru' ? 'т' : 'tonna';
+  if (unit === 'dona') return lang === 'ru' ? 'шт' : 'dona';
+  return lang === 'cyr' ? 'сўм' : lang === 'ru' ? 'сум' : "so'm";
+}
+
 @Injectable()
 export class PlansService {
   private readonly logger = new Logger(PlansService.name);
@@ -110,19 +179,38 @@ export class PlansService {
 
   async upsert(dto: UpsertPlanDto, createdBy?: string): Promise<AgentPlan> {
     const { year, month } = resolveTargetMonth(dto);
+    const unit = normalizePlanUnit(dto.unit);
+
+    const productsByCat = new Map<string, PlanProductAmount[]>();
+    for (const p of dto.products ?? []) {
+      if (!p.productId || Number(p.amount) <= 0) continue;
+      const list = productsByCat.get(p.categoryKey) ?? [];
+      list.push({
+        productId: p.productId,
+        productName: p.productName || p.productId,
+        amount: Number(p.amount),
+      });
+      productsByCat.set(p.categoryKey, list);
+    }
+
     const categories: PlanCategoryAmount[] = Object.entries(dto.categories)
       .filter(([, amount]) => Number(amount) > 0)
-      .map(([key, amount]) => ({
-        key,
-        name: dto.categoryNames?.[key] ?? key,
-        amount: Number(amount),
-      }));
+      .map(([key, amount]) => {
+        const products = productsByCat.get(key);
+        return {
+          key,
+          name: dto.categoryNames?.[key] ?? key,
+          amount: Number(amount),
+          ...(products?.length ? { products } : {}),
+        };
+      });
 
     let row = await this.planRepo.findOne({ where: { distributorId: dto.distributorId, year, month } });
     const isNew = !row;
     if (row) {
       row.totalAmount = dto.total;
       row.categories = categories;
+      row.unit = unit;
       row.createdBy = createdBy ?? row.createdBy;
     } else {
       row = this.planRepo.create({
@@ -130,6 +218,7 @@ export class PlansService {
         year,
         month,
         totalAmount: dto.total,
+        unit,
         categories,
         createdBy: createdBy ?? null,
       });
@@ -140,7 +229,8 @@ export class PlansService {
   }
 
   private async notifyAgentPlanAssigned(plan: AgentPlan, isNew: boolean) {
-    const total = Number(plan.totalAmount).toLocaleString('uz-UZ');
+    const unit = normalizePlanUnit(plan.unit);
+    const total = `${Number(plan.totalAmount).toLocaleString('uz-UZ')} ${unitLabel(unit)}`;
     const lang = await this.notifications.getDistributorLang(plan.distributorId);
     const title = PushI18n.planAssignedTitle(lang, isNew);
     const body = PushI18n.planAssignedBody(lang, plan.year, plan.month, total);
@@ -270,13 +360,32 @@ export class PlansService {
     agentName: string,
     colorMap: Map<string, string>,
   ): Promise<AgentPlanView> {
-    const doneByKey = await this.computeDoneByCategory(plan.distributorId, plan.year, plan.month);
+    const unit = normalizePlanUnit(plan.unit);
+    const { byCategory, byProduct } = await this.computeDone(
+      plan.distributorId,
+      plan.year,
+      plan.month,
+      unit,
+    );
     const categories: PlanCategoryView[] = plan.categories.map((c, i) => {
       const planAmt = parseFloat(String(c.amount)) || 0;
-      const done = doneByKey.get(c.key)
-        ?? doneByKey.get(toKey(c.name))
-        ?? doneByKey.get(toKey(c.key))
+      const done = byCategory.get(c.key)
+        ?? byCategory.get(toKey(c.name))
+        ?? byCategory.get(toKey(c.key))
         ?? 0;
+      const products = (c.products ?? [])
+        .filter(p => Number(p.amount) > 0)
+        .map(p => {
+          const pPlan = parseFloat(String(p.amount)) || 0;
+          const pDone = byProduct.get(p.productId) ?? 0;
+          return {
+            productId: p.productId,
+            productName: p.productName,
+            plan: pPlan,
+            done: pDone,
+            pct: pPlan > 0 ? Math.min(100, Math.round((pDone / pPlan) * 100)) : 0,
+          };
+        });
       return {
         key: c.key,
         name: c.name,
@@ -284,6 +393,7 @@ export class PlansService {
         plan: planAmt,
         done,
         pct: planAmt > 0 ? Math.min(100, Math.round((done / planAmt) * 100)) : 0,
+        ...(products.length ? { products } : {}),
       };
     });
 
@@ -298,15 +408,17 @@ export class PlansService {
       totalPlan,
       totalDone,
       donePct: totalPlan > 0 ? Math.min(100, Math.round((totalDone / totalPlan) * 100)) : 0,
+      unit,
       categories,
     };
   }
 
-  private async computeDoneByCategory(
+  private async computeDone(
     distributorId: string,
     year: number,
     month: number,
-  ): Promise<Map<string, number>> {
+    planUnit: PlanUnit = 'som',
+  ): Promise<{ byCategory: Map<string, number>; byProduct: Map<string, number> }> {
     const { start, end } = monthRange(year, month);
     const orders = await this.orderRepo.find({
       where: {
@@ -316,12 +428,13 @@ export class PlansService {
       },
     });
 
-    if (orders.length === 0) return new Map();
+    const byCategory = new Map<string, number>();
+    const byProduct = new Map<string, number>();
+    if (orders.length === 0) return { byCategory, byProduct };
 
     const productIds = new Set<string>();
     for (const o of orders) {
       for (const item of o.items ?? []) {
-        // Seed/demo yozuvlarida productId "demo-seed" bo‘lishi mumkin — UUID emas
         if (item.productId && isUuid(item.productId)) productIds.add(item.productId);
       }
     }
@@ -330,8 +443,8 @@ export class PlansService {
       ? await this.productRepo.find({ where: { id: In([...productIds]) } })
       : [];
     const productCategory = new Map(products.map(p => [p.id, p.category ?? '']));
+    const productUnit = new Map(products.map(p => [p.id, p.unit ?? '']));
 
-    const done = new Map<string, number>();
     for (const order of orders) {
       for (const item of order.items ?? []) {
         const catName =
@@ -339,11 +452,29 @@ export class PlansService {
             ? productCategory.get(item.productId)
             : undefined) ?? '';
         const key = toKey(catName || 'OTHER');
-        const amount = Number(item.price) * Number(item.quantity);
-        done.set(key, (done.get(key) ?? 0) + amount);
+        const itemUnit =
+          item.unit
+          || (item.productId && isUuid(item.productId) ? productUnit.get(item.productId) : undefined)
+          || '';
+        const amount = itemContribution(planUnit, itemUnit, Number(item.quantity), Number(item.price));
+        if (amount === 0 && planUnit !== 'som') continue;
+        byCategory.set(key, (byCategory.get(key) ?? 0) + amount);
+        if (item.productId && isUuid(item.productId)) {
+          byProduct.set(item.productId, (byProduct.get(item.productId) ?? 0) + amount);
+        }
       }
     }
-    return done;
+    return { byCategory, byProduct };
+  }
+
+  private async computeDoneByCategory(
+    distributorId: string,
+    year: number,
+    month: number,
+    planUnit: PlanUnit = 'som',
+  ): Promise<Map<string, number>> {
+    const { byCategory } = await this.computeDone(distributorId, year, month, planUnit);
+    return byCategory;
   }
 
   private async buildColorMap(): Promise<Map<string, string>> {

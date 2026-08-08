@@ -13,9 +13,39 @@ object AppStrings {
 
     fun totalSales(lang: AppLanguage) = tr(lang, "Jami sotish", "Жами сотиш", "Общие продажи")
     fun sumCurrency(lang: AppLanguage) = "сум"
+
+    fun planUnit(lang: AppLanguage, unit: String?): String = when ((unit ?: "som").lowercase()) {
+        "kg" -> tr(lang, "kg", "кг", "кг")
+        "ton" -> tr(lang, "tonna", "тонна", "т")
+        "dona" -> tr(lang, "dona", "дона", "шт")
+        else -> tr(lang, "so'm", "сўм", "сум")
+    }
     fun add(lang: AppLanguage) = tr(lang, "Qo'shish", "Қўшиш", "Добавить")
     fun refresh(lang: AppLanguage) = tr(lang, "Yangilash", "Янгилаш", "Обновить")
     fun refreshDone(lang: AppLanguage) = tr(lang, "Yangilandi", "Янгиланди", "Обновлено")
+    fun offlineBannerTitle(lang: AppLanguage) = tr(
+        lang,
+        "Internet yo'q",
+        "Интернет йўқ",
+        "Нет интернета",
+    )
+    fun offlineBannerMessage(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtmalar qurilmada saqlanadi. Internet qaytganda avtomatik yuboriladi.",
+        "Буюртмалар қурилмада сақланади. Интернет қайтганда автоматик юборилади.",
+        "Заказы сохраняются на устройстве. При появлении интернета отправятся автоматически.",
+    )
+    fun offlinePendingOrders(lang: AppLanguage, count: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$count ta buyurtma yuborilishini kutmoqda"
+        AppLanguage.UZ_CYRILLIC -> "$count та буюртма юборилишини кутмоқда"
+        AppLanguage.RUS -> "Ожидают отправки: $count заказ(ов)"
+    }
+    fun orderQueuedOffline(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtma saqlandi — internet qaytganda yuboriladi",
+        "Буюртма сақланди — интернет қайтганда юборилади",
+        "Заказ сохранён — отправится при появлении интернета",
+    )
     fun refreshUpdatesTitle(lang: AppLanguage) = tr(lang, "Yangilanish natijasi", "Янгиланиш натижаси", "Результат обновления")
     fun refreshFirstDone(lang: AppLanguage) = tr(
         lang,

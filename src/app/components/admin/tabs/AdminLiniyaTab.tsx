@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check } from 'lucide-react';
+import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check, MapPin } from 'lucide-react';
 import { LINES } from '../../../data/adminData';
-import { api, type Distributor } from '../../../api/client';
+import { api, type Client, type Distributor } from '../../../api/client';
 
 interface Props {
   D: boolean;
@@ -18,12 +18,33 @@ type Line = {
   kolTT: number;
   agent: string;
   delivery: string;
+  visitDays: number[];
   plan: number;
   visits: number;
   sales: number;
 };
 
 type PersonOption = { id: string; name: string };
+
+const WEEK_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+function dayLabel(day: number, t: Record<string, string>): string {
+  const map: Record<number, string> = {
+    1: t.dayMon ?? 'Du',
+    2: t.dayTue ?? 'Se',
+    3: t.dayWed ?? 'Chor',
+    4: t.dayThu ?? 'Pay',
+    5: t.dayFri ?? 'Ju',
+    6: t.daySat ?? 'Sha',
+    7: t.daySun ?? 'Yak',
+  };
+  return map[day] ?? String(day);
+}
+
+function formatVisitDays(days: number[], t: Record<string, string>): string {
+  if (!days?.length) return '—';
+  return [...days].sort((a, b) => a - b).map(d => dayLabel(d, t)).join(', ');
+}
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -47,6 +68,7 @@ function apiLineToRow(row: {
   name: string;
   agentName: string | null;
   deliveryName?: string | null;
+  visitDays?: number[] | null;
   clientCount: number;
 }): Line {
   return {
@@ -56,6 +78,7 @@ function apiLineToRow(row: {
     kolTT: row.clientCount,
     agent: row.agentName ?? '',
     delivery: row.deliveryName ?? '',
+    visitDays: Array.isArray(row.visitDays) ? row.visitDays : [],
     plan: 0,
     visits: 0,
     sales: 0,
@@ -63,7 +86,7 @@ function apiLineToRow(row: {
 }
 
 const emptyForm = (): Omit<Line, 'id'> => ({
-  code: '', name: '', kolTT: 0, agent: '', delivery: '', plan: 0, visits: 0, sales: 0,
+  code: '', name: '', kolTT: 0, agent: '', delivery: '', visitDays: [], plan: 0, visits: 0, sales: 0,
 });
 
 /** Keyingi raqamli kod: 01, 02, 03… (nom emas) */
@@ -94,6 +117,7 @@ const demoLines: Line[] = LINES.map(l => ({
   kolTT: l.kolTT,
   agent: l.agent,
   delivery: '',
+  visitDays: [],
   plan: l.plan,
   visits: l.visits,
   sales: l.sales,
@@ -111,6 +135,10 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   const [saved, setSaved]       = useState(false);
   const [agents, setAgents]     = useState<PersonOption[]>([]);
   const [deliveries, setDeliveries] = useState<PersonOption[]>([]);
+  const [ttLine, setTtLine]     = useState<Line | null>(null);
+  const [ttClients, setTtClients] = useState<Client[]>([]);
+  const [ttLoading, setTtLoading] = useState(false);
+  const [ttSearch, setTtSearch] = useState('');
   const PER_PAGE = 12;
 
   const refreshLines = useCallback(async () => {
@@ -201,6 +229,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
       code: resolveLineCode(line.code, others),
       name: line.name, kolTT: line.kolTT,
       agent: line.agent, delivery: line.delivery,
+      visitDays: [...(line.visitDays ?? [])],
       plan: line.plan, visits: line.visits, sales: line.sales,
     });
     setEditLine(line);
@@ -213,6 +242,31 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     void loadPeople();
   };
 
+  const openTradePoints = async (line: Line) => {
+    setTtLine(line);
+    setTtSearch('');
+    setTtClients([]);
+    if (!hasApiToken()) return;
+    setTtLoading(true);
+    try {
+      const rows = await api.getClients(undefined, undefined, line.code);
+      setTtClients(rows);
+      setLines(prev => prev.map(l =>
+        l.id === line.id ? { ...l, kolTT: rows.length } : l,
+      ));
+    } catch {
+      setTtClients([]);
+    } finally {
+      setTtLoading(false);
+    }
+  };
+
+  const closeTradePoints = () => {
+    setTtLine(null);
+    setTtClients([]);
+    setTtSearch('');
+  };
+
   const saveEdit = async () => {
     const others = lines.filter(l => l.id !== editLine?.id);
     const code = resolveLineCode(form.code, others);
@@ -223,6 +277,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           name: form.name,
           agentName: form.agent || null,
           deliveryName: form.delivery || null,
+          visitDays: form.visitDays.length ? form.visitDays : null,
         });
         if (form.agent) await syncLineCode(form.agent, agents, code);
         if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
@@ -259,6 +314,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           name: form.name,
           agentName: form.agent || undefined,
           deliveryName: form.delivery || undefined,
+          visitDays: form.visitDays.length ? form.visitDays : undefined,
         });
         if (form.agent) await syncLineCode(form.agent, agents, code);
         if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
@@ -314,8 +370,20 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     t.lineColTT ?? 'Savdo nuqtalari',
     t.lineColAgent ?? 'Agent',
     t.lineColDelivery ?? 'Dostavchik',
+    t.lineColDays ?? 'Kunlar',
     '',
   ];
+
+  const filteredTtClients = useMemo(() => {
+    const q = ttSearch.trim().toLowerCase();
+    if (!q) return ttClients;
+    return ttClients.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.code.toLowerCase().includes(q) ||
+      (c.address ?? '').toLowerCase().includes(q) ||
+      (c.phone ?? '').toLowerCase().includes(q),
+    );
+  }, [ttClients, ttSearch]);
 
   return (
     <div style={{ padding: '0 0 32px' }}>
@@ -329,7 +397,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => { setEditLine(null); setAddMode(false); }}>
           <div style={{
-            background: modalBg, borderRadius: 18, padding: 28, width: 420, maxWidth: '92vw',
+            background: modalBg, borderRadius: 18, padding: 28, width: 440, maxWidth: '92vw',
             boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
             border: `1px solid ${border}`,
           }} onClick={e => e.stopPropagation()}>
@@ -428,6 +496,41 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
                   </div>
                 )}
               </div>
+              <div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                  {t.lineLabelDays ?? 'HAFTA KUNLARI'}
+                </div>
+                <div style={{ fontSize: 10, color: muted, marginBottom: 8 }}>
+                  {t.lineDaysHint ?? 'Agent / dostavchik qaysi kunlari borishi'}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {WEEK_DAYS.map(day => {
+                    const on = form.visitDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setForm(f => ({
+                          ...f,
+                          visitDays: on
+                            ? f.visitDays.filter(d => d !== day)
+                            : [...f.visitDays, day].sort((a, b) => a - b),
+                        }))}
+                        style={{
+                          minWidth: 42, padding: '7px 8px', borderRadius: 8,
+                          border: `1.5px solid ${on ? indigo : border}`,
+                          background: on ? 'rgba(99,102,241,0.14)' : 'transparent',
+                          color: on ? indigo : txt,
+                          fontSize: 12, fontWeight: on ? 700 : 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {dayLabel(day, t)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
@@ -498,6 +601,109 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
         </div>
       )}
 
+      {/* ── Savdo nuqtalari ro'yxati ── */}
+      {ttLine && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: overlayBg, backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={closeTradePoints}>
+          <div style={{
+            background: modalBg, borderRadius: 18, padding: 24, width: 560, maxWidth: '94vw',
+            maxHeight: '84vh', display: 'flex', flexDirection: 'column',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
+            border: `1px solid ${border}`,
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>
+                  {t.lineTTModalTitle ?? 'Savdo nuqtalari'}
+                </div>
+                <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>
+                  {ttLine.code} — {ttLine.name} · {filteredTtClients.length}
+                </div>
+              </div>
+              <button onClick={closeTradePoints} style={{
+                width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <X size={14} color={muted} />
+              </button>
+            </div>
+
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <Search size={14} color={muted} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                value={ttSearch}
+                onChange={e => setTtSearch(e.target.value)}
+                placeholder={t.lineTTModalSearch ?? 'Savdo nuqtasini qidirish...'}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  background: inpBg, border: `1.5px solid ${border}`,
+                  borderRadius: 10, padding: '10px 12px 10px 36px',
+                  fontSize: 13, color: txt, outline: 'none',
+                }}
+              />
+            </div>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: '64px 1.2fr 1fr 100px',
+              gap: 8, padding: '6px 10px', marginBottom: 4,
+              borderRadius: 8,
+              background: D ? 'rgba(255,255,255,0.04)' : '#f3f4f6',
+            }}>
+              {[t.lineTTColCode ?? 'Kod', t.lineTTColName ?? 'Nomi', t.lineTTColAddress ?? 'Manzil', t.lineTTColPhone ?? 'Telefon'].map(h => (
+                <span key={h} style={{ fontSize: 10, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {h}
+                </span>
+              ))}
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 120 }}>
+              {ttLoading ? (
+                <div style={{ padding: 28, textAlign: 'center', color: muted, fontSize: 13 }}>
+                  {t.msgLoading ?? 'Yuklanmoqda...'}
+                </div>
+              ) : filteredTtClients.length === 0 ? (
+                <div style={{
+                  padding: 36, textAlign: 'center', color: muted, fontSize: 13,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                }}>
+                  <MapPin size={22} color={muted} />
+                  {t.lineTTModalEmpty ?? "Bu liniyada savdo nuqtasi yo'q"}
+                </div>
+              ) : filteredTtClients.map(c => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '64px 1.2fr 1fr 100px',
+                    gap: 8, padding: '10px', borderRadius: 10,
+                    borderBottom: `1px solid ${border}`,
+                    alignItems: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: indigo }}>{c.code}</span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 500, color: txt,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {c.name}
+                  </span>
+                  <span style={{
+                    fontSize: 12, color: muted,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {c.address || '—'}
+                  </span>
+                  <span style={{ fontSize: 12, color: muted }}>{c.phone || '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -561,7 +767,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
 
       {/* ── Table header ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '48px 1fr 72px 100px 100px 60px',
+        display: 'grid', gridTemplateColumns: '48px 1fr 72px 90px 90px 110px 60px',
         gap: 8, padding: '8px 12px',
         borderRadius: 8,
         background: D ? 'rgba(255,255,255,0.04)' : '#f3f4f6',
@@ -584,7 +790,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           <div
             key={line.id}
             style={{
-              display: 'grid', gridTemplateColumns: '48px 1fr 72px 100px 100px 60px',
+              display: 'grid', gridTemplateColumns: '48px 1fr 72px 90px 90px 110px 60px',
               gap: 8, padding: '10px 12px', borderRadius: 10,
               border: `1px solid transparent`,
               cursor: 'pointer', alignItems: 'center', transition: 'all .12s',
@@ -608,7 +814,23 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
               {line.name}
             </div>
 
-            <div style={{ fontSize: 13, color: txt, fontWeight: 600 }}>{line.kolTT}</div>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); void openTradePoints(line); }}
+              style={{
+                fontSize: 13, fontWeight: 700, color: indigo,
+                background: 'rgba(99,102,241,0.10)',
+                border: 'none', borderRadius: 8,
+                padding: '4px 10px', cursor: 'pointer',
+                justifySelf: 'start',
+                transition: 'background .15s',
+              }}
+              title={t.lineTTModalTitle ?? 'Savdo nuqtalari'}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.18)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.10)'; }}
+            >
+              {line.kolTT}
+            </button>
 
             <div style={{
               fontSize: 11, color: muted,
@@ -622,6 +844,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
               {line.delivery ? line.delivery.split(' ')[0] : '—'}
+            </div>
+
+            <div style={{
+              fontSize: 11, color: line.visitDays.length ? txt : muted, fontWeight: line.visitDays.length ? 600 : 400,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {formatVisitDays(line.visitDays, t)}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

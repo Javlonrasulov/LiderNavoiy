@@ -17,9 +17,10 @@ data class PlanUiState(
     val isLoading: Boolean = true,
     val myDistributorId: String? = null,
     val categories: List<PlanCategory> = emptyList(),
-    val totalPlan: Long = 0,
-    val totalDone: Long = 0,
+    val totalPlan: Double = 0.0,
+    val totalDone: Double = 0.0,
     val totalPct: Int = 0,
+    val unit: String = "som",
     val agents: List<PlanAgent> = emptyList(),
     val hasPlan: Boolean = false,
     val dayStats: SalesPeriodChart = SalesPeriodChart(),
@@ -60,8 +61,16 @@ class PlanViewModel @Inject constructor(
                         labelCyrillic = c.name,
                         labelRussian = c.name,
                         color = parseHexColor(c.color),
-                        plan = c.plan.toLong(),
-                        done = c.done.toLong(),
+                        plan = c.plan,
+                        done = c.done,
+                        products = c.products.map { p ->
+                            PlanProductLine(
+                                productId = p.productId,
+                                name = p.productName,
+                                plan = p.plan,
+                                done = p.done,
+                            )
+                        },
                     )
                 }
 
@@ -69,14 +78,15 @@ class PlanViewModel @Inject constructor(
                     PlanAgent(
                         distributorId = p.distributorId,
                         name = p.agentName,
-                        plan = p.totalPlan.toLong(),
-                        done = p.totalDone.toLong(),
+                        plan = p.totalPlan,
+                        done = p.totalDone,
+                        unit = p.unit.ifBlank { "som" },
                         categoryPcts = p.categories.map { it.name to it.pct },
                     )
                 }
 
-                val totalPlan = myPlan?.totalPlan?.toLong() ?: 0L
-                val totalDone = myPlan?.totalDone?.toLong() ?: 0L
+                val totalPlan = myPlan?.totalPlan ?: 0.0
+                val totalDone = myPlan?.totalDone ?: 0.0
 
                 _uiState.update {
                     it.copy(
@@ -86,6 +96,7 @@ class PlanViewModel @Inject constructor(
                         totalPlan = totalPlan,
                         totalDone = totalDone,
                         totalPct = myPlan?.donePct ?: planPct(totalDone, totalPlan),
+                        unit = myPlan?.unit?.ifBlank { "som" } ?: "som",
                         agents = agents.sortedByDescending { a -> planPct(a.done, a.plan) },
                         hasPlan = myPlan != null,
                         dayStats = mapPeriod(salesStats?.day),
@@ -171,8 +182,8 @@ class PlanViewModel @Inject constructor(
     }
 
     private fun mapPeriod(dto: SalesPeriodStatsDto?) = SalesPeriodChart(
-        points = dto?.points.orEmpty().map { ChartPoint(it.label, it.sales.toLong()) },
-        total = dto?.total?.toLong() ?: 0L,
+        points = dto?.points.orEmpty().map { ChartPoint(it.label, it.sales) },
+        total = dto?.total ?: 0.0,
     )
 
     private fun parseHexColor(hex: String): Long {

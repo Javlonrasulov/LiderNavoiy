@@ -152,6 +152,8 @@ data class LineDto(
     val name: String,
     val clientCount: Int = 0,
     val agentName: String? = null,
+    val deliveryName: String? = null,
+    val visitDays: List<Int> = emptyList(),
 )
 
 data class ClientPhotoUploadDto(
@@ -437,6 +439,14 @@ data class CreateReturnRequest(
 
 data class StartConversationRequest(val userId: String)
 
+data class PlanProductDto(
+    val productId: String,
+    val productName: String,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val plan: Double = 0.0,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val done: Double = 0.0,
+    val pct: Int = 0,
+)
+
 data class PlanCategoryDto(
     val key: String,
     val name: String,
@@ -444,6 +454,7 @@ data class PlanCategoryDto(
     @JsonAdapter(FlexibleDoubleAdapter::class) val plan: Double = 0.0,
     @JsonAdapter(FlexibleDoubleAdapter::class) val done: Double = 0.0,
     val pct: Int = 0,
+    val products: List<PlanProductDto> = emptyList(),
 )
 
 data class AgentPlanDto(
@@ -454,6 +465,7 @@ data class AgentPlanDto(
     @JsonAdapter(FlexibleDoubleAdapter::class) val totalPlan: Double = 0.0,
     @JsonAdapter(FlexibleDoubleAdapter::class) val totalDone: Double = 0.0,
     val donePct: Int = 0,
+    val unit: String = "som",
     val categories: List<PlanCategoryDto> = emptyList(),
 )
 

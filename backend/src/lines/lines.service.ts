@@ -9,6 +9,18 @@ import { SalesLine } from './entities/sales-line.entity';
 import { CreateLineDto, LineListItemDto, UpdateLineDto } from './dto/line.dto';
 import { Client } from '../clients/entities/client.entity';
 
+function normalizeVisitDays(days?: number[] | null): number[] | null {
+  if (days == null || !Array.isArray(days) || days.length === 0) return null;
+  const cleaned = [
+    ...new Set(
+      days
+        .map((d) => Number(d))
+        .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7),
+    ),
+  ].sort((a, b) => a - b);
+  return cleaned.length ? cleaned : null;
+}
+
 @Injectable()
 export class LinesService {
   constructor(
@@ -30,15 +42,9 @@ export class LinesService {
     }
     const lines = await qb.getMany();
     const counts = await this.clientCountsByLine(companyId);
-    return lines.map((line) => ({
-      id: line.id,
-      code: line.code,
-      name: line.name,
-      agentName: line.agentName,
-      deliveryName: line.deliveryName,
-      clientCount: counts.get(line.code) ?? 0,
-      companyId: line.companyId,
-    }));
+    return lines.map((line) =>
+      this.toListItem(line, counts.get(line.code) ?? 0),
+    );
   }
 
   async findOne(id: string) {
@@ -70,6 +76,7 @@ export class LinesService {
         companyId,
         agentName: dto.agentName?.trim() || null,
         deliveryName: dto.deliveryName?.trim() || null,
+        visitDays: normalizeVisitDays(dto.visitDays),
         isActive: true,
       }),
     );
@@ -85,6 +92,9 @@ export class LinesService {
     }
     if (dto.deliveryName !== undefined) {
       line.deliveryName = dto.deliveryName?.trim() || null;
+    }
+    if (dto.visitDays !== undefined) {
+      line.visitDays = normalizeVisitDays(dto.visitDays);
     }
     if (dto.isActive !== undefined) line.isActive = dto.isActive;
     const saved = await this.lineRepo.save(line);
@@ -128,6 +138,7 @@ export class LinesService {
       name: line.name,
       agentName: line.agentName,
       deliveryName: line.deliveryName,
+      visitDays: Array.isArray(line.visitDays) ? line.visitDays : [],
       clientCount,
       companyId: line.companyId,
     };

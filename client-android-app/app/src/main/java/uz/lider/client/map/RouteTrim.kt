@@ -10,14 +10,47 @@ import uz.lider.client.domain.model.RouteStopInfo
  */
 object RouteTrim {
 
+    /** Yo‘ldan uzoqlashish — qayta OSRM chizish kerak (m). */
+    const val OFF_ROUTE_M = 80.0
+
+    fun distanceToRoute(
+        courierLat: Double,
+        courierLng: Double,
+        route: List<LatLngPoint>,
+    ): Double {
+        if (route.isEmpty()) return Double.MAX_VALUE
+        var best = Double.MAX_VALUE
+        for (p in route) {
+            val d = RoadRouteService.haversineM(
+                courierLat, courierLng, p.latitude, p.longitude,
+            )
+            if (d < best) best = d
+        }
+        return best
+    }
+
+    fun isOffRoute(
+        courierLat: Double,
+        courierLng: Double,
+        route: List<LatLngPoint>,
+        thresholdM: Double = OFF_ROUTE_M,
+    ): Boolean {
+        if (route.size < 2) return true
+        return distanceToRoute(courierLat, courierLng, route) > thresholdM
+    }
+
+    /**
+     * @return yo‘l bo‘ylab qolgan nuqtalar. Off-route bo‘lsa eski ko‘cha
+     * geometriyasini saqlaydi (to‘g‘ri chiziqqa yiqilmaydi) — UI qayta OSRM chizadi.
+     */
     fun remaining(
         courierLat: Double,
         courierLng: Double,
         route: List<LatLngPoint>,
     ): List<LatLngPoint> {
         if (route.size < 2) {
-            val end = route.lastOrNull() ?: return emptyList()
-            return listOf(LatLngPoint(courierLat, courierLng), end)
+            // 1 nuqta — hali yo‘l yo‘q; to‘g‘ri chiziq chizmaslik
+            return emptyList()
         }
 
         var bestIdx = 0
@@ -32,14 +65,14 @@ object RouteTrim {
             }
         }
 
-        // Juda uzoqda — eski marshrutni ishlatmaslik (qayta chizish kerak)
-        if (bestDist > 180.0) {
-            return listOf(LatLngPoint(courierLat, courierLng), route.last())
+        // Yo‘ldan chiqib ketgan — eski ko‘cha chizig‘ini saqlab qolamiz (OSRM kelguncha)
+        if (bestDist > OFF_ROUTE_M) {
+            return route
         }
 
         val tail = route.drop(bestIdx).toMutableList()
         if (tail.isEmpty()) {
-            return listOf(LatLngPoint(courierLat, courierLng), route.last())
+            return route
         }
         // Birinchi nuqta — mashina joyi (chiziq marker bilan ulanadi)
         tail[0] = LatLngPoint(courierLat, courierLng)
@@ -53,7 +86,7 @@ object RouteTrim {
                 tail.removeAt(1)
             }
         }
-        return if (tail.size >= 2) tail else listOf(LatLngPoint(courierLat, courierLng), route.last())
+        return if (tail.size >= 2) tail else route
     }
 
     /** Eng yaqin nuqta indeksi — orqaga qaytishni aniqlash uchun. */

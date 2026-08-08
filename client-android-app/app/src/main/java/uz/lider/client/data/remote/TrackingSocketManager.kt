@@ -47,10 +47,10 @@ class TrackingSocketManager @Inject constructor(
     private val _routeChanges = MutableSharedFlow<CourierRouteEvent>(extraBufferCapacity = 16)
     val routeChanges: SharedFlow<CourierRouteEvent> = _routeChanges.asSharedFlow()
 
+    /** Bitta kuryerni kuzatishga qo‘shadi (mavjud watchlarni o‘chirmaydi). */
     fun watchCourier(distributorId: String) {
         if (distributorId.isBlank()) return
         synchronized(watchingIds) {
-            watchingIds.clear()
             watchingIds.add(distributorId)
         }
         connectAndWatch()
@@ -59,17 +59,32 @@ class TrackingSocketManager @Inject constructor(
     fun watchCouriers(distributorIds: Collection<String>) {
         val next = distributorIds.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         synchronized(watchingIds) {
+            // Dashboard to‘liq ro‘yxat beradi — lekin bo‘sh bo‘lsa socketni o‘chirmaymiz
+            // (boshqa ekran watch qilgan bo‘lishi mumkin). Faqat yangi to‘plamni merge.
+            if (next.isEmpty()) return
             watchingIds.clear()
             watchingIds.addAll(next)
-        }
-        if (next.isEmpty()) {
-            unwatch()
-            return
         }
         connectAndWatch()
     }
 
     fun unwatch() {
+        val ids = synchronized(watchingIds) {
+            watchingIds.toList().also { watchingIds.clear() }
+        }
+        scope.launch {
+            if (socket?.connected() == true) {
+                ids.forEach { id ->
+                    socket?.emit("unwatch:courier", JSONObject().put("distributorId", id))
+                }
+            }
+            // Socketni uzmaymiz — boshqa ekran (Asosiy) jonli GPS ni yo‘qotmasin.
+            // To‘liq uzish faqat [disconnect].
+        }
+    }
+
+    /** Logout / ViewModel tozalash — socketni butunlay yopish. */
+    fun disconnect() {
         val ids = synchronized(watchingIds) {
             watchingIds.toList().also { watchingIds.clear() }
         }

@@ -18,6 +18,7 @@ import uz.distributor.crm.domain.model.AuthUser
 import uz.distributor.crm.domain.model.DashboardStats
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.util.NetworkMonitor
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -28,6 +29,10 @@ data class DashboardUiState(
     val isLoading: Boolean = true,
     val user: AuthUser? = null,
     val stats: DashboardStats = DashboardStats(),
+    /** Server + hali yuborilmagan offline buyurtmalar jami */
+    val displayedTotalSales: Double = 0.0,
+    val pendingOrdersCount: Int = 0,
+    val isOnline: Boolean = true,
     val showBalance: Boolean = false,
     val showAll: Boolean = false,
     val formattedDate: String = "",
@@ -48,6 +53,7 @@ class DashboardViewModel @Inject constructor(
     private val appSettingsRepository: AppSettingsRepository,
     private val cartRepository: CartRepository,
     private val pushRepository: PushRepository,
+    private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -63,6 +69,17 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             appSettingsRepository.language.collect { lang ->
                 _uiState.update { it.copy(formattedDate = formatToday(lang)) }
+            }
+        }
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _uiState.update { it.copy(isOnline = online) }
+                if (online) {
+                    runCatching { cartRepository.syncPending() }
+                    loadDashboard(syncFirst = false)
+                } else {
+                    applyPendingToSales()
+                }
             }
         }
     }
@@ -97,23 +114,32 @@ class DashboardViewModel @Inject constructor(
                 it.copy(
                     refreshButtonState = RefreshButtonState.LOADING,
                     showRefreshResult = false,
+                    isOnline = networkMonitor.isCurrentlyOnline(),
                 )
             }
 
             val user = authRepository.getUserFlow().first()
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
-            // Dostavkachi agent savatchasini ko‘rmasin (qurilmadagi eski cart)
             val (cartTotal, cartItemsCount) = resolveCartTotals()
+
+            if (networkMonitor.isCurrentlyOnline()) {
+                runCatching { cartRepository.syncPending() }
+            }
 
             try {
                 val result = dashboardRefreshRepository.refreshAndDetectChanges(lang)
+                val pendingTotal = cartRepository.pendingOrdersTotal()
+                val pendingCount = cartRepository.pendingOrdersCount()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         user = user,
                         formattedDate = today,
                         stats = result.stats,
+                        displayedTotalSales = result.stats.totalSales + pendingTotal,
+                        pendingOrdersCount = pendingCount,
+                        isOnline = networkMonitor.isCurrentlyOnline(),
                         productCount = result.productCount,
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
@@ -130,11 +156,16 @@ class DashboardViewModel @Inject constructor(
                     } else it
                 }
             } catch (e: Exception) {
+                val pendingTotal = cartRepository.pendingOrdersTotal()
+                val pendingCount = cartRepository.pendingOrdersCount()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         user = user,
                         formattedDate = today,
+                        displayedTotalSales = it.stats.totalSales + pendingTotal,
+                        pendingOrdersCount = pendingCount,
+                        isOnline = networkMonitor.isCurrentlyOnline(),
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
                         refreshButtonState = RefreshButtonState.IDLE,
@@ -146,48 +177,85 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun reload() {
-        loadDashboard()
+        loadDashboard(syncFirst = true)
     }
 
-    private fun loadDashboard() {
+    private fun loadDashboard(syncFirst: Boolean) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    isOnline = networkMonitor.isCurrentlyOnline(),
+                )
+            }
 
             val user = authRepository.getUserFlow().first()
             val lang = appSettingsRepository.language.first()
             val today = formatToday(lang)
             val (cartTotal, cartItemsCount) = resolveCartTotals()
 
+            if (syncFirst && networkMonitor.isCurrentlyOnline()) {
+                runCatching { cartRepository.syncPending() }
+            }
+
             try {
                 withTimeout(25_000) {
                     val stats = dashboardRepository.getStats()
                     val productCount = dashboardRefreshRepository.syncSessionBaseline()
+                    val pendingTotal = cartRepository.pendingOrdersTotal()
+                    val pendingCount = cartRepository.pendingOrdersCount()
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             user = user,
                             formattedDate = today,
                             stats = stats,
+                            displayedTotalSales = stats.totalSales + pendingTotal,
+                            pendingOrdersCount = pendingCount,
+                            isOnline = networkMonitor.isCurrentlyOnline(),
                             productCount = productCount,
                             cartTotal = cartTotal,
                             cartItemsCount = cartItemsCount,
+                            error = null,
                         )
                     }
                 }
             } catch (e: Exception) {
+                val pendingTotal = cartRepository.pendingOrdersTotal()
+                val pendingCount = cartRepository.pendingOrdersCount()
+                val previousSales = _uiState.value.stats.totalSales
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         user = user,
                         formattedDate = today,
-                        stats = DashboardStats(),
-                        productCount = 0,
+                        // Offline: oxirgi ma’lum server jami + pending
+                        displayedTotalSales = previousSales + pendingTotal,
+                        pendingOrdersCount = pendingCount,
+                        isOnline = networkMonitor.isCurrentlyOnline(),
+                        productCount = it.productCount,
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
-                        error = ApiErrorMapper.toKey(e),
+                        error = if (networkMonitor.isCurrentlyOnline()) {
+                            ApiErrorMapper.toKey(e)
+                        } else {
+                            null
+                        },
                     )
                 }
             }
+        }
+    }
+
+    private suspend fun applyPendingToSales() {
+        val pendingTotal = cartRepository.pendingOrdersTotal()
+        val pendingCount = cartRepository.pendingOrdersCount()
+        _uiState.update {
+            it.copy(
+                displayedTotalSales = it.stats.totalSales + pendingTotal,
+                pendingOrdersCount = pendingCount,
+                isOnline = false,
+            )
         }
     }
 

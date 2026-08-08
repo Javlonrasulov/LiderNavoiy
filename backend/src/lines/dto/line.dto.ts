@@ -1,5 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateLineDto {
   @ApiProperty({ example: '01' })
@@ -26,6 +36,15 @@ export class CreateLineDto {
   @IsOptional()
   @IsString()
   deliveryName?: string;
+
+  @ApiPropertyOptional({ example: [1, 3, 5], description: '1=Mon … 7=Sun' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  visitDays?: number[];
 }
 
 export class UpdateLineDto {
@@ -51,6 +70,15 @@ export class UpdateLineDto {
   @IsString()
   deliveryName?: string | null;
 
+  @ApiPropertyOptional({ example: [1, 3, 5], description: '1=Mon … 7=Sun' })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  visitDays?: number[] | null;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -63,6 +91,7 @@ export interface LineListItemDto {
   name: string;
   agentName: string | null;
   deliveryName: string | null;
+  visitDays: number[];
   clientCount: number;
   companyId: string | null;
 }

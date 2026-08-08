@@ -9,7 +9,7 @@ import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.domain.model.Client
-import java.util.Calendar
+import uz.distributor.crm.util.VisitSchedule
 import javax.inject.Inject
 
 enum class ClientsListTab { SCHEDULE, ROUTE_DROPS, SEARCH }
@@ -19,7 +19,7 @@ data class ClientsUiState(
     val isLoading: Boolean = true,
     val searchQuery: String = "",
     val error: String? = null,
-    val selectedDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1,
+    val selectedDay: Int = VisitSchedule.todayVisitDay().let { if (it == 7) 0 else it },
     val activeTab: ClientsListTab = ClientsListTab.SCHEDULE,
     /** 0=Yakshanba … 6=Shanba — kun bo‘yicha klientlar soni */
     val dayClientCounts: Map<Int, Int> = emptyMap(),
@@ -36,6 +36,7 @@ class ClientsViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
 
     private var allClients: List<Client> = emptyList()
+    private var daysByLineCode: Map<String, List<Int>> = emptyMap()
 
     init {
         viewModelScope.launch {
@@ -74,6 +75,10 @@ class ClientsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
+                val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
+                daysByLineCode = VisitSchedule.buildDaysByLineCode(
+                    lines.map { it.code to it.visitDays },
+                )
                 allClients = clientRepository.getClients(force)
                 applyFilters(allClients)
                 _uiState.update { it.copy(isLoading = false) }
@@ -103,10 +108,13 @@ class ClientsViewModel @Inject constructor(
             ClientsListTab.ROUTE_DROPS -> list = list.filter { it.latitude == null || it.longitude == null }
             ClientsListTab.SEARCH -> if (state.searchQuery.isBlank()) list = emptyList()
             ClientsListTab.SCHEDULE -> {
-                // selectedDay: 0=Yakshanba ... 6=Shanba (Calendar.DAY_OF_WEEK - 1)
-                val dayKey = dayKeyFor(state.selectedDay)
-                val byDay = list.filter { it.territory?.lowercase()?.trim() == dayKey }
-                if (byDay.isNotEmpty()) list = byDay
+                val visitDay = VisitSchedule.fromCalendarIndex(state.selectedDay)
+                val byDay = list.filter {
+                    VisitSchedule.clientMatchesDay(it, visitDay, daysByLineCode)
+                }
+                // Agar liniya kunlari sozlangan bo‘lsa — faqat shu kun mijozlari.
+                // Aks holda (hech narsa topilmasa) eski usul: barcha mijozlar.
+                list = if (byDay.isNotEmpty() || daysByLineCode.isNotEmpty()) byDay else list
             }
         }
         _uiState.update { it.copy(clients = list, dayClientCounts = dayCounts) }
@@ -115,19 +123,11 @@ class ClientsViewModel @Inject constructor(
     private fun countClientsByDay(source: List<Client>): Map<Int, Int> {
         val counts = mutableMapOf<Int, Int>()
         for (day in 0..6) {
-            val key = dayKeyFor(day)
-            counts[day] = source.count { it.territory?.lowercase()?.trim() == key }
+            val visitDay = VisitSchedule.fromCalendarIndex(day)
+            counts[day] = source.count {
+                VisitSchedule.clientMatchesDay(it, visitDay, daysByLineCode)
+            }
         }
         return counts
-    }
-
-    private fun dayKeyFor(day: Int): String = when (day) {
-        0 -> "sunday"
-        1 -> "monday"
-        2 -> "tuesday"
-        3 -> "wednesday"
-        4 -> "thursday"
-        5 -> "friday"
-        else -> "saturday"
     }
 }

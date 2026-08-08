@@ -15,6 +15,7 @@ import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.service.LocationTrackingController
+import uz.distributor.crm.util.VisitSchedule
 import javax.inject.Inject
 
 data class LocationUiState(
@@ -25,6 +26,7 @@ data class LocationUiState(
     val sheetFraction: Float = 0.42f,
     val isLoading: Boolean = true,
     val socketConnected: Boolean = false,
+    val daysByLineCode: Map<String, List<Int>> = emptyMap(),
 )
 
 @HiltViewModel
@@ -78,8 +80,14 @@ class LocationViewModel @Inject constructor(
     fun loadClients() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
+            val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
+            val daysByLine = VisitSchedule.buildDaysByLineCode(
+                lines.map { it.code to it.visitDays },
+            )
             val clients = clientRepository.getClients(forceRefresh = true)
-            _uiState.update { it.copy(clients = clients, isLoading = false) }
+            _uiState.update {
+                it.copy(clients = clients, daysByLineCode = daysByLine, isLoading = false)
+            }
         }
     }
 
@@ -117,25 +125,16 @@ class LocationViewModel @Inject constructor(
 
     fun filteredClients(): List<Client> {
         val state = _uiState.value
-        val dayKey = when (state.selectedDay) {
-            "today" -> {
-                val cal = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                when (cal) {
-                    java.util.Calendar.SUNDAY -> "sunday"
-                    java.util.Calendar.MONDAY -> "monday"
-                    java.util.Calendar.TUESDAY -> "tuesday"
-                    java.util.Calendar.WEDNESDAY -> "wednesday"
-                    java.util.Calendar.THURSDAY -> "thursday"
-                    java.util.Calendar.FRIDAY -> "friday"
-                    else -> "saturday"
-                }
-            }
-            else -> state.selectedDay
+        val visitDay = when (state.selectedDay) {
+            "today" -> VisitSchedule.todayVisitDay()
+            else -> VisitSchedule.englishKeyToVisitDay(state.selectedDay)
+                ?: VisitSchedule.todayVisitDay()
         }
         val byDay = state.clients.filter { client ->
-            client.territory?.lowercase()?.trim() == dayKey
+            VisitSchedule.clientMatchesDay(client, visitDay, state.daysByLineCode)
         }
-        return byDay.ifEmpty { state.clients }
+        return if (byDay.isNotEmpty() || state.daysByLineCode.isNotEmpty()) byDay
+        else state.clients
     }
 
     fun selectedMapId(): String? = _uiState.value.selectedClient?.id

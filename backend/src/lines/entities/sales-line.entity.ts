@@ -28,6 +28,10 @@ export class SalesLine {
   @Column({ type: 'varchar', nullable: true })
   deliveryName: string | null;
 
+  /** Hafta kunlari: 1=Dushanba … 7=Yakshanba */
+  @Column({ type: 'simple-json', nullable: true })
+  visitDays: number[] | null;
+
   @Column({ default: true })
   isActive: boolean;
 

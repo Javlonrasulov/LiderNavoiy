@@ -130,7 +130,7 @@ fun PlanScreen(
                 tab == PlanTab.MY -> MyPlanContent(
                     lang, isDark, cardBg, sub, txt,
                     uiState.categories, uiState.totalPlan, uiState.totalDone, uiState.totalPct,
-                    uiState.hasPlan, uiState.statsPeriod,
+                    uiState.unit, uiState.hasPlan, uiState.statsPeriod,
                     uiState.dayStats, uiState.weekStats, uiState.monthStats, uiState.customStats,
                 ) { viewModel.setStatsPeriod(it) }
                 else -> AllAgentsContent(
@@ -155,18 +155,20 @@ private fun RowScope.PlanTabButton(label: String, selected: Boolean, isDark: Boo
 
 @Composable
 private fun ClickablePlanAmount(
-    amount: Long,
+    amount: Double,
     lang: uz.distributor.crm.localization.AppLanguage,
     color: Color,
     fontSize: TextUnit,
     fontWeight: FontWeight = FontWeight.Normal,
     modifier: Modifier = Modifier,
+    unit: String = "som",
 ) {
-    var expanded by remember(amount) { mutableStateOf(false) }
+    var expanded by remember(amount, unit) { mutableStateOf(false) }
+    val unitLabel = AppStrings.planUnit(lang, unit)
     val label = if (expanded) {
-        "${planFmtFull(amount)} ${AppStrings.sumCurrency(lang)}"
+        "${planFmtFull(amount, unit)} $unitLabel"
     } else {
-        "${planFmt(amount)} ${AppStrings.sumCurrency(lang)}"
+        "${planFmt(amount, unit)} $unitLabel"
     }
     Text(
         label,
@@ -185,9 +187,10 @@ private fun MyPlanContent(
     sub: Color,
     txt: Color,
     categories: List<PlanCategory>,
-    totalPlan: Long,
-    totalDone: Long,
+    totalPlan: Double,
+    totalDone: Double,
     totalPct: Int,
+    unit: String,
     hasPlan: Boolean,
     statsPeriod: StatsPeriod,
     dayStats: SalesPeriodChart,
@@ -215,7 +218,7 @@ private fun MyPlanContent(
         ) {
             Column(Modifier.padding(20.dp)) {
                 Text(AppStrings.totalPlan(lang), color = Color.White.copy(0.7f), fontSize = 14.sp)
-                ClickablePlanAmount(totalPlan, lang, Color.White, 28.sp, FontWeight.Bold)
+                ClickablePlanAmount(totalPlan, lang, Color.White, 28.sp, FontWeight.Bold, unit = unit)
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SherinRadialProgress(totalPct, Color(0xFF60A5FA), 120.dp, Color.White)
@@ -223,11 +226,17 @@ private fun MyPlanContent(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column {
                             Text(AppStrings.completed(lang), color = Color.White.copy(0.6f), fontSize = 12.sp)
-                            ClickablePlanAmount(totalDone, lang, Color.White, 18.sp)
+                            ClickablePlanAmount(totalDone, lang, Color.White, 18.sp, unit = unit)
                         }
                         Column {
                             Text(AppStrings.remaining(lang), color = Color.White.copy(0.6f), fontSize = 12.sp)
-                            ClickablePlanAmount(totalPlan - totalDone, lang, Color.White, 18.sp)
+                            ClickablePlanAmount(
+                                (totalPlan - totalDone).coerceAtLeast(0.0),
+                                lang,
+                                Color.White,
+                                18.sp,
+                                unit = unit,
+                            )
                         }
                     }
                 }
@@ -289,7 +298,7 @@ private fun MyPlanContent(
                                 Text(cat.label(lang), color = txt, fontWeight = FontWeight.Medium)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("${AppStrings.planLabel(lang)}: ", color = sub, fontSize = 12.sp)
-                                    ClickablePlanAmount(cat.plan, lang, sub, 12.sp)
+                                    ClickablePlanAmount(cat.plan, lang, sub, 12.sp, unit = unit)
                                 }
                             }
                         }
@@ -297,8 +306,44 @@ private fun MyPlanContent(
                     }
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        MiniStatBox(AppStrings.completed(lang), cat.done, lang, isDark, Modifier.weight(1f))
-                        MiniStatBox(AppStrings.remaining(lang), cat.plan - cat.done, lang, isDark, Modifier.weight(1f))
+                        MiniStatBox(AppStrings.completed(lang), cat.done, lang, isDark, Modifier.weight(1f), unit = unit)
+                        MiniStatBox(AppStrings.remaining(lang), cat.plan - cat.done, lang, isDark, Modifier.weight(1f), unit = unit)
+                    }
+                    if (cat.products.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            cat.products.forEach { prod ->
+                                val pp = planPct(prod.done, prod.plan)
+                                Column {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            prod.name,
+                                            color = sub,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.weight(1f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text("$pp%", color = Color(cat.color), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { pp / 100f },
+                                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp).height(5.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(cat.color).copy(alpha = 0.85f),
+                                        trackColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB),
+                                    )
+                                    Text(
+                                        "${planFmt(prod.done, unit)} / ${planFmt(prod.plan, unit)} ${AppStrings.planUnit(lang, unit)}",
+                                        color = sub,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
@@ -324,16 +369,17 @@ private fun PeriodChip(label: String, selected: Boolean, isDark: Boolean, onClic
 @Composable
 private fun MiniStatBox(
     label: String,
-    amount: Long,
+    amount: Double,
     lang: uz.distributor.crm.localization.AppLanguage,
     isDark: Boolean,
     modifier: Modifier = Modifier,
+    unit: String = "som",
 ) {
     Column(
         modifier = modifier.clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0xFF1F2937) else Color(0xFFF9FAFB)).padding(12.dp),
     ) {
         Text(label, fontSize = 12.sp, color = Color(0xFF9CA3AF))
-        ClickablePlanAmount(amount, lang, if (isDark) Color.White else Color.Black, 14.sp)
+        ClickablePlanAmount(amount, lang, if (isDark) Color.White else Color.Black, 14.sp, unit = unit)
     }
 }
 

@@ -7,10 +7,20 @@ import {
   Index,
 } from 'typeorm';
 
+export type PlanUnit = 'som' | 'kg' | 'ton' | 'dona';
+
+export interface PlanProductAmount {
+  productId: string;
+  productName: string;
+  amount: number;
+}
+
 export interface PlanCategoryAmount {
   key: string;
   name: string;
   amount: number;
+  /** Ixtiyoriy: kategoriya ichidagi mahsulot rejalari */
+  products?: PlanProductAmount[];
 }
 
 @Entity('agent_plans')
@@ -30,6 +40,10 @@ export class AgentPlan {
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: number;
+
+  /** Reja birligi: som | kg | ton | dona */
+  @Column({ type: 'varchar', length: 16, default: 'som' })
+  unit: PlanUnit;
 
   @Column({ type: 'jsonb', default: [] })
   categories: PlanCategoryAmount[];

@@ -216,7 +216,7 @@ fun DashboardScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            if (state.showBalance) formatter.format(state.stats.totalSales.toLong()) else "•••••••",
+                            if (state.showBalance) formatter.format(state.displayedTotalSales.toLong()) else "•••••••",
                             color = Color.White,
                             fontSize = 48.sp,
                             fontWeight = FontWeight.Normal,
@@ -260,6 +260,33 @@ fun DashboardScreen(
             }
 
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                if (!state.isOnline) {
+                    DashboardErrorCard(
+                        title = AppStrings.offlineBannerTitle(lang),
+                        message = buildString {
+                            append(AppStrings.offlineBannerMessage(lang))
+                            if (state.pendingOrdersCount > 0) {
+                                append("\n")
+                                append(AppStrings.offlinePendingOrders(lang, state.pendingOrdersCount))
+                            }
+                        },
+                        retryLabel = AppStrings.refresh(lang),
+                        isDark = isDark,
+                        onRetry = viewModel::reload,
+                        warningStyle = true,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                } else if (state.pendingOrdersCount > 0) {
+                    DashboardErrorCard(
+                        title = AppStrings.offlinePendingOrders(lang, state.pendingOrdersCount),
+                        message = AppStrings.offlineBannerMessage(lang),
+                        retryLabel = AppStrings.refresh(lang),
+                        isDark = isDark,
+                        onRetry = viewModel::reload,
+                        warningStyle = true,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
                 state.error?.let { errorKey ->
                     DashboardErrorCard(
                         title = AppStrings.dashboardLoadFailedTitle(lang),
@@ -427,22 +454,33 @@ private fun DashboardErrorCard(
     retryLabel: String,
     isDark: Boolean,
     onRetry: () -> Unit,
+    warningStyle: Boolean = false,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = if (isDark) Color(0xFF7F1D1D).copy(0.45f) else Color(0xFFFEF2F2),
+        color = when {
+            warningStyle && isDark -> Color(0xFF78350F).copy(0.45f)
+            warningStyle -> Color(0xFFFFFBEB)
+            isDark -> Color(0xFF7F1D1D).copy(0.45f)
+            else -> Color(0xFFFEF2F2)
+        },
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isDark) Color(0xFFEF4444).copy(0.35f) else Color(0xFFFECACA),
+            when {
+                warningStyle && isDark -> Color(0xFFF59E0B).copy(0.4f)
+                warningStyle -> Color(0xFFFDE68A)
+                isDark -> Color(0xFFEF4444).copy(0.35f)
+                else -> Color(0xFFFECACA)
+            },
         ),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.ErrorOutline,
+                    if (warningStyle) Icons.Default.Warning else Icons.Default.ErrorOutline,
                     contentDescription = null,
-                    tint = Color(0xFFEF4444),
+                    tint = if (warningStyle) Color(0xFFF59E0B) else Color(0xFFEF4444),
                     modifier = Modifier.size(22.dp),
                 )
                 Spacer(Modifier.width(8.dp))
@@ -450,7 +488,12 @@ private fun DashboardErrorCard(
                     title,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
-                    color = if (isDark) Color.White else Color(0xFF991B1B),
+                    color = when {
+                        warningStyle && isDark -> Color(0xFFFDE68A)
+                        warningStyle -> Color(0xFF92400E)
+                        isDark -> Color.White
+                        else -> Color(0xFF991B1B)
+                    },
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -458,7 +501,12 @@ private fun DashboardErrorCard(
                 message,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
-                color = if (isDark) Color(0xFFFECACA) else Color(0xFFB91C1C),
+                color = when {
+                    warningStyle && isDark -> Color(0xFFFDE68A).copy(0.85f)
+                    warningStyle -> Color(0xFFB45309)
+                    isDark -> Color(0xFFFECACA)
+                    else -> Color(0xFFB91C1C)
+                },
             )
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onRetry) {

@@ -745,10 +745,11 @@ export const api = {
     request<Client[]>(`/gps/nearby-clients?latitude=${lat}&longitude=${lng}&radiusMeters=${radius}`),
 
   // ─── Clients ───
-  getClients: (companyId?: string, distributorId?: string) => {
+  getClients: (companyId?: string, distributorId?: string, lineCode?: string) => {
     const q = new URLSearchParams();
     if (companyId) q.set('companyId', companyId);
     if (distributorId) q.set('distributorId', distributorId);
+    if (lineCode) q.set('lineCode', lineCode);
     const qs = q.toString();
     return request<Client[]>(`/clients${qs ? `?${qs}` : ''}`);
   },
@@ -934,6 +935,7 @@ export const api = {
       totalPlan: number;
       totalDone: number;
       donePct: number;
+      unit: 'som' | 'kg' | 'ton' | 'dona';
       categories: Array<{
         key: string;
         name: string;
@@ -941,6 +943,13 @@ export const api = {
         plan: number;
         done: number;
         pct: number;
+        products?: Array<{
+          productId: string;
+          productName: string;
+          plan: number;
+          done: number;
+          pct: number;
+        }>;
       }>;
     }>>(`/plans${qs ? `?${qs}` : ''}`);
   },
@@ -951,8 +960,15 @@ export const api = {
     year?: number;
     month?: number;
     total: number;
+    unit?: 'som' | 'kg' | 'ton' | 'dona';
     categories: Record<string, number>;
     categoryNames?: Record<string, string>;
+    products?: Array<{
+      productId: string;
+      productName: string;
+      categoryKey: string;
+      amount: number;
+    }>;
   }) =>
     request<{
       id: string;
@@ -960,7 +976,13 @@ export const api = {
       year: number;
       month: number;
       totalAmount: number;
-      categories: Array<{ key: string; name: string; amount: number }>;
+      unit: string;
+      categories: Array<{
+        key: string;
+        name: string;
+        amount: number;
+        products?: Array<{ productId: string; productName: string; amount: number }>;
+      }>;
     }>('/plans', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -1200,6 +1222,7 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      visitDays: number[];
       clientCount: number;
       companyId: string | null;
     }>>(`/lines${companyId ? `?companyId=${companyId}` : ''}`),
@@ -1209,6 +1232,7 @@ export const api = {
     name: string;
     agentName?: string;
     deliveryName?: string;
+    visitDays?: number[];
     companyId?: string;
   }) =>
     request<{
@@ -1217,6 +1241,7 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      visitDays: number[];
       clientCount: number;
       companyId: string | null;
     }>('/lines', {
@@ -1229,6 +1254,7 @@ export const api = {
     name?: string;
     agentName?: string | null;
     deliveryName?: string | null;
+    visitDays?: number[] | null;
   }) =>
     request<{
       id: string;
@@ -1236,6 +1262,7 @@ export const api = {
       name: string;
       agentName: string | null;
       deliveryName: string | null;
+      visitDays: number[];
       clientCount: number;
       companyId: string | null;
     }>(`/lines/${id}`, {

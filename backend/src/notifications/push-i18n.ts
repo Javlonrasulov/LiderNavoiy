@@ -215,13 +215,13 @@ export const PushI18n = {
     lang: PushLang,
     year: number,
     month: number,
-    total: string,
+    totalWithUnit: string,
   ): string {
     return pick(lang, {
-      uz: `${month}.${year} — ${total} so'm`,
-      uz_cyr: `${month}.${year} — ${total} сўм`,
-      ru: `${month}.${year} — ${total} сум`,
-      en: `${month}.${year} — ${total} so'm`,
+      uz: `${month}.${year} — ${totalWithUnit}`,
+      uz_cyr: `${month}.${year} — ${totalWithUnit}`,
+      ru: `${month}.${year} — ${totalWithUnit}`,
+      en: `${month}.${year} — ${totalWithUnit}`,
     });
   },
 

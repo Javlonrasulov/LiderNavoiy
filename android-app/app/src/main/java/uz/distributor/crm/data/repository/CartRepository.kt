@@ -15,6 +15,7 @@ import uz.distributor.crm.data.remote.dto.UpdateOrderItemsRequest
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.domain.model.ProductPromotion
+import uz.distributor.crm.util.NetworkMonitor
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -25,6 +26,7 @@ class CartRepository @Inject constructor(
     private val db: AppDatabase,
     private val api: ApiService,
     private val gson: Gson,
+    private val networkMonitor: NetworkMonitor,
 ) {
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
@@ -224,8 +226,15 @@ class CartRepository @Inject constructor(
         val total = items.sumOf { it.price * it.quantity }
         val offlineId = UUID.randomUUID().toString()
 
+        // Internet yo‘q — darhol lokal navbatga, timeout kutmasdan
+        if (!networkMonitor.isCurrentlyOnline()) {
+            queueOffline(offlineId, clientId, orderItems, total)
+            db.cartDao().clearClient(clientId)
+            return Result.success(Unit)
+        }
+
         return try {
-            api.createOrder(CreateOrderRequest(clientId, visitId, orderItems))
+            api.createOrder(CreateOrderRequest(clientId, visitId, orderItems, offlineId))
             try {
                 api.createVisit(CreateVisitRequest(
                     clientId = clientId,
@@ -242,18 +251,36 @@ class CartRepository @Inject constructor(
             db.cartDao().clearClient(clientId)
             Result.success(Unit)
         } catch (e: Exception) {
-            db.pendingOrderDao().insert(PendingOrderEntity(
-                offlineId = offlineId, clientId = clientId,
-                itemsJson = gson.toJson(orderItems), totalAmount = total,
-            ))
-            db.pendingVisitDao().insert(PendingVisitEntity(
-                offlineId = offlineId, clientId = clientId,
-                visitedAt = System.currentTimeMillis(), checkInLat = null, checkInLng = null,
-                orderTotal = total,
-            ))
+            queueOffline(offlineId, clientId, orderItems, total)
             db.cartDao().clearClient(clientId)
             Result.success(Unit)
         }
+    }
+
+    private suspend fun queueOffline(
+        offlineId: String,
+        clientId: String,
+        orderItems: List<OrderItemDto>,
+        total: Double,
+    ) {
+        db.pendingOrderDao().insert(
+            PendingOrderEntity(
+                offlineId = offlineId,
+                clientId = clientId,
+                itemsJson = gson.toJson(orderItems),
+                totalAmount = total,
+            ),
+        )
+        db.pendingVisitDao().insert(
+            PendingVisitEntity(
+                offlineId = offlineId,
+                clientId = clientId,
+                visitedAt = System.currentTimeMillis(),
+                checkInLat = null,
+                checkInLng = null,
+                orderTotal = total,
+            ),
+        )
     }
 
     suspend fun submitAllDrafts(): Result<Int> {
@@ -272,7 +299,14 @@ class CartRepository @Inject constructor(
         else Result.failure(lastError ?: Exception("Yuborib bo'lmadi"))
     }
 
+    suspend fun pendingOrdersTotal(): Double = db.pendingOrderDao().pendingTotal()
+
+    suspend fun pendingOrdersCount(): Int = db.pendingOrderDao().pendingCount()
+
+    suspend fun getPendingOrders(): List<PendingOrderEntity> = db.pendingOrderDao().getPending()
+
     suspend fun syncPending(): Int {
+        if (!networkMonitor.isCurrentlyOnline()) return 0
         var synced = 0
         for (order in db.pendingOrderDao().getPending()) {
             try {

@@ -296,12 +296,16 @@ class OrderViewModel @Inject constructor(
     private fun loadSentOrders() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingSent = true) }
-            val orders = try {
+            val apiOrders = try {
                 api.getOrders().filter { isTodayInTashkent(it.createdAt) }
             } catch (_: Exception) {
                 emptyList()
             }
-            val sent = orders.map { order -> order.toSentOrderUi() }
+            val sentFromApi = apiOrders.map { order -> order.toSentOrderUi() }
+            val pending = cartRepository.getPendingOrders().map { order ->
+                order.toPendingSentOrderUi()
+            }
+            val sent = pending + sentFromApi
             _uiState.update {
                 it.copy(
                     sentOrders = sent,
@@ -310,6 +314,48 @@ class OrderViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    private suspend fun uz.distributor.crm.data.local.PendingOrderEntity.toPendingSentOrderUi(): SentOrderUi {
+        val client = clientRepository.getClient(clientId)
+        val orderItems = try {
+            com.google.gson.Gson().fromJson(itemsJson, Array<uz.distributor.crm.data.remote.dto.OrderItemDto>::class.java).toList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val cartItems = orderItems.map {
+            CartItem(
+                clientId = clientId,
+                productId = it.productId,
+                productCode = it.productCode,
+                productName = it.productName,
+                price = it.price,
+                quantity = it.quantity,
+                unit = it.unit,
+                category = null,
+                isFree = it.isFree,
+                promotionId = it.promotionId,
+            )
+        }
+        val brands = cartItems.associate { item ->
+            val brand = productRepository.getProduct(item.productId)?.brand
+                ?: item.category.orEmpty()
+            item.productId to brand
+        }
+        val timeLabel = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).apply {
+            timeZone = java.util.TimeZone.getTimeZone("Asia/Tashkent")
+        }.format(java.util.Date(createdAt))
+        return SentOrderUi(
+            id = offlineId,
+            clientId = clientId,
+            clientCode = client?.code.orEmpty(),
+            clientName = client?.name.orEmpty(),
+            total = totalAmount,
+            createdAt = "",
+            timeLabel = timeLabel,
+            items = cartItems,
+            productBrands = brands,
+        )
     }
 
     private suspend fun OrderDto.toSentOrderUi(): SentOrderUi {

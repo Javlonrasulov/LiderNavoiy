@@ -139,6 +139,10 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
     @Query("SELECT * FROM pending_orders WHERE syncStatus = 'PENDING'") suspend fun getPending(): List<PendingOrderEntity>
     @Query("UPDATE pending_orders SET syncStatus = :status WHERE offlineId = :id")
     suspend fun updateStatus(id: String, status: String)
+    @Query("SELECT COALESCE(SUM(totalAmount), 0) FROM pending_orders WHERE syncStatus = 'PENDING'")
+    suspend fun pendingTotal(): Double
+    @Query("SELECT COUNT(*) FROM pending_orders WHERE syncStatus = 'PENDING'")
+    suspend fun pendingCount(): Int
 }
 
 @Dao interface PendingVisitDao {

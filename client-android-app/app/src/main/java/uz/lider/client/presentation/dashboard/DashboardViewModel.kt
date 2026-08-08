@@ -159,6 +159,8 @@ class DashboardViewModel @Inject constructor(
     private var socketJob: Job? = null
     /** orderId → oxirgi jonli GPS ms */
     private val liveCourierAtByOrder = mutableMapOf<String, Long>()
+    /** Off-route / yo‘lsiz — debounced OSRM qayta chizish */
+    private val liveRerouteJobs = mutableMapOf<String, Job>()
     private var trackedOnWayIds: Set<String> = emptySet()
     private var onWayTrackReady = false
 
@@ -525,20 +527,27 @@ class DashboardViewModel @Inject constructor(
                     if (status != OrderStatus.ON_WAY && !listSaysOnWay) return@async null
 
                     val prev = prevByOrder[orderId]
+                    // OSRM kutayotganda WS GPS yangilangan bo‘lishi mumkin —
+                    // sync boshidagi `previous` emas, joriy fleetdan olamiz.
+                    val liveOrderNow = _uiState.value.liveFleet?.vehicles
+                        ?.asSequence()
+                        ?.flatMap { it.orders.asSequence() }
+                        ?.firstOrNull { it.orderId == orderId }
                     var tracking = trackingRaw
                     // Jonli WS nuqtasini eski HTTP bilan almashtirmaslik
                     val liveAt = liveCourierAtByOrder[orderId] ?: 0L
-                    val prevPerson = prev?.tracking?.deliveryPerson
+                    val livePerson = liveOrderNow?.tracking?.deliveryPerson
+                        ?: prev?.tracking?.deliveryPerson
                     val httpAt = parseIsoMs(tracking.deliveryPerson?.lastLocationAt) ?: 0L
                     if (
-                        prevPerson?.latitude != null &&
-                        prevPerson.longitude != null &&
+                        livePerson?.latitude != null &&
+                        livePerson.longitude != null &&
                         liveAt > 0L &&
-                        System.currentTimeMillis() - liveAt < 20_000 &&
+                        System.currentTimeMillis() - liveAt < 45_000 &&
                         httpAt <= liveAt + 500
                     ) {
-                        val lat = prevPerson.latitude!!
-                        val lng = prevPerson.longitude!!
+                        val lat = livePerson.latitude!!
+                        val lng = livePerson.longitude!!
                         val distKm = if (
                             tracking.deliveryLatitude != null && tracking.deliveryLongitude != null
                         ) {
@@ -557,7 +566,7 @@ class DashboardViewModel @Inject constructor(
                                 latitude = lat,
                                 longitude = lng,
                                 isOnline = true,
-                                lastLocationAt = prevPerson.lastLocationAt
+                                lastLocationAt = livePerson.lastLocationAt
                                     ?: tracking.deliveryPerson?.lastLocationAt,
                             ),
                         )
@@ -565,9 +574,16 @@ class DashboardViewModel @Inject constructor(
                         liveCourierAtByOrder[orderId] = httpAt
                     }
 
-                    var routePoints = prev?.routePoints.orEmpty()
-                    var shopRoutePoints = prev?.shopRoutePoints.orEmpty()
-                    var shopDistanceLabel = prev?.shopDistanceLabel.orEmpty()
+                    // Marshrut ham joriy fleetdan (WS trim) — sync eski chiziqni qaytarmasin
+                    var routePoints = liveOrderNow?.routePoints?.takeIf { it.size >= 2 }
+                        ?: prev?.routePoints.orEmpty()
+                    var shopRoutePoints = liveOrderNow?.shopRoutePoints?.takeIf { it.size >= 2 }
+                        ?: prev?.shopRoutePoints.orEmpty()
+                    var shopDistanceLabel = liveOrderNow?.shopDistanceLabel
+                        ?.takeIf { it.isNotBlank() }
+                        ?: prev?.shopDistanceLabel.orEmpty()
+                    val oldRouteBase = routePoints
+                    val oldShopRouteBase = shopRoutePoints
                     val rawKm = tracking.distanceKm
                     var distanceLabel = rawKm
                         ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
@@ -592,15 +608,17 @@ class DashboardViewModel @Inject constructor(
                         shopDistanceLabel = ""
                         distanceLabel = "—"
                     } else if (deliveryLat != null && deliveryLng != null) {
-                        val prevLat = prev?.tracking?.deliveryPerson?.latitude
-                        val prevLng = prev?.tracking?.deliveryPerson?.longitude
+                        val prevLat = liveOrderNow?.tracking?.deliveryPerson?.latitude
+                            ?: prev?.tracking?.deliveryPerson?.latitude
+                        val prevLng = liveOrderNow?.tracking?.deliveryPerson?.longitude
+                            ?: prev?.tracking?.deliveryPerson?.longitude
                         val movedM = if (prevLat != null && prevLng != null) {
                             haversineMoved(prevLat, prevLng, courierLat!!, courierLng!!)
                         } else {
                             Double.MAX_VALUE
                         }
-                        val oldRoute = if (stopsChanged) emptyList() else prev?.routePoints.orEmpty()
-                        val oldShopRoute = if (stopsChanged) emptyList() else prev?.shopRoutePoints.orEmpty()
+                        val oldRoute = if (stopsChanged) emptyList() else oldRouteBase
+                        val oldShopRoute = if (stopsChanged) emptyList() else oldShopRouteBase
                         val nearestNow = if (oldRoute.isNotEmpty()) {
                             RouteTrim.nearestIndex(courierLat!!, courierLng!!, oldRoute)
                         } else {
@@ -612,19 +630,15 @@ class DashboardViewModel @Inject constructor(
                             -1
                         }
                         val wentBack = nearestPrev >= 0 && nearestNow >= 0 && nearestNow + 2 < nearestPrev
-                        val offRoute = nearestNow >= 0 && RoadRouteService.haversineM(
-                            courierLat!!,
-                            courierLng!!,
-                            oldRoute[nearestNow].latitude,
-                            oldRoute[nearestNow].longitude,
-                        ) > 80.0
+                        val offRoute = RouteTrim.isOffRoute(courierLat!!, courierLng!!, oldRoute)
 
                         val movedEnough = prev == null ||
+                            liveOrderNow == null ||
                             stopsChanged ||
                             prevLat == null ||
                             movedM > 45.0 ||
-                            oldRoute.isEmpty() ||
-                            oldShopRoute.isEmpty() ||
+                            oldRoute.size < 3 ||
+                            oldShopRoute.size < 3 ||
                             wentBack ||
                             offRoute
 
@@ -646,21 +660,20 @@ class DashboardViewModel @Inject constructor(
                                 routePoints = route.points
                                 distanceLabel = formatDistance(route.distanceKm)
                             } else if (oldRoute.size >= 2 && !stopsChanged) {
+                                // OSRM ishlamasa — to‘g‘ri chiziq emas, eski ko‘cha yo‘li
                                 routePoints = RouteTrim.remaining(courierLat!!, courierLng!!, oldRoute)
                                 val pathKm = RouteTrim.pathLengthKm(routePoints)
                                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                                 distanceLabel = when {
                                     pathKm != null -> formatDistance(pathKm)
-                                    // Multi-stopda backend rawKm (faqat magazin) ni ishlatmaymiz
                                     !multiStop && rawKm != null &&
                                         GeoCoords.isPlausibleRouteDistanceKm(rawKm) ->
                                         formatDistance(rawKm)
                                     else -> distanceLabel
                                 }
                             } else {
-                                routePoints = RoadRouteService.fallbackViaWaypoints(
-                                    courierLat!!, courierLng!!, waypoints,
-                                )
+                                // Hech qanday yo‘l yo‘q — havo chizig‘i chizilmasin
+                                routePoints = emptyList()
                                 val approx = approxStopsDistanceKm(
                                     courierLat, courierLng, waypoints,
                                 )
@@ -737,14 +750,50 @@ class DashboardViewModel @Inject constructor(
             }.awaitAll().filterNotNull()
         }
 
-        if (liveOrders.isEmpty()) {
+        // OSRM kutish paytida kelgan WS GPS ni oxirgi holatga yozib qo‘yamiz
+        val freshFleet = _uiState.value.liveFleet
+        val patchedOrders = liveOrders.map { order ->
+            val liveAt = liveCourierAtByOrder[order.orderId] ?: 0L
+            if (liveAt <= 0L || System.currentTimeMillis() - liveAt > 45_000) return@map order
+            val live = freshFleet?.vehicles
+                ?.asSequence()
+                ?.flatMap { it.orders.asSequence() }
+                ?.firstOrNull { it.orderId == order.orderId }
+                ?: return@map order
+            val p = live.tracking.deliveryPerson ?: return@map order
+            if (p.latitude == null || p.longitude == null) return@map order
+            order.copy(
+                routePoints = when {
+                    order.routePoints.size >= 3 -> order.routePoints
+                    live.routePoints.size >= 2 -> live.routePoints
+                    else -> order.routePoints
+                },
+                shopRoutePoints = when {
+                    order.shopRoutePoints.size >= 3 -> order.shopRoutePoints
+                    live.shopRoutePoints.size >= 2 -> live.shopRoutePoints
+                    else -> order.shopRoutePoints
+                },
+                shopDistanceLabel = order.shopDistanceLabel.ifBlank { live.shopDistanceLabel },
+                tracking = order.tracking.copy(
+                    deliveryPerson = order.tracking.deliveryPerson?.copy(
+                        latitude = p.latitude,
+                        longitude = p.longitude,
+                        isOnline = true,
+                        lastLocationAt = p.lastLocationAt
+                            ?: order.tracking.deliveryPerson?.lastLocationAt,
+                    ),
+                ),
+            )
+        }
+
+        if (patchedOrders.isEmpty()) {
             if (latest != null) {
                 _uiState.update { it.copy(liveFleet = null) }
             }
             return
         }
 
-        val vehicles = liveOrders
+        val vehicles = patchedOrders
             .groupBy { vehicleKeyFor(it.tracking.deliveryPerson, it.tracking.companyId) }
             .mapNotNull { (key, group) ->
                 val withGps = group.firstOrNull {
@@ -832,14 +881,92 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    private fun scheduleLiveReroute(orderId: String) {
+        liveRerouteJobs[orderId]?.cancel()
+        liveRerouteJobs[orderId] = viewModelScope.launch {
+            delay(2_200)
+            liveRerouteOrder(orderId)
+        }
+    }
+
+    /** Dostavchik yo‘ldan chiqqanda / yo‘l yo‘q — faqat shu buyurtma uchun OSRM. */
+    private suspend fun liveRerouteOrder(orderId: String) {
+        val fleet = _uiState.value.liveFleet ?: return
+        val vehicle = fleet.vehicles.firstOrNull { v ->
+            v.orders.any { it.orderId == orderId }
+        } ?: return
+        val order = vehicle.orders.firstOrNull { it.orderId == orderId } ?: return
+        val lat = vehicle.courierLat
+        val lng = vehicle.courierLng
+        val deliveryLat = order.deliveryLat ?: return
+        val deliveryLng = order.deliveryLng ?: return
+        if (!GeoCoords.isUsableCourier(lat, lng, deliveryLat, deliveryLng)) return
+
+        val waypoints = RoadRouteService.waypointsUntilYou(
+            routeStops = order.tracking.routeStops,
+            deliveryLat = deliveryLat,
+            deliveryLng = deliveryLng,
+            untilYouOnly = true,
+        )
+        val route = roadRouteService.fetchDrivingRoute(
+            fromLat = lat,
+            fromLng = lng,
+            waypoints = waypoints,
+        )
+        val shopRoute = roadRouteService.fetchDrivingRoute(
+            fromLat = lat,
+            fromLng = lng,
+            toLat = deliveryLat,
+            toLng = deliveryLng,
+        )
+        if (route == null && shopRoute == null) return
+
+        val pathKm = route?.distanceKm
+            ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+        val shopKm = shopRoute?.distanceKm
+            ?.takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) }
+
+        _uiState.update { state ->
+            val current = state.liveFleet ?: return@update state
+            val nextVehicles = current.vehicles.map { v ->
+                if (v.orders.none { it.orderId == orderId }) return@map v
+                v.copy(
+                    orders = v.orders.map { o ->
+                        if (o.orderId != orderId) return@map o
+                        o.copy(
+                            routePoints = route?.points?.takeIf { it.size >= 2 } ?: o.routePoints,
+                            shopRoutePoints = shopRoute?.points?.takeIf { it.size >= 2 }
+                                ?: o.shopRoutePoints,
+                            distanceLabel = pathKm?.let { formatDistance(it) } ?: o.distanceLabel,
+                            shopDistanceLabel = shopKm?.let { formatDistance(it) }
+                                ?: o.shopDistanceLabel,
+                            tracking = o.tracking.copy(
+                                distanceKm = pathKm ?: o.tracking.distanceKm,
+                                etaMinutes = pathKm
+                                    ?.let { maxOf(5, Math.round((it / 30.0) * 60).toInt()) }
+                                    ?: o.tracking.etaMinutes,
+                            ),
+                        )
+                    },
+                )
+            }
+            state.copy(liveFleet = LiveFleetUi(nextVehicles))
+        }
+    }
+
     private fun applyLiveCourierToFleet(
         distributorId: String,
         lat: Double,
         lng: Double,
         recordedAt: String?,
     ) {
-        val fleet = _uiState.value.liveFleet ?: return
+        val fleet = _uiState.value.liveFleet
+        if (fleet == null) {
+            // Fleet hali tayyor emas — timestamp saqlaymiz, sync GPS ni olsin
+            return
+        }
         var changed = false
+        val needReroute = mutableSetOf<String>()
         val atMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
         val vehicles = fleet.vehicles.map { vehicle ->
             val matchOrders = vehicle.orders.filter {
@@ -863,6 +990,10 @@ class DashboardViewModel @Inject constructor(
                     isOnline = true,
                     lastLocationAt = recordedAt ?: order.tracking.deliveryPerson?.lastLocationAt,
                 )
+                val offRoute = order.routePoints.size < 3 ||
+                    RouteTrim.isOffRoute(lat, lng, order.routePoints)
+                if (offRoute) needReroute += order.orderId
+
                 val trimmedRoute = if (order.routePoints.size >= 2) {
                     RouteTrim.remaining(lat, lng, order.routePoints)
                 } else {
@@ -879,7 +1010,6 @@ class DashboardViewModel @Inject constructor(
                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                 val multiStop = order.tracking.routeStops.size > 1 ||
                     order.tracking.routeStops.any { !it.isYou }
-                // Live GPS: multi-stop km ni magazin haversine bilan almashtirmaslik
                 val nextDistanceLabel = pathKm?.let { formatDistance(it) }
                     ?: order.distanceLabel.takeIf { it.isNotBlank() && it != "—" }
                     ?: if (!multiStop) {
@@ -919,6 +1049,7 @@ class DashboardViewModel @Inject constructor(
         }
         if (changed) {
             _uiState.update { it.copy(liveFleet = LiveFleetUi(vehicles)) }
+            needReroute.forEach { scheduleLiveReroute(it) }
         }
     }
 
@@ -996,6 +1127,8 @@ class DashboardViewModel @Inject constructor(
     override fun onCleared() {
         livePollJob?.cancel()
         socketJob?.cancel()
+        liveRerouteJobs.values.forEach { it.cancel() }
+        liveRerouteJobs.clear()
         trackingSocket.unwatch()
         super.onCleared()
     }

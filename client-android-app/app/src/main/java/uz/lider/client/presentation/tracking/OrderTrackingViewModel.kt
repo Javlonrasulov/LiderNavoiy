@@ -117,10 +117,8 @@ class OrderTrackingViewModel @Inject constructor(
 
     private fun startCourierWatch() {
         val id = _uiState.value.tracking?.deliveryPerson?.distributorId
-        if (!_uiState.value.showLiveMap || id.isNullOrBlank()) {
-            trackingSocket.unwatch()
-            return
-        }
+        if (!_uiState.value.showLiveMap || id.isNullOrBlank()) return
+        // unwatch qilmaymiz — Asosiy xarita watchlarini o‘chirmasin
         trackingSocket.watchCourier(id)
     }
 
@@ -139,7 +137,7 @@ class OrderTrackingViewModel @Inject constructor(
         pollJob?.cancel()
         routeJob?.cancel()
         socketJob?.cancel()
-        trackingSocket.unwatch()
+        // Socketni uzmaymiz — Dashboard jonli GPS ni yo‘qotmasin
         super.onCleared()
     }
 
@@ -155,9 +153,16 @@ class OrderTrackingViewModel @Inject constructor(
             return
         }
         liveCourierAtMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
-        val pathKm = RouteTrim.pathLengthKm(
-            RouteTrim.remaining(lat, lng, _uiState.value.routePoints),
-        ).takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
+        val currentRoute = _uiState.value.routePoints
+        val offRoute = currentRoute.size < 3 ||
+            RouteTrim.isOffRoute(lat, lng, currentRoute)
+        val trimmed = if (currentRoute.size >= 2) {
+            RouteTrim.remaining(lat, lng, currentRoute)
+        } else {
+            currentRoute
+        }
+        val pathKm = RouteTrim.pathLengthKm(trimmed)
+            .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
         val distKm = pathKm
             ?: approxStopsDistanceKm(lat, lng, current)
             ?: distanceKmOrNull(lat, lng, current.deliveryLatitude, current.deliveryLongitude)
@@ -172,7 +177,10 @@ class OrderTrackingViewModel @Inject constructor(
             ),
         )
         applyTracking(_uiState.value.order, updated)
-        refreshRoadRoute(updated, force = false)
+        if (trimmed.isNotEmpty()) {
+            _uiState.update { it.copy(routePoints = trimmed) }
+        }
+        refreshRoadRoute(updated, force = offRoute)
     }
 
     /**
@@ -267,8 +275,8 @@ class OrderTrackingViewModel @Inject constructor(
             return
         }
         val now = System.currentTimeMillis()
-        // Marshrutni har 5s da yangilash — marker esa har WS/HTTP da siljiydi
-        if (!force && now - lastRouteAt < 5_000 && _uiState.value.routePoints.isNotEmpty()) {
+        // Off-route / force — darhol OSRM; aks holda 5s debounce
+        if (!force && now - lastRouteAt < 5_000 && _uiState.value.routePoints.size >= 3) {
             val trimmed = RouteTrim.remaining(
                 courierLat!!, courierLng!!, _uiState.value.routePoints,
             )
@@ -290,15 +298,19 @@ class OrderTrackingViewModel @Inject constructor(
         lastRouteAt = now
         routeJob?.cancel()
         routeJob = viewModelScope.launch {
+            // Debounce: ketma-ket GPS da OSRM spam bo‘lmasin
+            if (force) delay(1_800)
             val waypoints = RoadRouteService.waypointsUntilYou(
                 routeStops = tracking?.routeStops.orEmpty(),
                 deliveryLat = deliveryLat!!,
                 deliveryLng = deliveryLng!!,
                 untilYouOnly = true,
             )
+            val fromLat = _uiState.value.tracking?.deliveryPerson?.latitude ?: courierLat!!
+            val fromLng = _uiState.value.tracking?.deliveryPerson?.longitude ?: courierLng!!
             val route = roadRouteService.fetchDrivingRoute(
-                fromLat = courierLat!!,
-                fromLng = courierLng!!,
+                fromLat = fromLat,
+                fromLng = fromLng,
                 waypoints = waypoints,
             )
             if (route != null && GeoCoords.isPlausibleRouteDistanceKm(route.distanceKm)) {
@@ -310,13 +322,14 @@ class OrderTrackingViewModel @Inject constructor(
                     )
                 }
             } else {
+                // To‘g‘ri chiziq emas — eski ko‘cha yo‘lini saqlaymiz
                 val kept = _uiState.value.routePoints
                 val fallback = if (kept.size >= 2) {
-                    RouteTrim.remaining(courierLat!!, courierLng!!, kept)
+                    RouteTrim.remaining(fromLat, fromLng, kept)
                 } else {
-                    RoadRouteService.fallbackViaWaypoints(courierLat!!, courierLng!!, waypoints)
+                    emptyList()
                 }
-                val approx = approxStopsDistanceKm(courierLat, courierLng, tracking)
+                val approx = approxStopsDistanceKm(fromLat, fromLng, tracking)
                 val pathKm = RouteTrim.pathLengthKm(fallback)
                     .takeIf { GeoCoords.isPlausibleRouteDistanceKm(it) && it > 0.01 }
                 val km = pathKm ?: approx

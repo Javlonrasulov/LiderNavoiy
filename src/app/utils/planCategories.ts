@@ -14,6 +14,8 @@ function toKey(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '_');
 }
 
+export { toKey };
+
 export async function fetchPlanCategories(): Promise<PlanCat[]> {
   if (typeof localStorage !== 'undefined' && !localStorage.getItem('api_access_token')) {
     return DEFAULT_PLAN_CATS;
@@ -54,7 +56,8 @@ export function emptyCatAmounts(cats: PlanCat[]): Record<string, string> {
 
 export function sumCatAmounts(cats: PlanCat[], amounts: Record<string, string>): number {
   return cats.reduce((s, c) => {
-    const n = parseInt((amounts[c.key] || '').replace(/\s/g, '').replace(/[^0-9]/g, ''), 10) || 0;
-    return s + n;
+    const cleaned = (amounts[c.key] || '').replace(/\s/g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const n = parseFloat(cleaned);
+    return s + (Number.isFinite(n) ? n : 0);
   }, 0);
 }

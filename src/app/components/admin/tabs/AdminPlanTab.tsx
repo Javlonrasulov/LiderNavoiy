@@ -9,7 +9,14 @@ import {
   fetchPlanCategories,
   emptyCatAmounts,
   sumCatAmounts,
+  toKey,
 } from '../../../utils/planCategories';
+import {
+  type PlanUnit,
+  PLAN_UNITS,
+  planUnitLabel,
+  normalizePlanUnit,
+} from '../../../utils/planUnits';
 
 function hasApiToken(): boolean {
   return typeof localStorage !== 'undefined' && !!localStorage.getItem('api_access_token');
@@ -76,7 +83,16 @@ type AgentPlanDisplayData = {
   doneSum: number;
   donePct: number;
   remaining: number;
-  cats: { key: string; name: string; color: string; plan: number; done: number; pct: number }[];
+  unit: PlanUnit;
+  cats: {
+    key: string;
+    name: string;
+    color: string;
+    plan: number;
+    done: number;
+    pct: number;
+    products?: Array<{ productId: string; productName: string; plan: number; done: number; pct: number }>;
+  }[];
   monthKind?: 'current' | 'next';
 };
 
@@ -90,6 +106,7 @@ function planDataFromBackend(bp: StoredBackendPlan): AgentPlanDisplayData {
     doneSum,
     donePct: bp.donePct,
     remaining: planSum - doneSum,
+    unit: normalizePlanUnit(bp.unit),
     monthKind: bp.monthKind,
     cats: bp.categories.map(c => ({
       key: c.key,
@@ -98,6 +115,13 @@ function planDataFromBackend(bp: StoredBackendPlan): AgentPlanDisplayData {
       plan: Number(c.plan),
       done: Number(c.done),
       pct: c.pct,
+      products: c.products?.map(p => ({
+        productId: p.productId,
+        productName: p.productName,
+        plan: Number(p.plan),
+        done: Number(p.done),
+        pct: p.pct,
+      })),
     })),
   };
 }
@@ -108,6 +132,7 @@ function emptyPlanData(planCats: PlanCat[]): AgentPlanDisplayData {
     doneSum: 0,
     donePct: 0,
     remaining: 0,
+    unit: 'som',
     cats: planCats.map(c => ({ ...c, plan: 0, done: 0, pct: 0 })),
   };
 }
@@ -169,34 +194,74 @@ function MiniBar({ pct, color, dark }: { pct: number; color: string; dark: boole
 
 // ─── Number input helper ───────────────────────────────────────────────────────
 function parseNum(v: string) {
-  return parseInt(v.replace(/\s/g, '').replace(/[^0-9]/g, ''), 10) || 0;
+  const cleaned = v.replace(/\s/g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
 }
 function fmtInput(n: number) {
   if (!n) return '';
-  return n.toLocaleString('ru-RU');
+  if (Number.isInteger(n)) return n.toLocaleString('ru-RU');
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
 }
 
 // ─── Plan Set Modal ────────────────────────────────────────────────────────────
-interface PlanEntry { total: number; cats: Record<string, number>; monthType: 'current' | 'next'; }
+type PlanProductLite = { id: string; name: string; category: string; categoryKey: string };
 
-function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
+interface PlanEntry {
+  total: number;
+  cats: Record<string, number>;
+  monthType: 'current' | 'next';
+  unit: PlanUnit;
+  products: Array<{ productId: string; productName: string; categoryKey: string; amount: number }>;
+}
+
+function PlanModal({ agents, planCats, dark, t, onClose, onSave, companyId }: {
   agents: AgentRow[];
   planCats: PlanCat[];
   dark: boolean;
   t: Record<string, string>;
   onClose: () => void;
   onSave: (agent: AgentRow, entry: PlanEntry) => void;
+  companyId?: string;
 }) {
   const [step, setStep]               = useState<'agent' | 'form'>('agent');
   const [search, setSearch]           = useState('');
   const [selectedAgent, setSelected]  = useState<AgentRow | null>(null);
   const [monthType, setMonthType]     = useState<'current' | 'next'>('current');
+  const [unit, setUnit]               = useState<PlanUnit>('som');
   const [totalStr, setTotalStr]       = useState('');
   const [catStr, setCatStr]           = useState<Record<string, string>>(() => emptyCatAmounts(planCats));
+  const [prodStr, setProdStr]         = useState<Record<string, string>>({});
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  const [allProducts, setAllProducts] = useState<PlanProductLite[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setCatStr(emptyCatAmounts(planCats)); }, [planCats]);
   useEffect(() => { if (step === 'agent') searchRef.current?.focus(); }, [step]);
+
+  useEffect(() => {
+    if (step !== 'form' || !hasApiToken()) return;
+    let cancelled = false;
+    setLoadingProducts(true);
+    api.getProducts(undefined, companyId)
+      .then(rows => {
+        if (cancelled) return;
+        setAllProducts(
+          rows
+            .filter(p => p.isActive !== false)
+            .map(p => ({
+              id: p.id,
+              name: p.name,
+              category: p.category || '',
+              categoryKey: toKey(p.category || 'OTHER'),
+            })),
+        );
+      })
+      .catch(() => { if (!cancelled) setAllProducts([]); })
+      .finally(() => { if (!cancelled) setLoadingProducts(false); });
+    return () => { cancelled = true; };
+  }, [step, companyId]);
 
   const bg      = dark ? '#0f0f0f' : '#ffffff';
   const overlay = 'rgba(0,0,0,0.55)';
@@ -206,17 +271,51 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
   const inp     = dark ? '#161616' : '#f8fafc';
   const inpBdr  = dark ? '#2a2a2a' : '#e5e7eb';
   const hov     = dark ? '#161616' : '#f8fafc';
+  const unitLbl = planUnitLabel(unit, t);
 
   const filtered = agents.filter(a =>
     a.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const productsByCat = useMemo(() => {
+    const map = new Map<string, PlanProductLite[]>();
+    for (const p of allProducts) {
+      const matched = planCats.find(
+        c => c.key === p.categoryKey || toKey(c.name) === p.categoryKey || c.name.toLowerCase() === p.category.toLowerCase(),
+      );
+      const key = matched?.key ?? p.categoryKey;
+      const list = map.get(key) ?? [];
+      list.push({ ...p, categoryKey: key });
+      map.set(key, list);
+    }
+    return map;
+  }, [allProducts, planCats]);
+
+  /** Kategoriya mahsulotlardan to'ldirilgan bo'lsa — kategoriya sum = mahsulotlar yig'indisi */
+  const catHasProducts = useCallback((catKey: string) => {
+    const prods = productsByCat.get(catKey) ?? [];
+    return prods.some(p => parseNum(prodStr[p.id] || '') > 0);
+  }, [productsByCat, prodStr]);
+
+  const effectiveCatStr = useMemo(() => {
+    const next = { ...catStr };
+    for (const cat of planCats) {
+      if (!catHasProducts(cat.key)) continue;
+      const sum = (productsByCat.get(cat.key) ?? []).reduce(
+        (s, p) => s + parseNum(prodStr[p.id] || ''),
+        0,
+      );
+      next[cat.key] = fmtInput(sum);
+    }
+    return next;
+  }, [catStr, planCats, catHasProducts, productsByCat, prodStr]);
+
   const total     = parseNum(totalStr);
-  const catNums   = Object.fromEntries(planCats.map(c => [c.key, parseNum(catStr[c.key] || '')]));
-  const catTotal  = sumCatAmounts(planCats, catStr);
+  const catNums   = Object.fromEntries(planCats.map(c => [c.key, parseNum(effectiveCatStr[c.key] || '')]));
+  const catTotal  = sumCatAmounts(planCats, effectiveCatStr);
   const diff      = total - catTotal;
   const diffAbs   = Math.abs(diff);
-  const isValid   = total > 0 && diffAbs === 0;
+  const isValid   = total > 0 && Math.abs(diff) < 0.001;
   const hasTotal  = total > 0;
 
   const now       = new Date();
@@ -225,9 +324,44 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
   const curLabel  = `${months[now.getMonth()]} ${now.getFullYear()}`;
   const nxtLabel  = `${months[nextMonth.getMonth()]} ${nextMonth.getFullYear()}`;
 
+  function toggleCat(key: string) {
+    setExpandedCats(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  }
+
+  function setProductAmount(productId: string, catKey: string, raw: string) {
+    const n = parseNum(raw);
+    setProdStr(prev => ({ ...prev, [productId]: fmtInput(n) }));
+    // Kategoriya maydonini mahsulotlardan qayta hisoblash effectiveCatStr orqali
+    void catKey;
+  }
+
   function handleSave() {
     if (!selectedAgent || !isValid) return;
-    onSave(selectedAgent, { total, cats: catNums, monthType });
+    const products: PlanEntry['products'] = [];
+    for (const [catKey, list] of productsByCat) {
+      for (const p of list) {
+        const amount = parseNum(prodStr[p.id] || '');
+        if (amount > 0) {
+          products.push({
+            productId: p.id,
+            productName: p.name,
+            categoryKey: catKey,
+            amount,
+          });
+        }
+      }
+    }
+    onSave(selectedAgent, {
+      total,
+      cats: catNums,
+      monthType,
+      unit,
+      products,
+    });
     onClose();
   }
 
@@ -351,6 +485,36 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
               </div>
             </div>
 
+            {/* Unit selector */}
+            <div style={{ marginBottom: 22 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: sub, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.planSelectUnit || 'Birlik'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {PLAN_UNITS.map(u => {
+                  const active = unit === u.id;
+                  const label = u.id === 'som' ? (t.som || u.label)
+                    : u.id === 'kg' ? (t.planUnitKg || u.label)
+                    : u.id === 'ton' ? (t.planUnitTon || u.label)
+                    : (t.planUnitDona || u.label);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => setUnit(u.id)}
+                      style={{
+                        padding: '10px 6px', borderRadius: 12, cursor: 'pointer',
+                        border: `2px solid ${active ? '#6366f1' : inpBdr}`,
+                        background: active ? '#6366f10f' : inp,
+                        color: active ? '#6366f1' : txt,
+                        fontSize: 13, fontWeight: 800, transition: 'all 0.15s',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Total plan */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: sub, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.planTotal || 'Umumiy plan'}</div>
@@ -361,56 +525,143 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
                   placeholder="0"
                   style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 18, fontWeight: 800, color: txt, padding: '14px 16px' }}
                 />
-                <div style={{ padding: '0 16px', fontSize: 13, fontWeight: 600, color: sub, borderLeft: `1px solid ${inpBdr}`, height: 52, display: 'flex', alignItems: 'center', flexShrink: 0 }}>{t.som || "so'm"}</div>
+                <div style={{ padding: '0 16px', fontSize: 13, fontWeight: 600, color: sub, borderLeft: `1px solid ${inpBdr}`, height: 52, display: 'flex', alignItems: 'center', flexShrink: 0 }}>{unitLbl}</div>
               </div>
               {hasTotal && (
                 <div style={{ fontSize: 11, color: sub, marginTop: 6, paddingLeft: 4 }}>
-                  = {fmt(total)} {t.som || "so'm"}
+                  = {fmt(total)} {unitLbl}
                 </div>
               )}
             </div>
 
             {/* Category inputs */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: sub, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{t.planByCat || "Kategoriyalar bo'yicha"}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: sub, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {t.planByCat || "Kategoriyalar bo'yicha"}
+              </div>
+              <div style={{ fontSize: 11, color: sub, marginBottom: 12, lineHeight: 1.4 }}>
+                {t.planProductHint || "Xohlasangiz kategoriya yonidagi ▾ orqali har bir mahsulotga alohida reja qo'ying — kategoriya avtomatik yig'iladi."}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {planCats.map(cat => {
-                  const val    = catStr[cat.key];
+                  const val    = effectiveCatStr[cat.key];
                   const num    = parseNum(val);
                   const catPct = total > 0 && num > 0 ? Math.round((num / total) * 100) : 0;
                   const over   = num > total && total > 0;
+                  const open   = expandedCats.has(cat.key);
+                  const catProducts = productsByCat.get(cat.key) ?? [];
+                  const fromProducts = catHasProducts(cat.key);
                   return (
-                    <div key={cat.key}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <div style={{ width: 10, height: 10, borderRadius: 3, background: cat.color, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, fontWeight: 700, color: txt }}>{cat.name}</span>
+                    <div key={cat.key} style={{
+                      borderRadius: 14,
+                      border: `1px solid ${num > 0 ? (over ? '#ef444440' : cat.color + '40') : inpBdr}`,
+                      background: dark ? '#121212' : '#fff',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleCat(cat.key)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 7,
+                              border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+                            }}
+                          >
+                            <div style={{ width: 10, height: 10, borderRadius: 3, background: cat.color, flexShrink: 0 }} />
+                            <span style={{ fontSize: 13, fontWeight: 700, color: txt }}>{cat.name}</span>
+                            <span style={{ fontSize: 11, color: sub, fontWeight: 600 }}>
+                              {open ? '▴' : '▾'} {catProducts.length > 0 ? `${catProducts.length}` : ''}
+                            </span>
+                          </button>
+                          {num > 0 && (
+                            <span style={{ fontSize: 12, fontWeight: 800, color: over ? '#ef4444' : cat.color }}>
+                              {catPct}%
+                            </span>
+                          )}
                         </div>
-                        {num > 0 && (
-                          <span style={{ fontSize: 12, fontWeight: 800, color: over ? '#ef4444' : cat.color }}>
-                            {catPct}%
-                          </span>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 0,
+                          background: inp, borderRadius: 12, overflow: 'hidden',
+                          border: `1.5px solid ${num > 0 ? (over ? '#ef4444' : cat.color + '80') : inpBdr}`,
+                          opacity: fromProducts ? 0.85 : 1,
+                        }}>
+                          <input
+                            value={val}
+                            readOnly={fromProducts}
+                            onChange={e => {
+                              if (fromProducts) return;
+                              setCatStr(p => ({ ...p, [cat.key]: fmtInput(parseNum(e.target.value)) }));
+                            }}
+                            placeholder="0"
+                            style={{
+                              flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                              fontSize: 15, fontWeight: 700, color: txt, padding: '12px 14px',
+                              cursor: fromProducts ? 'default' : 'text',
+                            }}
+                          />
+                          <div style={{
+                            padding: '0 14px', fontSize: 12, fontWeight: 600, color: sub,
+                            borderLeft: `1px solid ${inpBdr}`, height: 46,
+                            display: 'flex', alignItems: 'center', flexShrink: 0,
+                          }}>{unitLbl}</div>
+                        </div>
+                        {fromProducts && (
+                          <div style={{ fontSize: 10, color: '#6366f1', marginTop: 5, fontWeight: 600 }}>
+                            {t.planFromProducts || 'Mahsulotlardan yig‘ildi'}
+                          </div>
                         )}
                       </div>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 0,
-                        background: inp, borderRadius: 12, overflow: 'hidden',
-                        border: `1.5px solid ${num > 0 ? (over ? '#ef4444' : cat.color + '80') : inpBdr}`,
-                        transition: 'border-color 0.15s',
-                      }}>
-                        <input
-                          value={val}
-                          onChange={e => setCatStr(p => ({ ...p, [cat.key]: fmtInput(parseNum(e.target.value)) }))}
-                          placeholder="0"
-                          style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 15, fontWeight: 700, color: txt, padding: '12px 14px' }}
-                        />
-                        <div style={{ padding: '0 14px', fontSize: 12, fontWeight: 600, color: sub, borderLeft: `1px solid ${inpBdr}`, height: 46, display: 'flex', alignItems: 'center', flexShrink: 0 }}>{t.som || "so'm"}</div>
-                      </div>
-                      {num > 0 && total > 0 && (
-                        <div style={{ marginTop: 6 }}>
-                          <div style={{ height: 4, borderRadius: 4, background: dark ? '#1e1e1e' : '#f1f5f9', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', borderRadius: 4, background: over ? '#ef4444' : cat.color, width: `${Math.min(catPct, 100)}%`, transition: 'width 0.3s' }} />
-                          </div>
+
+                      {open && (
+                        <div style={{
+                          borderTop: `1px solid ${inpBdr}`,
+                          padding: '10px 12px 12px',
+                          background: dark ? '#0c0c0c' : '#f8fafc',
+                        }}>
+                          {loadingProducts ? (
+                            <div style={{ fontSize: 12, color: sub }}>{t.planLoading || 'Yuklanmoqda...'}</div>
+                          ) : catProducts.length === 0 ? (
+                            <div style={{ fontSize: 12, color: sub }}>
+                              {t.planNoProducts || 'Bu kategoriyada mahsulot yo‘q'}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {catProducts.map(p => {
+                                const pv = prodStr[p.id] || '';
+                                const pn = parseNum(pv);
+                                return (
+                                  <div key={p.id}>
+                                    <div style={{
+                                      fontSize: 11, fontWeight: 600, color: sub, marginBottom: 4,
+                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}>{p.name}</div>
+                                    <div style={{
+                                      display: 'flex', alignItems: 'center',
+                                      background: dark ? '#161616' : '#fff',
+                                      border: `1px solid ${pn > 0 ? cat.color + '70' : inpBdr}`,
+                                      borderRadius: 10, overflow: 'hidden',
+                                    }}>
+                                      <input
+                                        value={pv}
+                                        onChange={e => setProductAmount(p.id, cat.key, e.target.value)}
+                                        placeholder="0"
+                                        style={{
+                                          flex: 1, border: 'none', background: 'transparent', outline: 'none',
+                                          fontSize: 13, fontWeight: 700, color: txt, padding: '9px 12px',
+                                        }}
+                                      />
+                                      <div style={{
+                                        padding: '0 10px', fontSize: 11, fontWeight: 600, color: sub,
+                                        borderLeft: `1px solid ${inpBdr}`, height: 38,
+                                        display: 'flex', alignItems: 'center',
+                                      }}>{unitLbl}</div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -434,8 +685,8 @@ function PlanModal({ agents, planCats, dark, t, onClose, onSave }: {
                   {isValid
                     ? (t.planDistributed || "Kategoriyalar to'g'ri taqsimlangan")
                     : diff > 0
-                      ? `${fmt(diffAbs)} ${t.planNotDistributed || "so'm taqsimlanmadi"}`
-                      : `${fmt(diffAbs)} ${t.planExcess || "so'm ortiqcha"}`}
+                      ? `${fmt(diffAbs)} ${unitLbl} ${t.planNotDistributed || 'taqsimlanmadi'}`
+                      : `${fmt(diffAbs)} ${unitLbl} ${t.planExcess || 'ortiqcha'}`}
                 </div>
               </div>
             )}
@@ -1164,9 +1415,10 @@ function GroupedBarChart({ series, dark, showBalances, uid }: {
 }
 
 // ─── Single Donut (individual category) ───────────────────────────────────────
-function SingleCatDonut({ cat, dark, showBalances, t, isMobile }: {
+function SingleCatDonut({ cat, dark, showBalances, t, isMobile, unit = 'som' }: {
   cat: { name: string; color: string; plan: number; done: number; pct: number };
   dark: boolean; showBalances: boolean; t: Record<string, string>; isMobile?: boolean;
+  unit?: PlanUnit;
 }) {
   const size = isMobile ? 110 : 160, stroke = isMobile ? 13 : 18;
   const r = (size - stroke) / 2;
@@ -1176,6 +1428,7 @@ function SingleCatDonut({ cat, dark, showBalances, t, isMobile }: {
   const bg  = dark ? '#1e1e1e' : '#f1f5f9';
   const sub = dark ? '#6b7280' : '#9ca3af';
   const txt = dark ? '#e5e7eb' : '#111827';
+  const uLbl = planUnitLabel(unit, t);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 16 : 28, padding: '10px 0' }}>
       <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
@@ -1191,9 +1444,9 @@ function SingleCatDonut({ cat, dark, showBalances, t, isMobile }: {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 10 : 14, flex: 1, minWidth: 0 }}>
         {[
-          { lbl: t.planReja || 'Reja',      val: showBalances ? fmt(cat.plan) + ` ${t.som||"so'm"}`                         : '••••••', clr: sub       },
-          { lbl: t.planDone || 'Bajarildi', val: showBalances ? fmt(cat.done) + ` ${t.som||"so'm"}`                         : '••••••', clr: '#10b981' },
-          { lbl: t.planRemaining || 'Qoldi',val: showBalances ? fmt(Math.max(cat.plan - cat.done, 0)) + ` ${t.som||"so'm"}` : '••••••', clr: '#f59e0b' },
+          { lbl: t.planReja || 'Reja',      val: showBalances ? fmt(cat.plan) + ` ${uLbl}`                         : '••••••', clr: sub       },
+          { lbl: t.planDone || 'Bajarildi', val: showBalances ? fmt(cat.done) + ` ${uLbl}`                         : '••••••', clr: '#10b981' },
+          { lbl: t.planRemaining || 'Qoldi',val: showBalances ? fmt(Math.max(cat.plan - cat.done, 0)) + ` ${uLbl}` : '••••••', clr: '#f59e0b' },
         ].map(s => (
           <div key={s.lbl}>
             <div style={{ fontSize: 10, color: sub, marginBottom: 2 }}>{s.lbl}</div>
@@ -1250,9 +1503,10 @@ function AllCatsDonut({ cats, dark, showBalances, isMobile }: {
 }
 
 // ─── Category View ─────────────────────────────────────────────────────────────
-function CategoryView({ cats, dark, showBalances, mode, agent, t, isMobile }: {
+function CategoryView({ cats, dark, showBalances, mode, agent, t, isMobile, unit = 'som' }: {
   cats: { key: string; name: string; color: string; plan: number; done: number; pct: number }[];
   dark: boolean; showBalances: boolean; mode: ViewMode; agent: AgentRow; t: Record<string, string>; isMobile?: boolean;
+  unit?: PlanUnit;
 }) {
   const [activeCat, setActiveCat] = useState<string>('ALL');
   const [chartType, setChartType] = useState<'line' | 'bar' | 'donut'>('bar');
@@ -1344,7 +1598,7 @@ function CategoryView({ cats, dark, showBalances, mode, agent, t, isMobile }: {
 
         {chartType === 'donut'
           ? activeCatData
-            ? <SingleCatDonut cat={activeCatData} dark={dark} showBalances={showBalances} t={t} isMobile={isMobile}/>
+            ? <SingleCatDonut cat={activeCatData} dark={dark} showBalances={showBalances} t={t} isMobile={isMobile} unit={unit}/>
             : <AllCatsDonut   cats={cats}          dark={dark} showBalances={showBalances} isMobile={isMobile}/>
           : chartType === 'line'
             ? <MultiLineChart  series={series} dark={dark} showBalances={showBalances} uid={uid}/>
@@ -1368,10 +1622,10 @@ function CategoryView({ cats, dark, showBalances, mode, agent, t, isMobile }: {
                 </div>
                 <div style={{ marginBottom: 5 }}>
                   <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: '#10b981', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {showBalances ? fmt(c.done) + ` ${t.som||"so'm"}` : '••••••'}
+                    {showBalances ? fmt(c.done) + ` ${planUnitLabel(unit, t)}` : '••••••'}
                   </div>
                   <div style={{ fontSize: 9, color: sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    / {showBalances ? fmt(c.plan) + ` ${t.som||"so'm"}` : '••••••'}
+                    / {showBalances ? fmt(c.plan) + ` ${planUnitLabel(unit, t)}` : '••••••'}
                   </div>
                 </div>
                 <MiniBar pct={c.pct} color={c.color} dark={dark}/>
@@ -1918,8 +2172,8 @@ function TarixStatPage({
           {([
             { lbl: t.planAgents || 'Agentlar',     val: `${rows.length} ta`,                          c: txt,            w: isMobile ? '33.33%' : 'auto' },
             { lbl: '80%+',                          val: `${rows.filter(r => r.pct >= 80).length} ta`, c: '#10b981',      w: isMobile ? '33.33%' : 'auto' },
-            { lbl: t.planTotalPlan || 'Jami plan', val: v(totPlan) + ` ${t.som || "so'm"}`,           c: sub,            w: isMobile ? '33.33%' : 'auto' },
-            { lbl: t.planExecuted  || 'Bajardi',   val: v(totDone) + ` ${t.som || "so'm"}`,           c: '#6366f1',      w: isMobile ? '50%' : 'auto'    },
+            { lbl: t.planTotalPlan || 'Jami plan', val: v(totPlan) + ` ${planUnitLabel('som', t)}`,           c: sub,            w: isMobile ? '33.33%' : 'auto' },
+            { lbl: t.planExecuted  || 'Bajardi',   val: v(totDone) + ` ${planUnitLabel('som', t)}`,           c: '#6366f1',      w: isMobile ? '50%' : 'auto'    },
             { lbl: '%',                            val: `${totPct}%`,                                  c: pctCol(totPct), w: isMobile ? '50%' : 'auto'    },
           ] as { lbl: string; val: string; c: string; w: string }[]).map((s, i, arr) => (
             <div key={s.lbl} style={{
@@ -2347,9 +2601,9 @@ function AgentStatPage({
         {/* Summary strip */}
         <div style={{ display: 'flex', borderTop: `1px solid ${border}`, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
           {([
-            { lbl: t.planReja      || 'Reja',      val: showBalances ? fmtM(data.planSum)   + ` ${t.som||"so'm"}` : '––', c: sub       },
-            { lbl: t.planDone      || 'Bajarildi', val: showBalances ? fmtM(data.doneSum)   + ` ${t.som||"so'm"}` : '––', c: '#10b981' },
-            { lbl: t.planRemaining || 'Qoldi',     val: showBalances ? fmtM(data.remaining) + ` ${t.som||"so'm"}` : '––', c: '#f59e0b' },
+            { lbl: t.planReja      || 'Reja',      val: showBalances ? fmtM(data.planSum)   + ` ${planUnitLabel(data.unit, t)}` : '––', c: sub       },
+            { lbl: t.planDone      || 'Bajarildi', val: showBalances ? fmtM(data.doneSum)   + ` ${planUnitLabel(data.unit, t)}` : '––', c: '#10b981' },
+            { lbl: t.planRemaining || 'Qoldi',     val: showBalances ? fmtM(data.remaining) + ` ${planUnitLabel(data.unit, t)}` : '––', c: '#f59e0b' },
             { lbl: t.planExecution || 'Bajarish',  val: `${data.donePct}%`,                                              c: color     },
           ] as { lbl: string; val: string; c: string }[]).map((s, i, arr) => (
             <div key={s.lbl} style={{
@@ -2471,10 +2725,10 @@ function AgentStatPage({
                 {c.pct}%
               </div>
               <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: '#10b981', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {showBalances ? fmtM(c.done) + ` ${t.som||"so'm"}` : '••••••'}
+                {showBalances ? fmtM(c.done) + ` ${planUnitLabel(data.unit, t)}` : '••••••'}
               </div>
               <div style={{ fontSize: 9, color: sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                / {showBalances ? fmtM(c.plan) + ` ${t.som||"so'm"}` : '••••••'}
+                / {showBalances ? fmtM(c.plan) + ` ${planUnitLabel(data.unit, t)}` : '••••••'}
               </div>
               <div style={{ marginTop: 7 }}>
                 <MiniBar pct={c.pct} color={c.color} dark={dark}/>
@@ -2486,7 +2740,7 @@ function AgentStatPage({
         {/* Category analysis */}
         <div style={{ background: card, borderRadius: 18, border: `1px solid ${border}`, padding: isMobile ? '14px 16px' : '16px 20px', marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: txt, marginBottom: 12 }}>{t.planCatAnalysis || 'Kategoriyalar tahlili'}</div>
-          <CategoryView cats={data.cats} dark={dark} showBalances={showBalances} mode={mode} agent={agent} t={t} isMobile={isMobile}/>
+          <CategoryView cats={data.cats} dark={dark} showBalances={showBalances} mode={mode} agent={agent} t={t} isMobile={isMobile} unit={data.unit}/>
         </div>
 
         {/* Monthly history table */}
@@ -2594,6 +2848,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
   const divClr = D ? '#1e1e1e' : '#f0f0f0';
   const rowBg  = D ? '#0f0f0f' : '#ffffff';
   const infoB  = D ? '#161616' : '#f8fafc';
+  const unitOf = (u?: PlanUnit) => planUnitLabel(u || 'som', t);
 
   const allData = useMemo(() =>
     agents.map((a) => {
@@ -2625,7 +2880,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
     return '#ef4444';
   }
 
-  async function handleSave(agent: AgentRow, entry: { total: number; cats: Record<string, number>; monthType: string }) {
+  async function handleSave(agent: AgentRow, entry: PlanEntry) {
     if (!agent.distributorId) {
       setError(t.planNoDistributor || 'Agent profili topilmadi — qayta urinib ko‘ring');
       return;
@@ -2636,10 +2891,12 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
       const categoryNames = Object.fromEntries(planCats.map(c => [c.key, c.name]));
       await api.upsertAgentPlan({
         distributorId: agent.distributorId,
-        monthType: entry.monthType as 'current' | 'next',
+        monthType: entry.monthType,
         total: entry.total,
+        unit: entry.unit,
         categories: entry.cats,
         categoryNames,
+        products: entry.products.length > 0 ? entry.products : undefined,
       });
       await reloadPlans();
     } catch (e) {
@@ -2778,6 +3035,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
           const initials = agent.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
           const hasPlan  = !!(agent.distributorId && backendPlans.has(agent.distributorId));
           const agentIdx = allData.findIndex(x => x.agent.id === agent.id);
+          const uLbl     = unitOf(data.unit);
 
           return (
             <div
@@ -2812,7 +3070,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: txt, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{agent.name}</div>
                       <div style={{ fontSize: 11, color: sub, marginTop: 1 }}>
-                        {t.planReja || 'Reja'}: {showBalances ? fmt(data.planSum) + ' ' + som : '••••'}
+                        {t.planReja || 'Reja'}: {showBalances ? fmt(data.planSum) + ' ' + uLbl : '••••'}
                         {hasPlan && (
                           <span style={{ marginLeft: 8, color: '#6366f1', fontWeight: 700 }}>
                             · {data.monthKind === 'next'
@@ -2844,11 +3102,11 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
                   <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1, background: infoB, borderRadius: 10, padding: '7px 10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 2 : 0 }}>
                       <span style={{ fontSize: 11, color: sub }}>{t.planDone || 'Bajarildi'}</span>
-                      <span style={{ fontSize: isMobile ? 11 : 12, fontWeight: 800, color: '#10b981' }}>{showBalances ? fmt(data.doneSum) + ' ' + som : '••••'}</span>
+                      <span style={{ fontSize: isMobile ? 11 : 12, fontWeight: 800, color: '#10b981' }}>{showBalances ? fmt(data.doneSum) + ' ' + uLbl : '••••'}</span>
                     </div>
                     <div style={{ flex: 1, background: infoB, borderRadius: 10, padding: '7px 10px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 2 : 0 }}>
                       <span style={{ fontSize: 11, color: sub }}>{t.planRemaining || 'Qoldi'}</span>
-                      <span style={{ fontSize: isMobile ? 11 : 12, fontWeight: 800, color: '#f59e0b' }}>{showBalances ? fmt(data.remaining) + ' ' + som : '••••'}</span>
+                      <span style={{ fontSize: isMobile ? 11 : 12, fontWeight: 800, color: '#f59e0b' }}>{showBalances ? fmt(data.remaining) + ' ' + uLbl : '••••'}</span>
                     </div>
                   </div>
                 </div>
@@ -2882,7 +3140,19 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
                         <MiniBar pct={c.pct} color={c.color} dark={D} />
                         {showBalances && !isMobile && (
                           <div style={{ fontSize: 10, color: sub, textAlign: 'right', marginTop: 2 }}>
-                            {fmt(c.done)} / {fmt(c.plan)}
+                            {fmt(c.done)} / {fmt(c.plan)} {uLbl}
+                          </div>
+                        )}
+                        {!!c.products?.length && (
+                          <div style={{ marginTop: 6, paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {c.products.map(p => (
+                              <div key={p.productId} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                <span style={{ fontSize: 10, color: sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.productName}</span>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: c.color, flexShrink: 0 }}>
+                                  {p.pct}%{showBalances ? ` · ${fmt(p.done)}/${fmt(p.plan)}` : ''}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -2903,6 +3173,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
           planCats={planCats}
           dark={D}
           t={t}
+          companyId={selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
         />

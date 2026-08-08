@@ -13,6 +13,7 @@ import javax.inject.Inject
 class DistributorApp : Application() {
 
     @Inject lateinit var locationNetworkWatcher: LocationNetworkWatcher
+    @Inject lateinit var networkMonitor: uz.distributor.crm.util.NetworkMonitor
 
     override fun onCreate() {
         super.onCreate()
@@ -20,6 +21,7 @@ class DistributorApp : Application() {
         AppForegroundTracker.init()
         NotificationHelper.createChannel(this)
         OsmdroidConfig.init(this)
+        networkMonitor.start()
         locationNetworkWatcher.start()
     }
 }

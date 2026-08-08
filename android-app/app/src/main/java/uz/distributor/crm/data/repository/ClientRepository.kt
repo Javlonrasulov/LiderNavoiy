@@ -54,8 +54,12 @@ class ClientRepository @Inject constructor(
     }
 
     suspend fun getClient(id: String): Client? {
-        return db.clientDao().getById(id)?.toDomain()
-            ?: api.getClient(id).toEntity().toDomain()
+        db.clientDao().getById(id)?.toDomain()?.let { return it }
+        return try {
+            api.getClient(id).toEntity().toDomain()
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun getClientDetail(id: String): Client? {

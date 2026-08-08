@@ -65,11 +65,8 @@ private fun buildRouteLine(
         roadGeo
     }
     val geo = trimmed.map { GeoPoint(it.latitude, it.longitude) }
-    return when {
-        geo.size >= 2 -> geo
-        courier != null && delivery != null -> listOf(courier, delivery)
-        else -> emptyList()
-    }
+    // To‘g‘ri chiziq (havo) chizilmasin — faqat yo‘l bo‘ylab OSRM nuqtalari
+    return if (geo.size >= 2) geo else emptyList()
 }
 
 /**
@@ -264,45 +261,49 @@ private fun updateFleetMap(
     )
 
     val overlays = map.overlays
-    val existingTruck = overlays
+    val existingTrucks = overlays
         .filterIsInstance<Marker>()
-        .firstOrNull { it.relatedObject is LiveMapVehicle && !(it.relatedObject as LiveMapVehicle).id.startsWith("dest-only") }
-    val truckTarget = vehicles.firstOrNull { !it.id.startsWith("dest-only") }
-    val canSlideTruck = existingTruck != null &&
-        truckTarget != null &&
-        GeoCoords.isUsableCourier(
-            truckTarget.courierLat,
-            truckTarget.courierLng,
-            truckTarget.orders.firstOrNull()?.deliveryLat,
-            truckTarget.orders.firstOrNull()?.deliveryLng,
-        )
-
-    // Manzillar / toggle o‘zgarsa — to‘liq qayta chizish
-    if (canSlideTruck && !fitCamera && !stopsChanged && !showStopsChanged) {
-        val dest = GeoPoint(truckTarget!!.courierLat, truckTarget.courierLng)
-        val from = existingTruck!!.position
-        existingTruck.relatedObject = truckTarget
-        if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
-            if (routeChanged) {
-                replaceRoutePolylines(
-                    map,
-                    vehicles,
-                    courierOverride = dest,
-                    overrideVehicleId = truckTarget.id,
-                    showRouteStops = showRouteStops,
-                )
-            }
-            map.invalidate()
-            return
+        .mapNotNull { m ->
+            val v = m.relatedObject as? LiveMapVehicle ?: return@mapNotNull null
+            if (v.id.startsWith("dest-only")) null else v.id to m
         }
-        replaceRoutePolylines(
-            map,
-            vehicles,
-            courierOverride = dest,
-            overrideVehicleId = truckTarget.id,
-            showRouteStops = showRouteStops,
-        )
-        animateMarker(map, existingTruck, dest)
+        .toMap()
+    val liveTargets = vehicles.filter { v ->
+        !v.id.startsWith("dest-only") &&
+            GeoCoords.isUsableCourier(
+                v.courierLat,
+                v.courierLng,
+                v.orders.firstOrNull()?.deliveryLat,
+                v.orders.firstOrNull()?.deliveryLng,
+            ) &&
+            existingTrucks.containsKey(v.id)
+    }
+    val canSlideTrucks = liveTargets.isNotEmpty() &&
+        liveTargets.size == existingTrucks.size &&
+        vehicles.count { !it.id.startsWith("dest-only") } == liveTargets.size
+
+    // Manzillar / toggle o‘zgarsa — to‘liq qayta chizish; GPS — silliq siljish
+    if (canSlideTrucks && !fitCamera && !stopsChanged && !showStopsChanged) {
+        var anyMove = false
+        liveTargets.forEach { truckTarget ->
+            val marker = existingTrucks[truckTarget.id] ?: return@forEach
+            val dest = GeoPoint(truckTarget.courierLat, truckTarget.courierLng)
+            val from = marker.position
+            marker.relatedObject = truckTarget
+            if (GeoCoords.samePoint(from.latitude, from.longitude, dest.latitude, dest.longitude, 1e-6)) {
+                return@forEach
+            }
+            anyMove = true
+            animateMarker(map, marker, dest)
+        }
+        // Yangi OSRM yo‘l keldi, GPS joyi o‘zgarmagan — faqat chiziq
+        if (routeChanged && !anyMove) {
+            replaceRoutePolylines(
+                map,
+                vehicles,
+                showRouteStops = showRouteStops,
+            )
+        }
         map.invalidate()
         return
     }
