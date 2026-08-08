@@ -122,9 +122,10 @@ fun SherinSalesChart(
         val barW = size.width / (data.size * 2f)
         val bottom = size.height - 24f
         data.forEachIndexed { i, point ->
-            val x = barW + i * barW * 2
+            val x = barW + i * barW * 2f
+            val sales = point.sales.toFloat()
             if (period == StatsPeriod.WEEK) {
-                val h = (point.sales / max) * (bottom - 16f)
+                val h = (sales / max) * (bottom - 16f)
                 drawRoundRect(
                     lineColor,
                     topLeft = Offset(x, bottom - h),
@@ -133,10 +134,10 @@ fun SherinSalesChart(
                 )
             } else {
                 val next = data.getOrNull(i + 1)
-                val y1 = bottom - (point.sales / max) * (bottom - 16f)
+                val y1 = bottom - (sales / max) * (bottom - 16f)
                 if (next != null) {
-                    val y2 = bottom - (next.sales / max) * (bottom - 16f)
-                    drawLine(lineColor, Offset(x, y1), Offset(x + barW * 2, y2), strokeWidth = 3f)
+                    val y2 = bottom - (next.sales.toFloat() / max) * (bottom - 16f)
+                    drawLine(lineColor, Offset(x, y1), Offset(x + barW * 2f, y2), strokeWidth = 3f)
                 }
                 drawCircle(lineColor, 4f, Offset(x, y1))
             }

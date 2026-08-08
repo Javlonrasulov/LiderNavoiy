@@ -17,11 +17,10 @@ import { formatMoney, theme } from '../theme'
 import { showToast } from '../components/Toast'
 import { getStoredUser } from '../api/client'
 import { pushBackHandler } from '../utils/hardwareBack'
-import {
-  downloadFactoryReport,
-  shareFactoryReport,
-  type FactoryReportPayload,
-  type ReportRow,
+import type {
+  FactoryReportPayload,
+  ReportFormat,
+  ReportRow,
 } from '../utils/factoryReportExport'
 
 interface Props {
@@ -79,6 +78,7 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const [reportDealerRows, setReportDealerRows] = useState<ReportRow[]>([])
   const [reportLoading, setReportLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportPicker, setExportPicker] = useState<'download' | 'share' | null>(null)
 
   const loadList = async () => {
     setLoading(true)
@@ -315,16 +315,25 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
     }
   }
 
-  const handleExport = async (mode: 'download' | 'share') => {
+  const openExportPicker = (mode: 'download' | 'share') => {
     const payload = buildReportPayload()
     if (!payload || (payload.dealer.rows.length === 0 && payload.shipment.rows.length === 0)) {
       showToast(tr.factoryReportEmpty)
       return
     }
+    setExportPicker(mode)
+  }
+
+  const handleExport = async (format: ReportFormat) => {
+    const mode = exportPicker
+    const payload = buildReportPayload()
+    if (!mode || !payload) return
+    setExportPicker(null)
     setExporting(true)
     try {
-      if (mode === 'share') await shareFactoryReport(payload)
-      else await downloadFactoryReport(payload)
+      const { downloadFactoryReport, shareFactoryReport } = await import('../utils/factoryReportExport')
+      if (mode === 'share') await shareFactoryReport(payload, format)
+      else await downloadFactoryReport(payload, format)
       showToast(tr.factoryReportExported)
     } catch {
       showToast(tr.factoryReportExportError)
@@ -448,7 +457,7 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" disabled={exporting || reportLoading} onClick={() => void handleExport('download')}
+            <button type="button" disabled={exporting || reportLoading} onClick={() => openExportPicker('download')}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '11px 10px', borderRadius: 12, border: 'none', cursor: 'pointer',
@@ -458,7 +467,7 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
               <Download size={16} color="#fff" />
               {tr.factoryReportDownload}
             </button>
-            <button type="button" disabled={exporting || reportLoading} onClick={() => void handleExport('share')}
+            <button type="button" disabled={exporting || reportLoading} onClick={() => openExportPicker('share')}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '11px 10px', borderRadius: 12, border: `1px solid ${c.border}`, cursor: 'pointer',
@@ -502,6 +511,54 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
             </div>
           )}
         </div>
+
+        {exportPicker && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'flex-end',
+          }}
+            onClick={() => setExportPicker(null)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', background: c.card, borderRadius: '20px 20px 0 0',
+                padding: '16px 16px calc(20px + var(--safe-bottom))',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: c.text }}>
+                  {tr.factoryReportFormatTitle}
+                </p>
+                <button type="button" onClick={() => setExportPicker(null)}
+                  style={{ background: 'none', border: 'none', padding: 4 }}>
+                  <X size={22} color={c.mutedText} />
+                </button>
+              </div>
+              {([
+                ['xlsx', tr.factoryReportFormatExcel] as const,
+                ['pdf', tr.factoryReportFormatPdf] as const,
+              ]).map(([format, label]) => (
+                <button
+                  key={format}
+                  type="button"
+                  disabled={exporting}
+                  onClick={() => void handleExport(format)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '14px 12px', marginBottom: 8, borderRadius: 14,
+                    border: `1px solid ${c.border}`, background: c.muted,
+                    color: c.text, fontWeight: 700, fontSize: 15, cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <FileText size={20} color={c.primary} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
