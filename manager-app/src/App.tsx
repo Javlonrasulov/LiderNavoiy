@@ -52,6 +52,31 @@ export default function App() {
   const [messagesUnread, setMessagesUnread] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const [messagesChatOpen, setMessagesChatOpen] = useState(false)
+  const [keyboardOpen, setKeyboardOpen] = useState(false)
+
+  useEffect(() => {
+    const syncKeyboard = () => {
+      const root = document.documentElement
+      const attr = root.getAttribute('data-keyboard-open') === '1'
+      const ime = parseFloat(getComputedStyle(root).getPropertyValue('--ime-bottom')) || 0
+      setKeyboardOpen(attr || ime > 40)
+    }
+    syncKeyboard()
+    const obs = new MutationObserver(syncKeyboard)
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-keyboard-open', 'style'],
+    })
+    window.visualViewport?.addEventListener('resize', syncKeyboard)
+    window.visualViewport?.addEventListener('scroll', syncKeyboard)
+    const id = window.setInterval(syncKeyboard, 400)
+    return () => {
+      obs.disconnect()
+      window.visualViewport?.removeEventListener('resize', syncKeyboard)
+      window.visualViewport?.removeEventListener('scroll', syncKeyboard)
+      window.clearInterval(id)
+    }
+  }, [])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -196,6 +221,7 @@ export default function App() {
 
   const showBottomNav =
     !messagesChatOpen &&
+    !keyboardOpen &&
     (overlay === null ||
       overlay === 'clientOrders' ||
       overlay === 'products')

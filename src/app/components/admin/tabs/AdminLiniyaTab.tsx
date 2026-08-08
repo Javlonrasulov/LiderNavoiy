@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check } from 'lucide-react';
 import { LINES } from '../../../data/adminData';
-import { api } from '../../../api/client';
+import { api, type Distributor } from '../../../api/client';
 
 interface Props {
   D: boolean;
@@ -17,13 +17,28 @@ type Line = {
   name: string;
   kolTT: number;
   agent: string;
+  delivery: string;
   plan: number;
   visits: number;
   sales: number;
 };
 
+type PersonOption = { id: string; name: string };
+
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
+}
+
+function isDeliveryPerson(d: Distributor): boolean {
+  const p = (d.position ?? '').toLowerCase();
+  const u = (d.user?.username ?? '').toLowerCase();
+  return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
+    || p.includes('dostav') || p.includes('haydov')
+    || u.includes('dostav');
+}
+
+function distributorName(d: Distributor): string {
+  return d.user?.fullName?.trim() || d.user?.username || d.id;
 }
 
 function apiLineToRow(row: {
@@ -31,6 +46,7 @@ function apiLineToRow(row: {
   code: string;
   name: string;
   agentName: string | null;
+  deliveryName?: string | null;
   clientCount: number;
 }): Line {
   return {
@@ -39,10 +55,36 @@ function apiLineToRow(row: {
     name: row.name,
     kolTT: row.clientCount,
     agent: row.agentName ?? '',
+    delivery: row.deliveryName ?? '',
     plan: 0,
     visits: 0,
     sales: 0,
   };
+}
+
+const emptyForm = (): Omit<Line, 'id'> => ({
+  code: '', name: '', kolTT: 0, agent: '', delivery: '', plan: 0, visits: 0, sales: 0,
+});
+
+/** Keyingi raqamli kod: 01, 02, 03… (nom emas) */
+function nextNumericLineCode(existing: { code: string }[]): string {
+  let max = 0;
+  for (const row of existing) {
+    const code = row.code?.trim() ?? '';
+    if (!/^\d+$/.test(code)) continue;
+    const n = parseInt(code, 10);
+    if (n > max) max = n;
+  }
+  return String(max + 1).padStart(2, '0');
+}
+
+/** Raqamli kodni saqlaydi; aks holda yangi avto-kod beradi */
+function resolveLineCode(code: string, existing: { code: string }[]): string {
+  const trimmed = code.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed.padStart(2, '0');
+  }
+  return nextNumericLineCode(existing);
 }
 
 const demoLines: Line[] = LINES.map(l => ({
@@ -51,12 +93,13 @@ const demoLines: Line[] = LINES.map(l => ({
   name: l.name,
   kolTT: l.kolTT,
   agent: l.agent,
+  delivery: '',
   plan: l.plan,
   visits: l.visits,
   sales: l.sales,
 }));
 
-export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
+export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   const [lines, setLines]       = useState<Line[]>(demoLines);
   const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState('');
@@ -64,8 +107,10 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
   const [editLine, setEditLine] = useState<Line | null>(null);
   const [deleteLine, setDeleteLine] = useState<Line | null>(null);
   const [addMode, setAddMode]   = useState(false);
-  const [form, setForm]         = useState<Omit<Line,'id'>>({ code:'', name:'', kolTT:0, agent:'', plan:0, visits:0, sales:0 });
+  const [form, setForm]         = useState<Omit<Line, 'id'>>(emptyForm());
   const [saved, setSaved]       = useState(false);
+  const [agents, setAgents]     = useState<PersonOption[]>([]);
+  const [deliveries, setDeliveries] = useState<PersonOption[]>([]);
   const PER_PAGE = 12;
 
   const refreshLines = useCallback(async () => {
@@ -84,20 +129,57 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
     }
   }, []);
 
+  const loadPeople = useCallback(async () => {
+    if (!hasApiToken()) {
+      setAgents([]);
+      setDeliveries([]);
+      return;
+    }
+    try {
+      const list = await api.getDistributors();
+      const active = list.filter(d => d.user?.isActive !== false);
+      setAgents(
+        active
+          .filter(d => !isDeliveryPerson(d))
+          .map(d => ({ id: d.id, name: distributorName(d) }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setDeliveries(
+        active
+          .filter(isDeliveryPerson)
+          .map(d => ({ id: d.id, name: distributorName(d) }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+    } catch {
+      setAgents([]);
+      setDeliveries([]);
+    }
+  }, []);
+
   useEffect(() => { refreshLines(); }, [refreshLines]);
+  useEffect(() => { loadPeople(); }, [loadPeople]);
+
+  const syncLineCode = async (personName: string, people: PersonOption[], lineCode: string) => {
+    const person = people.find(p => p.name === personName);
+    if (!person) return;
+    try {
+      await api.updateDistributor(person.id, { lineCode });
+    } catch {
+      /* ignore — name on line is already saved */
+    }
+  };
 
   const filtered = lines.filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase()) ||
     l.code.includes(search) ||
-    l.agent.toLowerCase().includes(search.toLowerCase())
+    l.agent.toLowerCase().includes(search.toLowerCase()) ||
+    l.delivery.toLowerCase().includes(search.toLowerCase())
   );
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const totalTT    = lines.reduce((s, l) => s + l.kolTT, 0);
-  const totalSales = lines.reduce((s, l) => s + l.sales, 0);
-  const avgPlan    = Math.round(lines.reduce((s, l) => s + l.plan, 0) / lines.length);
+  const totalTT = lines.reduce((s, l) => s + l.kolTT, 0);
 
   const txt    = D ? '#f9fafb' : '#111827';
   const muted  = D ? '#6b7280' : '#9ca3af';
@@ -107,25 +189,49 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
   const modalBg = D ? '#1c1c1e' : '#ffffff';
   const overlayBg = 'rgba(0,0,0,0.45)';
 
+  const summaryText = useMemo(() =>
+    (t.lineTotalSummary ?? 'Jami: {count} liniya · {tt} savdo nuqtasi')
+      .replace('{count}', String(lines.length))
+      .replace('{tt}', String(totalTT)),
+  [t.lineTotalSummary, lines.length, totalTT]);
+
   const openEdit = (line: Line) => {
-    setForm({ code: line.code, name: line.name, kolTT: line.kolTT, agent: line.agent, plan: line.plan, visits: line.visits, sales: line.sales });
+    const others = lines.filter(l => l.id !== line.id);
+    setForm({
+      code: resolveLineCode(line.code, others),
+      name: line.name, kolTT: line.kolTT,
+      agent: line.agent, delivery: line.delivery,
+      plan: line.plan, visits: line.visits, sales: line.sales,
+    });
     setEditLine(line);
+    void loadPeople();
+  };
+
+  const openAdd = () => {
+    setForm({ ...emptyForm(), code: nextNumericLineCode(lines) });
+    setAddMode(true);
+    void loadPeople();
   };
 
   const saveEdit = async () => {
+    const others = lines.filter(l => l.id !== editLine?.id);
+    const code = resolveLineCode(form.code, others);
     if (hasApiToken() && typeof editLine?.id === 'string') {
       try {
         const updated = await api.updateLine(editLine.id, {
-          code: form.code,
+          code,
           name: form.name,
           agentName: form.agent || null,
+          deliveryName: form.delivery || null,
         });
+        if (form.agent) await syncLineCode(form.agent, agents, code);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
         setLines(prev => prev.map(l => l.id === editLine.id ? apiLineToRow(updated) : l));
       } catch {
         return;
       }
     } else {
-      setLines(prev => prev.map(l => l.id === editLine!.id ? { ...l, ...form } : l));
+      setLines(prev => prev.map(l => l.id === editLine!.id ? { ...l, ...form, code } : l));
     }
     setSaved(true);
     setTimeout(() => { setSaved(false); setEditLine(null); }, 900);
@@ -145,23 +251,27 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
   };
 
   const saveAdd = async () => {
+    const code = form.code || nextNumericLineCode(lines);
     if (hasApiToken()) {
       try {
         const created = await api.createLine({
-          code: form.code,
+          code,
           name: form.name,
           agentName: form.agent || undefined,
+          deliveryName: form.delivery || undefined,
         });
+        if (form.agent) await syncLineCode(form.agent, agents, code);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code);
         setLines(prev => [...prev, apiLineToRow(created)]);
       } catch {
         return;
       }
     } else {
-      const newLine: Line = { id: Date.now(), ...form };
+      const newLine: Line = { id: Date.now(), ...form, code };
       setLines(prev => [...prev, newLine]);
     }
     setAddMode(false);
-    setForm({ code:'', name:'', kolTT:0, agent:'', plan:0, visits:0, sales:0 });
+    setForm(emptyForm());
   };
 
   const InputStyle = {
@@ -171,8 +281,41 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
     fontSize: 13, color: txt, outline: 'none',
   };
 
-  const modalLine = editLine || (addMode ? { id: 0, ...form } as Line : null);
+  const selectStyle = {
+    ...InputStyle,
+    appearance: 'none' as const,
+    WebkitAppearance: 'none' as const,
+    MozAppearance: 'none' as const,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(muted)}' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 12px center',
+    paddingRight: 32,
+    cursor: 'pointer' as const,
+  };
+
   const isOpen = !!editLine || addMode;
+  const noneLabel = t.lineSelectNone ?? '— tanlanmagan —';
+
+  const agentOptions = useMemo(() => {
+    if (!form.agent) return agents;
+    if (agents.some(a => a.name === form.agent)) return agents;
+    return [{ id: '_current_agent', name: form.agent }, ...agents];
+  }, [agents, form.agent]);
+
+  const deliveryOptions = useMemo(() => {
+    if (!form.delivery) return deliveries;
+    if (deliveries.some(d => d.name === form.delivery)) return deliveries;
+    return [{ id: '_current_delivery', name: form.delivery }, ...deliveries];
+  }, [deliveries, form.delivery]);
+
+  const tableHeaders = [
+    t.lineColCode ?? 'Kod',
+    t.lineColName ?? 'Nomi',
+    t.lineColTT ?? 'Savdo nuqtalari',
+    t.lineColAgent ?? 'Agent',
+    t.lineColDelivery ?? 'Dostavchik',
+    '',
+  ];
 
   return (
     <div style={{ padding: '0 0 32px' }}>
@@ -186,14 +329,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }} onClick={() => { setEditLine(null); setAddMode(false); }}>
           <div style={{
-            background: modalBg, borderRadius: 18, padding: 28, width: 400, maxWidth: '92vw',
+            background: modalBg, borderRadius: 18, padding: 28, width: 420, maxWidth: '92vw',
             boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
             border: `1px solid ${border}`,
           }} onClick={e => e.stopPropagation()}>
-            {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>
-                {editLine ? 'Liniyani tahrirlash' : 'Yangi liniya'}
+                {editLine ? (t.lineEditTitle ?? 'Liniyani tahrirlash') : (t.lineNewTitle ?? 'Yangi liniya')}
               </div>
               <button onClick={() => { setEditLine(null); setAddMode(false); }} style={{
                 width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -204,39 +346,96 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
               </button>
             </div>
 
-            {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>KOD</div>
-                  <input style={InputStyle} value={form.code}
-                    onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="01" />
+                  <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                    {t.lineLabelCode ?? 'KOD'}
+                  </div>
+                  <input
+                    style={{
+                      ...InputStyle,
+                      opacity: 0.75,
+                      cursor: 'default',
+                      color: indigo,
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                    }}
+                    value={form.code}
+                    readOnly
+                    tabIndex={-1}
+                    title={t.lineCodeAuto ?? 'Kod avtomatik yaratiladi'}
+                    placeholder={t.linePhCode ?? '01'}
+                  />
+                  <div style={{ fontSize: 10, color: muted, marginTop: 4 }}>
+                    {t.lineCodeAuto ?? 'Kod avtomatik yaratiladi'}
+                  </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>SAVDO NUQTALARI</div>
+                  <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                    {t.lineLabelTT ?? 'SAVDO NUQTALARI'}
+                  </div>
                   <input style={InputStyle} type="number" value={form.kolTT}
-                    onChange={e => setForm(f => ({ ...f, kolTT: Number(e.target.value) }))} placeholder="0" />
+                    onChange={e => setForm(f => ({ ...f, kolTT: Number(e.target.value) }))}
+                    placeholder={t.linePhTT ?? '0'} readOnly={hasApiToken()} />
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>NOMI</div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                  {t.lineLabelName ?? 'NOMI'}
+                </div>
                 <input style={InputStyle} value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Liniya nomi" />
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder={t.linePhName ?? 'Liniya nomi'} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>AGENT</div>
-                <input style={InputStyle} value={form.agent}
-                  onChange={e => setForm(f => ({ ...f, agent: e.target.value }))} placeholder="Agent ismi" />
+                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                  {t.lineLabelAgent ?? 'AGENT'}
+                </div>
+                <select
+                  style={selectStyle}
+                  value={form.agent}
+                  onChange={e => setForm(f => ({ ...f, agent: e.target.value }))}
+                >
+                  <option value="">{noneLabel}</option>
+                  {agentOptions.map(a => (
+                    <option key={a.id} value={a.name}>{a.name}</option>
+                  ))}
+                </select>
+                {hasApiToken() && agentOptions.length === 0 && (
+                  <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>
+                    {t.lineNoAgents ?? 'Agent topilmadi'}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
+                  {t.lineLabelDelivery ?? 'DOSTAVCHIK'}
+                </div>
+                <select
+                  style={selectStyle}
+                  value={form.delivery}
+                  onChange={e => setForm(f => ({ ...f, delivery: e.target.value }))}
+                >
+                  <option value="">{noneLabel}</option>
+                  {deliveryOptions.map(d => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+                {hasApiToken() && deliveryOptions.length === 0 && (
+                  <div style={{ fontSize: 11, color: muted, marginTop: 4 }}>
+                    {t.lineNoDelivery ?? 'Dostavchik topilmadi'}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Actions */}
             <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
               <button onClick={() => { setEditLine(null); setAddMode(false); }} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${border}`,
                 background: 'transparent', color: txt, fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>
-                Bekor
+                {t.lineCancel ?? 'Bekor'}
               </button>
               <button onClick={editLine ? saveEdit : saveAdd} style={{
                 flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
@@ -245,7 +444,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 transition: 'background .2s',
               }}>
-                {saved ? <><Check size={14} /> Saqlandi!</> : 'Saqlash'}
+                {saved
+                  ? <><Check size={14} /> {t.lineSaved ?? 'Saqlandi!'}</>
+                  : (t.lineSave ?? 'Saqlash')}
               </button>
             </div>
           </div>
@@ -273,24 +474,24 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
               <AlertTriangle size={24} color="#ef4444" />
             </div>
             <div style={{ fontSize: 15, fontWeight: 700, color: txt, marginBottom: 8 }}>
-              Liniyani o'chirish
+              {t.lineDeleteTitle ?? "Liniyani o'chirish"}
             </div>
             <div style={{ fontSize: 13, color: muted, marginBottom: 24 }}>
               <b style={{ color: txt }}>{deleteLine.code} — {deleteLine.name}</b><br />
-              liniyasini o'chirmoqchimisiz?
+              {t.lineDeleteConfirm ?? "liniyasini o'chirmoqchimisiz?"}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setDeleteLine(null)} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${border}`,
                 background: 'transparent', color: txt, fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>
-                Bekor
+                {t.lineCancel ?? 'Bekor'}
               </button>
               <button onClick={confirmDelete} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10, border: 'none',
                 background: '#ef4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}>
-                O'chirish
+                {t.lineDelete ?? "O'chirish"}
               </button>
             </div>
           </div>
@@ -308,24 +509,26 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
             <GitBranch size={17} color={indigo} />
           </div>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: txt }}>Liniyalar</div>
-            <div style={{ fontSize: 11, color: muted }}>Jami: {lines.length} liniya · {totalTT} savdo nuqtasi</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: txt }}>
+              {t.lineTitle ?? 'Liniyalar'}
+            </div>
+            <div style={{ fontSize: 11, color: muted }}>{summaryText}</div>
           </div>
         </div>
-        <button onClick={() => { setForm({ code:'', name:'', kolTT:0, agent:'', plan:0, visits:0, sales:0 }); setAddMode(true); }} style={{
+        <button onClick={openAdd} style={{
           display: 'flex', alignItems: 'center', gap: 6,
           padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
           background: indigo, color: '#fff', fontSize: 13, fontWeight: 600,
         }}>
-          <Plus size={14} /> Liniya qo'shish
+          <Plus size={14} /> {t.lineAdd ?? "Liniya qo'shish"}
         </button>
       </div>
 
       {/* ── Stats ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 12, marginBottom: 20 }}>
         {[
-          { icon: GitBranch, label: 'Liniyalar',       value: String(lines.length), clr: indigo },
-          { icon: Users,     label: 'Savdo nuqtalari', value: String(totalTT),      clr: '#10b981' },
+          { icon: GitBranch, label: t.lineStatLines ?? 'Liniyalar', value: String(lines.length), clr: indigo },
+          { icon: Users, label: t.lineStatTT ?? 'Savdo nuqtalari', value: String(totalTT), clr: '#10b981' },
         ].map(s => (
           <div key={s.label} className={card} style={{
             borderRadius: 12, border: `1px solid ${border}`,
@@ -344,7 +547,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
         <input
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Liniya yoki agent qidirish..."
+          placeholder={t.lineSearchPh ?? 'Liniya yoki agent qidirish...'}
           style={{
             width: '100%', boxSizing: 'border-box',
             background: inpBg, border: `1.5px solid ${border}`,
@@ -358,14 +561,14 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
 
       {/* ── Table header ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: '48px 1fr 80px 120px 60px',
+        display: 'grid', gridTemplateColumns: '48px 1fr 72px 100px 100px 60px',
         gap: 8, padding: '8px 12px',
         borderRadius: 8,
         background: D ? 'rgba(255,255,255,0.04)' : '#f3f4f6',
         marginBottom: 6,
       }}>
-        {['Kod', 'Nomi', 'Savdo nuqtalari', 'Agent', ''].map(h => (
-          <span key={h} style={{ fontSize: 10, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {tableHeaders.map((h, i) => (
+          <span key={`${h}-${i}`} style={{ fontSize: 10, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {h}
           </span>
         ))}
@@ -373,11 +576,15 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
 
       {/* ── Rows ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {paginated.map(line => (
+        {loading && lines.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: muted, fontSize: 13 }}>
+            {t.msgLoading ?? 'Yuklanmoqda...'}
+          </div>
+        ) : paginated.map(line => (
           <div
             key={line.id}
             style={{
-              display: 'grid', gridTemplateColumns: '48px 1fr 80px 120px 60px',
+              display: 'grid', gridTemplateColumns: '48px 1fr 72px 100px 100px 60px',
               gap: 8, padding: '10px 12px', borderRadius: 10,
               border: `1px solid transparent`,
               cursor: 'pointer', alignItems: 'center', transition: 'all .12s',
@@ -386,7 +593,6 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = border; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}
           >
-            {/* Code */}
             <div style={{
               width: 36, height: 36, borderRadius: 9,
               background: 'rgba(99,102,241,0.10)',
@@ -395,7 +601,6 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
               <span style={{ fontSize: 11, fontWeight: 700, color: indigo }}>{line.code}</span>
             </div>
 
-            {/* Name */}
             <div style={{
               fontSize: 13, fontWeight: 500, color: txt,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -403,18 +608,22 @@ export function AdminLiniyaTab({ D, card, divider, sub, t: _t }: Props) {
               {line.name}
             </div>
 
-            {/* Savdo nuqtalari */}
             <div style={{ fontSize: 13, color: txt, fontWeight: 600 }}>{line.kolTT}</div>
 
-            {/* Agent */}
             <div style={{
               fontSize: 11, color: muted,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              {line.agent.split(' ')[0]}
+              {line.agent ? line.agent.split(' ')[0] : '—'}
             </div>
 
-            {/* Actions */}
+            <div style={{
+              fontSize: 11, color: muted,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {line.delivery ? line.delivery.split(' ')[0] : '—'}
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <button
                 onClick={e => { e.stopPropagation(); openEdit(line); }}

@@ -1199,6 +1199,7 @@ export const api = {
       code: string;
       name: string;
       agentName: string | null;
+      deliveryName: string | null;
       clientCount: number;
       companyId: string | null;
     }>>(`/lines${companyId ? `?companyId=${companyId}` : ''}`),
@@ -1207,6 +1208,7 @@ export const api = {
     code: string;
     name: string;
     agentName?: string;
+    deliveryName?: string;
     companyId?: string;
   }) =>
     request<{
@@ -1214,6 +1216,7 @@ export const api = {
       code: string;
       name: string;
       agentName: string | null;
+      deliveryName: string | null;
       clientCount: number;
       companyId: string | null;
     }>('/lines', {
@@ -1225,12 +1228,14 @@ export const api = {
     code?: string;
     name?: string;
     agentName?: string | null;
+    deliveryName?: string | null;
   }) =>
     request<{
       id: string;
       code: string;
       name: string;
       agentName: string | null;
+      deliveryName: string | null;
       clientCount: number;
       companyId: string | null;
     }>(`/lines/${id}`, {

@@ -34,13 +34,16 @@ type ExtraPhone = { phone: string; note: string }
 type ModalKind = 'line' | 'category' | null
 type PickerKind = 'line' | 'category' | null
 
-function makeLineCode(name: string): string {
-  const base = name
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w\-а-яА-ЯёЁўқғҳЎҚҒҲ\-]/gi, '')
-    .slice(0, 40)
-  return base || `L${Date.now().toString(36).slice(-6).toUpperCase()}`
+/** Keyingi raqamli kod: 01, 02, 03… (nom emas) */
+function nextNumericLineCode(existing: { code: string }[]): string {
+  let max = 0
+  for (const row of existing) {
+    const code = row.code?.trim() ?? ''
+    if (!/^\d+$/.test(code)) continue
+    const n = parseInt(code, 10)
+    if (n > max) max = n
+  }
+  return String(max + 1).padStart(2, '0')
 }
 
 /** UI: +998 93 559 96 99 */
@@ -186,16 +189,15 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
     return () => { cancelled = true }
   }, [editClient?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Modal/picker ochiqda fon scroll qulflansin; klaviatura ochilganda input ko‘rinsin
+  // Modal/picker ochiqda fon scroll qulflansin; input fokus (klaviatura tepadagi dialogni yopmasin)
   useEffect(() => {
     if (!modal && !picker) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     if (modal) {
       const t = window.setTimeout(() => {
-        modalInputRef.current?.focus()
-        modalInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      }, 280)
+        modalInputRef.current?.focus({ preventScroll: true })
+      }, 80)
       return () => {
         window.clearTimeout(t)
         document.body.style.overflow = prev
@@ -238,7 +240,7 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
       if (modal === 'line') {
         const created = await createLine({
           name: value,
-          code: makeLineCode(value),
+          code: nextNumericLineCode(lines),
           companyId,
         })
         setLines(prev => {
@@ -859,20 +861,40 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
       )}
 
       {modal && createPortal(
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 2000,
-          background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end',
-          paddingBottom: 'var(--ime-bottom, 0px)',
-          transition: 'padding-bottom 160ms ease-out',
-        }}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            paddingTop: 'max(12px, calc(var(--safe-top, 0px) + 8px))',
+            paddingLeft: 'max(16px, var(--safe-left, 0px))',
+            paddingRight: 'max(16px, var(--safe-right, 0px))',
+            paddingBottom: 'calc(12px + var(--ime-bottom, 0px))',
+            boxSizing: 'border-box',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setModal(null)
+          }}
+        >
           <div
             ref={modalSheetRef}
             style={{
-              width: '100%', maxHeight: 'calc(100% - 12px)',
-              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
-              background: c.card, borderRadius: '24px 24px 0 0',
-              padding: '16px 16px calc(20px + var(--safe-bottom))',
-              boxShadow: '0 -12px 40px rgba(0,0,0,0.25)',
+              width: '100%',
+              maxWidth: 420,
+              flexShrink: 0,
+              background: c.card,
+              borderRadius: 20,
+              padding: '16px 16px 18px',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.28)',
+              marginBottom: 12,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -904,18 +926,9 @@ export default function AddClientScreen({ dark, tr, user, editClient = null, onB
               ref={modalInputRef}
               value={modalName}
               onChange={e => setModalName(e.target.value)}
-              onFocus={e => {
-                const el = e.currentTarget
-                window.setTimeout(() => {
-                  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-                  modalSheetRef.current?.scrollTo({
-                    top: Math.max(0, el.offsetTop - 24),
-                    behavior: 'smooth',
-                  })
-                }, 280)
-              }}
               placeholder={modal === 'line' ? tr.lineName : tr.categoryName}
               enterKeyHint="done"
+              autoComplete="off"
               style={{ ...inputStyle, fontSize: 16 }}
             />
 

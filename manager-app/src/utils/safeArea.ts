@@ -27,15 +27,18 @@ export function initSafeAreaInsets() {
   const syncImeFromViewport = () => {
     const vv = window.visualViewport
     if (!vv) return
-    // Native MainActivity allaqachon --ime-bottom bersa, uni ustiga yozmaslik
-    // (faqat viewport aniqroq bo'lsa yangilaymiz)
     const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+    const fromVv = covered > 40 ? covered : 0
     if (root.getAttribute('data-native-insets') === '1') {
       const nativeIme = parseFloat(getComputedStyle(root).getPropertyValue('--ime-bottom')) || 0
-      if (nativeIme > 8) return
+      // Native 0 bo‘lib qolsa yoki kam bo‘lsa — viewport bilan to‘ldiramiz
+      const best = Math.max(nativeIme, fromVv)
+      root.style.setProperty('--ime-bottom', `${best}px`)
+      root.setAttribute('data-keyboard-open', best > 40 ? '1' : '0')
+      return
     }
-    root.style.setProperty('--ime-bottom', `${covered > 40 ? covered : 0}px`)
-    root.setAttribute('data-keyboard-open', covered > 40 ? '1' : '0')
+    root.style.setProperty('--ime-bottom', `${fromVv}px`)
+    root.setAttribute('data-keyboard-open', fromVv > 40 ? '1' : '0')
   }
 
   ensureMinBottom()

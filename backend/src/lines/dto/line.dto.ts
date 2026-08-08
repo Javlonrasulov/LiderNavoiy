@@ -21,6 +21,11 @@ export class CreateLineDto {
   @IsOptional()
   @IsString()
   agentName?: string;
+
+  @ApiPropertyOptional({ example: 'Dilshod' })
+  @IsOptional()
+  @IsString()
+  deliveryName?: string;
 }
 
 export class UpdateLineDto {
@@ -43,6 +48,11 @@ export class UpdateLineDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  deliveryName?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }
@@ -52,6 +62,7 @@ export interface LineListItemDto {
   code: string;
   name: string;
   agentName: string | null;
+  deliveryName: string | null;
   clientCount: number;
   companyId: string | null;
 }

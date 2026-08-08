@@ -105,6 +105,16 @@ html, body {
   overflow: hidden;
 }
 
+/* Klaviatura ochiq: pastki navbar yashirin */
+html[data-keyboard-open='1'] .lm-bottom-nav {
+  display: none !important;
+}
+
+/* Suhbat ochiq: pastki navbar yashirin */
+html[data-chat-open='1'] .lm-bottom-nav {
+  display: none !important;
+}
+
 .screen-header {
   padding-top: var(--header-pad-top);
   padding-left: max(20px, var(--safe-left));

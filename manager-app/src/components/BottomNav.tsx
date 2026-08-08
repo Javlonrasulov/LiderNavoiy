@@ -24,7 +24,9 @@ export default function BottomNav({ active, onChange, dark, tr, unreadCount = 0 
   ]
 
   return (
-    <div style={{
+    <div
+      className="lm-bottom-nav"
+      style={{
       position: 'absolute',
       bottom: 0,
       left: 0,

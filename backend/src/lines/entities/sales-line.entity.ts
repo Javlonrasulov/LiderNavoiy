@@ -25,6 +25,9 @@ export class SalesLine {
   @Column({ type: 'varchar', nullable: true })
   agentName: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  deliveryName: string | null;
+
   @Column({ default: true })
   isActive: boolean;
 

@@ -35,6 +35,7 @@ export class LinesService {
       code: line.code,
       name: line.name,
       agentName: line.agentName,
+      deliveryName: line.deliveryName,
       clientCount: counts.get(line.code) ?? 0,
       companyId: line.companyId,
     }));
@@ -68,6 +69,7 @@ export class LinesService {
         name: dto.name.trim(),
         companyId,
         agentName: dto.agentName?.trim() || null,
+        deliveryName: dto.deliveryName?.trim() || null,
         isActive: true,
       }),
     );
@@ -80,6 +82,9 @@ export class LinesService {
     if (dto.name !== undefined) line.name = dto.name.trim();
     if (dto.agentName !== undefined) {
       line.agentName = dto.agentName?.trim() || null;
+    }
+    if (dto.deliveryName !== undefined) {
+      line.deliveryName = dto.deliveryName?.trim() || null;
     }
     if (dto.isActive !== undefined) line.isActive = dto.isActive;
     const saved = await this.lineRepo.save(line);
@@ -122,6 +127,7 @@ export class LinesService {
       code: line.code,
       name: line.name,
       agentName: line.agentName,
+      deliveryName: line.deliveryName,
       clientCount,
       companyId: line.companyId,
     };

@@ -131,33 +131,6 @@ export default function MessagesScreen({
   const socketRef = useRef<MessagesSocket | null>(null)
   const activeIdRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    return pushBackHandler(() => {
-      if (showDeleteDialog) {
-        setShowDeleteDialog(false)
-        return true
-      }
-      if (contextMenu) {
-        setContextMenu(null)
-        return true
-      }
-      if (selectedIds.size > 0) {
-        setSelectedIds(new Set())
-        return true
-      }
-      if (showAttach) {
-        setShowAttach(false)
-        return true
-      }
-      if (activeId) {
-        setActiveId(null)
-        activeIdRef.current = null
-        return true
-      }
-      return false
-    })
-  }, [activeId, selectedIds, showAttach, showDeleteDialog, contextMenu])
-
   const activeConv = conversations.find(x => x.id === activeId) ?? null
   const selectionMode = selectedIds.size > 0
   const selectedMessages = messages.filter(m => selectedIds.has(m.id))
@@ -196,6 +169,8 @@ export default function MessagesScreen({
     async (convId: string) => {
       setActiveId(convId)
       activeIdRef.current = convId
+      onChatOpenChange?.(true)
+      document.documentElement.setAttribute('data-chat-open', '1')
       setSelectedIds(new Set())
       setShowDeleteDialog(false)
       setPendingFile(null)
@@ -213,9 +188,45 @@ export default function MessagesScreen({
         showToast(e instanceof Error ? e.message : tr.msgError)
       }
     },
-    [emitUnread, tr.msgError],
+    [emitUnread, onChatOpenChange, tr.msgError],
   )
 
+  const closeConversation = useCallback(() => {
+    setActiveId(null)
+    activeIdRef.current = null
+    setMessages([])
+    setSelectedIds(new Set())
+    setShowAttach(false)
+    setPendingFile(null)
+    onChatOpenChange?.(false)
+    document.documentElement.setAttribute('data-chat-open', '0')
+  }, [onChatOpenChange])
+
+  useEffect(() => {
+    return pushBackHandler(() => {
+      if (showDeleteDialog) {
+        setShowDeleteDialog(false)
+        return true
+      }
+      if (contextMenu) {
+        setContextMenu(null)
+        return true
+      }
+      if (selectedIds.size > 0) {
+        setSelectedIds(new Set())
+        return true
+      }
+      if (showAttach) {
+        setShowAttach(false)
+        return true
+      }
+      if (activeId) {
+        closeConversation()
+        return true
+      }
+      return false
+    })
+  }, [activeId, selectedIds, showAttach, showDeleteDialog, contextMenu, closeConversation])
   useEffect(() => {
     void loadList()
   }, [loadList])
@@ -302,10 +313,13 @@ export default function MessagesScreen({
     onConversationOpened?.()
   }, [openConversationId, openConversation, onConversationOpened])
 
+  // Unmount: chat flag tozalash
   useEffect(() => {
-    onChatOpenChange?.(!!activeId)
-    return () => onChatOpenChange?.(false)
-  }, [activeId, onChatOpenChange])
+    return () => {
+      onChatOpenChange?.(false)
+      document.documentElement.setAttribute('data-chat-open', '0')
+    }
+  }, [onChatOpenChange])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -491,11 +505,7 @@ export default function MessagesScreen({
           >
             <button
               type="button"
-              onClick={() => {
-                setActiveId(null)
-                activeIdRef.current = null
-                setMessages([])
-              }}
+              onClick={closeConversation}
               style={{
                 width: 36,
                 height: 36,
@@ -683,13 +693,15 @@ export default function MessagesScreen({
 
         {!selectionMode && (
           <div
+            className="lm-chat-composer"
             style={{
               borderTop: `1px solid ${c.border}`,
               background: c.card,
-              /* Chatda navbar yo'q: klaviatura (--ime-bottom) yoki tizim tugmalari (--safe-bottom) */
+              /* Navbar yo'q: faqat klaviatura yoki tizim tugmalari */
               padding: '10px 12px max(var(--ime-bottom), var(--safe-bottom))',
               position: 'relative',
               flexShrink: 0,
+              zIndex: 60,
             }}
           >
             {pendingFile && (
