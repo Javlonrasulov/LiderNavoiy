@@ -167,15 +167,7 @@ export class ClientRequestsService {
     agentName?: string,
     submitterPosition?: string,
   ) {
-    const dup = await this.checkInnDuplicate(dto.inn);
-    if (dup.duplicate) {
-      throw new BadRequestException(
-        dup.reason === 'client_exists'
-          ? 'Bu INN bilan mijoz tizimda mavjud'
-          : 'Bu INN bilan kutilayotgan so\'rov mavjud',
-      );
-    }
-
+    // INN hard-block olib tashlandi — manager UI soft o‘xshashlik ogohlantiradi
     const row = this.repo.create({
       status: ClientRequestStatus.PENDING,
       requestType: ClientRequestType.CREATE,
@@ -452,18 +444,7 @@ export class ClientRequestsService {
       throw new BadRequestException('Faqat bekor qilingan so‘rovni qayta yuborish mumkin');
     }
 
-    const dup = await this.checkInnDuplicate(
-      dto.inn ?? request.inn,
-      id,
-      request.targetClientId ?? undefined,
-    );
-    if (dup.duplicate) {
-      throw new BadRequestException(
-        dup.reason === 'client_exists'
-          ? 'Bu INN bilan mijoz tizimda mavjud'
-          : 'Bu INN bilan kutilayotgan so\'rov mavjud',
-      );
-    }
+    // INN hard-block olib tashlandi — manager UI soft o‘xshashlik ogohlantiradi
 
     if (dto.name !== undefined) request.name = dto.name.trim();
     if (dto.fullName !== undefined) request.fullName = dto.fullName?.trim() || request.name;

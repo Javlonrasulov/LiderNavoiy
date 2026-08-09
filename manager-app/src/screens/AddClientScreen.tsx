@@ -10,6 +10,7 @@ import {
   createLine,
   fetchClient,
   fetchClientCategories,
+  fetchClients,
   fetchLines,
   resolveMediaUrl,
   resubmitClientRequest,
@@ -27,6 +28,11 @@ import { localizeApiError } from '../i18n'
 import { theme } from '../theme'
 import ClientPinMap from '../components/ClientPinMap'
 import { showToast } from '../components/Toast'
+import {
+  findBestSimilarityMatch,
+  type SimilarityFieldKey,
+  type SimilarityMatch,
+} from '../utils/clientSimilarity'
 
 interface Props {
   dark: boolean
@@ -42,6 +48,24 @@ interface Props {
 type ExtraPhone = { phone: string; note: string }
 type ModalKind = 'line' | 'category' | null
 type PickerKind = 'line' | 'category' | null
+
+type SaveBody = {
+  name: string
+  fullName: string
+  inn?: string
+  phone: string
+  extraPhones: { phone: string; note?: string }[]
+  address: string
+  territory?: string
+  photoUrl?: string
+  companyId?: string
+  lineCode: string
+  category: string
+  latitude: number
+  longitude: number
+  orderRadiusMeters: number
+  canSeePromotions: boolean
+}
 
 /** Keyingi raqamli kod: 01, 02, 03… (nom emas) */
 function nextNumericLineCode(existing: { code: string }[]): string {
@@ -105,9 +129,24 @@ export default function AddClientScreen({
   const [canSeePromotions, setCanSeePromotions] = useState(false)
   const [geoLoading, setGeoLoading] = useState(false)
   const [mapFullscreen, setMapFullscreen] = useState(false)
+  const [photoFullscreen, setPhotoFullscreen] = useState(false)
+  const [similarityMatch, setSimilarityMatch] = useState<SimilarityMatch | null>(null)
+  const [pendingBody, setPendingBody] = useState<SaveBody | null>(null)
   const [loading, setLoading] = useState(false)
   const [prefillLoading, setPrefillLoading] = useState(isEdit)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+
+  const dupFieldLabel = (key: SimilarityFieldKey): string => {
+    switch (key) {
+      case 'name': return tr.dupFieldName
+      case 'fullName': return tr.dupFieldFullName
+      case 'phone': return tr.dupFieldPhone
+      case 'inn': return tr.dupFieldInn
+      case 'address': return tr.dupFieldAddress
+      case 'territory': return tr.dupFieldTerritory
+      case 'lineCode': return tr.dupFieldLine
+    }
+  }
 
   const [lines, setLines] = useState<SalesLine[]>([])
   const [linesLoading, setLinesLoading] = useState(true)
@@ -124,6 +163,15 @@ export default function AddClientScreen({
 
   useEffect(() => {
     return pushBackHandler(() => {
+      if (similarityMatch) {
+        setSimilarityMatch(null)
+        setPendingBody(null)
+        return true
+      }
+      if (photoFullscreen) {
+        setPhotoFullscreen(false)
+        return true
+      }
       if (mapFullscreen) {
         setMapFullscreen(false)
         return true
@@ -140,7 +188,7 @@ export default function AddClientScreen({
       }
       return false
     })
-  }, [mapFullscreen, modal, picker])
+  }, [similarityMatch, photoFullscreen, mapFullscreen, modal, picker])
 
   useEffect(() => {
     void (async () => {
@@ -398,64 +446,10 @@ export default function AddClientScreen({
     await uploadBlob(file, file.name || 'photo.jpg')
   }
 
-  const submit = async () => {
-    if (!name.trim()) {
-      showToast(reqMsg(tr.name))
-      return
-    }
-    if (!fullName.trim()) {
-      showToast(reqMsg(tr.fullName))
-      return
-    }
-    const phoneClean = phoneToStorage(phone)
-    if (!phoneClean || phoneClean.length < 13) {
-      showToast(tr.phoneInvalid)
-      return
-    }
-    if (!address.trim()) {
-      showToast(reqMsg(tr.address))
-      return
-    }
-    if (!lineCode.trim()) {
-      showToast(reqMsg(tr.line))
-      return
-    }
-    if (!category.trim()) {
-      showToast(reqMsg(tr.category))
-      return
-    }
-    if (lat == null || lng == null) {
-      showToast(tr.locationRequired)
-      return
-    }
+  const persistClient = async (body: SaveBody) => {
     setLoading(true)
     try {
-      const extras = extraPhones
-        .map(p => ({
-          phone: phoneToStorage(p.phone) || '',
-          note: p.note.trim() || undefined,
-        }))
-        .filter(p => !!p.phone)
-      const body = {
-        name: name.trim(),
-        fullName: fullName.trim(),
-        inn: inn.trim() || undefined,
-        phone: phoneClean,
-        extraPhones: extras,
-        address: address.trim(),
-        territory: territory.trim() || undefined,
-        photoUrl: photoUrl || undefined,
-        companyId,
-        lineCode: lineCode.trim(),
-        category: category.trim(),
-        latitude: lat,
-        longitude: lng,
-        orderRadiusMeters: radius,
-        canSeePromotions,
-      }
-
       if (isResubmit && resubmitRequestId) {
-        // CreateClientRequestDto: extraPhones / orderRadiusMeters qabul qilinmaydi (forbidNonWhitelisted)
         const result = await resubmitClientRequest(resubmitRequestId, {
           name: body.name,
           fullName: body.fullName,
@@ -486,7 +480,7 @@ export default function AddClientScreen({
       } else {
         const created = await createClient({
           ...body,
-          extraPhones: extras.length ? extras : undefined,
+          extraPhones: body.extraPhones.length ? body.extraPhones : undefined,
         })
         const pending = created.status === 'pending'
         onCreated({
@@ -498,7 +492,110 @@ export default function AddClientScreen({
       showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
     } finally {
       setLoading(false)
+      setSimilarityMatch(null)
+      setPendingBody(null)
     }
+  }
+
+  const submit = async () => {
+    if (!name.trim()) {
+      showToast(reqMsg(tr.name))
+      return
+    }
+    if (!fullName.trim()) {
+      showToast(reqMsg(tr.fullName))
+      return
+    }
+    const phoneClean = phoneToStorage(phone)
+    if (!phoneClean || phoneClean.length < 13) {
+      showToast(tr.phoneInvalid)
+      return
+    }
+    if (!address.trim()) {
+      showToast(reqMsg(tr.address))
+      return
+    }
+    if (!lineCode.trim()) {
+      showToast(reqMsg(tr.line))
+      return
+    }
+    if (!category.trim()) {
+      showToast(reqMsg(tr.category))
+      return
+    }
+    if (lat == null || lng == null) {
+      showToast(tr.locationRequired)
+      return
+    }
+
+    const extras = extraPhones
+      .map(p => ({
+        phone: phoneToStorage(p.phone) || '',
+        note: p.note.trim() || undefined,
+      }))
+      .filter(p => !!p.phone)
+
+    const body: SaveBody = {
+      name: name.trim(),
+      fullName: fullName.trim(),
+      inn: inn.trim() || undefined,
+      phone: phoneClean,
+      extraPhones: extras,
+      address: address.trim(),
+      territory: territory.trim() || undefined,
+      photoUrl: photoUrl || undefined,
+      companyId,
+      lineCode: lineCode.trim(),
+      category: category.trim(),
+      latitude: lat,
+      longitude: lng,
+      orderRadiusMeters: radius,
+      canSeePromotions,
+    }
+
+    // Edit — o‘xshashlik dialogisiz
+    if (isEdit && !isResubmit) {
+      await persistClient(body)
+      return
+    }
+
+    setLoading(true)
+    try {
+      const list = await fetchClients(companyId).catch(() => [] as Client[])
+      const match = findBestSimilarityMatch(
+        {
+          name: body.name,
+          fullName: body.fullName,
+          phone: body.phone,
+          inn: body.inn,
+          address: body.address,
+          territory: body.territory,
+          lineCode: body.lineCode,
+        },
+        Array.isArray(list) ? list : [],
+        { excludeClientId: isResubmit ? editClient?.id : undefined },
+      )
+      if (match) {
+        setPendingBody(body)
+        setSimilarityMatch(match)
+        setLoading(false)
+        return
+      }
+      await persistClient(body)
+    } catch (e) {
+      setLoading(false)
+      showToast(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
+    }
+  }
+
+  const confirmAddAnyway = () => {
+    if (!pendingBody) return
+    void persistClient(pendingBody)
+  }
+
+  const dismissSimilarity = () => {
+    setSimilarityMatch(null)
+    setPendingBody(null)
   }
 
   const headerBtn = (label: string, onClick: () => void) => (
@@ -696,16 +793,31 @@ export default function AddClientScreen({
             }}
           >
             <div
+              role={photoPreview ? 'button' : undefined}
+              tabIndex={photoPreview ? 0 : undefined}
+              onClick={() => {
+                if (photoPreview && !photoUploading) setPhotoFullscreen(true)
+              }}
+              onKeyDown={e => {
+                if (photoPreview && !photoUploading && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault()
+                  setPhotoFullscreen(true)
+                }
+              }}
               style={{
                 height: 160, background: dark ? '#1A1A2E' : '#F3F4F6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 position: 'relative',
+                cursor: photoPreview && !photoUploading ? 'pointer' : 'default',
               }}
             >
               {photoPreview ? (
                 <img src={photoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
-                <div style={{ textAlign: 'center', color: c.mutedText }}>
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  color: c.mutedText, width: '100%',
+                }}>
                   <Camera size={28} color={c.mutedText} />
                   <p style={{ margin: '8px 0 0', fontSize: 12 }}>{tr.clientPhoto}</p>
                 </div>
@@ -720,17 +832,40 @@ export default function AddClientScreen({
                 </div>
               )}
               {photoPreview && !photoUploading && (
-                <button
-                  type="button"
-                  onClick={() => { setPhotoUrl(null); setPhotoPreview(null) }}
-                  style={{
-                    position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 10,
-                    border: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <X size={14} color="#fff" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    title={tr.mapFullscreen}
+                    aria-label={tr.mapFullscreen}
+                    onClick={e => {
+                      e.stopPropagation()
+                      setPhotoFullscreen(true)
+                    }}
+                    style={{
+                      position: 'absolute', top: 8, left: 8, width: 32, height: 32, borderRadius: 10,
+                      border: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <Maximize2 size={14} color="#fff" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      setPhotoUrl(null)
+                      setPhotoPreview(null)
+                      setPhotoFullscreen(false)
+                    }}
+                    style={{
+                      position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 10,
+                      border: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <X size={14} color="#fff" />
+                  </button>
+                </>
               )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: 10 }}>
@@ -739,30 +874,34 @@ export default function AddClientScreen({
                 disabled={photoUploading || loading}
                 onClick={() => void pickPhoto('camera')}
                 style={{
-                  height: 40, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  height: 40, width: '100%', borderRadius: 12, border: 'none', cursor: 'pointer',
                   background: 'rgba(108,92,231,0.12)', color: c.primary,
-                  fontWeight: 800, fontSize: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  opacity: photoUploading ? 0.6 : 1,
+                  fontWeight: 800, fontSize: 12, padding: 0, margin: 0,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: photoUploading ? 0.6 : 1, lineHeight: 1, textAlign: 'center',
                 }}
               >
-                <Camera size={15} color={c.primary} />
-                {tr.takePhoto}
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: 16, height: 16 }}>
+                  <Camera size={15} color={c.primary} />
+                </span>
+                <span>{tr.takePhoto}</span>
               </button>
               <button
                 type="button"
                 disabled={photoUploading || loading}
                 onClick={() => void pickPhoto('gallery')}
                 style={{
-                  height: 40, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  height: 40, width: '100%', borderRadius: 12, border: 'none', cursor: 'pointer',
                   background: c.muted, color: c.text,
-                  fontWeight: 800, fontSize: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  opacity: photoUploading ? 0.6 : 1,
+                  fontWeight: 800, fontSize: 12, padding: 0, margin: 0,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: photoUploading ? 0.6 : 1, lineHeight: 1, textAlign: 'center',
                 }}
               >
-                <ImageIcon size={15} color={c.text} />
-                {tr.pickGallery}
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: 16, height: 16 }}>
+                  <ImageIcon size={15} color={c.text} />
+                </span>
+                <span>{tr.pickGallery}</span>
               </button>
             </div>
           </div>
@@ -872,6 +1011,170 @@ export default function AddClientScreen({
           </>
         )}
       </div>
+
+      {similarityMatch && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 96,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            paddingBottom: 'var(--safe-bottom)',
+          }}
+          onClick={dismissSimilarity}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', maxWidth: 480,
+              borderRadius: '24px 24px 0 0',
+              background: c.card,
+              border: `1px solid ${c.border}`,
+              padding: '20px 18px max(18px, var(--ime-bottom))',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: c.text }}>{tr.dupTitle}</p>
+                <p style={{
+                  margin: '8px 0 0', fontSize: 15, fontWeight: 800,
+                  color: similarityMatch.overallPct >= 70 ? '#DC2626' : '#D97706',
+                }}>
+                  {tr.dupChance.replace('{pct}', String(similarityMatch.overallPct))}
+                </p>
+              </div>
+              <div style={{
+                width: 64, height: 64, borderRadius: 18, flexShrink: 0,
+                background: similarityMatch.overallPct >= 70
+                  ? 'rgba(220,38,38,0.14)'
+                  : 'rgba(217,119,6,0.16)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontWeight: 900, fontSize: 20,
+                color: similarityMatch.overallPct >= 70 ? '#DC2626' : '#D97706',
+              }}>
+                {similarityMatch.overallPct}%
+              </div>
+            </div>
+
+            <div style={{
+              borderRadius: 14, padding: 12, marginBottom: 14,
+              background: dark ? '#1A1A2E' : '#F3F4F6',
+              border: `1px solid ${c.border}`,
+            }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: c.mutedText }}>{tr.dupMatchedClient}</p>
+              <p style={{ margin: '4px 0 0', fontSize: 15, fontWeight: 800, color: c.text }}>
+                {similarityMatch.client.name}
+              </p>
+              {similarityMatch.client.phone && (
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: c.mutedText }}>{similarityMatch.client.phone}</p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+              {similarityMatch.fields.map(f => {
+                const barColor = f.pct >= 100 ? '#DC2626' : f.pct >= 50 ? '#D97706' : c.mutedText
+                return (
+                  <div key={f.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: c.mutedText }}>{dupFieldLabel(f.key)}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: barColor }}>{f.pct}%</span>
+                    </div>
+                    <div style={{
+                      height: 6, borderRadius: 99, background: dark ? '#0F0F1A' : '#E5E7EB', overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        height: '100%', width: `${f.pct}%`, borderRadius: 99,
+                        background: barColor, transition: 'width .2s',
+                      }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                type="button"
+                onClick={dismissSimilarity}
+                disabled={loading}
+                style={{
+                  height: 48, borderRadius: 14, border: `1px solid ${c.border}`,
+                  background: c.muted, color: c.text, fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                }}
+              >
+                {tr.dupCancel}
+              </button>
+              <button
+                type="button"
+                onClick={confirmAddAnyway}
+                disabled={loading}
+                style={{
+                  height: 48, borderRadius: 14, border: 'none',
+                  background: c.primary, color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >
+                {loading ? tr.loading : tr.dupAddAnyway}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {photoFullscreen && photoPreview && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPhotoFullscreen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 95,
+            background: 'rgba(0,0,0,0.94)',
+            display: 'flex', flexDirection: 'column',
+          }}
+        >
+          <div style={{
+            padding: 'var(--header-pad-top) max(16px, var(--safe-left)) 10px max(16px, var(--safe-right))',
+            display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          }}>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setPhotoFullscreen(false) }}
+              style={{
+                width: 40, height: 40, borderRadius: 13, border: 'none',
+                background: 'rgba(255,255,255,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              <X size={18} color="#fff" />
+            </button>
+            <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#fff', flex: 1 }}>
+              {tr.clientPhoto}
+            </p>
+          </div>
+          <div
+            style={{
+              flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '8px max(12px, var(--safe-left)) max(16px, var(--safe-bottom)) max(12px, var(--safe-right))',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <img
+              src={photoPreview}
+              alt=""
+              style={{
+                maxWidth: '100%', maxHeight: '100%',
+                width: 'auto', height: 'auto',
+                objectFit: 'contain', borderRadius: 8,
+              }}
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {mapFullscreen && createPortal(
         <div style={{

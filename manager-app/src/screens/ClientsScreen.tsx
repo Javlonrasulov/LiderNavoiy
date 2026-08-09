@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, PenSquare, Plus, Search, X } from '../icons'
+import { createPortal } from 'react-dom'
+import { ChevronDown, ImageIcon, PenSquare, Plus, Search, X } from '../icons'
 import {
   deleteClientRequest,
   fetchClientRequests,
   fetchClients,
   fetchLines,
+  resolveMediaUrl,
   type ClientRequestRow,
   type SalesLine,
 } from '../api/manager'
@@ -62,7 +64,10 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
   const [lineFilter, setLineFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Client | null>(null)
+  const [photoClient, setPhotoClient] = useState<Client | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+
+  const photoSrc = photoClient?.photoUrl ? resolveMediaUrl(photoClient.photoUrl) : ''
 
   const lineNameByCode = useMemo(() => {
     const map = new Map<string, string>()
@@ -121,13 +126,17 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
 
   useEffect(() => {
     return pushBackHandler(() => {
+      if (photoClient) {
+        setPhotoClient(null)
+        return true
+      }
       if (selected) {
         setSelected(null)
         return true
       }
       return false
     })
-  }, [selected])
+  }, [selected, photoClient])
 
   const sortTabs: { id: ClientSort; label: string }[] = [
     { id: 'all', label: tr.clientSortAll },
@@ -381,6 +390,27 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, flexShrink: 0 }}>
                 <button
                   type="button"
+                  title={tr.clientPhoto}
+                  aria-label={tr.clientPhoto}
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (!cl.photoUrl) {
+                      showToast(tr.clientPhotoMissing)
+                      return
+                    }
+                    setPhotoClient(cl)
+                  }}
+                  style={{
+                    width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: cl.photoUrl ? 'rgba(108,92,231,0.12)' : c.muted,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    opacity: cl.photoUrl ? 1 : 0.55,
+                  }}
+                >
+                  <ImageIcon size={15} color={cl.photoUrl ? c.primary : c.mutedText} />
+                </button>
+                <button
+                  type="button"
                   title={tr.editClient}
                   aria-label={tr.editClient}
                   onClick={e => {
@@ -427,6 +457,78 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
           tr={tr}
           onClose={() => setSelected(null)}
         />
+      )}
+
+      {photoClient && photoSrc && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPhotoClient(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 95,
+            background: 'rgba(0,0,0,0.94)',
+            display: 'flex', flexDirection: 'column',
+          }}
+        >
+          <div style={{
+            padding: 'var(--header-pad-top) max(16px, var(--safe-left)) 10px max(16px, var(--safe-right))',
+            display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          }}>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setPhotoClient(null) }}
+              style={{
+                width: 40, height: 40, borderRadius: 13, border: 'none',
+                background: 'rgba(255,255,255,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              <X size={18} color="#fff" />
+            </button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {photoClient.name}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.65)' }}>
+                {tr.clientPhotoTapToClose}
+              </p>
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '8px max(12px, var(--safe-left)) 8px max(12px, var(--safe-right))',
+            }}
+          >
+            <img
+              src={photoSrc}
+              alt=""
+              style={{
+                maxWidth: '100%', maxHeight: '100%',
+                width: 'auto', height: 'auto',
+                objectFit: 'contain', borderRadius: 8,
+                pointerEvents: 'none',
+              }}
+            />
+          </div>
+          <div style={{
+            padding: '10px max(16px, var(--safe-left)) max(16px, var(--safe-bottom)) max(16px, var(--safe-right))',
+            flexShrink: 0,
+          }}>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); setPhotoClient(null) }}
+              style={{
+                width: '100%', height: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
+                background: 'rgba(255,255,255,0.14)', color: '#fff',
+                fontSize: 15, fontWeight: 800,
+              }}
+            >
+              {tr.clientPhotoClose}
+            </button>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

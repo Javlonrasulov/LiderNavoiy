@@ -1072,6 +1072,9 @@ object AppStrings {
         "Локация сохранена",
     )
     fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дўкон расми", "Фото магазина")
+    fun fullScreenPhoto(lang: AppLanguage) = tr(lang, "To'liq ekran", "Тўлиқ экран", "Полный экран")
+    fun closeFullscreen(lang: AppLanguage) = tr(lang, "Chiqish", "Чиқиш", "Выйти")
+    fun close(lang: AppLanguage) = tr(lang, "Yopish", "Ёпиш", "Закрыть")
     fun useMyLocation(lang: AppLanguage) = tr(lang, "Mening joyim", "Менинг жойим", "Моё местоположение")
     fun tapMapHint(lang: AppLanguage) = tr(
         lang,

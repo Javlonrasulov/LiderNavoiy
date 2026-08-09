@@ -51,6 +51,7 @@ import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.clients.LocationPickerMap
 import uz.distributor.crm.presentation.components.NavGlassInfoToast
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -139,6 +140,7 @@ fun ClientDetailScreen(
                         ?: "Standart"
                     val hasCoords = client.latitude != null && client.longitude != null &&
                         !(client.latitude == 0.0 && client.longitude == 0.0)
+                    var showFullPhoto by remember { mutableStateOf(false) }
                     val photoUrl = remember(client.photoUrl) {
                         viewModel.resolvePhotoUrl(client.photoUrl).takeIf { it.isNotBlank() }
                     }
@@ -173,18 +175,6 @@ fun ClientDetailScreen(
                                     fontSize = 22.sp,
                                     lineHeight = 28.sp,
                                 )
-                                if (photoUrl != null) {
-                                    Spacer(Modifier.height(14.dp))
-                                    Image(
-                                        painter = rememberAsyncImagePainter(photoUrl),
-                                        contentDescription = AppStrings.clientPhoto(lang),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(168.dp)
-                                            .clip(RoundedCornerShape(16.dp)),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                }
                                 Spacer(Modifier.height(16.dp))
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
@@ -305,8 +295,68 @@ fun ClientDetailScreen(
                                 titleColor = titleColor,
                                 subColor = subColor,
                             )
-                            Spacer(Modifier.height(24.dp))
+
+                            if (photoUrl != null) {
+                                Spacer(Modifier.height(16.dp))
+                                Text(
+                                    AppStrings.clientPhoto(lang),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = subColor,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable { showFullPhoto = true },
+                                ) {
+                                    Image(
+                                        painter = rememberAsyncImagePainter(photoUrl),
+                                        contentDescription = AppStrings.clientPhoto(lang),
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color.Black.copy(alpha = 0.45f),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(10.dp),
+                                    ) {
+                                        Row(
+                                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Fullscreen,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                AppStrings.fullScreenPhoto(lang),
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(bottomNavHeight() + 24.dp))
                         }
+                    }
+
+                    if (showFullPhoto && photoUrl != null) {
+                        FullscreenClientPhotoDialog(
+                            photoUrl = photoUrl,
+                            title = AppStrings.clientPhoto(lang),
+                            onDismiss = { showFullPhoto = false },
+                        )
                     }
                 }
             }
@@ -360,6 +410,102 @@ fun ClientDetailScreen(
                         isDark = isDark,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenClientPhotoDialog(
+    photoUrl: String,
+    title: String,
+    onDismiss: () -> Unit,
+) {
+    val lang = LocalAppLanguage.current
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(photoUrl),
+                contentDescription = title,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp)
+                    .statusBarsPadding()
+                    .padding(top = 64.dp, bottom = 88.dp)
+                    .navigationBarsPadding(),
+                contentScale = ContentScale.Fit,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f).padding(end = 12.dp),
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Surface(
+                    onClick = onDismiss,
+                    shape = CircleShape,
+                    color = Color.White.copy(alpha = 0.18f),
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = AppStrings.close(lang),
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+            }
+
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black,
+                ),
+            ) {
+                Text(
+                    AppStrings.closeFullscreen(lang),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                )
             }
         }
     }
