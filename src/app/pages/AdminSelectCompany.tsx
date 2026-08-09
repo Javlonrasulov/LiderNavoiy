@@ -32,7 +32,7 @@ const T: Record<Lang, Record<string, string>> = {
   uz: {
     title: 'Organizatsiyani tanlang', subtitle: 'Quyidagi organizatsiyalardan birini tanlab, ulaning',
     connect: 'Ulash', agents: 'agent', clients: 'mijoz',
-    selectHint: 'Organizatsiyani tanlang', archive: 'Arxiv', current: 'Joriy', logout: 'Chiqish',
+    selectHint: 'Organizatsiyani tanlang', logout: 'Chiqish',
     addTitle: 'Yangi organizatsiya', editTitle: 'Organizatsiyani tahrirlash',
     name: 'Nomi', shortName: 'Qisqa nom (Client APK)', desc: 'Izoh', save: 'Saqlash', cancel: 'Bekor qilish',
     iconTab: 'Icon', imageTab: 'Rasm', uploadImg: 'Rasm yuklash', namePlaceholder: "Organizatsiya nomi",
@@ -50,7 +50,7 @@ const T: Record<Lang, Record<string, string>> = {
   cy: {
     title: 'Организацияни танланг', subtitle: 'Қуйидаги организациялардан бирини танлаб, уланинг',
     connect: 'Улаш', agents: 'агент', clients: 'мижоз',
-    selectHint: 'Организацияни танланг', archive: 'Архив', current: 'Жорий', logout: 'Чиқиш',
+    selectHint: 'Организацияни танланг', logout: 'Чиқиш',
     addTitle: 'Янги организация', editTitle: 'Организацияни таҳрирлаш',
     name: 'Номи', shortName: 'Қисқа ном (Client APK)', desc: 'Изоҳ', save: 'Сақлаш', cancel: 'Бекор қилиш',
     iconTab: 'Иконка', imageTab: 'Расм', uploadImg: 'Расм юклаш', namePlaceholder: 'Организация номи',
@@ -68,7 +68,7 @@ const T: Record<Lang, Record<string, string>> = {
   ru: {
     title: 'Выберите организацию', subtitle: 'Выберите одну из организаций ниже и подключитесь',
     connect: 'Подключить', agents: 'агент', clients: 'клиент',
-    selectHint: 'Выберите организацию', archive: 'Архив', current: 'Текущий', logout: 'Выйти',
+    selectHint: 'Выберите организацию', logout: 'Выйти',
     addTitle: 'Новая организация', editTitle: 'Редактировать организацию',
     name: 'Название', shortName: 'Краткое имя (Client APK)', desc: 'Описание', save: 'Сохранить', cancel: 'Отмена',
     iconTab: 'Иконка', imageTab: 'Фото', uploadImg: 'Загрузить фото', namePlaceholder: 'Название организации',
@@ -117,8 +117,6 @@ const COLOR_DOTS: Record<string, string> = {
   'from-gray-500 to-slate-600':   'bg-gray-500',
 };
 
-const YEARS = [2026, 2025, 2024, 2023];
-
 /* ─── Blank form ─────────────────────────────────────────── */
 const blankForm = () => ({
   name: '', shortName: '', description: '', icon: '🏢',
@@ -135,7 +133,6 @@ export default function AdminSelectCompany() {
   /* lang / ui state */
   const { lang, setLang } = useLang();
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(2026);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { companies: apiCompanies, refresh: refreshCompanies } = useCompanies();
@@ -159,7 +156,6 @@ export default function AdminSelectCompany() {
 
   const t = T[lang];
   const D = isDark;
-  const isCurrentYear = selectedYear === 2026;
   const currentLang = LANGS.find(l => l.id === lang)!;
 
   /* ── helpers ── */
@@ -365,21 +361,6 @@ export default function AdminSelectCompany() {
             </button>
           </div>
 
-          {/* Year tabs */}
-          <div className="flex items-center gap-2 mt-5">
-            {YEARS.map(year => (
-              <button key={year} onClick={() => { setSelectedYear(year); setSelectedId(null); }}
-                className={`px-4 py-1.5 rounded-xl text-sm font-medium transition-all ${selectedYear === year ? D ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : D ? 'bg-white/6 text-gray-500 hover:bg-white/10 hover:text-gray-300' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'}`}>
-                {year}
-                {year === 2026 && (
-                  <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${selectedYear === year ? 'bg-white/20 text-white' : D ? 'bg-indigo-600/20 text-indigo-400' : 'bg-indigo-100 text-indigo-600'}`}>{t.current}</span>
-                )}
-              </button>
-            ))}
-            {!isCurrentYear && (
-              <span className={`ml-auto text-xs px-3 py-1 rounded-full ${D ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>{t.archive}</span>
-            )}
-          </div>
         </div>
 
         {/* Companies grid */}
