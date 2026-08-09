@@ -336,7 +336,11 @@ export class ClientsController {
     const companyId = this.resolveCompanyId(req.user, clientDto.companyId);
 
     if (req.user.role === UserRole.DISTRIBUTOR) {
-      await this.companiesService.assertAgentsCanAddClients(companyId);
+      if (!req.user.distributorProfile?.canAddClients) {
+        throw new ForbiddenException(
+          'Админ томонидан рухсат берилмаган. Администраторга мурожаат қилинг.',
+        );
+      }
     }
 
     const isAdmin = req.user.role === UserRole.ADMIN;
@@ -406,7 +410,6 @@ export class ClientsController {
     );
 
     if (req.user.role === UserRole.DISTRIBUTOR) {
-      await this.companiesService.assertAgentsCanAddClients(companyId);
       if (!req.user.distributorProfile?.canAddClients) {
         throw new ForbiddenException(
           'Админ томонидан рухсат берилмаган. Администраторга мурожаат қилинг.',

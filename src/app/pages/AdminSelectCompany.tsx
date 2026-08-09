@@ -45,10 +45,6 @@ const T: Record<Lang, Record<string, string>> = {
     productTypeKg: 'kg',
     productTypeHintKg: 'Tarozi moduli ochiq',
     productTypeHintDona: 'Tayyorlanmagan buyurtmalar moduli ochiq',
-    agentsCanAddClients: 'Mijoz qo‘shish (agent/dostavka)',
-    agentsCanAddClientsOn: 'Ruxsat berilgan',
-    agentsCanAddClientsOff: 'O‘chirilgan',
-    agentsCanAddClientsHint: 'Agent va dostavkachilar APK orqali yangi mijoz qo‘sha oladi',
     saveError: 'Saqlashda xatolik',
   },
   cy: {
@@ -67,10 +63,6 @@ const T: Record<Lang, Record<string, string>> = {
     productTypeKg: 'кг',
     productTypeHintKg: 'Тарози модули очиқ',
     productTypeHintDona: 'Тайёрланмаган буюртмалар модули очиқ',
-    agentsCanAddClients: 'Мижоз қўшиш (агент/доставка)',
-    agentsCanAddClientsOn: 'Рухсат берилган',
-    agentsCanAddClientsOff: 'Ўчирилган',
-    agentsCanAddClientsHint: 'Агент ва доставкачилар APK орқали янги мижоз қўша олади',
     saveError: 'Сақлашда хатолик',
   },
   ru: {
@@ -89,10 +81,6 @@ const T: Record<Lang, Record<string, string>> = {
     productTypeKg: 'кг',
     productTypeHintKg: 'Модуль Весы включён',
     productTypeHintDona: 'Модуль Неподготовленные заказы включён',
-    agentsCanAddClients: 'Добавление клиентов (агент/доставка)',
-    agentsCanAddClientsOn: 'Разрешено',
-    agentsCanAddClientsOff: 'Выключено',
-    agentsCanAddClientsHint: 'Агенты и доставщики могут добавлять клиентов через APK',
     saveError: 'Ошибка сохранения',
   },
 };
@@ -136,7 +124,6 @@ const blankForm = () => ({
   name: '', shortName: '', description: '', icon: '🏢',
   color: 'from-indigo-500 to-blue-600', imageUrl: '',
   productType: 'kg_dona' as ProductType,
-  agentsCanAddClients: false,
 });
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -193,7 +180,6 @@ export default function AdminSelectCompany() {
       icon: company.icon, color: company.color,
       imageUrl: company.imageUrl ?? '',
       productType: company.productType ?? 'kg_dona',
-      agentsCanAddClients: !!company.agentsCanAddClients,
     });
     setIconTab(company.imageUrl ? 'image' : 'icon');
     setEditingId(company.id);
@@ -214,7 +200,6 @@ export default function AdminSelectCompany() {
       icon: form.icon,
       color: form.color,
       productType: form.productType,
-      agentsCanAddClients: form.agentsCanAddClients,
     };
     const hasToken = !!localStorage.getItem('api_access_token');
     try {
@@ -249,7 +234,6 @@ export default function AdminSelectCompany() {
                     icon: payload.icon,
                     color: payload.color,
                     productType: payload.productType,
-                    agentsCanAddClients: payload.agentsCanAddClients,
                     imageUrl: form.imageUrl || undefined,
                   }
                 : c
@@ -266,7 +250,6 @@ export default function AdminSelectCompany() {
                   icon: payload.icon,
                   color: payload.color,
                   productType: payload.productType,
-                  agentsCanAddClients: payload.agentsCanAddClients,
                   imageUrl: form.imageUrl || undefined,
                 }
               : c
@@ -572,38 +555,6 @@ export default function AdminSelectCompany() {
                 </div>
                 <p className={`text-[11px] mt-2 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
                   {form.productType === 'dona' ? t.productTypeHintDona : t.productTypeHintKg}
-                </p>
-              </div>
-
-              {/* Agents can add clients */}
-              <div>
-                <label className={`text-xs font-semibold mb-1.5 block ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t.agentsCanAddClients}
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, agentsCanAddClients: !f.agentsCanAddClients }))}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border text-sm font-semibold transition-all ${
-                    form.agentsCanAddClients
-                      ? D
-                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                        : 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                      : D
-                        ? 'border-white/10 bg-white/5 text-gray-400'
-                        : 'border-gray-200 bg-gray-50 text-gray-500'
-                  }`}
-                >
-                  <span>{form.agentsCanAddClients ? t.agentsCanAddClientsOn : t.agentsCanAddClientsOff}</span>
-                  <span className={`w-11 h-6 rounded-full p-0.5 transition-colors ${
-                    form.agentsCanAddClients ? 'bg-emerald-500' : D ? 'bg-white/15' : 'bg-gray-300'
-                  }`}>
-                    <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                      form.agentsCanAddClients ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </span>
-                </button>
-                <p className={`text-[11px] mt-2 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {t.agentsCanAddClientsHint}
                 </p>
               </div>
 
