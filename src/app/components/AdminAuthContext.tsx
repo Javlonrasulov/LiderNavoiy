@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { demo } from '../data/demoLimit';
 import { api, clearTokens, resetUnauthorizedGuard } from '../api/client';
 import { registerAdminWebPush } from '../lib/firebaseMessaging';
 
@@ -28,76 +27,8 @@ export function companyShowsTarozi(productType?: ProductType | string | null): b
   return productType !== 'dona';
 }
 
-const ALL_COMPANIES: Company[] = [
-  {
-    id: 'boran',
-    name: 'Boran Leaders+ Darveshi Navoiy',
-    shortName: 'Boran Leaders+',
-    icon: '🏢',
-    color: 'from-red-600 to-rose-700',
-    description: 'Savdo va distribyutsiya',
-    agents: 0,
-    clients: 0,
-    productType: 'kg_dona',
-  },
-  {
-    id: 'zarafshon',
-    name: 'Зарафшон Шерин',
-    shortName: 'Зарафшон',
-    icon: '🌿',
-    color: 'from-blue-500 to-cyan-600',
-    description: 'Oziq-ovqat mahsulotlari',
-    agents: 0,
-    clients: 0,
-    productType: 'kg_dona',
-  },
-  {
-    id: 'mipter',
-    name: 'Миптер Навоий',
-    shortName: 'Миптер',
-    icon: '⚡',
-    color: 'from-amber-500 to-orange-600',
-    description: 'Savdo kompaniyasi',
-    agents: 3,
-    clients: 87,
-    productType: 'kg_dona',
-  },
-  {
-    id: 'navruz',
-    name: 'Navruz Savdo Buxoro',
-    shortName: 'Navruz Savdo',
-    icon: '🌸',
-    color: 'from-emerald-500 to-teal-600',
-    description: 'Ulgurji savdo',
-    agents: 6,
-    clients: 195,
-    productType: 'kg_dona',
-  },
-  {
-    id: 'sarbon',
-    name: 'Sarbon Group Samarqand',
-    shortName: 'Sarbon Group',
-    icon: '🔷',
-    color: 'from-purple-500 to-violet-600',
-    description: 'Distribyutsiya markazi',
-    agents: 4,
-    clients: 103,
-    productType: 'kg_dona',
-  },
-  {
-    id: 'atlas',
-    name: 'Atlas Trade Farg\'ona',
-    shortName: 'Atlas Trade',
-    icon: '🌐',
-    color: 'from-indigo-500 to-blue-600',
-    description: 'Import va savdo',
-    agents: 3,
-    clients: 76,
-    productType: 'kg_dona',
-  },
-];
-
-export const COMPANIES = demo(ALL_COMPANIES);
+/** @deprecated Hardcoded ro‘yxat olib tashlandi — useCompanies() ishlatilsin */
+export const COMPANIES: Company[] = [];
 
 interface AdminAuthContextType {
   isLoggedIn: boolean;
@@ -134,11 +65,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore */ }
     }
-    const saved = localStorage.getItem('admin_company');
-    if (saved) {
-      const found = COMPANIES.find(c => c.id === saved);
-      return found || null;
-    }
+    // Faqat to‘liq company JSON saqlangan bo‘lsa tiklanadi (hardcoded fallback yo‘q)
     return null;
   });
   const [adminUser, setAdminUser] = useState<{ name: string; role: string; permissions?: string[] | null } | null>(() => {

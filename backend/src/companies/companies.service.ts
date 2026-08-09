@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
@@ -25,32 +25,7 @@ export interface CompanyListItem {
 }
 
 @Injectable()
-export class CompaniesService implements OnModuleInit {
-  private readonly defaults = [
-    {
-      id: 'boran',
-      name: 'Boran Leaders+ Darveshi Navoiy',
-      shortName: 'Boran Leaders+',
-      icon: '🏢',
-      color: 'from-red-600 to-rose-700',
-      description: 'Savdo va distribyutsiya',
-      productType: 'kg_dona',
-      agentsCanAddClients: false,
-      clientsAddWithoutApproval: false,
-    },
-    {
-      id: 'zarafshon',
-      name: 'Зарафшон Шерин',
-      shortName: 'Зарафшон',
-      icon: '🌿',
-      color: 'from-blue-500 to-cyan-600',
-      description: 'Oziq-ovqat mahsulotlari',
-      productType: 'kg_dona',
-      agentsCanAddClients: false,
-      clientsAddWithoutApproval: false,
-    },
-  ];
-
+export class CompaniesService {
   constructor(
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
@@ -59,16 +34,6 @@ export class CompaniesService implements OnModuleInit {
     @InjectRepository(Client)
     private readonly clientRepo: Repository<Client>,
   ) {}
-
-  async onModuleInit() {
-    const count = await this.companyRepo.count();
-    if (count > 0) return;
-    await this.companyRepo.save(
-      this.defaults.map((item) =>
-        this.companyRepo.create({ ...item, isActive: true }),
-      ),
-    );
-  }
 
   private toListItem(
     company: Company,

@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { api, type BackendCompany } from '../api/client';
-import { COMPANIES, type Company, type ProductType } from './AdminAuthContext';
+import { type Company, type ProductType } from './AdminAuthContext';
 
 function mapCompany(row: BackendCompany): Company {
   return {
@@ -37,13 +37,13 @@ interface CompaniesContextValue {
 const CompaniesContext = createContext<CompaniesContextValue | null>(null);
 
 export function CompaniesProvider({ children }: { children: ReactNode }) {
-  const [companies, setCompanies] = useState<Company[]>(COMPANIES);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!localStorage.getItem('api_access_token')) {
-      setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
+      setCompanies([]);
       setError(null);
       return;
     }
@@ -51,11 +51,7 @@ export function CompaniesProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const rows = await api.getCompanies();
-      if (rows.length > 0) {
-        setCompanies(rows.map(mapCompany));
-      } else {
-        setCompanies(COMPANIES.map(c => ({ ...c, agents: 0, clients: 0 })));
-      }
+      setCompanies(rows.map(mapCompany));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/\b401\b/i.test(msg) || /unauthorized/i.test(msg)) {

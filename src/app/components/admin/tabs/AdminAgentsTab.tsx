@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Search, Edit2, Trash2, X, Check, AlertTriangle, Plus, Phone, UserCircle2, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { type SotrudnikRow } from '../../../data/adminData';
-import { COMPANIES } from '../../AdminAuthContext';
+import { useCompanies } from '../../CompaniesContext';
 import {
   api,
   type AppUserRecord,
@@ -164,6 +164,7 @@ function PortalSelect({
 }
 
 export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
+  const { companies: COMPANIES } = useCompanies();
   const [isMobile, setIsMobile]   = useState(false);
   const [search, setSearch]       = useState('');
   const [apiUsers, setApiUsers]   = useState<AppUserRecord[]>([]);
@@ -447,10 +448,14 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       setSaveError(t.userErrPasswordRequired || 'Login va parol kiriting');
       return;
     }
+    const orgId = selectedIds[0];
+    if (!orgId) {
+      setSaveError('Avval organizatsiya tanlang');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      const orgId = selectedIds[0] || 'boran';
       const meta = resolvePositionMeta(addDraft);
       const dept = resolveDepartmentMeta(addDraft);
       const role = appAccessToBackendRole(meta.appAccess);

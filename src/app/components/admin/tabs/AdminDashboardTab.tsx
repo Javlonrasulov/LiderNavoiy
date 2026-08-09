@@ -4,7 +4,7 @@ import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import { fmt, type AgentRow, type ChartRow } from '../../../data/adminData';
 import { AdminTip } from '../AdminTip';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
-import { COMPANIES } from '../../AdminAuthContext';
+import { useCompanies } from '../../CompaniesContext';
 
 interface Props {
   D: boolean;
@@ -53,6 +53,7 @@ export function AdminDashboardTab({
   activeAgents, selectedCompanyIds,
   setShowEmpMap, setTab, setSelectedAgent,
 }: Props) {
+  const { companies: COMPANIES } = useCompanies();
   const formatTrend = (n?: number) => {
     const v = n ?? 0;
     return `${v > 0 ? '+' : ''}${v}%`;

@@ -6,7 +6,7 @@ import {
   Package, Clock, Maximize2, Minimize2, CheckCircle2, XCircle,
 } from 'lucide-react';
 import { type AgentRow } from '../../../data/adminData';
-import { COMPANIES } from '../../AdminAuthContext';
+import { useCompanies } from '../../CompaniesContext';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from '../../MapLayerSwitcher';
 import L from 'leaflet';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
@@ -286,6 +286,7 @@ function LiveLocationMap({ emp, D, height = 580, fullscreen }: LiveMapProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AdminDostavkaTab({ D, t, selectedCompanyIds, showBalances }: Props) {
+  const { companies: COMPANIES } = useCompanies();
   const [localEmps, setLocalEmps] = useState<DeliveryEmp[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]       = useState('');

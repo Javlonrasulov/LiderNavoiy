@@ -173,8 +173,8 @@ export class UsersService {
     if (!profile) {
       profile = this.profileRepo.create({
         userId: user.id,
-        companyId: primaryId ?? 'boran',
-        companyIds: normalizedIds?.length ? normalizedIds : [primaryId ?? 'boran'],
+        companyId: primaryId ?? null,
+        companyIds: normalizedIds?.length ? normalizedIds : (primaryId ? [primaryId] : []),
         companyName: data.companyName ?? null,
         phone: data.phone?.trim() || null,
         position: data.position?.trim() || null,

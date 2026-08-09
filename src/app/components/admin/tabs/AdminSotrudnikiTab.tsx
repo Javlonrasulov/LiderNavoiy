@@ -8,7 +8,7 @@ import {
   PhoneCall, Wifi, WifiOff, BarChart3, Smartphone,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
-import { COMPANIES } from '../../AdminAuthContext';
+import { useCompanies } from '../../CompaniesContext';
 import { TrackingMap } from '../TrackingMap';
 import { DayHistoryPanel } from '../DayHistoryPanel';
 import { SingleDatePicker } from '../SingleDatePicker';
@@ -431,6 +431,7 @@ function trackStatusColor(status: PointStatus, green: string, amber: string, ind
 
 // ── Main component ─────────────────────────────────────────────────────────
 export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, selectedCompanyIds, showBalances, activeMapEmployees = [], mapCenterInfo, setShowEmpMap, activeWeekly = [] }: Props) {
+  const { companies: COMPANIES } = useCompanies();
   const [backendDistributors, setBackendDistributors] = useState<Distributor[]>([]);
   const [backendAgents, setBackendAgents] = useState<AgentRow[]>([]);
   const [backendMapEmps, setBackendMapEmps] = useState<EmployeeMarker[]>([]);
