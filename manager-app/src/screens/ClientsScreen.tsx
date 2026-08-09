@@ -74,10 +74,27 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
     return map
   }, [lines])
 
+  const agentNameByCode = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const line of lines) {
+      const code = line.code?.trim()
+      const agent = line.agentName?.trim()
+      if (!code || !agent) continue
+      map.set(code, agent)
+    }
+    return map
+  }, [lines])
+
   const resolveLineLabel = (code?: string | null) => {
     const key = code?.trim()
     if (!key) return '—'
     return lineNameByCode.get(key) || '—'
+  }
+
+  const resolveAgentLabel = (code?: string | null) => {
+    const key = code?.trim()
+    if (!key) return '—'
+    return agentNameByCode.get(key) || '—'
   }
 
   const load = async () => {
@@ -382,14 +399,17 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
             </div>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <Meta label={tr.phone} value={cl.phone || '—'} muted={c.mutedText} text={c.text} />
+              <Meta label={tr.clientOrderAgent} value={resolveAgentLabel(cl.lineCode)} muted={c.mutedText} text={c.text} />
               <Meta label={tr.line} value={resolveLineLabel(cl.lineCode)} muted={c.mutedText} text={c.text} />
-              <Meta label={tr.address} value={cl.address || '—'} muted={c.mutedText} text={c.text} />
               <Meta
                 label={tr.debt}
                 value={cl.debt != null ? formatMoney(cl.debt, lang) : '—'}
                 muted={c.mutedText}
                 text={c.red}
               />
+              <div style={{ gridColumn: '1 / -1' }}>
+                <Meta label={tr.address} value={cl.address || '—'} muted={c.mutedText} text={c.text} />
+              </div>
             </div>
           </div>
         ))}
@@ -417,6 +437,144 @@ function Meta({ label, value, muted, text }: { label: string; value: string; mut
     <div>
       <p style={{ fontSize: 10, color: muted, fontWeight: 600 }}>{label}</p>
       <p style={{ fontSize: 12, color: text, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</p>
+    </div>
+  )
+}
+
+function FilterDropdown({
+  dark,
+  label,
+  valueLabel,
+  active,
+  options,
+  selectedId,
+  onSelect,
+}: {
+  dark: boolean
+  label: string
+  valueLabel: string
+  active: boolean
+  options: { id: string; label: string }[]
+  selectedId: string
+  onSelect: (id: string) => void
+}) {
+  const c = theme(dark)
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          height: 44,
+          padding: '0 12px',
+          borderRadius: 14,
+          border: `1px solid ${active ? 'rgba(108,92,231,0.35)' : c.border}`,
+          background: active ? 'rgba(108,92,231,0.12)' : c.card,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: c.mutedText, lineHeight: 1.1 }}>
+            {label}
+          </p>
+          <p style={{
+            margin: '2px 0 0',
+            fontSize: 13,
+            fontWeight: 800,
+            color: active ? c.primary : c.text,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {valueLabel}
+          </p>
+        </div>
+        <ChevronDown
+          size={16}
+          color={c.mutedText}
+          style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="no-scrollbar"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            maxHeight: 260,
+            overflowY: 'auto',
+            borderRadius: 14,
+            background: c.card,
+            border: `1px solid ${c.border}`,
+            boxShadow: dark
+              ? '0 12px 32px rgba(0,0,0,0.45)'
+              : '0 12px 28px rgba(91,45,142,0.18)',
+            zIndex: 70,
+            animation: 'fadeIn 0.15s ease both',
+          }}
+        >
+          {options.map(opt => {
+            const selected = opt.id === selectedId
+            return (
+              <button
+                key={opt.id || '__all__'}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onSelect(opt.id)
+                  setOpen(false)
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  background: selected ? 'rgba(108,92,231,0.12)' : 'transparent',
+                  color: selected ? c.primary : c.text,
+                  fontSize: 13,
+                  fontWeight: selected ? 800 : 600,
+                }}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

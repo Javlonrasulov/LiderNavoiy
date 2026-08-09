@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Translations } from '../i18n'
 import { theme } from '../theme'
 import { pushBackHandler } from '../utils/hardwareBack'
@@ -126,10 +126,13 @@ export default function MessagesScreen({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: ChatMessage } | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const docInputRef = useRef<HTMLInputElement>(null)
   const socketRef = useRef<MessagesSocket | null>(null)
   const activeIdRef = useRef<string | null>(null)
+  const [composerH, setComposerH] = useState(72)
+  const [inputFocused, setInputFocused] = useState(false)
 
   const activeConv = conversations.find(x => x.id === activeId) ?? null
   const selectionMode = selectedIds.size > 0
@@ -165,16 +168,22 @@ export default function MessagesScreen({
     }
   }, [emitUnread, tr.msgError])
 
+  const setChatOpenFlag = useCallback((open: boolean) => {
+    onChatOpenChange?.(open)
+    document.documentElement.setAttribute('data-chat-open', open ? '1' : '0')
+    document.body.classList.toggle('lm-chat-open', open)
+  }, [onChatOpenChange])
+
   const openConversation = useCallback(
     async (convId: string) => {
       setActiveId(convId)
       activeIdRef.current = convId
-      onChatOpenChange?.(true)
-      document.documentElement.setAttribute('data-chat-open', '1')
+      setChatOpenFlag(true)
       setSelectedIds(new Set())
       setShowDeleteDialog(false)
       setPendingFile(null)
       setShowAttach(false)
+      setInputFocused(false)
       try {
         const msgs = await getMessages(convId)
         setMessages(msgs)
@@ -188,7 +197,7 @@ export default function MessagesScreen({
         showToast(e instanceof Error ? e.message : tr.msgError)
       }
     },
-    [emitUnread, onChatOpenChange, tr.msgError],
+    [emitUnread, setChatOpenFlag, tr.msgError],
   )
 
   const closeConversation = useCallback(() => {
@@ -198,9 +207,9 @@ export default function MessagesScreen({
     setSelectedIds(new Set())
     setShowAttach(false)
     setPendingFile(null)
-    onChatOpenChange?.(false)
-    document.documentElement.setAttribute('data-chat-open', '0')
-  }, [onChatOpenChange])
+    setInputFocused(false)
+    setChatOpenFlag(false)
+  }, [setChatOpenFlag])
 
   useEffect(() => {
     return pushBackHandler(() => {
@@ -315,15 +324,22 @@ export default function MessagesScreen({
 
   // Unmount: chat flag tozalash
   useEffect(() => {
-    return () => {
-      onChatOpenChange?.(false)
-      document.documentElement.setAttribute('data-chat-open', '0')
-    }
-  }, [onChatOpenChange])
+    return () => setChatOpenFlag(false)
+  }, [setChatOpenFlag])
+
+  useLayoutEffect(() => {
+    if (!activeId || !composerRef.current) return
+    const el = composerRef.current
+    const sync = () => setComposerH(el.offsetHeight)
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [activeId, pendingFile, showAttach, inputFocused, selectionMode])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, pendingFile])
+  }, [messages, pendingFile, composerH])
 
   useEffect(() => {
     const close = () => setContextMenu(null)
@@ -443,8 +459,10 @@ export default function MessagesScreen({
   const bubbleOther = dark ? '#1E1E38' : '#FFFFFF'
 
   if (activeConv) {
+    // adjustNothing: --ime-bottom = klaviatura balandligi; navbar chatda yo'q
     return (
       <div
+        className="lm-chat-screen"
         style={{
           width: '100%',
           height: '100%',
@@ -561,9 +579,7 @@ export default function MessagesScreen({
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: selectionMode
-              ? '12px 16px calc(16px + var(--safe-bottom))'
-              : '12px 16px',
+            padding: `12px 16px ${selectionMode ? 24 : composerH + 8}px 16px`,
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
@@ -693,15 +709,18 @@ export default function MessagesScreen({
 
         {!selectionMode && (
           <div
+            ref={composerRef}
             className="lm-chat-composer"
             style={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: 0,
               borderTop: `1px solid ${c.border}`,
               background: c.card,
-              /* Navbar yo'q: faqat klaviatura yoki tizim tugmalari */
               padding: '10px 12px max(var(--ime-bottom), var(--safe-bottom))',
-              position: 'relative',
-              flexShrink: 0,
-              zIndex: 60,
+              zIndex: 200,
+              boxSizing: 'border-box',
             }}
           >
             {pendingFile && (
@@ -859,6 +878,11 @@ export default function MessagesScreen({
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
+                onFocus={() => {
+                  setInputFocused(true)
+                  setShowAttach(false)
+                }}
+                onBlur={() => setInputFocused(false)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()

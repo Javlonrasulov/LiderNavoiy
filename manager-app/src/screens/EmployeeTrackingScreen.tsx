@@ -16,6 +16,7 @@ import {
 } from '../icons'
 import DayTrackingMap from '../components/DayTrackingMap'
 import SingleDatePicker from '../components/SingleDatePicker'
+import EmployeeLinesCard from '../components/EmployeeLinesCard'
 import type { Distributor, EmployeeLocation, PointStatus } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { theme } from '../theme'
@@ -332,6 +333,15 @@ export default function EmployeeTrackingScreen({
             )
           })}
         </div>
+
+        <EmployeeLinesCard
+          dark={dark}
+          lang={lang}
+          tr={tr}
+          distributor={distributor}
+          location={location}
+          selectedDate={selectedDate}
+        />
 
         <div
           style={{

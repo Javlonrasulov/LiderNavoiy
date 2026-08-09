@@ -11,20 +11,17 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import com.google.android.gms.location.FusedLocationProviderClient
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uz.distributor.crm.R
 import uz.distributor.crm.data.local.AgentLocationHolder
@@ -33,6 +30,10 @@ import uz.distributor.crm.data.repository.LocationRepository
 import uz.distributor.crm.domain.model.LocationPoint
 import uz.distributor.crm.presentation.MainActivity
 import javax.inject.Inject
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 @AndroidEntryPoint
 class LocationTrackingService : Service() {
@@ -42,22 +43,26 @@ class LocationTrackingService : Service() {
     @Inject lateinit var trackingSocket: TrackingSocketManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var heartbeatJob: Job? = null
     private lateinit var fusedClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+
+    private var lastSentLat = Double.NaN
+    private var lastSentLng = Double.NaN
+    private var lastSentAtMs = 0L
 
     companion object {
         const val CHANNEL_ID = "location_tracking_v2"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "START_TRACKING"
         const val ACTION_STOP = "STOP_TRACKING"
-        /** Harakatda yangilanish */
-        const val INTERVAL_MS = 10_000L
-        const val MIN_DISTANCE_M = 8f
-        /** Soft filter: juda yomon fixni tashlash, lekin jonli holatni o‘ldirmaslik */
-        const val MAX_ACCURACY_M = 100f
-        /** Harakatsiz bo‘lsa ham Redis/online TTL yangilansin */
-        const val HEARTBEAT_MS = 45_000L
+        /** Yandex Taxi uslubi — tez, aniq GPS */
+        const val INTERVAL_MS = 3_000L
+        const val MIN_INTERVAL_MS = 1_500L
+        const val MIN_DISTANCE_M = 3f
+        const val MAX_ACCURACY_M = 80f
+        /** Bir joyda turganda spam qilmaslik */
+        const val STATIONARY_SKIP_M = 2.5
+        const val STATIONARY_MIN_RESEND_MS = 12_000L
     }
 
     override fun onCreate() {
@@ -93,7 +98,6 @@ class LocationTrackingService : Service() {
         dismissStaleNotifications()
         trackingSocket.connect()
 
-        // Haqiqiy foreground service — OS GPS ni o‘chirmasligi uchun bildirishnoma qoladi
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -102,11 +106,12 @@ class LocationTrackingService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, INTERVAL_MS)
-            .setMinUpdateIntervalMillis(INTERVAL_MS)
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, INTERVAL_MS)
+            .setMinUpdateIntervalMillis(MIN_INTERVAL_MS)
             .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
             .setWaitForAccurateLocation(false)
-            .setMaxUpdateDelayMillis(INTERVAL_MS * 2)
+            // Batch qilmasin — mijozda sakrash bo‘lmasin
+            .setMaxUpdateDelayMillis(INTERVAL_MS)
             .build()
 
         try {
@@ -115,23 +120,11 @@ class LocationTrackingService : Service() {
             stopSelf()
             return
         }
-
-        heartbeatJob?.cancel()
-        heartbeatJob = scope.launch {
-            while (isActive) {
-                delay(HEARTBEAT_MS)
-                val last = agentLocationHolder.location.value ?: continue
-                // Harakatsiz turganda ham server TTL yangilansin (admin xarita miltillamasin)
-                locationRepository.sendRealtime(
-                    last.copy(recordedAt = System.currentTimeMillis()),
-                )
-            }
-        }
+        // Online TTL — TrackingSocketManager presence ping (30s).
+        // Eski joyni qayta location:update qilib yubormaymiz (mijozni bloklaydi).
     }
 
     private fun stopTracking() {
-        heartbeatJob?.cancel()
-        heartbeatJob = null
         runCatching { fusedClient.removeLocationUpdates(locationCallback) }
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
     }
@@ -154,8 +147,6 @@ class LocationTrackingService : Service() {
                     ?: result.lastLocation
                     ?: return
 
-                // Faqat ekstremal noaniqlikni tashlash (>100m). Yaxshiroq fix kelguncha kutamiz
-                // lekin birinchi fixni har doim qabul qilamiz.
                 if (loc.hasAccuracy() &&
                     loc.accuracy > MAX_ACCURACY_M &&
                     agentLocationHolder.location.value != null
@@ -163,6 +154,8 @@ class LocationTrackingService : Service() {
                     return
                 }
 
+                val now = System.currentTimeMillis()
+                // Wall-clock — heartbeat/eski loc.time mijozni chalkashtirmasin
                 val point = LocationPoint(
                     latitude = loc.latitude,
                     longitude = loc.longitude,
@@ -170,14 +163,35 @@ class LocationTrackingService : Service() {
                     accuracy = if (loc.hasAccuracy()) loc.accuracy else null,
                     altitude = if (loc.hasAltitude()) loc.altitude else null,
                     bearing = if (loc.hasBearing()) loc.bearing else null,
-                    recordedAt = loc.time,
+                    recordedAt = now,
                 )
                 agentLocationHolder.update(point)
+
+                if (!lastSentLat.isNaN()) {
+                    val moved = haversineM(lastSentLat, lastSentLng, point.latitude, point.longitude)
+                    if (moved < STATIONARY_SKIP_M && now - lastSentAtMs < STATIONARY_MIN_RESEND_MS) {
+                        return
+                    }
+                }
+
+                lastSentLat = point.latitude
+                lastSentLng = point.longitude
+                lastSentAtMs = now
                 scope.launch {
                     locationRepository.sendRealtime(point)
                 }
             }
         }
+    }
+
+    private fun haversineM(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = sin(dLat / 2) * sin(dLat / 2) +
+            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+            sin(dLng / 2) * sin(dLng / 2)
+        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
     }
 
     private fun buildNotification(): Notification {

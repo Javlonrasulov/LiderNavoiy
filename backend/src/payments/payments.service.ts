@@ -319,7 +319,7 @@ export class PaymentsService {
   ) {
     const client = await this.clientRepo.findOne({ where: { id: p.clientId } });
     const name = client?.name ?? 'Mijoz';
-    const textFor = (lang: ReturnType<typeof normalizePushLang>) => {
+    const textForAgent = (lang: ReturnType<typeof normalizePushLang>) => {
       const t =
         kind === 'day'
           ? PushI18n.paymentReminderDay(lang)
@@ -328,12 +328,21 @@ export class PaymentsService {
             : PushI18n.paymentReminderOverdue(lang);
       return { title: t.title, body: `${name}: ${t.body}` };
     };
+    const textForClient = (lang: ReturnType<typeof normalizePushLang>) => {
+      const t =
+        kind === 'day'
+          ? PushI18n.paymentReminderDayClient(lang)
+          : kind === 'hour'
+            ? PushI18n.paymentReminderHourClient(lang)
+            : PushI18n.paymentReminderOverdueClient(lang);
+      return { title: t.title, body: t.body };
+    };
 
     if (p.collectorDistributorId) {
       const lang = await this.notifications.getDistributorLang(
         p.collectorDistributorId,
       );
-      const msg = textFor(lang);
+      const msg = textForAgent(lang);
       await this.notifications.sendToDistributor(
         p.collectorDistributorId,
         msg.title,
@@ -344,10 +353,20 @@ export class PaymentsService {
     }
     await this.notifyClientLocalized(
       p.clientId,
-      textFor,
+      textForClient,
       p.orderId,
       NType.PAYMENT_REMINDER,
+      { imageUrl: this.paymentReminderImageUrl() },
     );
+  }
+
+  private paymentReminderImageUrl(): string {
+    const base = (
+      process.env.PUBLIC_URL ||
+      process.env.APP_PUBLIC_URL ||
+      'https://lider-navoiy.uz'
+    ).replace(/\/$/, '');
+    return `${base}/push/payment-reminder.jpg`;
   }
 
   private async notifyClientLocalized(
@@ -358,6 +377,7 @@ export class PaymentsService {
     },
     orderId: string,
     type: NType = NType.PAYMENT,
+    extras?: { imageUrl?: string },
   ) {
     const byClient = await this.userRepo.find({ where: { clientId } });
     const memberships = await this.membershipRepo.find({ where: { clientId } });
@@ -370,10 +390,18 @@ export class PaymentsService {
     await Promise.all(
       users.map((user) => {
         const msg = build(normalizePushLang(user.preferredLanguage));
-        return this.notifications.sendToUser(user.id, msg.title, msg.body, type, {
+        const data: Record<string, string> = {
           orderId,
           type: type === NType.PAYMENT_REMINDER ? 'payment_reminder' : 'payment',
-        });
+        };
+        if (extras?.imageUrl) data.imageUrl = extras.imageUrl;
+        return this.notifications.sendToUser(
+          user.id,
+          msg.title,
+          msg.body,
+          type,
+          data,
+        );
       }),
     );
   }

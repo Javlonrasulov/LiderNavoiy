@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeft, CheckCircle, ChevronDown, Locate, Maximize2, Pencil, Plus, X } from '../icons'
+import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera'
+import { Capacitor } from '@capacitor/core'
+import { ArrowLeft, Camera, CheckCircle, ChevronDown, ImageIcon, Locate, Maximize2, Pencil, Plus, X } from '../icons'
 import { pushBackHandler } from '../utils/hardwareBack'
 import {
   createClient,
@@ -9,10 +11,12 @@ import {
   fetchClient,
   fetchClientCategories,
   fetchLines,
+  resolveMediaUrl,
   resubmitClientRequest,
   updateClient,
   updateClientCategory,
   updateLine,
+  uploadClientPhoto,
   type ClientCategory,
   type SalesLine,
 } from '../api/manager'
@@ -89,6 +93,10 @@ export default function AddClientScreen({
   const [phone, setPhone] = useState('+998')
   const [extraPhones, setExtraPhones] = useState<ExtraPhone[]>([])
   const [address, setAddress] = useState('')
+  const [territory, setTerritory] = useState('')
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
   const [lineCode, setLineCode] = useState('')
   const [category, setCategory] = useState('')
   const [lat, setLat] = useState<number | null>(null)
@@ -99,6 +107,7 @@ export default function AddClientScreen({
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [prefillLoading, setPrefillLoading] = useState(isEdit)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
 
   const [lines, setLines] = useState<SalesLine[]>([])
   const [linesLoading, setLinesLoading] = useState(true)
@@ -174,6 +183,9 @@ export default function AddClientScreen({
           : [],
       )
       setAddress(cl.address || '')
+      setTerritory(cl.territory || '')
+      setPhotoUrl(cl.photoUrl || null)
+      setPhotoPreview(cl.photoUrl ? resolveMediaUrl(cl.photoUrl) : null)
       setLineCode(cl.lineCode || '')
       setCategory(cl.category || '')
       setLat(cl.latitude ?? null)
@@ -340,6 +352,52 @@ export default function AddClientScreen({
 
   const reqMsg = (field: string) => tr.fieldRequired.replace('{field}', field)
 
+  const uploadBlob = async (blob: Blob, filename: string) => {
+    setPhotoUploading(true)
+    try {
+      const url = await uploadClientPhoto(blob, filename)
+      setPhotoUrl(url)
+      setPhotoPreview(resolveMediaUrl(url))
+    } catch {
+      showToast(tr.photoUploadFailed)
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
+  const pickPhoto = async (source: 'camera' | 'gallery') => {
+    if (!Capacitor.isNativePlatform() && source === 'gallery') {
+      galleryInputRef.current?.click()
+      return
+    }
+    if (!Capacitor.isNativePlatform() && source === 'camera') {
+      galleryInputRef.current?.click()
+      return
+    }
+    try {
+      const photo = await CapCamera.getPhoto({
+        quality: 80,
+        resultType: CameraResultType.Uri,
+        source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+        correctOrientation: true,
+      })
+      const path = photo.webPath || photo.path
+      if (!path) return
+      const blob = await fetch(path).then(r => r.blob())
+      const filename = `photo.${photo.format || 'jpg'}`
+      setPhotoPreview(path)
+      await uploadBlob(blob, filename)
+    } catch {
+      /* user cancelled */
+    }
+  }
+
+  const onGalleryFile = async (file: File | undefined) => {
+    if (!file) return
+    setPhotoPreview(URL.createObjectURL(file))
+    await uploadBlob(file, file.name || 'photo.jpg')
+  }
+
   const submit = async () => {
     if (!name.trim()) {
       showToast(reqMsg(tr.name))
@@ -385,6 +443,8 @@ export default function AddClientScreen({
         phone: phoneClean,
         extraPhones: extras,
         address: address.trim(),
+        territory: territory.trim() || undefined,
+        photoUrl: photoUrl || undefined,
         companyId,
         lineCode: lineCode.trim(),
         category: category.trim(),
@@ -395,9 +455,21 @@ export default function AddClientScreen({
       }
 
       if (isResubmit && resubmitRequestId) {
+        // CreateClientRequestDto: extraPhones / orderRadiusMeters qabul qilinmaydi (forbidNonWhitelisted)
         const result = await resubmitClientRequest(resubmitRequestId, {
-          ...body,
-          extraPhones: extras.length ? extras : undefined,
+          name: body.name,
+          fullName: body.fullName,
+          phone: body.phone,
+          address: body.address,
+          territory: body.territory,
+          photoUrl: body.photoUrl,
+          companyId: body.companyId,
+          lineCode: body.lineCode,
+          category: body.category,
+          inn: body.inn,
+          latitude: body.latitude,
+          longitude: body.longitude,
+          canSeePromotions: body.canSeePromotions,
         })
         const pending = (result as { status?: string }).status === 'pending'
         onCreated({
@@ -606,6 +678,95 @@ export default function AddClientScreen({
         </div>
 
         {field(tr.address, address, setAddress, true)}
+        {field(tr.orientir, territory, setTerritory, false)}
+
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: c.mutedText }}>{tr.clientPhoto}</p>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={e => { void onGalleryFile(e.target.files?.[0]); e.target.value = '' }}
+          />
+          <div
+            style={{
+              borderRadius: 16, border: `1px solid ${c.border}`, background: c.card,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: 160, background: dark ? '#1A1A2E' : '#F3F4F6',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                position: 'relative',
+              }}
+            >
+              {photoPreview ? (
+                <img src={photoPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <div style={{ textAlign: 'center', color: c.mutedText }}>
+                  <Camera size={28} color={c.mutedText} />
+                  <p style={{ margin: '8px 0 0', fontSize: 12 }}>{tr.clientPhoto}</p>
+                </div>
+              )}
+              {photoUploading && (
+                <div style={{
+                  position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: 13,
+                }}>
+                  {tr.photoUploading}
+                </div>
+              )}
+              {photoPreview && !photoUploading && (
+                <button
+                  type="button"
+                  onClick={() => { setPhotoUrl(null); setPhotoPreview(null) }}
+                  style={{
+                    position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 10,
+                    border: 'none', background: 'rgba(0,0,0,0.5)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <X size={14} color="#fff" />
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: 10 }}>
+              <button
+                type="button"
+                disabled={photoUploading || loading}
+                onClick={() => void pickPhoto('camera')}
+                style={{
+                  height: 40, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  background: 'rgba(108,92,231,0.12)', color: c.primary,
+                  fontWeight: 800, fontSize: 12,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: photoUploading ? 0.6 : 1,
+                }}
+              >
+                <Camera size={15} color={c.primary} />
+                {tr.takePhoto}
+              </button>
+              <button
+                type="button"
+                disabled={photoUploading || loading}
+                onClick={() => void pickPhoto('gallery')}
+                style={{
+                  height: 40, borderRadius: 12, border: 'none', cursor: 'pointer',
+                  background: c.muted, color: c.text,
+                  fontWeight: 800, fontSize: 12,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  opacity: photoUploading ? 0.6 : 1,
+                }}
+              >
+                <ImageIcon size={15} color={c.text} />
+                {tr.pickGallery}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {pickerField(tr.line, lineLabel, tr.lineSelect, linesLoading, () => setPicker('line'), true)}
         {pickerField(tr.category, category, tr.categorySelect, categoriesLoading, () => setPicker('category'), true)}
@@ -700,7 +861,7 @@ export default function AddClientScreen({
           </div>
         </div>
 
-        <button type="button" className="btn-primary" disabled={loading} onClick={() => void submit()}
+        <button type="button" className="btn-primary" disabled={loading || photoUploading} onClick={() => void submit()}
           style={{ width: '100%', height: 52, border: 'none', cursor: 'pointer', fontSize: 15, opacity: loading ? 0.7 : 1, marginTop: 8 }}>
           {loading ? tr.loading : tr.save}
         </button>

@@ -135,6 +135,7 @@ data class CreateClientRequest(
     val inn: String? = null,
     val phone: String? = null,
     val address: String? = null,
+    val territory: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
     val photoUrl: String? = null,

@@ -400,9 +400,14 @@ export class NotificationsService {
     try {
       const channelId = this.channelFor(type);
       const isHigh = type === NotificationType.PLAN || type === NotificationType.MESSAGE;
+      const imageUrl = data?.imageUrl?.trim() || undefined;
       const messageId = await messaging.send({
         token,
-        notification: { title, body },
+        notification: {
+          title,
+          body,
+          ...(imageUrl ? { imageUrl } : {}),
+        },
         data: Object.fromEntries(
           Object.entries(payload).map(([k, v]) => [k, String(v)]),
         ),
@@ -416,10 +421,15 @@ export class NotificationsService {
             sound: 'default',
             visibility: 'public',
             clickAction: 'OPEN_CLIENT_APP',
+            ...(imageUrl ? { imageUrl } : {}),
           },
         },
         webpush: {
-          notification: { title, body },
+          notification: {
+            title,
+            body,
+            ...(imageUrl ? { image: imageUrl } : {}),
+          },
           fcmOptions: { link: '/' },
           headers: { Urgency: 'high' },
         },

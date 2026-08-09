@@ -21,6 +21,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/assets ./assets
 
 RUN mkdir -p uploads/payments uploads/products uploads/chat uploads/clients && chmod -R 777 uploads
 

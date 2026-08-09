@@ -222,12 +222,11 @@ export default function App() {
     setTrackingEmp(null)
   }
 
+  // Suhbat ochiq yoki klaviatura ochiq — pastki navbar umuman render qilinmaydi
   const showBottomNav =
     !messagesChatOpen &&
     !keyboardOpen &&
-    (overlay === null ||
-      overlay === 'clientOrders' ||
-      overlay === 'products')
+    (overlay === null || overlay === 'clientOrders' || overlay === 'products')
 
   return (
     <div className="app-shell" style={{ background: bg }}>

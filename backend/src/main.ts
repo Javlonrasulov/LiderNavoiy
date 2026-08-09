@@ -99,6 +99,12 @@ async function bootstrap() {
 
   app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
+  // Push bildirishnoma rasmlari (FCM BigPicture)
+  const pushAssetsDir = join(process.cwd(), 'assets', 'push');
+  if (existsSync(pushAssetsDir)) {
+    app.useStaticAssets(pushAssetsDir, { prefix: '/push/' });
+  }
+
   if (!isProd) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Distributor CRM API')

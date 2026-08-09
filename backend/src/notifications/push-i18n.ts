@@ -55,6 +55,7 @@ export const PushI18n = {
     });
   },
 
+  /** Agent/dostavkachi — uchinchi shaxs */
   paymentReminderDay(lang: PushLang): { title: string; body: string } {
     return {
       title: pick(lang, {
@@ -102,6 +103,58 @@ export const PushI18n = {
         uz_cyr: 'Мижоз ҳали тўлов қилмади — эслатма',
         ru: 'Клиент ещё не оплатил — напоминание',
         en: 'Client has not paid yet — reminder',
+      }),
+    };
+  },
+
+  /** Mijozga — to‘g‘ridan-to‘g‘ri murojaat */
+  paymentReminderDayClient(lang: PushLang): { title: string; body: string } {
+    return {
+      title: pick(lang, {
+        uz: "Bugun to'lov kuni",
+        uz_cyr: 'Бугун тўлов куни',
+        ru: 'Сегодня день оплаты',
+        en: 'Payment due today',
+      }),
+      body: pick(lang, {
+        uz: "Bugun to'lov qilishingiz kerak",
+        uz_cyr: 'Бугун тўлов қилишингиз керак',
+        ru: 'Сегодня вам нужно оплатить',
+        en: 'Please make your payment today',
+      }),
+    };
+  },
+
+  paymentReminderHourClient(lang: PushLang): { title: string; body: string } {
+    return {
+      title: pick(lang, {
+        uz: "To'lov eslatmasi",
+        uz_cyr: 'Тўлов эслатмаси',
+        ru: 'Напоминание об оплате',
+        en: 'Payment reminder',
+      }),
+      body: pick(lang, {
+        uz: "1 soatdan keyin muddat tugaydi — to'lov qilishingiz kerak",
+        uz_cyr: '1 соатдан кейин муддат тугайди — тўлов қилишингиз керак',
+        ru: 'Через 1 час истекает срок — пожалуйста, оплатите',
+        en: 'Due in 1 hour — please make your payment',
+      }),
+    };
+  },
+
+  paymentReminderOverdueClient(lang: PushLang): { title: string; body: string } {
+    return {
+      title: pick(lang, {
+        uz: "To'lov muddati o'tdi",
+        uz_cyr: 'Тўлов муддати ўтди',
+        ru: 'Срок оплаты просрочен',
+        en: 'Payment overdue',
+      }),
+      body: pick(lang, {
+        uz: "To'lov qilishingiz kerak — muddat o'tgan",
+        uz_cyr: 'Тўлов қилишингиз керак — муддат ўтган',
+        ru: 'Вам нужно оплатить — срок прошёл',
+        en: 'Please make your payment — the due date has passed',
       }),
     };
   },

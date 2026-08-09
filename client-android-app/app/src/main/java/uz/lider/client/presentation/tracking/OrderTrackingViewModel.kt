@@ -152,7 +152,17 @@ class OrderTrackingViewModel @Inject constructor(
         if (!GeoCoords.isUsableCourier(lat, lng, current.deliveryLatitude, current.deliveryLongitude)) {
             return
         }
-        liveCourierAtMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
+        val prevLat = person.latitude
+        val prevLng = person.longitude
+        val movedM = if (prevLat != null && prevLng != null) {
+            RoadRouteService.haversineM(prevLat, prevLng, lat, lng)
+        } else {
+            Double.MAX_VALUE
+        }
+        // Deyarli bir xil nuqta — faqat timestamp yangilab HTTP ni bloklamaslik
+        if (movedM >= 3.0) {
+            liveCourierAtMs = parseIsoMs(recordedAt) ?: System.currentTimeMillis()
+        }
         val currentRoute = _uiState.value.routePoints
         val offRoute = currentRoute.size < 3 ||
             RouteTrim.isOffRoute(lat, lng, currentRoute)
@@ -184,7 +194,8 @@ class OrderTrackingViewModel @Inject constructor(
     }
 
     /**
-     * WS orqali kelgan yangi nuqtani 20s ichida eski HTTP javob bilan almashtirmaslik.
+     * WS jonli nuqtani saqlash. HTTP boshqa joyda bo‘lsa — harakat deb qabul qilamiz
+     * (timestamp eskiroq bo‘lsa ham; heartbeat eski joyni «yangi» qilib yubormasin).
      */
     private fun mergePreserveLiveCoords(incoming: OrderTrackingDetails?): OrderTrackingDetails? {
         if (incoming == null) return null
@@ -196,9 +207,15 @@ class OrderTrackingViewModel @Inject constructor(
 
         val liveAge = System.currentTimeMillis() - liveCourierAtMs
         val httpAt = parseIsoMs(nextPerson.lastLocationAt) ?: 0L
+        val httpLat = nextPerson.latitude
+        val httpLng = nextPerson.longitude
+        val httpMovedAway = httpLat != null && httpLng != null &&
+            RoadRouteService.haversineM(curLat, curLng, httpLat, httpLng) > 20.0
         val httpIsNewer = httpAt > liveCourierAtMs + 500
-        if (liveAge > 20_000 || httpIsNewer) {
-            if (httpIsNewer) liveCourierAtMs = httpAt
+        if (liveAge > 12_000 || httpIsNewer || httpMovedAway) {
+            if (httpIsNewer || httpMovedAway) {
+                liveCourierAtMs = maxOf(httpAt, System.currentTimeMillis() - 1_000)
+            }
             return incoming
         }
 

@@ -8,6 +8,7 @@ import type { ClientRow } from '../data/adminData';
 import { api } from '../api/client';
 import { clientNameToLogin, DEFAULT_CLIENT_APP_PASSWORD } from '../utils/clientApi';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../utils/phoneFormat';
+import { getApiOrigin } from '../utils/productImageUrl';
 
 export interface AgentOption {
   id: string;
@@ -448,7 +449,7 @@ function clientToForm(client: ClientRow) {
       kod: client.code, liniya: client.line, status: 'active',
       category: client.category || 'Standard',
       name: client.name, officialName: client.fullName, legalAddr: client.legalAddr,
-      landmark: '', phones: formatUzPhoneInput(client.phone || ''), bankAcc: '', mfo: '', bank: '',
+      landmark: client.territory || '', phones: formatUzPhoneInput(client.phone || ''), bankAcc: '', mfo: '', bank: '',
       cls: client.cls, type: '', director: '', chiefAcc: '', channel: '',
       gps: gpsStr, priceZone: client.priceCat || '',
       budget: '', mainContract: '', note: '',
@@ -480,7 +481,19 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const [isMaximized, setIsMaximized] = useState(false);
   const [openDrop, setOpenDrop]       = useState<string | null>(null);
   const [contacts, setContacts]       = useState(initial?.contacts ?? [{ name: '', phone: UZ_PHONE_DEFAULT, role: '' }]);
-  const [photos, setPhotos]           = useState<string[]>([]);
+  const resolveClientPhotoSrc = (path?: string | null) => {
+    if (!path) return '';
+    if (path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) return path;
+    const p = path.startsWith('/') ? path : `/${path}`;
+    return `${getApiOrigin()}${p}`;
+  };
+
+  const [photos, setPhotos] = useState<string[]>(() =>
+    client?.photoUrl ? [resolveClientPhotoSrc(client.photoUrl)] : [],
+  );
+  const [photoUrl, setPhotoUrl] = useState<string | null>(client?.photoUrl ?? null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState(initial?.form ?? {
     kod: '', liniya: '', status: 'active', category: 'Standard',
     name: '', officialName: '', legalAddr: '', landmark: '', phones: UZ_PHONE_DEFAULT,
@@ -518,7 +531,33 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const keepNameFocus = useRef(false);
   const loginCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const set = (k: string, v: string | boolean) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k: string, v: string | boolean) => {
+    setForm(p => {
+      const next = { ...p, [k]: v };
+      // Ориентир ↔ Ҳудуд — bitta DB ustun (`territory`)
+      if (k === 'landmark' && typeof v === 'string') next.territory = v;
+      if (k === 'territory' && typeof v === 'string') next.landmark = v;
+      return next;
+    });
+  };
+
+  const handlePhotoPick = async (file: File | undefined) => {
+    if (!file) return;
+    const local = URL.createObjectURL(file);
+    setPhotos([local]);
+    setPhotoUploading(true);
+    try {
+      const uploaded = await api.uploadClientPhoto(file, file.name || 'photo.jpg');
+      setPhotoUrl(uploaded.url);
+      setPhotos([uploaded.fullUrl || resolveClientPhotoSrc(uploaded.url)]);
+    } catch (e) {
+      setPhotos([]);
+      setPhotoUrl(null);
+      setAppCredError(e instanceof Error ? e.message : 'Rasm yuklanmadi');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   const agentNames = agents.map(a => a.name);
   const lineOptions = lines.length > 0 ? lines : ['01'];
@@ -659,7 +698,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       fullName: form.officialName || form.name,
       line: form.liniya,
       priceCat: form.priceZone,
-      territory: form.territory,
+      territory: (form.landmark || form.territory || '').trim(),
       inn: form.inn,
       legalAddr: form.legalAddr,
       phone: form.phones,
@@ -669,6 +708,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       agent: form.agent,
       distributorId: form.distributorId || agents.find(a => a.name === form.agent)?.id,
       category: form.category,
+      photoUrl: photoUrl || null,
       canSeePromotions: form.canSeePromotions === true,
       hasAppLogin,
       appLoginChanged: loginChanged,
@@ -1405,24 +1445,67 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
           {/* ════ FOTO ════ */}
           {activeTab === 'foto' && (<>
             {FormSec({ label: t.photoSection.toUpperCase(), secBg, secClr, divClr })}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={e => {
+                void handlePhotoPick(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
             <div style={{ padding: 16, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, background: bg }}>
               {photos.map((src, i) => (
                 <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden' }}>
                   <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <button onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
+                  <button
+                    type="button"
+                    onClick={() => { setPhotos([]); setPhotoUrl(null); }}
                     style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 6,
                       background: 'rgba(0,0,0,0.5)', border: 'none', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
                     <X size={11} />
                   </button>
+                  {photoUploading && (
+                    <div style={{
+                      position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontSize: 11, fontWeight: 600,
+                    }}>
+                      …
+                    </div>
+                  )}
                 </div>
               ))}
-              <button style={{ aspectRatio: '1', borderRadius: 12, border: `2px dashed ${inpBdr}`,
-                background: inpBg, cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center', gap: 8, color: lblClr }}>
-                <Camera size={22} />
-                <span style={{ fontSize: 12 }}>{t.addPhoto}</span>
-              </button>
+              {photos.length === 0 && (
+                <button
+                  type="button"
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{ aspectRatio: '1', borderRadius: 12, border: `2px dashed ${inpBdr}`,
+                    background: inpBg, cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center', gap: 8, color: lblClr,
+                    opacity: photoUploading ? 0.6 : 1 }}
+                >
+                  <Camera size={22} />
+                  <span style={{ fontSize: 12 }}>{photoUploading ? '…' : t.addPhoto}</span>
+                </button>
+              )}
+              {photos.length > 0 && (
+                <button
+                  type="button"
+                  disabled={photoUploading}
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{ aspectRatio: '1', borderRadius: 12, border: `2px dashed ${inpBdr}`,
+                    background: inpBg, cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center', gap: 8, color: lblClr }}
+                >
+                  <Camera size={22} />
+                  <span style={{ fontSize: 12 }}>{t.addPhoto}</span>
+                </button>
+              )}
             </div>
           </>)}
 

@@ -1,4 +1,5 @@
-import { api } from './client'
+import { api, getAccessToken } from './client'
+import { API_BASE_URL } from './config'
 import type {
   AdminDashboard,
   Client,
@@ -13,6 +14,35 @@ import type {
   ProductStats,
   VisitAdminRow,
 } from './types'
+
+/** Rel `/uploads/...` → absolute URL for preview */
+export function resolveMediaUrl(path?: string | null): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) return path
+  const origin = API_BASE_URL.replace(/\/api\/v\d+\/?$/, '').replace(/\/$/, '')
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+export async function uploadClientPhoto(file: Blob, filename = 'photo.jpg'): Promise<string> {
+  const form = new FormData()
+  form.append('file', file, filename)
+  const token = getAccessToken()
+  const url = `${API_BASE_URL}clients/upload-photo`
+  // Content-Type qo‘ymang — boundary avtomatik qo‘yiladi (CapacitorHttp FormData uchun muhim)
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }))
+    const msg = Array.isArray(err?.message) ? err.message.join(', ') : (err?.message || `HTTP ${res.status}`)
+    throw new Error(typeof msg === 'string' ? msg : `HTTP ${res.status}`)
+  }
+  const data = (await res.json()) as { url?: string; fullUrl?: string }
+  if (!data.url) throw new Error('Upload failed')
+  return data.url
+}
 
 export function fetchAdminDashboard(companyId?: string) {
   const q = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
@@ -97,6 +127,10 @@ export type SalesLine = {
   code: string
   name: string
   agentName?: string | null
+  deliveryName?: string | null
+  agentVisitDays?: number[] | null
+  deliveryVisitDays?: number[] | null
+  visitDays?: number[] | null
   clientCount?: number
   companyId?: string | null
 }
@@ -158,6 +192,8 @@ export type ClientRequestRow = {
   fullName?: string | null
   phone?: string | null
   address?: string | null
+  territory?: string | null
+  photoUrl?: string | null
   lineCode?: string | null
   category?: string | null
   inn?: string | null
@@ -194,15 +230,15 @@ export function resubmitClientRequest(
     fullName?: string
     phone?: string
     address?: string
+    territory?: string
+    photoUrl?: string
     companyId?: string
     lineCode?: string
     category?: string
     inn?: string
     latitude?: number
     longitude?: number
-    orderRadiusMeters?: number
     canSeePromotions?: boolean
-    extraPhones?: { phone: string; note?: string }[]
   },
 ) {
   return api<ClientRequestRow | Client>(`client-requests/${encodeURIComponent(id)}/resubmit`, {
@@ -218,6 +254,8 @@ export function clientFromRequest(req: ClientRequestRow): Client {
     fullName: req.fullName,
     phone: req.phone,
     address: req.address,
+    territory: req.territory,
+    photoUrl: req.photoUrl,
     lineCode: req.lineCode,
     category: req.category,
     inn: req.inn,

@@ -266,6 +266,16 @@ fun AddClientScreen(
                 shape = RoundedCornerShape(14.dp),
             )
 
+            OutlinedTextField(
+                value = state.territory,
+                onValueChange = viewModel::onTerritoryChange,
+                label = { Text(AppStrings.landmarkLabel(lang)) },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 1,
+                maxLines = 3,
+                shape = RoundedCornerShape(14.dp),
+            )
+
             Surface(shape = RoundedCornerShape(20.dp), color = cardBg) {
                 Column(Modifier.padding(16.dp)) {
                     Text(

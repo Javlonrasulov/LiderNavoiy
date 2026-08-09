@@ -44,8 +44,8 @@ import kotlin.math.max
 private val NAVOIY = GeoPoint(MapDefaults.NAVOIY_LAT, MapDefaults.NAVOIY_LNG)
 private const val NAVOIY_ZOOM = 13.5
 private const val SINGLE_POINT_ZOOM = 15.0
-/** GPS oralig‘iga yaqin — Yandex Taxi kabi uzluksiz siljish */
-private const val TRUCK_ANIM_MS = 2_800L
+/** GPS ~3s oralig‘iga yaqin — Yandex Taxi kabi uzluksiz siljish */
+private const val TRUCK_ANIM_MS = 3_200L
 
 private val truckAnimators = java.util.WeakHashMap<Marker, android.animation.ValueAnimator>()
 
@@ -536,9 +536,10 @@ private fun animateMarker(map: MapView, marker: Marker, to: GeoPoint) {
     }
     // Masofaga mos duration, lekin GPS oralig‘idan qisqa bo‘lmasin
     val duration = when {
-        distM < 8 -> 1_200L
-        distM < 40 -> 2_200L
-        else -> TRUCK_ANIM_MS
+        distM < 8 -> 1_400L
+        distM < 35 -> 2_600L
+        distM < 90 -> TRUCK_ANIM_MS
+        else -> 3_800L
     }
     var lastRoutePaint = 0L
     val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {

@@ -197,6 +197,7 @@ export interface Client {
   inn?: string | null;
   contactPerson?: string | null;
   territory?: string | null;
+  photoUrl?: string | null;
   clientClass?: string | null;
   priceCategory?: string | null;
   isActive?: boolean;
@@ -783,6 +784,22 @@ export const api = {
       body: JSON.stringify({ lineCode, distributorId }),
     }),
 
+  uploadClientPhoto: async (file: File | Blob, filename = 'photo.jpg'): Promise<{ url: string; fullUrl?: string }> => {
+    const token = getToken();
+    const form = new FormData();
+    form.append('file', file, filename);
+    const res = await fetch(`${API_BASE.replace(/\/$/, '')}/clients/upload-photo`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
   createClient: (body: {
     code: string;
     name: string;
@@ -798,6 +815,7 @@ export const api = {
     inn?: string;
     contactPerson?: string;
     territory?: string;
+    photoUrl?: string;
     clientClass?: string;
     priceCategory?: string;
     onTradeId?: string;
@@ -823,6 +841,7 @@ export const api = {
     inn?: string;
     contactPerson?: string;
     territory?: string;
+    photoUrl?: string;
     clientClass?: string;
     priceCategory?: string;
     isActive?: boolean;

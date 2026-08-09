@@ -65,6 +65,7 @@ export type ClientRow = {
   cls: string; gps: string; agent: string; balance: number;
   category: string; lastVisit: string; rowType: string;
   distributorId?: string;
+  photoUrl?: string | null;
   /** Lokatsiya oxirgi o'zgartirilgan vaqt (ISO) */
   locationUpdatedAt?: string;
   /** Lokatsiyani o'zgartirgan foydalanuvchi */

@@ -21,9 +21,24 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.window.DialogWindowProvider
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.content.Context
+import androidx.core.content.getSystemService
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -527,8 +542,20 @@ private fun PromoBonusModal(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = true,
+        ),
     ) {
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView) {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+            )
+            onDispose { }
+        }
         Column(
             Modifier
                 .fillMaxWidth(0.92f)
@@ -1794,97 +1821,106 @@ private fun VisitCompactEditableQty(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    var isEditing by remember { mutableStateOf(false) }
-    var inputText by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    var isFocused by remember { mutableStateOf(false) }
 
     fun displayQty(v: Double): String =
         if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
 
-    LaunchedEffect(quantity, isEditing) {
-        if (!isEditing) {
+    var inputText by remember { mutableStateOf(displayQty(quantity)) }
+
+    LaunchedEffect(quantity) {
+        if (!isFocused) {
             inputText = displayQty(quantity)
-        } else {
-            val parsed = parseQuantityInput(inputText)
-            if (parsed == null || kotlin.math.abs(parsed - quantity) > 0.0001) {
-                // Tugmalar orqali o'zgarganda sinxronlash
-                if (parsed != null && kotlin.math.abs(parsed - quantity) > 0.0001) {
-                    inputText = displayQty(quantity)
-                }
-            }
         }
     }
 
-    Box(
-        modifier = modifier
-            .widthIn(min = 40.dp)
-            .padding(horizontal = 8.dp)
-            .clickable {
-                if (!isEditing) {
-                    isEditing = true
-                    inputText = if (quantity > 0) displayQty(quantity) else ""
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (isEditing) {
-            LaunchedEffect(isEditing) {
-                kotlinx.coroutines.delay(50)
-                try {
-                    focusRequester.requestFocus()
-                } catch (_: IllegalStateException) {
-                }
+    fun showKeyboard() {
+        keyboardController?.show()
+        val imm = view.context.getSystemService<InputMethodManager>()
+        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    fun openEditor() {
+        scope.launch {
+            try {
+                focusRequester.requestFocus()
+            } catch (_: IllegalStateException) {
             }
-            BasicTextField(
-                value = inputText,
-                onValueChange = { raw ->
-                    val normalized = raw.replace(',', '.')
-                    if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
-                        inputText = normalized
-                        val parsed = parseQuantityInput(normalized)
-                        if (parsed != null) {
-                            onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
-                        }
-                    }
-                },
-                singleLine = true,
-                textStyle = TextStyle(
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    textAlign = TextAlign.Center,
-                ),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { focusManager.clearFocus() },
-                ),
-                modifier = Modifier
-                    .widthIn(min = 36.dp, max = 72.dp)
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            isEditing = true
-                        } else {
-                            isEditing = false
-                            val finalQty = (parseQuantityInput(inputText) ?: 0.0)
-                                .coerceIn(0.0, maxQuantity)
-                            onQuantityChange(finalQty)
-                            inputText = displayQty(finalQty)
-                        }
-                    },
-            )
-        } else {
-            Text(
-                displayQty(quantity),
-                color = textColor,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                textAlign = TextAlign.Center,
-            )
+            delay(80)
+            showKeyboard()
         }
     }
+
+    BasicTextField(
+        value = inputText,
+        onValueChange = { raw ->
+            val normalized = raw.replace(',', '.')
+            if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
+                inputText = normalized
+                val parsed = parseQuantityInput(normalized)
+                if (parsed != null) {
+                    onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
+                }
+            }
+        },
+        singleLine = true,
+        textStyle = TextStyle(
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+            textAlign = TextAlign.Center,
+        ),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                val finalQty = (parseQuantityInput(inputText) ?: 0.0).coerceIn(0.0, maxQuantity)
+                onQuantityChange(finalQty)
+                inputText = displayQty(finalQty)
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            },
+        ),
+        modifier = modifier
+            .widthIn(min = 44.dp, max = 80.dp)
+            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+                if (focusState.isFocused) {
+                    showKeyboard()
+                } else {
+                    val finalQty = (parseQuantityInput(inputText) ?: 0.0)
+                        .coerceIn(0.0, maxQuantity)
+                    onQuantityChange(finalQty)
+                    inputText = displayQty(finalQty)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { openEditor() },
+                )
+            },
+        decorationBox = { inner ->
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = { openEditor() },
+                    ),
+            ) {
+                inner()
+            }
+        },
+    )
 }
 
 @Composable

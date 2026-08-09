@@ -46,6 +46,8 @@ public class MainActivity extends BridgeActivity {
 
       // Pastki tizim navigatsiyasi (gestura / 3 tugma) — 0 bo'lsa ham minimal bo'shliq
       float safeBottom = bottom > 0f ? bottom : 24f;
+      // Klaviatura ochiq: IME allaqachon system bar zonani qamrab oladi
+      boolean keyboardOpen = imeBottom > 40f;
 
       String js = String.format(
         Locale.US,
@@ -57,9 +59,9 @@ public class MainActivity extends BridgeActivity {
           "r.style.setProperty('--safe-right','%.2fpx');" +
           "r.style.setProperty('--ime-bottom','%.2fpx');" +
           "r.setAttribute('data-native-insets','1');" +
-          "r.setAttribute('data-keyboard-open', %.2f > 40 ? '1' : '0');" +
+          "r.setAttribute('data-keyboard-open','%s');" +
         "})();",
-        top, safeBottom, left, right, imeBottom, imeBottom
+        top, safeBottom, left, right, imeBottom, keyboardOpen ? "1" : "0"
       );
       webView.evaluateJavascript(js, null);
       return windowInsets;

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.remote.ApiErrorMapper
+import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.ClientRepository
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.map.MapDefaults
@@ -26,16 +27,29 @@ data class ClientDetailUiState(
     val locationSaved: Boolean = false,
     val locationPendingApproval: Boolean = false,
     val locationError: String? = null,
+    /** Admin mijoz qo‘shish/tahrirlash ruxsati */
+    val canEditClients: Boolean = false,
+    /** Ruxsat yo‘q — asosiy sahifadagi glass toast */
+    val showEditDeniedToast: Boolean = false,
 )
 
 @HiltViewModel
 class ClientDetailViewModel @Inject constructor(
     private val clientRepository: ClientRepository,
     private val deviceLocationProvider: DeviceLocationProvider,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ClientDetailUiState())
     val uiState = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            authRepository.getUserFlow().collect { user ->
+                _uiState.update { it.copy(canEditClients = user?.canAddClients() == true) }
+            }
+        }
+    }
 
     fun resolvePhotoUrl(path: String?): String =
         clientRepository.resolvePhotoUrl(path)
@@ -59,6 +73,10 @@ class ClientDetailViewModel @Inject constructor(
     }
 
     fun openLocationEditor() {
+        if (!_uiState.value.canEditClients) {
+            _uiState.update { it.copy(showEditDeniedToast = true) }
+            return
+        }
         val client = _uiState.value.client ?: return
         val lat = client.latitude?.takeIf { it != 0.0 } ?: MapDefaults.NAVOIY_LAT
         val lng = client.longitude?.takeIf { it != 0.0 } ?: MapDefaults.NAVOIY_LNG
@@ -71,6 +89,10 @@ class ClientDetailViewModel @Inject constructor(
                 locationSaved = false,
             )
         }
+    }
+
+    fun consumeEditDeniedToast() {
+        _uiState.update { it.copy(showEditDeniedToast = false) }
     }
 
     fun closeLocationEditor() {
@@ -117,6 +139,16 @@ class ClientDetailViewModel @Inject constructor(
     }
 
     fun saveLocation() {
+        if (!_uiState.value.canEditClients) {
+            _uiState.update {
+                it.copy(
+                    showLocationEditor = false,
+                    isSavingLocation = false,
+                    showEditDeniedToast = true,
+                )
+            }
+            return
+        }
         val client = _uiState.value.client ?: return
         val lat = _uiState.value.editLatitude
         val lng = _uiState.value.editLongitude

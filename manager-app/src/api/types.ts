@@ -163,6 +163,9 @@ export interface Client {
   phone?: string | null
   extraPhones?: { phone: string; note?: string }[] | null
   address?: string | null
+  /** Ориентр (do‘kon yaqinidagi belgi) */
+  territory?: string | null
+  photoUrl?: string | null
   companyId?: string | null
   lineCode?: string | null
   category?: string | null
@@ -233,6 +236,8 @@ export interface CreateClientBody {
   phone?: string
   extraPhones?: { phone: string; note?: string }[]
   address?: string
+  territory?: string
+  photoUrl?: string
   companyId?: string
   lineCode?: string
   category?: string

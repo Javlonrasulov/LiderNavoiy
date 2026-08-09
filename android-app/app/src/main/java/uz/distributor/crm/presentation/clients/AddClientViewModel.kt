@@ -31,6 +31,7 @@ data class AddClientUiState(
     val inn: String = "",
     val phoneDigits: String = "",
     val address: String = "",
+    val territory: String = "",
     val lines: List<LineDto> = emptyList(),
     val selectedLineCode: String? = null,
     val isLoadingLines: Boolean = true,
@@ -95,6 +96,10 @@ class AddClientViewModel @Inject constructor(
 
     fun onAddressChange(value: String) = _uiState.update {
         it.copy(address = value, validationError = null, errorMessage = null)
+    }
+
+    fun onTerritoryChange(value: String) = _uiState.update {
+        it.copy(territory = value, validationError = null, errorMessage = null)
     }
 
     fun onLineSelected(code: String) {
@@ -162,6 +167,7 @@ class AddClientViewModel @Inject constructor(
                     inn = state.inn,
                     phone = "+998${state.phoneDigits}",
                     address = state.address,
+                    territory = state.territory,
                     latitude = state.latitude,
                     longitude = state.longitude,
                     photoUri = state.photoUri,

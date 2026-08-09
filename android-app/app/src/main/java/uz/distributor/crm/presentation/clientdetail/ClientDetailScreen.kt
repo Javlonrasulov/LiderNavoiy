@@ -1,5 +1,11 @@
 package uz.distributor.crm.presentation.clientdetail
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,29 +20,45 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.Image
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.clients.LocationPickerMap
+import uz.distributor.crm.presentation.components.NavGlassInfoToast
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
 import java.text.DecimalFormat
+
+private const val TOAST_ENTER_MS = 320
+private const val TOAST_EXIT_MS = 380
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +77,7 @@ fun ClientDetailScreen(
     val scope = rememberCoroutineScope()
 
     var showPayment by remember { mutableStateOf(false) }
+    var deniedToastVisible by remember { mutableStateOf(false) }
 
     val pageBg = sherinPageBackground(isDark)
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
@@ -62,6 +85,16 @@ fun ClientDetailScreen(
     val subColor = Color(0xFF9CA3AF)
 
     LaunchedEffect(clientId) { viewModel.load(clientId) }
+
+    LaunchedEffect(state.showEditDeniedToast) {
+        if (state.showEditDeniedToast) {
+            deniedToastVisible = true
+            delay(2600)
+            deniedToastVisible = false
+            delay(TOAST_EXIT_MS.toLong())
+            viewModel.consumeEditDeniedToast()
+        }
+    }
 
     LaunchedEffect(state.locationSaved) {
         if (state.locationSaved) {
@@ -106,6 +139,9 @@ fun ClientDetailScreen(
                         ?: "Standart"
                     val hasCoords = client.latitude != null && client.longitude != null &&
                         !(client.latitude == 0.0 && client.longitude == 0.0)
+                    val photoUrl = remember(client.photoUrl) {
+                        viewModel.resolvePhotoUrl(client.photoUrl).takeIf { it.isNotBlank() }
+                    }
 
                     Column(
                         Modifier
@@ -137,6 +173,18 @@ fun ClientDetailScreen(
                                     fontSize = 22.sp,
                                     lineHeight = 28.sp,
                                 )
+                                if (photoUrl != null) {
+                                    Spacer(Modifier.height(14.dp))
+                                    Image(
+                                        painter = rememberAsyncImagePainter(photoUrl),
+                                        contentDescription = AppStrings.clientPhoto(lang),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(168.dp)
+                                            .clip(RoundedCornerShape(16.dp)),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
                                 Spacer(Modifier.height(16.dp))
                                 Surface(
                                     shape = RoundedCornerShape(16.dp),
@@ -224,13 +272,9 @@ fun ClientDetailScreen(
                                 cardBg = cardBg,
                                 titleColor = titleColor,
                                 subColor = subColor,
+                                showChevron = false,
                                 trailing = {
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = AppStrings.changeClientLocation(lang),
-                                        tint = Color(0xFF7C3AED),
-                                        modifier = Modifier.size(18.dp),
-                                    )
+                                    ManagerEditIconButton()
                                 },
                                 onClick = viewModel::openLocationEditor,
                                 subtitle = if (hasCoords) {
@@ -294,6 +338,29 @@ fun ClientDetailScreen(
                     onDismiss = viewModel::closeLocationEditor,
                 )
             }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 10.dp)
+                    .fillMaxWidth(),
+            ) {
+                AnimatedVisibility(
+                    visible = deniedToastVisible,
+                    enter = fadeIn(tween(TOAST_ENTER_MS)) +
+                        slideInVertically(tween(TOAST_ENTER_MS)) { -it },
+                    exit = fadeOut(tween(TOAST_EXIT_MS)) +
+                        slideOutVertically(tween(TOAST_EXIT_MS)) { -it },
+                ) {
+                    NavGlassInfoToast(
+                        title = AppStrings.addClientDeniedTitle(lang),
+                        detail = AppStrings.addClientDeniedDetail(lang),
+                        isDark = isDark,
+                    )
+                }
+            }
         }
     }
 }
@@ -314,17 +381,32 @@ private fun EditClientLocationDialog(
 ) {
     Dialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+            }
+        }
+
+        val navBottom = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
+            .coerceAtLeast(16.dp)
+
         Column(
             Modifier
                 .fillMaxSize()
-                .background(if (isDark) Color(0xFF111827) else Color.White),
+                .background(if (isDark) Color(0xFF111827) else Color.White)
+                .statusBarsPadding(),
         ) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -431,9 +513,8 @@ private fun EditClientLocationDialog(
                 enabled = !isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp)
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = 12.dp + navBottom)
                     .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = SherinColors.Primary),
@@ -456,6 +537,72 @@ private fun EditClientLocationDialog(
 private fun titleColor(isDark: Boolean) =
     if (isDark) Color.White else Color(0xFF111827)
 
+/** Manager APK mijozlar ro‘yxatidagi PenSquare edit tugmasi. */
+@Composable
+private fun ManagerEditIconButton() {
+    val accent = Color(0xFF6C5CE7)
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(accent.copy(alpha = 0.12f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = PenSquareIcon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp),
+        )
+    }
+}
+
+/** Lucide PenSquare — manager-app/src/icons.tsx bilan bir xil. */
+private val PenSquareIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "PenSquare",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+            pathFillType = PathFillType.NonZero,
+        ) {
+            moveTo(11f, 4f)
+            horizontalLineTo(4f)
+            curveTo(2.9f, 4f, 2f, 4.9f, 2f, 6f)
+            verticalLineTo(20f)
+            curveTo(2f, 21.1f, 2.9f, 22f, 4f, 22f)
+            horizontalLineTo(18f)
+            curveTo(19.1f, 22f, 20f, 21.1f, 20f, 20f)
+            verticalLineTo(13f)
+        }
+        path(
+            fill = null,
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+            pathFillType = PathFillType.NonZero,
+        ) {
+            moveTo(18.5f, 2.5f)
+            curveTo(19.328f, 1.672f, 20.672f, 1.672f, 21.5f, 2.5f)
+            curveTo(22.328f, 3.328f, 22.328f, 4.672f, 21.5f, 5.5f)
+            lineTo(12f, 15f)
+            lineTo(8f, 16f)
+            lineTo(9f, 12f)
+            lineTo(18.5f, 2.5f)
+            close()
+        }
+    }.build()
+}
+
 @Composable
 private fun BalanceStat(label: String, value: String, valueColor: Color) {
     Column {
@@ -477,6 +624,7 @@ private fun ClientInfoCard(
     subColor: Color,
     subtitle: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    showChevron: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     Surface(
@@ -522,14 +670,14 @@ private fun ClientInfoCard(
             if (trailing != null) {
                 Spacer(Modifier.width(8.dp))
                 trailing()
-                if (onClick != null) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = subColor,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+            }
+            if (onClick != null && showChevron) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = subColor,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }

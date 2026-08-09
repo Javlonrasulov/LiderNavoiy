@@ -534,20 +534,29 @@ class DashboardViewModel @Inject constructor(
                         ?.flatMap { it.orders.asSequence() }
                         ?.firstOrNull { it.orderId == orderId }
                     var tracking = trackingRaw
-                    // Jonli WS nuqtasini eski HTTP bilan almashtirmaslik
+                    // Jonli WS ni saqlash — lekin HTTP boshqa joyda bo‘lsa (haqiqiy harakat)
+                    // timestamp eskiroq bo‘lsa ham qabul qilamiz (eski heartbeat muammosi).
                     val liveAt = liveCourierAtByOrder[orderId] ?: 0L
                     val livePerson = liveOrderNow?.tracking?.deliveryPerson
                         ?: prev?.tracking?.deliveryPerson
-                    val httpAt = parseIsoMs(tracking.deliveryPerson?.lastLocationAt) ?: 0L
-                    if (
-                        livePerson?.latitude != null &&
-                        livePerson.longitude != null &&
+                    val httpPerson = tracking.deliveryPerson
+                    val httpAt = parseIsoMs(httpPerson?.lastLocationAt) ?: 0L
+                    val httpLat = httpPerson?.latitude
+                    val httpLng = httpPerson?.longitude
+                    val liveLat = livePerson?.latitude
+                    val liveLng = livePerson?.longitude
+                    val httpMovedAway = liveLat != null && liveLng != null &&
+                        httpLat != null && httpLng != null &&
+                        RoadRouteService.haversineM(liveLat, liveLng, httpLat, httpLng) > 20.0
+                    val keepLive = liveLat != null &&
+                        liveLng != null &&
                         liveAt > 0L &&
-                        System.currentTimeMillis() - liveAt < 45_000 &&
-                        httpAt <= liveAt + 500
-                    ) {
-                        val lat = livePerson.latitude!!
-                        val lng = livePerson.longitude!!
+                        System.currentTimeMillis() - liveAt < 15_000 &&
+                        httpAt <= liveAt + 500 &&
+                        !httpMovedAway
+                    if (keepLive) {
+                        val lat = liveLat!!
+                        val lng = liveLng!!
                         val distKm = if (
                             tracking.deliveryLatitude != null && tracking.deliveryLongitude != null
                         ) {
@@ -566,12 +575,12 @@ class DashboardViewModel @Inject constructor(
                                 latitude = lat,
                                 longitude = lng,
                                 isOnline = true,
-                                lastLocationAt = livePerson.lastLocationAt
+                                lastLocationAt = livePerson?.lastLocationAt
                                     ?: tracking.deliveryPerson?.lastLocationAt,
                             ),
                         )
-                    } else if (httpAt > liveAt) {
-                        liveCourierAtByOrder[orderId] = httpAt
+                    } else if (httpAt > liveAt || httpMovedAway) {
+                        if (httpAt > liveAt) liveCourierAtByOrder[orderId] = httpAt
                     }
 
                     // Marshrut ham joriy fleetdan (WS trim) — sync eski chiziqni qaytarmasin
@@ -754,7 +763,7 @@ class DashboardViewModel @Inject constructor(
         val freshFleet = _uiState.value.liveFleet
         val patchedOrders = liveOrders.map { order ->
             val liveAt = liveCourierAtByOrder[order.orderId] ?: 0L
-            if (liveAt <= 0L || System.currentTimeMillis() - liveAt > 45_000) return@map order
+            if (liveAt <= 0L || System.currentTimeMillis() - liveAt > 15_000) return@map order
             val live = freshFleet?.vehicles
                 ?.asSequence()
                 ?.flatMap { it.orders.asSequence() }
@@ -978,9 +987,15 @@ class DashboardViewModel @Inject constructor(
                 return@map vehicle
             }
             changed = true
+            val movedFromVehicle = RoadRouteService.haversineM(
+                vehicle.courierLat, vehicle.courierLng, lat, lng,
+            )
             val updatedOrders = vehicle.orders.map { order ->
                 if (order.tracking.deliveryPerson?.distributorId != distributorId) return@map order
-                liveCourierAtByOrder[order.orderId] = atMs
+                // Bir xil joy + yangi timestamp — HTTP ni bloklamaslik
+                if (movedFromVehicle >= 3.0) {
+                    liveCourierAtByOrder[order.orderId] = atMs
+                }
                 val distKm = if (order.deliveryLat != null && order.deliveryLng != null) {
                     RoadRouteService.haversineM(lat, lng, order.deliveryLat, order.deliveryLng) / 1000.0
                 } else null

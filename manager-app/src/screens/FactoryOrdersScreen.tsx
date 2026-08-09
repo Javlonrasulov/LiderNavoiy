@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { ArrowLeft, BarChart3, Check, Download, FileText, Package, Plus, Share2, Trash2, X } from '../icons'
+import { ArrowLeft, BarChart3, Check, ChevronRight, Download, FileText, Package, Plus, Share2, Trash2, X } from '../icons'
 import {
   fetchGoodsReceipt,
   fetchGoodsReceipts,
@@ -10,7 +10,7 @@ import {
   type GoodsReceipt,
   type MissingStatRow,
 } from '../api/factoryOrders'
-import { fetchProducts } from '../api/manager'
+import { fetchProductCategories, fetchProducts } from '../api/manager'
 import type { Product } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
@@ -49,6 +49,13 @@ function fmtNum(n: number) {
   return Number(n || 0).toLocaleString('ru-RU')
 }
 
+const UNCATED = '__uncategorized__'
+
+function productCategoryKey(p: Product) {
+  const cat = (p.category || '').trim()
+  return cat || UNCATED
+}
+
 export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const c = theme(dark)
   const companyId = getStoredUser()?.companyId || undefined
@@ -62,7 +69,9 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const [saving, setSaving] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
+  const [productCategories, setProductCategories] = useState<string[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerCategory, setPickerCategory] = useState<string | null>(null)
   const [pickerQ, setPickerQ] = useState('')
   const [compare, setCompare] = useState<{
     items: FactoryOrderItem[]
@@ -103,7 +112,13 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
   useEffect(() => {
     return pushBackHandler(() => {
       if (pickerOpen) {
+        if (pickerCategory != null) {
+          setPickerCategory(null)
+          setPickerQ('')
+          return true
+        }
         setPickerOpen(false)
+        setPickerQ('')
         return true
       }
       if (selectedId) {
@@ -113,20 +128,28 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
       }
       return false
     })
-  }, [selectedId, pickerOpen])
+  }, [selectedId, pickerOpen, pickerCategory])
 
   const openDetail = async (id: string) => {
     setSelectedId(id)
     setDetailLoading(true)
     setCompare(null)
     try {
-      const [r, recon, prods] = await Promise.all([
+      const [r, recon, prods, cats] = await Promise.all([
         fetchGoodsReceipt(id),
         fetchReconciliation(id).catch(() => null),
         products.length ? Promise.resolve(products) : fetchProducts(companyId),
+        productCategories.length
+          ? Promise.resolve(productCategories.map(category => ({ category })))
+          : fetchProductCategories(companyId).catch(() => [] as { category: string }[]),
       ])
       setReceipt(r)
       setProducts(prods)
+      const fromApi = (Array.isArray(cats) ? cats : [])
+        .map(x => (x.category || '').trim())
+        .filter(Boolean)
+      const fromProducts = [...new Set(prods.map(p => (p.category || '').trim()).filter(Boolean))]
+      setProductCategories([...new Set([...fromApi, ...fromProducts])].sort((a, b) => a.localeCompare(b, 'ru')))
       if (recon?.items?.length) {
         setDraft(
           recon.items.map((it, i) => ({
@@ -159,18 +182,55 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
     }
   }
 
-  const filteredProducts = useMemo(() => {
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const p of products) {
+      const key = productCategoryKey(p)
+      map.set(key, (map.get(key) || 0) + 1)
+    }
+    return map
+  }, [products])
+
+  const pickerCategoryList = useMemo(() => {
+    const keys = new Set<string>(productCategories)
+    for (const p of products) keys.add(productCategoryKey(p))
+    const named = [...keys].filter(k => k !== UNCATED).sort((a, b) => a.localeCompare(b, 'ru'))
+    if (keys.has(UNCATED) || (categoryCounts.get(UNCATED) || 0) > 0) named.push(UNCATED)
     const q = pickerQ.trim().toLowerCase()
-    if (!q) return products.slice(0, 80)
+    if (!q || pickerCategory != null) return named
+    return named.filter(k => {
+      const label = k === UNCATED ? tr.factoryNoCategory : k
+      return label.toLowerCase().includes(q)
+    })
+  }, [productCategories, products, categoryCounts, pickerQ, pickerCategory, tr.factoryNoCategory])
+
+  const filteredProducts = useMemo(() => {
+    if (pickerCategory == null) return []
+    const q = pickerQ.trim().toLowerCase()
     return products
-      .filter(
-        p =>
+      .filter(p => productCategoryKey(p) === pickerCategory)
+      .filter(p => {
+        if (!q) return true
+        return (
           p.name.toLowerCase().includes(q) ||
           (p.code || '').toLowerCase().includes(q) ||
-          (p.brand || '').toLowerCase().includes(q),
-      )
-      .slice(0, 80)
-  }, [products, pickerQ])
+          (p.brand || '').toLowerCase().includes(q)
+        )
+      })
+      .slice(0, 120)
+  }, [products, pickerQ, pickerCategory])
+
+  const closePicker = () => {
+    setPickerOpen(false)
+    setPickerCategory(null)
+    setPickerQ('')
+  }
+
+  const openPicker = () => {
+    setPickerCategory(null)
+    setPickerQ('')
+    setPickerOpen(true)
+  }
 
   const addProduct = (p: Product) => {
     setDraft(prev => [
@@ -185,8 +245,7 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
         orderedPrice: String(p.price ?? 0),
       },
     ])
-    setPickerOpen(false)
-    setPickerQ('')
+    closePicker()
   }
 
   const toItems = (): FactoryOrderItem[] =>
@@ -624,7 +683,7 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
               {/* Buyurtma */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <p style={{ fontSize: 13, fontWeight: 800, color: c.text, margin: 0 }}>{tr.factoryOrdered}</p>
-                <button type="button" onClick={() => setPickerOpen(true)}
+                <button type="button" onClick={openPicker}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     background: 'rgba(108,92,231,0.15)', color: c.primary, border: 'none',
@@ -738,48 +797,112 @@ export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
         {pickerOpen && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 70, background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'flex-end',
-            paddingBottom: 'var(--ime-bottom, 0px)',
-            transition: 'padding-bottom 160ms ease-out',
           }}>
             <div style={{
-              width: '100%',
-              maxHeight: 'min(80%, calc(100% - var(--ime-bottom, 0px)))',
-              background: c.card, borderRadius: '20px 20px 0 0',
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 'var(--ime-bottom, 0px)',
+              maxHeight: 'min(72%, calc(100% - var(--ime-bottom, 0px) - 56px))',
+              background: c.card,
+              borderRadius: '20px 20px 0 0',
               padding: '16px 16px calc(20px + var(--safe-bottom))',
-              display: 'flex', flexDirection: 'column',
+              display: 'flex',
+              flexDirection: 'column',
+              transition: 'bottom 160ms ease-out, max-height 160ms ease-out',
+              boxShadow: '0 -12px 40px rgba(0,0,0,0.25)',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <p style={{ fontSize: 16, fontWeight: 800, color: c.text, margin: 0 }}>{tr.factoryAddProduct}</p>
-                <button type="button" onClick={() => setPickerOpen(false)} style={{ background: 'none', border: 'none' }}>
-                  <X size={22} color={c.mutedText} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                {pickerCategory != null ? (
+                  <button
+                    type="button"
+                    onClick={() => { setPickerCategory(null); setPickerQ('') }}
+                    style={{
+                      width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}
+                  >
+                    <ArrowLeft size={18} color={c.text} />
+                  </button>
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: c.text, margin: 0 }}>
+                    {pickerCategory == null
+                      ? tr.categorySelect
+                      : (pickerCategory === UNCATED ? tr.factoryNoCategory : pickerCategory)}
+                  </p>
+                  {pickerCategory == null && (
+                    <p style={{ fontSize: 12, color: c.mutedText, margin: '2px 0 0' }}>{tr.factoryAddProduct}</p>
+                  )}
+                </div>
+                <button type="button" onClick={closePicker} style={{
+                  width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <X size={18} color={c.mutedText} />
                 </button>
               </div>
               <input
                 value={pickerQ}
                 onChange={e => setPickerQ(e.target.value)}
-                placeholder={tr.search}
+                placeholder={pickerCategory == null ? tr.search : tr.clientOrderSearchProduct}
                 style={{
                   padding: '12px 14px', borderRadius: 12, border: `1px solid ${c.border}`,
                   background: c.muted, color: c.text, fontSize: 14, marginBottom: 10,
+                  flexShrink: 0,
                 }}
               />
-              <div style={{ overflowY: 'auto', flex: 1 }} className="no-scrollbar">
-                {filteredProducts.map(p => (
-                  <button key={p.id} type="button" onClick={() => addProduct(p)}
-                    style={{
-                      width: '100%', textAlign: 'left', padding: '12px 4px',
-                      border: 'none', borderBottom: `1px solid ${c.border}`,
-                      background: 'none', cursor: 'pointer',
-                    }}>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: c.text, margin: 0 }}>{p.name}</p>
-                    <p style={{ fontSize: 11, color: c.mutedText, margin: '2px 0 0' }}>
-                      {p.code} · {p.unit} · {formatMoney(p.price, lang)}
-                    </p>
-                  </button>
-                ))}
-                {filteredProducts.length === 0 && (
-                  <p style={{ color: c.mutedText, fontSize: 13, padding: 12 }}>{tr.clientOrderNoProducts}</p>
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }} className="no-scrollbar">
+                {pickerCategory == null ? (
+                  <>
+                    {pickerCategoryList.map(cat => {
+                      const label = cat === UNCATED ? tr.factoryNoCategory : cat
+                      const count = categoryCounts.get(cat) || 0
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => { setPickerCategory(cat); setPickerQ('') }}
+                          style={{
+                            width: '100%', textAlign: 'left', padding: '14px 4px',
+                            border: 'none', borderBottom: `1px solid ${c.border}`,
+                            background: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', gap: 10,
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 15, fontWeight: 700, color: c.text, margin: 0 }}>{label}</p>
+                            <p style={{ fontSize: 11, color: c.mutedText, margin: '2px 0 0' }}>
+                              {count} {tr.statProducts.toLowerCase()}
+                            </p>
+                          </div>
+                          <ChevronRight size={18} color={c.mutedText} />
+                        </button>
+                      )
+                    })}
+                    {pickerCategoryList.length === 0 && (
+                      <p style={{ color: c.mutedText, fontSize: 13, padding: 12 }}>{tr.noData}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {filteredProducts.map(p => (
+                      <button key={p.id} type="button" onClick={() => addProduct(p)}
+                        style={{
+                          width: '100%', textAlign: 'left', padding: '12px 4px',
+                          border: 'none', borderBottom: `1px solid ${c.border}`,
+                          background: 'none', cursor: 'pointer',
+                        }}>
+                        <p style={{ fontSize: 14, fontWeight: 700, color: c.text, margin: 0 }}>{p.name}</p>
+                        <p style={{ fontSize: 11, color: c.mutedText, margin: '2px 0 0' }}>
+                          {p.code} · {p.unit} · {formatMoney(p.price, lang)}
+                        </p>
+                      </button>
+                    ))}
+                    {filteredProducts.length === 0 && (
+                      <p style={{ color: c.mutedText, fontSize: 13, padding: 12 }}>{tr.clientOrderNoProducts}</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>

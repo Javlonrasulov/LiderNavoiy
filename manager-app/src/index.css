@@ -105,14 +105,21 @@ html, body {
   overflow: hidden;
 }
 
-/* Klaviatura ochiq: pastki navbar yashirin */
-html[data-keyboard-open='1'] .lm-bottom-nav {
+/* Klaviatura / suhbat ochiq: pastki navbar butunlay yashirin */
+html[data-keyboard-open='1'] .lm-bottom-nav,
+html[data-chat-open='1'] .lm-bottom-nav,
+body.lm-chat-open .lm-bottom-nav {
   display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
 }
 
-/* Suhbat ochiq: pastki navbar yashirin */
-html[data-chat-open='1'] .lm-bottom-nav {
-  display: none !important;
+.lm-chat-composer {
+  /* Klaviatura ustiga mahkam — navbar ostiga tushmasin */
+  transform: translateZ(0);
 }
 
 .screen-header {

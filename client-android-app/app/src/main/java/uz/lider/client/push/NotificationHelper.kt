@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -72,16 +73,42 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val isPaymentReminder = type.equals("payment_reminder", ignoreCase = true) ||
+            title.contains("To'lov muddati", ignoreCase = true) ||
+            title.contains("Тўлов муддати", ignoreCase = true) ||
+            title.contains("Bugun to'lov", ignoreCase = true) ||
+            title.contains("Бугун тўлов", ignoreCase = true) ||
+            title.contains("To'lov eslatmasi", ignoreCase = true) ||
+            title.contains("Тўлов эслатмаси", ignoreCase = true)
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setContentTitle(title)
             .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
 
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        if (isPaymentReminder) {
+            val big = runCatching {
+                BitmapFactory.decodeResource(context.resources, R.drawable.push_payment_reminder)
+            }.getOrNull()
+            if (big != null) {
+                builder
+                    .setLargeIcon(big)
+                    .setStyle(
+                        NotificationCompat.BigPictureStyle()
+                            .bigPicture(big)
+                            .bigLargeIcon(null as android.graphics.Bitmap?)
+                            .setSummaryText(body),
+                    )
+            } else {
+                builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            }
+        } else {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        }
+
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
 }
