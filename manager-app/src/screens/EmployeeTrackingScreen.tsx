@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   Flag,
+  GitBranch,
   LogIn,
   MapPin,
   Navigation,
@@ -61,6 +62,7 @@ export default function EmployeeTrackingScreen({
   const [loading, setLoading] = useState(true)
   const [pointFilter, setPointFilter] = useState<PointStatus | null>(null)
   const [mapKey, setMapKey] = useState(0)
+  const [showLines, setShowLines] = useState(false)
 
   const name =
     distributor.user?.fullName || distributor.fullName || distributor.name || '—'
@@ -183,18 +185,43 @@ export default function EmployeeTrackingScreen({
             <ArrowLeft size={18} color={c.text} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1
-              style={{
-                fontSize: 17,
-                fontWeight: 800,
-                color: c.text,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {name}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <h1
+                style={{
+                  fontSize: 17,
+                  fontWeight: 800,
+                  color: c.text,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  minWidth: 0,
+                }}
+              >
+                {name}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setShowLines(true)}
+                style={{
+                  flexShrink: 0,
+                  height: 28,
+                  padding: '0 10px',
+                  borderRadius: 99,
+                  border: `1px solid ${indigo}55`,
+                  background: `${indigo}18`,
+                  color: indigo,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                }}
+              >
+                <GitBranch size={12} color={indigo} />
+                {tr.lineSectionTitle}
+              </button>
+            </div>
             <p style={{ fontSize: 12, color: c.mutedText, marginTop: 2 }}>{tr.trackTitle}</p>
           </div>
           <span
@@ -333,15 +360,6 @@ export default function EmployeeTrackingScreen({
             )
           })}
         </div>
-
-        <EmployeeLinesCard
-          dark={dark}
-          lang={lang}
-          tr={tr}
-          distributor={distributor}
-          location={location}
-          selectedDate={selectedDate}
-        />
 
         <div
           style={{
@@ -569,6 +587,86 @@ export default function EmployeeTrackingScreen({
           )}
         </div>
       </div>
+
+      {showLines && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 60,
+            background: c.bg,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div
+            style={{
+              padding: 'var(--header-pad-top) max(16px, var(--safe-right)) 12px max(16px, var(--safe-left))',
+              borderBottom: `1px solid ${c.border}`,
+              background: c.card,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowLines(false)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  border: `1px solid ${c.border}`,
+                  background: c.muted,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <ArrowLeft size={18} color={c.text} />
+              </button>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <GitBranch size={16} color={indigo} />
+                  <h1 style={{ fontSize: 17, fontWeight: 800, color: c.text }}>
+                    {tr.lineSectionTitle}
+                  </h1>
+                </div>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: c.mutedText,
+                    marginTop: 2,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {name} · {tr.lineSectionHint}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '14px max(16px, var(--safe-right)) calc(24px + var(--safe-bottom)) max(16px, var(--safe-left))',
+            }}
+            className="no-scrollbar"
+          >
+            <EmployeeLinesCard
+              dark={dark}
+              lang={lang}
+              tr={tr}
+              distributor={distributor}
+              location={location}
+              selectedDate={selectedDate}
+              asPage
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
