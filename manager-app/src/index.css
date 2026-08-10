@@ -118,8 +118,8 @@ body.lm-chat-open .lm-bottom-nav {
 }
 
 .lm-chat-composer {
-  /* Klaviatura ustiga mahkam — navbar ostiga tushmasin */
-  transform: translateZ(0);
+  /* Klaviatura ustiga bottom offset orqali ko'tariladi — transform/top ishlatilmaydi */
+  will-change: bottom;
 }
 
 .screen-header {

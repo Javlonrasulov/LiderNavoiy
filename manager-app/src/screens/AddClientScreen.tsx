@@ -30,6 +30,7 @@ import ClientPinMap from '../components/ClientPinMap'
 import { showToast } from '../components/Toast'
 import {
   findBestSimilarityMatch,
+  hasExactInnCollision,
   similarityRisk,
   similarityRiskColors,
   type SimilarityFieldKey,
@@ -149,9 +150,7 @@ export default function AddClientScreen({
       case 'fullName': return tr.dupFieldFullName
       case 'phone': return tr.dupFieldPhone
       case 'inn': return tr.dupFieldInn
-      case 'address': return tr.dupFieldAddress
       case 'territory': return tr.dupFieldTerritory
-      case 'lineCode': return tr.dupFieldLine
     }
   }
 
@@ -579,9 +578,7 @@ export default function AddClientScreen({
           fullName: body.fullName,
           phone: body.phone,
           inn: body.inn,
-          address: body.address,
           territory: body.territory,
-          lineCode: body.lineCode,
         },
         Array.isArray(list) ? list : [],
         { excludeClientId: isResubmit ? editClient?.id : undefined },
@@ -1000,6 +997,7 @@ export default function AddClientScreen({
                 lng={lng}
                 radiusMeters={radius}
                 dark={dark}
+                tr={tr}
                 onPick={(a, b) => { setLat(a); setLng(b) }}
               />
             </div>
@@ -1084,7 +1082,8 @@ export default function AddClientScreen({
             }}
           >
             {(() => {
-              const risk = similarityRisk(similarityMatch.overallPct)
+              const innBlocked = hasExactInnCollision(similarityMatch)
+              const risk = innBlocked ? 'red' as const : similarityRisk(similarityMatch.overallPct)
               const colors = similarityRiskColors(risk, dark)
               const riskLabel = risk === 'red' ? tr.dupRiskRed : risk === 'yellow' ? tr.dupRiskYellow : tr.dupRiskGreen
               return (
@@ -1122,6 +1121,18 @@ export default function AddClientScreen({
               </div>
             </div>
 
+            {innBlocked && (
+              <div style={{
+                borderRadius: 14, padding: '10px 12px', marginBottom: 14,
+                background: dark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+                border: `1px solid ${dark ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                color: dark ? '#FCA5A5' : '#DC2626',
+                fontSize: 12, fontWeight: 700, lineHeight: 1.45,
+              }}>
+                {tr.dupInnBlocked}
+              </div>
+            )}
+
             <div style={{
               borderRadius: 14, padding: 12, marginBottom: 14,
               background: dark ? '#1A1A2E' : '#F3F4F6',
@@ -1131,6 +1142,11 @@ export default function AddClientScreen({
               <p style={{ margin: '4px 0 0', fontSize: 15, fontWeight: 800, color: c.text }}>
                 {similarityMatch.client.name}
               </p>
+              {similarityMatch.client.inn && (
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: c.mutedText, fontFamily: 'monospace' }}>
+                  INN: {similarityMatch.client.inn}
+                </p>
+              )}
               {similarityMatch.client.phone && (
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: c.mutedText }}>{similarityMatch.client.phone}</p>
               )}
@@ -1160,30 +1176,39 @@ export default function AddClientScreen({
               })}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: innBlocked ? '1fr' : '1fr 1fr',
+              gap: 10,
+            }}>
               <button
                 type="button"
                 onClick={dismissSimilarity}
                 disabled={loading}
                 style={{
-                  height: 48, borderRadius: 14, border: `1px solid ${c.border}`,
-                  background: c.muted, color: c.text, fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                  height: 48, borderRadius: 14,
+                  border: innBlocked ? 'none' : `1px solid ${c.border}`,
+                  background: innBlocked ? c.primary : c.muted,
+                  color: innBlocked ? '#fff' : c.text,
+                  fontWeight: 800, fontSize: 13, cursor: 'pointer',
                 }}
               >
-                {tr.dupCancel}
+                {innBlocked ? (tr.dupUnderstood ?? tr.dupCancel) : tr.dupCancel}
               </button>
-              <button
-                type="button"
-                onClick={confirmAddAnyway}
-                disabled={loading}
-                style={{
-                  height: 48, borderRadius: 14, border: 'none',
-                  background: c.primary, color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
-                {loading ? tr.loading : tr.dupAddAnyway}
-              </button>
+              {!innBlocked && (
+                <button
+                  type="button"
+                  onClick={confirmAddAnyway}
+                  disabled={loading}
+                  style={{
+                    height: 48, borderRadius: 14, border: 'none',
+                    background: c.primary, color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer',
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                >
+                  {loading ? tr.loading : tr.dupAddAnyway}
+                </button>
+              )}
             </div>
                 </>
               )
@@ -1290,6 +1315,7 @@ export default function AddClientScreen({
               lng={lng}
               radiusMeters={radius}
               dark={dark}
+              tr={tr}
               height="100%"
               borderRadius={0}
               onPick={(a, b) => { setLat(a); setLng(b) }}

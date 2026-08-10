@@ -33,6 +33,35 @@ function transliterateWord(word: string): string {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+/**
+ * Qidiruv uchun: kirill <-> lotin bir xil shaklga (masalan far).
+ * Apostrof/diakritiklar ham olib tashlanadi.
+ */
+export function normalizeForSearch(input: string): string {
+  if (!input) return '';
+  let raw = String(input)
+    .replace(/o[''`\u02BC\u02BB']/gi, 'o')
+    .replace(/g[''`\u02BC\u02BB']/gi, 'g');
+
+  let out = '';
+  for (const ch of raw) {
+    out += CYRILLIC_TO_LATIN[ch] ?? ch;
+  }
+
+  return out
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+/** Matnda qidiruv sozini (lotin yoki kirill) topish */
+export function textMatchesSearch(haystack: string, needle: string): boolean {
+  const q = normalizeForSearch(needle);
+  if (!q) return true;
+  return normalizeForSearch(haystack).includes(q);
+}
+
 /** Mijoz login: birinchi so'z + kod (takrorlanmasligi uchun) */
 export function clientNameToLogin(name: string, codeFallback?: string): string {
   const firstWord = name.trim().split(/\s+/).find(Boolean) ?? '';
@@ -71,7 +100,55 @@ function parseGpsString(gps: string): { lat: number | null; lng: number | null }
   return { lat: la, lng: ln };
 }
 
-export function apiClientToRow(c: BackendClient): ClientRow {
+/** Bo'sh yoki faqat nol INN ko'rsatilmasin */
+export function normalizeInnDisplay(inn?: string | null): string {
+  const v = (inn || '').trim();
+  if (!v || /^0+$/.test(v)) return '';
+  return v;
+}
+
+/** Kontakt + manager kiritgan qo'shimcha telefonlar (jadval uchun) */
+export function formatClientContact(c: {
+  contactPerson?: string | null;
+  contact?: string | null;
+  extraPhones?: { phone: string; note?: string }[] | null;
+}): string {
+  const parts: string[] = [];
+  const person = (c.contactPerson ?? c.contact ?? '').trim();
+  if (person) parts.push(person);
+  const extras = Array.isArray(c.extraPhones) ? c.extraPhones : [];
+  for (const p of extras) {
+    const phone = p?.phone?.trim();
+    if (!phone) continue;
+    const note = p.note?.trim();
+    parts.push(note ? `${phone} (${note})` : phone);
+  }
+  return parts.join(', ');
+}
+
+/** Jadvalda Kod: mijozning haqiqiy raqamli kodi */
+export function displayClientCode(c: { id: string; code?: string | null }): string {
+  const code = (c.code || '').trim();
+  if (/^\d+$/.test(code)) return code;
+  // Eski harfli/bo‘sh kodlar — hash ko‘rsatilmaydi (uzun soxta ID chiqmasin)
+  return code || '—';
+}
+
+export function formatLineDisplay(
+  lineCode: string | null | undefined,
+  lines: Array<{ code: string; name: string }>,
+): string {
+  const code = (lineCode || '').trim();
+  if (!code) return '';
+  const hit = lines.find((l) => l.code.trim() === code);
+  if (hit?.name?.trim()) return `${hit.code} - ${hit.name.trim()}`;
+  return code;
+}
+
+export function apiClientToRow(
+  c: BackendClient,
+  opts?: { lines?: Array<{ code: string; name: string }> },
+): ClientRow {
   const agentName = c.distributor?.user?.fullName ?? '';
   return {
     id: c.id,
@@ -79,10 +156,11 @@ export function apiClientToRow(c: BackendClient): ClientRow {
     onTradeId: c.onTradeId ?? c.code,
     name: c.name,
     fullName: c.fullName ?? c.name,
-    line: c.lineCode ?? '',
-    priceCat: c.priceCategory ?? '',
+    line: formatLineDisplay(c.lineCode, opts?.lines ?? []),
+    lineCode: c.lineCode ?? '',
+    priceCat: 'Standard',
     territory: c.territory ?? '',
-    inn: c.inn ?? '',
+    inn: normalizeInnDisplay(c.inn),
     legalAddr: c.address ?? '',
     phone: c.phone ?? '',
     contact: c.contactPerson ?? '',
@@ -91,6 +169,11 @@ export function apiClientToRow(c: BackendClient): ClientRow {
     agent: agentName,
     distributorId: c.distributorId ?? undefined,
     balance: Number(c.balance) || 0,
+    ordersCount: Number(c.ordersCount) || 0,
+    totalSales: Number(c.totalSales) || 0,
+    lastOrderAt: c.lastOrderAt ?? null,
+    goodsQty: Number(c.goodsQty) || 0,
+    goodsWeight: Number(c.goodsWeight) || 0,
     category: c.category ?? 'Standard',
     lastVisit: c.updatedAt?.slice(0, 10) ?? '',
     rowType: 'normal',
@@ -98,6 +181,23 @@ export function apiClientToRow(c: BackendClient): ClientRow {
     locationUpdatedAt: c.locationUpdatedAt ?? undefined,
     locationUpdatedBy: c.locationUpdatedByName?.trim() || undefined,
     canSeePromotions: !!c.canSeePromotions,
+    isActive: c.isActive !== false,
+    markColor: (() => {
+      const m = c.markColor?.trim().toLowerCase();
+      return m === 'yellow' || m === 'red' ? m : 'green';
+    })(),
+    companyId: c.companyId ?? undefined,
+    companyIds: (() => {
+      const linked = Array.isArray(c.linkedCompanyIds) ? c.linkedCompanyIds.filter(Boolean) : [];
+      const primary = c.companyId?.trim();
+      if (!primary && linked.length === 0) return [];
+      return [...new Set([...(primary ? [primary] : []), ...linked])];
+    })(),
+    extraPhones: Array.isArray(c.extraPhones)
+      ? c.extraPhones
+          .filter((p) => p?.phone?.trim())
+          .map((p) => ({ phone: p.phone.trim(), note: p.note?.trim() || undefined }))
+      : [],
     createdAt: c.createdAt ?? undefined,
     createdBy: c.createdByName?.trim() || undefined,
     deletedAt: c.deletedAt ?? undefined,
@@ -105,10 +205,18 @@ export function apiClientToRow(c: BackendClient): ClientRow {
   };
 }
 
-export function rowToUpdatePayload(data: Partial<ClientRow> & { id: string }) {
+export function rowToUpdatePayload(
+  data: Partial<ClientRow> & {
+    id: string;
+    isActive?: boolean;
+    extraPhones?: { phone: string; note?: string }[];
+    companyIds?: string[];
+  },
+) {
   const { lat, lng } = parseGpsString(data.gps ?? '');
+  const code = (data.code || '').replace(/\D/g, '') || undefined;
   return {
-    code: data.code,
+    code,
     onTradeId: data.onTradeId,
     name: data.name,
     fullName: data.fullName,
@@ -126,22 +234,44 @@ export function rowToUpdatePayload(data: Partial<ClientRow> & { id: string }) {
     clientClass: data.cls,
     priceCategory: data.priceCat,
     canSeePromotions: data.canSeePromotions === true,
+    ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+    ...(data.companyIds !== undefined
+      ? { companyIds: data.companyIds, companyId: data.companyIds[0] || data.companyId }
+      : data.companyId !== undefined
+        ? { companyId: data.companyId }
+        : {}),
+    ...(data.extraPhones !== undefined
+      ? {
+          extraPhones: data.extraPhones
+            .filter((p) => p?.phone?.trim())
+            .map((p) => ({ phone: p.phone.trim(), note: p.note?.trim() || undefined })),
+        }
+      : {}),
   };
 }
 
 export function formToCreatePayload(
-  data: Partial<ClientRow>,
+  data: Partial<ClientRow> & { isActive?: boolean; extraPhones?: { phone: string; note?: string }[]; companyIds?: string[] },
   companyId?: string,
 ) {
   const { lat, lng } = parseGpsString(data.gps ?? '');
+  const code = (data.code || '').replace(/\D/g, '') || undefined;
+  const companyIds = data.companyIds?.length
+    ? data.companyIds
+    : data.companyId
+      ? [data.companyId]
+      : companyId
+        ? [companyId]
+        : undefined;
   return {
-    code: data.code || 'NEW',
+    ...(code ? { code } : {}),
     onTradeId: data.onTradeId,
     name: data.name || '',
     fullName: data.fullName || data.name,
     phone: data.phone,
     address: data.legalAddr,
-    companyId,
+    companyId: companyIds?.[0] || companyId,
+    ...(companyIds ? { companyIds } : {}),
     lineCode: data.line?.split(' - ')[0]?.trim() || data.line || undefined,
     latitude: lat ?? undefined,
     longitude: lng ?? undefined,
@@ -154,6 +284,14 @@ export function formToCreatePayload(
     clientClass: data.cls,
     priceCategory: data.priceCat,
     canSeePromotions: data.canSeePromotions === true,
+    isActive: data.isActive !== false,
+    ...(data.extraPhones !== undefined
+      ? {
+          extraPhones: data.extraPhones
+            .filter((p) => p?.phone?.trim())
+            .map((p) => ({ phone: p.phone.trim(), note: p.note?.trim() || undefined })),
+        }
+      : {}),
   };
 }
 

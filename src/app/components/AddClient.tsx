@@ -6,9 +6,29 @@ import L from 'leaflet';
 import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher';
 import type { ClientRow } from '../data/adminData';
 import { api } from '../api/client';
-import { clientNameToLogin, DEFAULT_CLIENT_APP_PASSWORD } from '../utils/clientApi';
+import { clientNameToLogin, DEFAULT_CLIENT_APP_PASSWORD, formatLineDisplay } from '../utils/clientApi';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../utils/phoneFormat';
 import { getApiOrigin } from '../utils/productImageUrl';
+import { findBestSimilarityMatch, type SimilarityMatch } from '../utils/clientSimilarity';
+import { ClientSimilarityWarningModal } from './admin/ClientSimilarityWarningModal';
+import { SingleDatePicker } from './admin/SingleDatePicker';
+
+function toYmd(isoOrDate?: string | null): string {
+  if (!isoOrDate) return '';
+  const d = new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) {
+    const m = String(isoOrDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+  }
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
+}
+
+function todayYmd(): string {
+  return toYmd(new Date().toISOString());
+}
 
 export interface AgentOption {
   id: string;
@@ -16,18 +36,24 @@ export interface AgentOption {
   lineCode?: string;
 }
 
+type SavePayload = Partial<ClientRow> & {
+  id?: string;
+  appUsername?: string;
+  appPassword?: string;
+  appLoginChanged?: boolean;
+  hasAppLogin?: boolean;
+  isActive?: boolean;
+  extraPhones?: { phone: string; note?: string }[];
+  companyIds?: string[];
+};
+
 interface AddClientProps {
   onClose: () => void;
   client?: ClientRow;
   agents?: AgentOption[];
   lines?: string[];
-  onSave?: (data: Partial<ClientRow> & {
-    id?: string;
-    appUsername?: string;
-    appPassword?: string;
-    appLoginChanged?: boolean;
-    hasAppLogin?: boolean;
-  }) => Promise<string | void> | void | Promise<void>;
+  companyId?: string;
+  onSave?: (data: SavePayload) => Promise<string | void> | void | Promise<void>;
 }
 type TabKey = 'rekvizit' | 'kirish' | 'kontakt' | 'yonalish' | 'xarita' | 'foto' | 'status';
 
@@ -35,7 +61,7 @@ const TRANS = {
   uz_latn: {
     saveClose: "Saqlash va yopish", close: "Yopish",
     addNew: "Yangi mijoz qo'shish", editNew: "Mijozni tahrirlash",
-    tabs: ["Rekvizitlar", "Kirish", "Kontaktlar", "Yo'nalishlar", "Xarita", "Foto", "Holat"],
+    tabs: ["Rekvizitlar", "Kirish", "Kontaktlar", "Organizatsiya", "Xarita", "Foto", "Holat"],
     secNomi: "NOMI", secBank: "BANK", secOrg: "TASHKILOT",
     secGps: "GPS / MANZIL", secInn: "INN / JSHSHIR",
     secAkt: "TASDIQLANGAN AKT-SVERKA", secSizes: "O'LCHAMLAR",
@@ -63,7 +89,10 @@ const TRANS = {
     canSeePromotionsOff: "O'chirilgan",
     canSeePromotionsHint: "Yoqilsa, mijoz APK da admin yoqqan aksiyalarni ko'radi",
     category: "Kategoriya", agent: "Agent",
-    directionNo: "№", directionName: "Yo'nalish",
+    directionNo: "№", directionName: "Organizatsiya",
+    orgHint: "Belgilangan tashkilotlarda mijoz ko‘rinadi",
+    orgEmpty: "Tashkilotlar topilmadi",
+    orgRequired: "Kamida 1 ta organizatsiya tanlang",
     appLoginTitle: "Mijoz ilovasi (APK) kirish",
     appLogin: "Login",
     appPassword: "Parol",
@@ -79,11 +108,27 @@ const TRANS = {
     appNotSaved: "Saqlanmagan — «Saqlash va yopish» bosing",
     appSaved: "Saqlangan",
     appSaveLogin: "Login saqlash",
+    simTitle: "O'xshash mijoz topildi",
+    simConfirmAdd: "Baribir qo'shish",
+    simConfirmSave: 'Baribir saqlash',
+    simCancel: 'Bekor qilish',
+    simProbability: "O'xshashlik ehtimoli",
+    simRiskHigh: 'Yuqori xavf',
+    simRiskMedium: "O'rtacha xavf",
+    simRiskLow: 'Past xavf',
+    simFoundClient: 'Topilgan mijoz',
+    simInnBlocked: "Bir xil INN bilan mijoz allaqachon mavjud. «Baribir qo'shish» mumkin emas — INN ni o'zgartiring yoki mavjud mijozni tahrirlang.",
+    simUnderstand: 'Tushunarli',
+    simFieldName: 'Nomi',
+    simFieldFullName: "To'liq nomi",
+    simFieldPhone: 'Telefon',
+    simFieldInn: 'INN',
+    simFieldTerritory: 'Hudud',
   },
   uz_cyrl: {
     saveClose: "Сақлаш ва ёпиш", close: "Ёпиш",
     addNew: "Янги мижоз қўшиш", editNew: "Мижозни таҳрирлаш",
-    tabs: ["Реквизитлар", "Кириш", "Контактлар", "Йўналишлар", "Харита", "Фото", "Ҳолат"],
+    tabs: ["Реквизитлар", "Кириш", "Контактлар", "Организация", "Харита", "Фото", "Ҳолат"],
     secNomi: "НОМИ", secBank: "БАНК", secOrg: "ТАШКИЛОТ",
     secGps: "GPS / МАНЗИЛ", secInn: "ИНН / ЖШШИР",
     secAkt: "ТАСДИҚЛАНГАН АКТ-СВЕРКА", secSizes: "ЎЛЧАМЛАР",
@@ -111,7 +156,10 @@ const TRANS = {
     canSeePromotionsOff: "Ўчирилган",
     canSeePromotionsHint: "Ёқилса, мижоз APK да админ ёққан акцияларни кўради",
     category: "Категория", agent: "Агент",
-    directionNo: "№", directionName: "Йўналиш",
+    directionNo: "№", directionName: "Организация",
+    orgHint: "Белгиланган ташкилотларда мижоз кўринади",
+    orgEmpty: "Ташкилотлар топилмади",
+    orgRequired: "Камида 1 та организация танланг",
     appLoginTitle: "Мижоз иловаси (APK) кириш",
     appLogin: "Логин",
     appPassword: "Парол",
@@ -127,11 +175,27 @@ const TRANS = {
     appNotSaved: "Сақланмаган — «Сақлаш ва ёпиш» босинг",
     appSaved: "Сақланган",
     appSaveLogin: "Логинни сақлаш",
+    simTitle: 'Ўхшаш мижоз топилди',
+    simConfirmAdd: 'Барибир қўшиш',
+    simConfirmSave: 'Барибир сақлаш',
+    simCancel: 'Бекор қилиш',
+    simProbability: 'Ўхшашлик эҳтимоли',
+    simRiskHigh: 'Юқори хавф',
+    simRiskMedium: 'Ўртача хавф',
+    simRiskLow: 'Паст хавф',
+    simFoundClient: 'Топилган мижоз',
+    simInnBlocked: 'Бир хил ИНН билан мижоз аллақачон мавжуд. «Барибир қўшиш» мумкин эмас — ИНН ни ўзгартиринг ёки мавжуд мижозни таҳрирланг.',
+    simUnderstand: 'Тушунарли',
+    simFieldName: 'Номи',
+    simFieldFullName: 'Тўлиқ номи',
+    simFieldPhone: 'Телефон',
+    simFieldInn: 'ИНН',
+    simFieldTerritory: 'Ҳудуд',
   },
   ru: {
     saveClose: "Записать и закрыть", close: "Закрыть",
     addNew: "Новый клиент", editNew: "Редактировать клиента",
-    tabs: ["Реквизиты", "Вход", "Контакты", "Направления", "Карта", "Фото", "Статус"],
+    tabs: ["Реквизиты", "Вход", "Контакты", "Организация", "Карта", "Фото", "Статус"],
     secNomi: "НАИМЕНОВАНИЕ", secBank: "БАНК", secOrg: "ОРГАНИЗАЦИЯ",
     secGps: "GPS / АДРЕС", secInn: "ИНН / ПИНФЛ",
     secAkt: "ПОДТВЕРЖДЁННЫЙ АКТ СВЕРКИ", secSizes: "РАЗМЕРЫ",
@@ -159,7 +223,10 @@ const TRANS = {
     canSeePromotionsOff: "Выключено",
     canSeePromotionsHint: "Если включено, клиент видит акции, активированные админом",
     category: "Категория", agent: "Агент",
-    directionNo: "№", directionName: "Направление",
+    directionNo: "№", directionName: "Организация",
+    orgHint: "Клиент будет виден в выбранных организациях",
+    orgEmpty: "Организации не найдены",
+    orgRequired: "Выберите хотя бы 1 организацию",
     appLoginTitle: "Вход в приложение клиента (APK)",
     appLogin: "Логин",
     appPassword: "Пароль",
@@ -175,12 +242,27 @@ const TRANS = {
     appNotSaved: "Не сохранено — нажмите «Записать и закрыть»",
     appSaved: "Сохранено",
     appSaveLogin: "Сохранить логин",
+    simTitle: 'Найден похожий клиент',
+    simConfirmAdd: 'Всё равно добавить',
+    simConfirmSave: 'Всё равно сохранить',
+    simCancel: 'Отмена',
+    simProbability: 'Вероятность совпадения',
+    simRiskHigh: 'Высокий риск',
+    simRiskMedium: 'Средний риск',
+    simRiskLow: 'Низкий риск',
+    simFoundClient: 'Найденный клиент',
+    simInnBlocked: 'Клиент с таким ИНН уже существует. «Всё равно добавить» недоступно — измените ИНН или отредактируйте существующего клиента.',
+    simUnderstand: 'Понятно',
+    simFieldName: 'Наименование',
+    simFieldFullName: 'Полное имя',
+    simFieldPhone: 'Телефон',
+    simFieldInn: 'ИНН',
+    simFieldTerritory: 'Территория',
   },
 };
 
 const NAVOIY = { lat: 40.0843, lng: 65.3791 };
 
-const DIRECTIONS  = ["SHERIN", "SOF IN", "NAVOIY NORTH", "ATLAS", "BORAN", "ZARAFSHON"];
 const CLASSES     = ["BM - Bozordagi dukon", "SM - Supermarket", "PM - Premium market", "KS - Kichik savdo"];
 const TYPES       = ["Torgovaya tochka", "Ulgurji", "Distributtor", "Restorant / Kafe"];
 const CHANNELS    = ["Retail", "Horeca", "Wholesale", "Online"];
@@ -375,7 +457,7 @@ function FormMetaInp({
 }
 
 function FormMetaDrop({
-  value, options, width, open, onToggle, onPick, onClose, tokens,
+  value, options, width, open, onToggle, onPick, onClose, tokens, menuMinWidth,
 }: {
   value: string;
   options: string[];
@@ -385,13 +467,34 @@ function FormMetaDrop({
   onPick: (v: string) => void;
   onClose: () => void;
   tokens: FieldTokens;
+  menuMinWidth?: number;
 }) {
   const { inpBg, inpBdr, valClr, lblClr, focClr, dropBg, dropBdr, divClr, D } = tokens;
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: width });
+
+  const handleToggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const menuW = Math.max(menuMinWidth ?? width, r.width, 220);
+      const menuH = Math.min(280, Math.max(options.length, 1) * 36 + 8);
+      const spaceBelow = window.innerHeight - r.bottom;
+      const top = spaceBelow < menuH && r.top > menuH ? r.top - menuH - 4 : r.bottom + 4;
+      setMenuPos({
+        top,
+        left: Math.min(r.left, Math.max(8, window.innerWidth - menuW - 8)),
+        width: menuW,
+      });
+    }
+    onToggle();
+  };
+
   return (
     <div style={{ position: 'relative' }}>
       <button
+        ref={btnRef}
         type="button"
-        onClick={onToggle}
+        onClick={handleToggle}
         style={{
           width, background: inpBg, border: `1.5px solid ${open ? focClr : inpBdr}`,
           borderRadius: 7, padding: '4px 8px', fontSize: 12,
@@ -406,24 +509,46 @@ function FormMetaDrop({
       </button>
       {open && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={onClose} />
+          <div style={{ position: 'fixed', inset: 0, zIndex: 500 }} onClick={onClose} />
           <div style={{
-            position: 'absolute', left: 0, top: '100%', marginTop: 3, zIndex: 401,
-            background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 200, overflow: 'hidden',
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: menuPos.width,
+            zIndex: 501,
+            background: dropBg,
+            border: `1px solid ${dropBdr}`,
+            borderRadius: 10,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            maxHeight: 280,
+            overflowY: 'auto',
           }}>
-            {options.map(o => (
+            {options.length === 0 ? (
+              <div style={{ padding: '8px 12px', fontSize: 12, color: lblClr }}>—</div>
+            ) : options.map(o => (
               <button
                 type="button"
                 key={o}
                 onClick={() => onPick(o)}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-                  fontSize: 12, background: 'none', color: valClr, border: 'none',
-                  borderBottom: `1px solid ${divClr}`, cursor: 'pointer',
+                  fontSize: 12,
+                  background: value === o ? (D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)') : 'none',
+                  color: value === o ? focClr : valClr,
+                  fontWeight: value === o ? 700 : 500,
+                  border: 'none',
+                  borderBottom: `1px solid ${divClr}`,
+                  cursor: 'pointer',
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                onMouseEnter={e => {
+                  if (value !== o) {
+                    (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5';
+                  }
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background =
+                    value === o ? (D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)') : 'none';
+                }}
               >{o}</button>
             ))}
           </div>
@@ -444,9 +569,31 @@ function clientToForm(client: ClientRow) {
   const gpsStr = lat !== null && lng !== null
     ? client.gps!
     : `${NAVOIY.lat.toFixed(6)},${NAVOIY.lng.toFixed(6)}`;
+
+  const contacts: { name: string; phone: string; role: string }[] = [];
+  const person = (client.contact || '').trim();
+  const extras = Array.isArray(client.extraPhones) ? client.extraPhones : [];
+
+  // 1-qator: kontakt shaxs + asosiy telefon (manager `phone` / `contactPerson`)
+  contacts.push({
+    name: person,
+    phone: formatUzPhoneInput(client.phone || UZ_PHONE_DEFAULT),
+    role: '',
+  });
+
+  // Keyingi qatorlar: manager `extraPhones` (note → lavozim)
+  for (const p of extras) {
+    if (!p?.phone?.trim()) continue;
+    contacts.push({
+      name: '',
+      phone: formatUzPhoneInput(p.phone),
+      role: p.note?.trim() || '',
+    });
+  }
+
   return {
     form: {
-      kod: client.code, liniya: client.line, status: 'active',
+      kod: client.code, liniya: client.line, status: client.isActive === false ? 'inactive' : 'active',
       category: client.category || 'Standard',
       name: client.name, officialName: client.fullName, legalAddr: client.legalAddr,
       landmark: client.territory || '', phones: formatUzPhoneInput(client.phone || ''), bankAcc: '', mfo: '', bank: '',
@@ -455,17 +602,17 @@ function clientToForm(client: ClientRow) {
       budget: '', mainContract: '', note: '',
       inn: client.inn, territory: client.territory, settlement: '', pinfl: '', telegram: '',
       actDate: '', actSum: '', agent: client.agent || '', distributorId: client.distributorId || '',
-      noDelay: false, routeList: false, sizeW: '', sizeH: '', regDate: '', comment: '',
+      noDelay: false, routeList: false, sizeW: '', sizeH: '',
+      regDate: toYmd(client.createdAt) || todayYmd(),
+      comment: '',
       canSeePromotions: !!client.canSeePromotions,
     },
-    contacts: client.contact
-      ? [{ name: client.contact, phone: formatUzPhoneInput(client.phone || ''), role: '' }]
-      : [{ name: '', phone: UZ_PHONE_DEFAULT, role: '' }],
+    contacts,
     gpsCoords: coords,
   };
 }
 
-export default function AddClient({ onClose, client, agents = [], lines = [], onSave }: AddClientProps) {
+export default function AddClient({ onClose, client, agents = [], lines = [], companyId, onSave }: AddClientProps) {
   const { isDark } = useTheme();
   const { lang } = useLang();
   const D = isDark;
@@ -481,6 +628,27 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   const [isMaximized, setIsMaximized] = useState(false);
   const [openDrop, setOpenDrop]       = useState<string | null>(null);
   const [contacts, setContacts]       = useState(initial?.contacts ?? [{ name: '', phone: UZ_PHONE_DEFAULT, role: '' }]);
+  const [similarityMatch, setSimilarityMatch] = useState<SimilarityMatch | null>(null);
+  const [pendingSave, setPendingSave] = useState<SavePayload | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(() => {
+    const cur = client?.category?.trim();
+    return cur && !CATEGORIES.includes(cur) ? [cur, ...CATEGORIES] : [...CATEGORIES];
+  });
+  const [catMenuPos, setCatMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const categoryBtnRef = useRef<HTMLButtonElement>(null);
+  const [lineApiOptions, setLineApiOptions] = useState<string[]>([]);
+  const [orgList, setOrgList] = useState<Array<{ id: string; name: string; shortName?: string | null }>>([]);
+  const [selectedOrgIds, setSelectedOrgIds] = useState<Set<string>>(() => {
+    const ids = client?.companyIds?.length
+      ? client.companyIds
+      : client?.companyId
+        ? [client.companyId]
+        : companyId
+          ? [companyId]
+          : [];
+    return new Set(ids.filter(Boolean));
+  });
   const resolveClientPhotoSrc = (path?: string | null) => {
     if (!path) return '';
     if (path.startsWith('http') || path.startsWith('data:') || path.startsWith('blob:')) return path;
@@ -503,12 +671,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
     inn: '', territory: '', settlement: '', pinfl: '', telegram: '',
     actDate: '', actSum: '', agent: '', distributorId: '',
     noDelay: false, routeList: false,
-    sizeW: '', sizeH: '', regDate: '', comment: '',
+    sizeW: '', sizeH: '', regDate: todayYmd(), comment: '',
     canSeePromotions: false,
-  });
-  const [directions, setDirections] = useState<Record<string, boolean>>({
-    SHERIN: true, "SOF IN": false, "NAVOIY NORTH": false,
-    ATLAS: false, BORAN: false, ZARAFSHON: false,
   });
   const [gpsCoords, setGpsCoords]   = useState<{ lat: number; lng: number } | null>(initial?.gpsCoords ?? null);
   const [loadingLoc, setLoadingLoc] = useState(false);
@@ -560,7 +724,21 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
   };
 
   const agentNames = agents.map(a => a.name);
-  const lineOptions = lines.length > 0 ? lines : ['01'];
+  const lineOptions = useMemo(() => {
+    const merged = [...lineApiOptions, ...lines];
+    const cur = (form.liniya || '').trim();
+    if (cur) merged.push(cur);
+    // code bo'yicha unikal (bir xil kodning to'liq labelini afzal ko'ramiz)
+    const byCode = new Map<string, string>();
+    for (const raw of merged) {
+      const s = raw.trim();
+      if (!s) continue;
+      const code = s.split(/\s*[-–—]\s*/)[0]?.trim() || s;
+      const prev = byCode.get(code);
+      if (!prev || s.length > prev.length) byCode.set(code, s);
+    }
+    return [...byCode.values()].sort((a, b) => a.localeCompare(b, 'uz'));
+  }, [lineApiOptions, lines, form.liniya]);
   const priceZoneOptions = lineOptions;
 
   const formatLoginTakenMessage = (takenBy?: {
@@ -686,14 +864,36 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       }
     }
 
-    const payload: Partial<ClientRow> & {
-      id?: string;
-      appUsername?: string;
-      appPassword?: string;
-      appLoginChanged?: boolean;
-      hasAppLogin?: boolean;
-    } = {
-      code: form.kod,
+    const kodDigits = (form.kod || '').replace(/\D/g, '');
+    if (form.kod && !kodDigits) {
+      setAppCredError("Mijoz kodi faqat raqam bo'lishi kerak");
+      return;
+    }
+
+    const contactRows = contacts.map((c) => ({
+      name: c.name.trim(),
+      phone: c.phone.trim(),
+      role: c.role.trim(),
+    }));
+
+    const primary = contactRows[0];
+    const extraPhones = contactRows
+      .slice(1)
+      .filter((c) => c.phone.replace(/\D/g, '').length >= 9)
+      .map((c) => ({
+        phone: c.phone,
+        note: c.role || undefined,
+      }));
+
+    const orgIds = [...selectedOrgIds];
+    if (orgIds.length === 0) {
+      setAppCredError(t.orgRequired);
+      setActiveTab('yonalish');
+      return;
+    }
+
+    const payload: SavePayload = {
+      code: kodDigits,
       name: form.name,
       fullName: form.officialName || form.name,
       line: form.liniya,
@@ -702,7 +902,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       inn: form.inn,
       legalAddr: form.legalAddr,
       phone: form.phones,
-      contact: contacts[0]?.name || client?.contact || '',
+      contact: primary?.name || '',
+      extraPhones,
+      companyIds: orgIds,
+      companyId: orgIds[0],
       cls: form.cls,
       gps: form.gps,
       agent: form.agent,
@@ -710,27 +913,153 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
       category: form.category,
       photoUrl: photoUrl || null,
       canSeePromotions: form.canSeePromotions === true,
+      isActive: form.status !== 'inactive',
       hasAppLogin,
       appLoginChanged: loginChanged,
       appUsername: shouldSave ? loginTrim : undefined,
       appPassword: shouldSave ? passwordForSave : undefined,
     };
-    try {
-      if (isEdit && client) {
-        await onSave({ ...payload, id: client.id });
-      } else {
-        await onSave(payload);
+
+    const persist = async (body: SavePayload) => {
+      setSaveBusy(true);
+      try {
+        if (isEdit && client) {
+          await onSave({ ...body, id: client.id });
+        } else {
+          await onSave(body);
+        }
+        if (shouldSave) markCredentialsSaved(loginTrim);
+        setSimilarityMatch(null);
+        setPendingSave(null);
+        onClose();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const clean = msg.replace(/^HTTP \d+:\s*/i, '');
+        setAppCredError(clean);
+        if (msg.includes('409') || /band|занят|taken/i.test(msg)) setAppLoginTaken(true);
+        setActiveTab('kirish');
+      } finally {
+        setSaveBusy(false);
       }
-      if (shouldSave) markCredentialsSaved(loginTrim);
-      onClose();
+    };
+
+    // Manager APK dagi kabi: belgilangan orgdagi mijozlar bilan o‘xshashlik (nom, tel, INN, hudud…)
+    setSaveBusy(true);
+    try {
+      const lists = await Promise.all(
+        orgIds.map((id) => api.getClients(id).catch(() => [])),
+      );
+      const byId = new Map<string, (typeof lists)[number][number]>();
+      for (const list of lists) {
+        if (!Array.isArray(list)) continue;
+        for (const row of list) {
+          if (row?.id) byId.set(row.id, row);
+        }
+      }
+      const match = findBestSimilarityMatch(
+        {
+          name: payload.name || '',
+          fullName: payload.fullName,
+          phone: payload.phone,
+          inn: payload.inn,
+          territory: payload.territory,
+        },
+        [...byId.values()],
+        { excludeClientId: client?.id },
+      );
+      if (match) {
+        setPendingSave(isEdit && client ? { ...payload, id: client.id } : payload);
+        setSimilarityMatch(match);
+        setSaveBusy(false);
+        return;
+      }
+      await persist(payload);
     } catch (e) {
+      setSaveBusy(false);
       const msg = e instanceof Error ? e.message : String(e);
-      const clean = msg.replace(/^HTTP \d+:\s*/i, '');
-      setAppCredError(clean);
-      if (msg.includes('409') || /band|занят|taken/i.test(msg)) setAppLoginTaken(true);
-      setActiveTab('kirish');
+      setAppCredError(msg.replace(/^HTTP \d+:\s*/i, ''));
     }
   };
+
+  useEffect(() => {
+    if (!localStorage.getItem('api_access_token')) return;
+    let cancelled = false;
+    api.getCompanies()
+      .then((list) => {
+        if (cancelled) return;
+        setOrgList(
+          list.map((c) => ({
+            id: c.id,
+            name: c.name,
+            shortName: c.shortName,
+          })),
+        );
+        // Yangi mijoz: joriy tashkilot avtomatik
+        if (!client && companyId) {
+          setSelectedOrgIds((prev) => (prev.size > 0 ? prev : new Set([companyId])));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOrgList([]);
+      });
+    return () => { cancelled = true; };
+  }, [client, companyId]);
+
+  useEffect(() => {
+    if (!localStorage.getItem('api_access_token')) return;
+    let cancelled = false;
+    api.getLines(companyId)
+      .then((list) => {
+        if (cancelled) return;
+        const labels = list
+          .map((l) => formatLineDisplay(l.code, [{ code: l.code, name: l.name }]))
+          .filter(Boolean);
+        setLineApiOptions(labels);
+
+        // Joriy kodni to'liq "02 - Nomi" ga aylantirish
+        setForm((prev) => {
+          const cur = (prev.liniya || '').trim();
+          if (!cur) return prev;
+          const code = cur.split(/\s*[-–—]\s*/)[0]?.trim() || cur;
+          const full = labels.find((l) => {
+            const lc = l.split(/\s*[-–—]\s*/)[0]?.trim() || l;
+            return lc === code;
+          });
+          if (full && full !== cur) return { ...prev, liniya: full };
+          return prev;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setLineApiOptions([]);
+      });
+    return () => { cancelled = true; };
+  }, [companyId, client?.id]);
+
+  useEffect(() => {
+    if (!localStorage.getItem('api_access_token')) return;
+    let cancelled = false;
+    api.getClientCategories(companyId)
+      .then((list) => {
+        if (cancelled) return;
+        const fromApi = list
+          .filter((c) => c.isActive !== false)
+          .map((c) => c.name?.trim())
+          .filter(Boolean) as string[];
+        const cur = (form.category || client?.category || '').trim();
+        setCategoryOptions([
+          ...new Set([...fromApi, ...CATEGORIES, ...(cur ? [cur] : [])]),
+        ]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const cur = (form.category || client?.category || '').trim();
+        setCategoryOptions([
+          ...new Set([...CATEGORIES, ...(cur ? [cur] : [])]),
+        ]);
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, client?.id, client?.category]);
 
   useEffect(() => {
     if (!client?.id || !localStorage.getItem('api_access_token')) return;
@@ -962,14 +1291,22 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 12, color: lblClr }}>{t.kod}:</span>
-            {FormMetaInp({ value: form.kod, onChange: v => set('kod', v), width: 60, mono: true, tokens: fieldTokens })}
+            {FormMetaInp({
+              value: form.kod,
+              onChange: v => set('kod', v.replace(/\D/g, '')),
+              width: 60,
+              mono: true,
+              placeholder: '123',
+              tokens: fieldTokens,
+            })}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 140, maxWidth: 240 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 160, maxWidth: 280 }}>
             <span style={{ fontSize: 12, color: lblClr, flexShrink: 0 }}>{t.liniya}:</span>
             {FormMetaDrop({
               value: form.liniya,
               options: lineOptions,
-              width: 160,
+              width: 200,
+              menuMinWidth: 260,
               open: openDrop === 'liniya',
               onToggle: () => setOpenDrop(openDrop === 'liniya' ? null : 'liniya'),
               onPick: v => { set('liniya', v); setOpenDrop(null); },
@@ -977,41 +1314,95 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               tokens: fieldTokens,
             })}
           </div>
-          <button onClick={() => set('status', form.status === 'active' ? 'inactive' : 'active')}
+          <button
+            type="button"
+            onClick={() => set('status', form.status === 'active' ? 'inactive' : 'active')}
             style={{
               padding: '4px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: 600,
-              background: form.status === 'active' ? 'rgba(16,185,129,0.12)' : (D ? '#1f2937' : '#f3f4f6'),
-              color: form.status === 'active' ? '#10b981' : lblClr,
-            }}>
+              background: form.status === 'active'
+                ? 'rgba(16,185,129,0.12)'
+                : (D ? 'rgba(244,63,94,0.15)' : 'rgba(244,63,94,0.12)'),
+              color: form.status === 'active' ? '#10b981' : (D ? '#fb7185' : '#e11d48'),
+            }}
+          >
             {form.status === 'active' ? t.statusActive : t.statusInactive}
           </button>
           {/* Category dropdown */}
           <div style={{ position: 'relative' }}>
-            <button onClick={() => setOpenDrop(openDrop === 'category' ? null : 'category')}
+            <button
+              ref={categoryBtnRef}
+              type="button"
+              onClick={() => {
+                if (openDrop === 'category') {
+                  setOpenDrop(null);
+                  return;
+                }
+                const el = categoryBtnRef.current;
+                if (el) {
+                  const r = el.getBoundingClientRect();
+                  const menuH = Math.min(280, categoryOptions.length * 36 + 8);
+                  const spaceBelow = window.innerHeight - r.bottom;
+                  const top = spaceBelow < menuH && r.top > menuH
+                    ? r.top - menuH - 4
+                    : r.bottom + 4;
+                  setCatMenuPos({ top, left: Math.max(8, r.left) });
+                }
+                setOpenDrop('category');
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px',
                 borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
                 background: form.category === 'VIP' ? 'rgba(139,92,246,0.12)'
                   : form.category === 'Premium' ? 'rgba(167,139,250,0.12)' : 'rgba(99,102,241,0.1)',
                 color: form.category === 'VIP' ? '#8b5cf6' : form.category === 'Premium' ? '#a78bfa' : focClr,
-              }}>
-              {form.category} <ChevronDown size={11} />
+              }}
+            >
+              {form.category || '—'} <ChevronDown size={11} />
             </button>
             {openDrop === 'category' && (
               <>
-                <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={() => setOpenDrop(null)} />
-                <div style={{ position: 'absolute', left: 0, top: '100%', marginTop: 4, zIndex: 401,
-                  background: dropBg, border: `1px solid ${dropBdr}`, borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)', minWidth: 120, overflow: 'hidden' }}>
-                  {CATEGORIES.map(c => (
-                    <button key={c} onClick={() => { set('category', c); setOpenDrop(null); }}
-                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-                        fontSize: 12, color: valClr, background: 'none', border: 'none',
-                        borderBottom: `1px solid ${divClr}`, cursor: 'pointer' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-                    >{c}</button>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 500 }} onClick={() => setOpenDrop(null)} />
+                <div style={{
+                  position: 'fixed',
+                  top: catMenuPos.top,
+                  left: catMenuPos.left,
+                  zIndex: 501,
+                  background: dropBg,
+                  border: `1px solid ${dropBdr}`,
+                  borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                  minWidth: 140,
+                  maxHeight: 280,
+                  overflowY: 'auto',
+                }}>
+                  {categoryOptions.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => { set('category', c); setOpenDrop(null); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+                        fontSize: 12,
+                        color: form.category === c ? focClr : valClr,
+                        fontWeight: form.category === c ? 700 : 500,
+                        background: form.category === c ? (D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)') : 'none',
+                        border: 'none',
+                        borderBottom: `1px solid ${divClr}`,
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={e => {
+                        if (form.category !== c) {
+                          (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.05)' : '#f5f5f5';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          form.category === c ? (D ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.08)') : 'none';
+                      }}
+                    >
+                      {c}
+                    </button>
                   ))}
                 </div>
               </>
@@ -1376,40 +1767,70 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
             </div>
           </>)}
 
-          {/* ════ YO'NALISHLAR ════ */}
+          {/* ════ ORGANIZATSIYA ════ */}
           {activeTab === 'yonalish' && (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: secBg, borderBottom: `1px solid ${divClr}` }}>
-                  <th style={{ width: 44, padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: secClr }}>{t.directionNo}</th>
-                  <th style={{ width: 36, padding: '8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: secClr }}>✓</th>
-                  <th style={{ padding: '8px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: secClr }}>{t.directionName}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {DIRECTIONS.map((dir, i) => (
-                  <tr key={dir}
-                    onClick={() => setDirections(p => ({ ...p, [dir]: !p[dir] }))}
-                    style={{ borderBottom: `1px solid ${divClr}`, cursor: 'pointer', background: bg,
-                      backgroundColor: directions[dir] ? (D ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.05)') : undefined }}
-                    onMouseEnter={e => { if (!directions[dir]) (e.currentTarget as HTMLElement).style.background = D ? 'rgba(255,255,255,0.03)' : '#f9fafb'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = directions[dir] ? (D ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.05)') : bg; }}
-                  >
-                    <td style={{ padding: '11px 16px', fontSize: 13, color: lblClr }}>{i + 1}</td>
-                    <td style={{ padding: '11px 8px', textAlign: 'center' }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 4, margin: '0 auto',
-                        border: `2px solid ${directions[dir] ? focClr : inpBdr}`,
-                        background: directions[dir] ? focClr : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
-                        {directions[dir] && <Check size={11} color="#fff" />}
-                      </div>
-                    </td>
-                    <td style={{ padding: '11px 8px', fontSize: 13, fontWeight: directions[dir] ? 600 : 400,
-                      color: directions[dir] ? (D ? '#a5b4fc' : '#4338ca') : valClr }}>{dir}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div>
+              <p style={{ fontSize: 12, color: lblClr, margin: '0 0 12px' }}>{t.orgHint}</p>
+              {orgList.length === 0 ? (
+                <p style={{ fontSize: 13, color: lblClr }}>{t.orgEmpty}</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: secBg, borderBottom: `1px solid ${divClr}` }}>
+                      <th style={{ width: 44, padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: secClr }}>{t.directionNo}</th>
+                      <th style={{ width: 36, padding: '8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: secClr }}>✓</th>
+                      <th style={{ padding: '8px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: secClr }}>{t.directionName}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orgList.map((org, i) => {
+                      const on = selectedOrgIds.has(org.id);
+                      const label = org.shortName?.trim() || org.name;
+                      return (
+                        <tr
+                          key={org.id}
+                          onClick={() => {
+                            setSelectedOrgIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(org.id)) next.delete(org.id);
+                              else next.add(org.id);
+                              return next;
+                            });
+                          }}
+                          style={{
+                            borderBottom: `1px solid ${divClr}`,
+                            cursor: 'pointer',
+                            background: on ? (D ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.05)') : bg,
+                          }}
+                        >
+                          <td style={{ padding: '11px 16px', fontSize: 13, color: lblClr }}>{i + 1}</td>
+                          <td style={{ padding: '11px 8px', textAlign: 'center' }}>
+                            <div style={{
+                              width: 18, height: 18, borderRadius: 4, margin: '0 auto',
+                              border: `2px solid ${on ? focClr : inpBdr}`,
+                              background: on ? focClr : 'transparent',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              {on && <Check size={11} color="#fff" />}
+                            </div>
+                          </td>
+                          <td style={{
+                            padding: '11px 8px', fontSize: 13,
+                            fontWeight: on ? 600 : 400,
+                            color: on ? (D ? '#a5b4fc' : '#4338ca') : valClr,
+                          }}>
+                            {label}
+                            {org.shortName && org.name !== org.shortName && (
+                              <span style={{ marginLeft: 8, fontSize: 11, color: lblClr, fontWeight: 400 }}>{org.name}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
 
           {/* ════ XARITA ════ */}
@@ -1517,11 +1938,25 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
               <span style={{ fontSize: 13, color: lblClr }}>{t.statusSection}</span>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[{ key: 'active', label: t.statusActive }, { key: 'inactive', label: t.statusInactive }].map(s => (
-                  <button key={s.key} onClick={() => set('status', s.key)}
-                    style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => set('status', s.key)}
+                    style={{
+                      padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', border: 'none',
                       background: form.status === s.key
-                        ? s.key === 'active' ? 'rgba(16,185,129,0.12)' : inpBg : 'transparent',
-                      color: form.status === s.key ? (s.key === 'active' ? '#10b981' : valClr) : lblClr }}>
+                        ? s.key === 'active'
+                          ? 'rgba(16,185,129,0.12)'
+                          : (D ? 'rgba(244,63,94,0.15)' : 'rgba(244,63,94,0.12)')
+                        : 'transparent',
+                      color: form.status === s.key
+                        ? s.key === 'active'
+                          ? '#10b981'
+                          : (D ? '#fb7185' : '#e11d48')
+                        : lblClr,
+                    }}
+                  >
                     {s.label}
                   </button>
                 ))}
@@ -1551,8 +1986,18 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
             <FormGrid2 divClr={divClr}>
               <div style={{ padding: '8px 12px', borderRight: `1px solid ${divClr}`, background: bg }}>
                 <div style={{ fontSize: 11, color: lblClr, marginBottom: 4, fontWeight: 500 }}>{t.registrationDate}</div>
-                <input type="date" value={form.regDate} onChange={e => set('regDate', e.target.value)}
-                  style={inpStyle({})} onFocus={onFoc} onBlur={onBlr} />
+                <SingleDatePicker
+                  value={form.regDate}
+                  onChange={(v) => set('regDate', v)}
+                  D={D}
+                  readOnly
+                  className="w-full"
+                />
+                {isEdit && client?.createdBy ? (
+                  <div style={{ fontSize: 11, color: lblClr, marginTop: 6, opacity: 0.85 }}>
+                    {client.createdBy}
+                  </div>
+                ) : null}
               </div>
               <div style={{ padding: '8px 12px', background: bg }} />
             </FormGrid2>
@@ -1572,13 +2017,13 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
           borderTop: `1px solid ${divClr}`, background: topBg }}>
           <button
             onClick={handleSave}
-            disabled={appLoginTaken || appLoginChecking}
+            disabled={appLoginTaken || appLoginChecking || saveBusy}
             style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: 11, background: focClr, color: '#fff', border: 'none', borderRadius: 10,
               fontSize: 13, fontWeight: 600,
-              cursor: appLoginTaken || appLoginChecking ? 'not-allowed' : 'pointer',
-              opacity: appLoginTaken || appLoginChecking ? 0.55 : 1,
+              cursor: appLoginTaken || appLoginChecking || saveBusy ? 'not-allowed' : 'pointer',
+              opacity: appLoginTaken || appLoginChecking || saveBusy ? 0.55 : 1,
             }}
           >
             <Save size={14} /> {t.saveClose}
@@ -1591,6 +2036,52 @@ export default function AddClient({ onClose, client, agents = [], lines = [], on
         </div>
 
       </div>
+      {similarityMatch && (
+        <ClientSimilarityWarningModal
+          D={D}
+          match={similarityMatch}
+          busy={saveBusy}
+          title={t.simTitle}
+          confirmLabel={isEdit ? t.simConfirmSave : t.simConfirmAdd}
+          cancelLabel={t.simCancel}
+          labels={{
+            probability: t.simProbability,
+            riskHigh: t.simRiskHigh,
+            riskMedium: t.simRiskMedium,
+            riskLow: t.simRiskLow,
+            foundClient: t.simFoundClient,
+            innBlocked: t.simInnBlocked,
+            understand: t.simUnderstand,
+            fieldName: t.simFieldName,
+            fieldFullName: t.simFieldFullName,
+            fieldPhone: t.simFieldPhone,
+            fieldInn: t.simFieldInn,
+            fieldTerritory: t.simFieldTerritory,
+          }}
+          onCancel={() => { setSimilarityMatch(null); setPendingSave(null); }}
+          onConfirm={() => {
+            if (!pendingSave || !onSave) return;
+            void (async () => {
+              setSaveBusy(true);
+              try {
+                await onSave(pendingSave);
+                const login = pendingSave.appUsername?.trim();
+                if (pendingSave.appLoginChanged && login) markCredentialsSaved(login);
+                setSimilarityMatch(null);
+                setPendingSave(null);
+                onClose();
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                setAppCredError(msg.replace(/^HTTP \d+:\s*/i, ''));
+                setSimilarityMatch(null);
+                setPendingSave(null);
+              } finally {
+                setSaveBusy(false);
+              }
+            })();
+          }}
+        />
+      )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );

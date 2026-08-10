@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ImageIcon, PenSquare, Plus, Search, X } from '../icons'
+import { Check, ChevronDown, ImageIcon, PenSquare, Plus, Search, X } from '../icons'
 import {
   deleteClientRequest,
   fetchClientRequests,
@@ -19,13 +19,22 @@ import ClientStatsPanel from '../components/ClientStatsPanel'
 import { showToast } from '../components/Toast'
 import { pushBackHandler } from '../utils/hardwareBack'
 import { managerCompanyId, managerCompanySet } from '../utils/staffScope'
+import { textMatchesSearch } from '../utils/searchText'
 import {
   buildClientSimilarityMap,
+  findBestSimilarityMatch,
   similarityRisk,
   similarityRiskColors,
+  type SimilarityFieldKey,
+  type SimilarityMatch,
 } from '../utils/clientSimilarity'
 
 type ClientSort = 'all' | 'top_desc' | 'top_asc' | 'debt_desc' | 'debt_asc'
+type MarkFilter = 'all' | 'green' | 'yellow' | 'red'
+
+function clientMark(cl: Client): 'green' | 'yellow' | 'red' {
+  return cl.markColor === 'yellow' || cl.markColor === 'red' ? cl.markColor : 'green'
+}
 
 interface Props {
   dark: boolean
@@ -70,9 +79,14 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<ClientSort>('all')
   const [lineFilter, setLineFilter] = useState('')
+  const [markFilter, setMarkFilter] = useState<MarkFilter>('all')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Client | null>(null)
   const [photoClient, setPhotoClient] = useState<Client | null>(null)
+  const [similarityDetail, setSimilarityDetail] = useState<{
+    source: Client
+    match: SimilarityMatch
+  } | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const photoSrc = photoClient?.photoUrl ? resolveMediaUrl(photoClient.photoUrl) : ''
@@ -150,6 +164,10 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
 
   useEffect(() => {
     return pushBackHandler(() => {
+      if (similarityDetail) {
+        setSimilarityDetail(null)
+        return true
+      }
       if (photoClient) {
         setPhotoClient(null)
         return true
@@ -160,7 +178,39 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
       }
       return false
     })
-  }, [selected, photoClient])
+  }, [selected, photoClient, similarityDetail])
+
+  const dupFieldLabel = (key: SimilarityFieldKey): string => {
+    if (key === 'name') return tr.dupFieldName
+    if (key === 'fullName') return tr.dupFieldFullName
+    if (key === 'phone') return tr.dupFieldPhone
+    if (key === 'inn') return tr.dupFieldInn
+    return tr.dupFieldTerritory
+  }
+
+  const fieldValue = (cl: Client, key: SimilarityFieldKey): string => {
+    if (key === 'name') return cl.name || '—'
+    if (key === 'fullName') return cl.fullName || '—'
+    if (key === 'phone') return cl.phone || '—'
+    if (key === 'inn') return cl.inn || '—'
+    return cl.territory || '—'
+  }
+
+  const openSimilarity = (cl: Client) => {
+    const match = findBestSimilarityMatch(
+      {
+        name: cl.name ?? '',
+        fullName: cl.fullName ?? undefined,
+        phone: cl.phone ?? undefined,
+        inn: cl.inn ?? undefined,
+        territory: cl.territory ?? undefined,
+      },
+      list,
+      { excludeClientId: cl.id },
+    )
+    if (!match) return
+    setSimilarityDetail({ source: cl, match })
+  }
 
   const sortTabs: { id: ClientSort; label: string }[] = [
     { id: 'all', label: tr.clientSortAll },
@@ -171,46 +221,79 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
   ]
 
   const lineOptions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const cl of list) {
+      const code = (cl.lineCode || '').trim()
+      if (!code) continue
+      counts.set(code, (counts.get(code) || 0) + 1)
+    }
+
     const fromApi = lines
-      .map(l => ({
-        code: (l.code || '').trim(),
-        name: (l.name || '').trim() || (l.code || '').trim(),
-      }))
+      .map(l => {
+        const code = (l.code || '').trim()
+        const name = (l.name || '').trim() || code
+        return {
+          code,
+          name,
+          count: (counts.get(code) ?? Number(l.clientCount)) || 0,
+        }
+      })
       .filter(l => l.code)
     const seen = new Set(fromApi.map(l => l.code))
     for (const cl of list) {
       const code = (cl.lineCode || '').trim()
       if (!code || seen.has(code)) continue
       seen.add(code)
-      fromApi.push({ code, name: code })
+      fromApi.push({ code, name: code, count: counts.get(code) || 0 })
     }
     return fromApi.sort((a, b) => a.name.localeCompare(b.name, 'uz'))
   }, [lines, list])
 
   const sortLabel = sortTabs.find(t => t.id === sort)?.label ?? tr.clientSortAll
+  const selectedLine = lineOptions.find(l => l.code === lineFilter)
   const lineFilterLabel = lineFilter
-    ? (lineNameByCode.get(lineFilter) || lineFilter)
-    : tr.clientFilterLineAll
+    ? `${selectedLine?.name || lineNameByCode.get(lineFilter) || lineFilter} ${selectedLine?.count ?? 0}`
+    : `${tr.clientFilterLineAll} ${list.length}`
+
+  const markCounts = useMemo(() => {
+    let green = 0
+    let yellow = 0
+    let red = 0
+    for (const cl of list) {
+      const m = clientMark(cl)
+      if (m === 'yellow') yellow += 1
+      else if (m === 'red') red += 1
+      else green += 1
+    }
+    return { all: list.length, green, yellow, red }
+  }, [list])
+
+  const markFilterLabel =
+    markFilter === 'green' ? `${tr.markGreen} ${markCounts.green}` :
+    markFilter === 'yellow' ? `${tr.markYellow} ${markCounts.yellow}` :
+    markFilter === 'red' ? `${tr.markRed} ${markCounts.red}` :
+    `${tr.markFilterAll} ${markCounts.all}`
 
   const visibleRequests = useMemo(() => {
-    const needle = q.trim().toLowerCase()
+    const needle = q.trim()
     return requests
       .filter(r => r.status === 'pending' || r.status === 'rejected')
       .filter(r => {
         if (!needle) return true
-        const hay = `${r.name} ${r.fullName || ''} ${r.phone || ''} ${r.inn || ''}`.toLowerCase()
-        return hay.includes(needle)
+        const hay = `${r.name} ${r.fullName || ''} ${r.phone || ''} ${r.inn || ''}`
+        return textMatchesSearch(hay, needle)
       })
       .slice(0, 40)
   }, [requests, q])
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase()
+    const needle = q.trim()
     let rows = list.filter(cl => {
       if (lineFilter && (cl.lineCode || '').trim() !== lineFilter) return false
+      if (markFilter !== 'all' && clientMark(cl) !== markFilter) return false
       if (!needle) return true
-      const hay = `${cl.name} ${cl.fullName || ''} ${cl.phone || ''} ${cl.code || ''}`.toLowerCase()
-      return hay.includes(needle)
+      const hay = `${cl.name} ${cl.fullName || ''} ${cl.phone || ''} ${cl.code || ''}`
+      return textMatchesSearch(hay, needle)
     })
 
     if (sort === 'debt_desc' || sort === 'debt_asc') {
@@ -234,7 +317,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
       }
       return byName(a, b)
     })
-  }, [list, q, sort, lineFilter])
+  }, [list, q, sort, lineFilter, markFilter])
 
   const statusLabel = (status: ClientRequestRow['status']) => {
     if (status === 'pending') return tr.clientReqPending
@@ -374,13 +457,29 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
             valueLabel={lineFilterLabel}
             active={!!lineFilter}
             options={[
-              { id: '', label: tr.clientFilterLineAll },
-              ...lineOptions.map(l => ({ id: l.code, label: l.name })),
+              { id: '', label: `${tr.clientFilterLineAll} ${list.length}` },
+              ...lineOptions.map(l => ({ id: l.code, label: `${l.name} ${l.count}` })),
             ]}
             selectedId={lineFilter}
             onSelect={setLineFilter}
           />
         </div>
+
+        <MarkFilterDropdown
+          dark={dark}
+          label={tr.markColor}
+          valueLabel={markFilterLabel}
+          active={markFilter !== 'all'}
+          selectedId={markFilter}
+          counts={markCounts}
+          labels={{
+            all: tr.markFilterAll,
+            green: tr.markGreen,
+            yellow: tr.markYellow,
+            red: tr.markRed,
+          }}
+          onSelect={setMarkFilter}
+        />
 
         {loading && <p style={{ textAlign: 'center', color: c.mutedText, padding: 24 }}>{tr.loading}</p>}
 
@@ -431,21 +530,27 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
                     {cl.name}
                   </p>
                   {sim && riskColors && (
-                    <span
+                    <button
+                      type="button"
                       title={`${sim.matchName} · ${sim.pct}%`}
+                      onClick={e => {
+                        e.stopPropagation()
+                        openSimilarity(cl)
+                      }}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
                         padding: '3px 8px', borderRadius: 999,
                         background: riskColors.bg, color: riskColors.color,
                         border: `1px solid ${riskColors.border}`,
                         fontSize: 10, fontWeight: 800, flexShrink: 0,
+                        cursor: 'pointer', font: 'inherit',
                       }}
                     >
                       <span style={{
                         width: 7, height: 7, borderRadius: 99, background: riskColors.color,
                       }} />
                       {tr.dupSimilarBadge.replace('{pct}', String(sim.pct))}
-                    </span>
+                    </button>
                   )}
                 </div>
                 {cl.fullName && cl.fullName !== cl.name && (
@@ -596,6 +701,164 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
         </div>,
         document.body,
       )}
+
+      {similarityDetail && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setSimilarityDetail(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 96,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            paddingBottom: 'var(--safe-bottom)',
+          }}
+        >
+          {(() => {
+            const { source, match } = similarityDetail
+            const risk = similarityRisk(match.overallPct)
+            const colors = similarityRiskColors(risk, dark)
+            const riskLabel = risk === 'red' ? tr.dupRiskRed : risk === 'yellow' ? tr.dupRiskYellow : tr.dupRiskGreen
+            const activeFields = match.fields.filter(f => f.pct > 0)
+            return (
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: 480,
+                  borderRadius: '24px 24px 0 0',
+                  background: c.card,
+                  border: `1px solid ${c.border}`,
+                  padding: '18px 16px max(16px, env(safe-area-inset-bottom, 0px))',
+                  maxHeight: '85vh',
+                  overflowY: 'auto',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: c.text }}>{tr.dupDetailTitle}</p>
+                    <p style={{ margin: '8px 0 0', fontSize: 14, fontWeight: 800, color: colors.color }}>
+                      {tr.dupChance.replace('{pct}', String(match.overallPct))}
+                    </p>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      marginTop: 8, padding: '4px 10px', borderRadius: 999,
+                      background: colors.bg, color: colors.color, border: `1px solid ${colors.border}`,
+                      fontSize: 11, fontWeight: 800,
+                    }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: colors.color, flexShrink: 0 }} />
+                      {riskLabel}
+                    </span>
+                  </div>
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 18, flexShrink: 0,
+                    background: colors.bg, border: `1px solid ${colors.border}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 900, fontSize: 20, color: colors.color,
+                  }}>
+                    {match.overallPct}%
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                  <div style={{
+                    borderRadius: 14, padding: 12,
+                    background: dark ? '#1A1A2E' : '#F3F4F6',
+                    border: `1px solid ${c.border}`,
+                  }}>
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: c.mutedText }}>{tr.dupThisClient}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, fontWeight: 800, color: c.primary, lineHeight: 1.3 }}>
+                      {source.name}
+                    </p>
+                    {source.phone && (
+                      <p style={{ margin: '3px 0 0', fontSize: 11, color: c.mutedText }}>{source.phone}</p>
+                    )}
+                  </div>
+                  <div style={{
+                    borderRadius: 14, padding: 12,
+                    background: dark ? '#1A1A2E' : '#F3F4F6',
+                    border: `1px solid ${colors.border}`,
+                  }}>
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: c.mutedText }}>{tr.dupMatchedClient}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, fontWeight: 800, color: c.text, lineHeight: 1.3 }}>
+                      {match.client.name}
+                    </p>
+                    {match.client.phone && (
+                      <p style={{ margin: '3px 0 0', fontSize: 11, color: c.mutedText }}>{match.client.phone}</p>
+                    )}
+                  </div>
+                </div>
+
+                <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 800, color: c.mutedText, letterSpacing: 0.3 }}>
+                  {tr.dupMatchFields}
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                  {(activeFields.length ? activeFields : match.fields).map(f => {
+                    const barColor = f.pct <= 0
+                      ? c.mutedText
+                      : similarityRiskColors(f.pct >= 70 ? 'red' : f.pct >= 40 ? 'yellow' : 'green', dark).color
+                    return (
+                      <div
+                        key={f.key}
+                        style={{
+                          borderRadius: 14, padding: 12,
+                          background: dark ? '#13132A' : '#F8F9FC',
+                          border: `1px solid ${c.border}`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: c.text }}>{dupFieldLabel(f.key)}</span>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: barColor }}>{f.pct}%</span>
+                        </div>
+                        <div style={{
+                          height: 6, borderRadius: 99, background: dark ? '#0F0F1A' : '#E5E7EB',
+                          overflow: 'hidden', marginBottom: 8,
+                        }}>
+                          <div style={{
+                            height: '100%', width: `${f.pct}%`, borderRadius: 99, background: barColor,
+                          }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: c.mutedText }}>{tr.dupThisClient}</p>
+                            <p style={{
+                              margin: '2px 0 0', fontSize: 12, fontWeight: 700, color: c.text,
+                              wordBreak: 'break-word',
+                            }}>
+                              {fieldValue(source, f.key)}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: c.mutedText }}>{tr.dupMatchedClient}</p>
+                            <p style={{
+                              margin: '2px 0 0', fontSize: 12, fontWeight: 700, color: c.text,
+                              wordBreak: 'break-word',
+                            }}>
+                              {fieldValue(match.client, f.key)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSimilarityDetail(null)}
+                  style={{
+                    width: '100%', height: 48, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: c.primary, color: '#fff', fontWeight: 800, fontSize: 14,
+                  }}
+                >
+                  {tr.dupClose}
+                </button>
+              </div>
+            )
+          })()}
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
@@ -605,6 +868,249 @@ function Meta({ label, value, muted, text }: { label: string; value: string; mut
     <div>
       <p style={{ fontSize: 10, color: muted, fontWeight: 600 }}>{label}</p>
       <p style={{ fontSize: 12, color: text, fontWeight: 700, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</p>
+    </div>
+  )
+}
+
+function MarkFilterDropdown({
+  dark,
+  label,
+  valueLabel,
+  active,
+  selectedId,
+  counts,
+  labels,
+  onSelect,
+}: {
+  dark: boolean
+  label: string
+  valueLabel: string
+  active: boolean
+  selectedId: MarkFilter
+  counts: { all: number; green: number; yellow: number; red: number }
+  labels: { all: string; green: string; yellow: string; red: string }
+  onSelect: (id: MarkFilter) => void
+}) {
+  const c = theme(dark)
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const markMeta: {
+    id: Exclude<MarkFilter, 'all'>
+    label: string
+    count: number
+    dot: string
+    badgeBg: string
+    badgeText: string
+  }[] = [
+    {
+      id: 'green',
+      label: labels.green,
+      count: counts.green,
+      dot: '#22C55E',
+      badgeBg: dark ? 'rgba(34,197,94,0.18)' : 'rgba(34,197,94,0.12)',
+      badgeText: dark ? '#4ADE80' : '#15803D',
+    },
+    {
+      id: 'yellow',
+      label: labels.yellow,
+      count: counts.yellow,
+      dot: '#EAB308',
+      badgeBg: dark ? 'rgba(234,179,8,0.2)' : 'rgba(234,179,8,0.14)',
+      badgeText: dark ? '#FACC15' : '#A16207',
+    },
+    {
+      id: 'red',
+      label: labels.red,
+      count: counts.red,
+      dot: '#EF4444',
+      badgeBg: dark ? 'rgba(239,68,68,0.2)' : 'rgba(239,68,68,0.12)',
+      badgeText: dark ? '#FCA5A5' : '#B91C1C',
+    },
+  ]
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', minWidth: 0 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          width: '100%',
+          height: 44,
+          padding: '0 12px',
+          borderRadius: 14,
+          border: `1px solid ${active ? 'rgba(108,92,231,0.35)' : c.border}`,
+          background: active ? 'rgba(108,92,231,0.12)' : c.card,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          textAlign: 'left',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: c.mutedText, lineHeight: 1.1 }}>
+            {label}
+          </p>
+          <p style={{
+            margin: '2px 0 0',
+            fontSize: 13,
+            fontWeight: 800,
+            color: active ? c.primary : c.text,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}>
+            {selectedId !== 'all' && (
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 99,
+                  flexShrink: 0,
+                  background:
+                    selectedId === 'green' ? '#22C55E'
+                      : selectedId === 'yellow' ? '#EAB308'
+                        : '#EF4444',
+                }}
+              />
+            )}
+            {valueLabel}
+          </p>
+        </div>
+        <ChevronDown
+          size={16}
+          color={c.mutedText}
+          style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            borderRadius: 14,
+            background: c.card,
+            border: `1px solid ${c.border}`,
+            boxShadow: dark
+              ? '0 12px 32px rgba(0,0,0,0.45)'
+              : '0 12px 28px rgba(91,45,142,0.18)',
+            zIndex: 70,
+            overflow: 'hidden',
+            animation: 'fadeIn 0.15s ease both',
+          }}
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={selectedId === 'all'}
+            onClick={() => {
+              onSelect('all')
+              setOpen(false)
+            }}
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              background: selectedId === 'all' ? 'rgba(108,92,231,0.12)' : 'transparent',
+              color: selectedId === 'all' ? c.primary : c.text,
+              fontSize: 14,
+              fontWeight: 700,
+            }}
+          >
+            <span>{labels.all}</span>
+            {selectedId === 'all' && <Check size={16} color={c.primary} />}
+          </button>
+
+          {markMeta.map(opt => {
+            const selected = selectedId === opt.id
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onSelect(opt.id)
+                  setOpen(false)
+                }}
+                style={{
+                  width: '100%',
+                  padding: '11px 14px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  background: selected ? 'rgba(108,92,231,0.08)' : 'transparent',
+                  color: c.text,
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 99,
+                    flexShrink: 0,
+                    background: opt.dot,
+                  }}
+                />
+                <span style={{ flex: 1, textAlign: 'left' }}>{opt.label}</span>
+                <span
+                  style={{
+                    minWidth: 28,
+                    padding: '3px 10px',
+                    borderRadius: 999,
+                    background: opt.badgeBg,
+                    color: opt.badgeText,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textAlign: 'center',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {opt.count}
+                </span>
+                {selected && <Check size={16} color={c.primary} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, Eye, EyeOff, LogOut, Moon, Sun, X, ChevronDown } from 'lucide-react';
 import { type Tab, type NavEntry } from '../../data/adminData';
+import { CompanyAvatar } from '../CompanyAvatar';
 
 interface AdminSidebarProps {
   D: boolean;
@@ -17,7 +18,7 @@ interface AdminSidebarProps {
   showBalances: boolean;
   setShowBalances: (v: boolean | ((p: boolean) => boolean)) => void;
   t: Record<string, string>;
-  selectedCompany: { id: string; icon: string; shortName: string };
+  selectedCompany: { id: string; icon: string; shortName: string; imageUrl?: string | null };
   clearCompany: () => void;
   navigate: (path: string) => void;
   logout: () => void;
@@ -66,7 +67,13 @@ export function AdminSidebar({
         className={`mx-3 mb-3 flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all ${D ? 'border-gray-800 bg-white/4 hover:bg-white/8' : 'border-gray-100 bg-gray-50 hover:bg-gray-100'} ${sidebarCollapsed && !mobile ? 'justify-center px-2' : ''}`}
         title={sidebarCollapsed && !mobile ? t.change : undefined}
       >
-        <span className="text-xl flex-shrink-0">{selectedCompany.icon}</span>
+        <CompanyAvatar
+          icon={selectedCompany.icon}
+          imageUrl={selectedCompany.imageUrl}
+          shortName={selectedCompany.shortName}
+          size={sidebarCollapsed && !mobile ? 28 : 32}
+          rounded="xl"
+        />
         {(!sidebarCollapsed || mobile) && (
           <div className="flex-1 min-w-0 text-left">
             <p className={`text-xs font-semibold truncate ${text}`}>{selectedCompany.shortName}</p>

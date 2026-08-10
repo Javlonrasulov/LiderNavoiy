@@ -66,10 +66,12 @@ interface Props {
   max?: string;
   onClear?: () => void;
   className?: string;
+  /** Faqat ko‘rsatish — kalendar ochilmaydi */
+  readOnly?: boolean;
 }
 
 /** LiderPlast navbar / SingleDatePicker uslubidagi bitta sana tanlovchi */
-export function SingleDatePicker({ value, onChange, D = false, max, onClear, className = '' }: Props) {
+export function SingleDatePicker({ value, onChange, D = false, max, onClear, className = '', readOnly = false }: Props) {
   const { lang } = useLang();
   const labels = LABELS[lang] ?? LABELS.uz;
   const dayHeaders = DAY_HEADERS[lang] ?? DAY_HEADERS.uz;
@@ -150,8 +152,10 @@ export function SingleDatePicker({ value, onChange, D = false, max, onClear, cla
     <div className={`relative ${className}`} ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`flex shrink-0 items-center gap-1.5 sm:gap-2 h-9 px-2.5 sm:px-3.5 rounded-xl text-sm border transition-all select-none min-w-[130px] sm:min-w-[150px]
+        disabled={readOnly}
+        onClick={() => { if (!readOnly) setOpen(o => !o); }}
+        className={`flex shrink-0 items-center gap-1.5 sm:gap-2 h-9 px-2.5 sm:px-3.5 rounded-xl text-sm border transition-all select-none min-w-[130px] sm:min-w-[150px] w-full
+          ${readOnly ? 'cursor-default opacity-95' : ''}
           ${hasValue
             ? D
               ? 'bg-indigo-900/30 border-indigo-600 text-indigo-300'
@@ -165,13 +169,15 @@ export function SingleDatePicker({ value, onChange, D = false, max, onClear, cla
         <span className="flex-1 text-left font-medium truncate tabular-nums">
           {value ? fmtDisplay(value) : '—'}
         </span>
-        <ChevronDown
-          size={13}
-          className={`${muted} flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-        />
+        {!readOnly && (
+          <ChevronDown
+            size={13}
+            className={`${muted} flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        )}
       </button>
 
-      {open && (
+      {open && !readOnly && (
         <div
           className={`absolute left-0 top-full z-[90] mt-2 w-[min(18rem,calc(100vw-1rem))] ${panelBg} border rounded-2xl shadow-2xl overflow-hidden`}
         >

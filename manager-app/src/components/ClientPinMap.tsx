@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { switchTileLayer } from './MapLayerSwitcher'
+import { MapLayerSwitcher, switchTileLayer, type LayerId } from './MapLayerSwitcher'
+import type { Translations } from '../i18n'
 
 const NAVOIY: [number, number] = [40.0843, 65.3791]
 
@@ -10,6 +11,7 @@ interface Props {
   lng: number | null
   radiusMeters: number
   dark: boolean
+  tr: Translations
   height?: number | string
   borderRadius?: number
   onPick: (lat: number, lng: number) => void
@@ -29,6 +31,7 @@ export default function ClientPinMap({
   lng,
   radiusMeters,
   dark,
+  tr,
   height = 220,
   borderRadius = 16,
   onPick,
@@ -40,6 +43,7 @@ export default function ClientPinMap({
   const circleRef = useRef<L.Circle | null>(null)
   const onPickRef = useRef(onPick)
   const posRef = useRef<{ lat: number; lng: number } | null>(null)
+  const [activeLayer, setActiveLayer] = useState<LayerId>('satellite')
   onPickRef.current = onPick
 
   const redrawCircle = (map: L.Map, center: L.LatLngExpression, meters: number) => {
@@ -68,7 +72,7 @@ export default function ClientPinMap({
       attributionControl: false,
       preferCanvas: false,
     })
-    switchTileLayer(map, tileRef, 'standard', false)
+    switchTileLayer(map, tileRef, 'satellite', false)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     map.on('click', (e: L.LeafletMouseEvent) => {
       onPickRef.current(e.latlng.lat, e.latlng.lng)
@@ -86,6 +90,12 @@ export default function ClientPinMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    switchTileLayer(map, tileRef, activeLayer, false)
+  }, [activeLayer])
 
   useEffect(() => {
     const map = mapRef.current
@@ -151,19 +161,29 @@ export default function ClientPinMap({
   }, [radiusMeters])
 
   return (
-    <div
-      ref={divRef}
-      style={{
-        width: '100%',
-        height,
-        borderRadius,
-        overflow: 'hidden',
-        border: borderRadius ? `1px solid ${dark ? '#2a2a3e' : '#e5e7eb'}` : 'none',
-        background: dark ? '#111118' : '#f3f4f6',
-        position: 'relative',
-        zIndex: 0,
-        isolation: 'isolate',
-      }}
-    />
+    <div style={{ position: 'relative', width: '100%', height }}>
+      <div
+        ref={divRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius,
+          overflow: 'hidden',
+          border: borderRadius ? `1px solid ${dark ? '#2a2a3e' : '#e5e7eb'}` : 'none',
+          background: dark ? '#111118' : '#f3f4f6',
+          position: 'relative',
+          zIndex: 0,
+          isolation: 'isolate',
+        }}
+      />
+      <MapLayerSwitcher
+        activeLayer={activeLayer}
+        onChange={setActiveLayer}
+        dark={dark}
+        labels={{ standard: tr.mapLayerOsm, satellite: tr.mapLayerSat }}
+        bottom={10}
+        left={8}
+      />
+    </div>
   )
 }

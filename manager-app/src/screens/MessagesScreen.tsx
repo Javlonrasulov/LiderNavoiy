@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import type { Translations } from '../i18n'
 import { theme } from '../theme'
 import { pushBackHandler } from '../utils/hardwareBack'
+import { useKeyboardLift } from '../hooks/useKeyboardLift'
 import {
   ArrowLeft,
   Check,
@@ -138,6 +139,8 @@ export default function MessagesScreen({
   const activeIdRef = useRef<string | null>(null)
   const [composerH, setComposerH] = useState(72)
   const [inputFocused, setInputFocused] = useState(false)
+  /** Klaviatura balandligi — faqat visualViewport (ime-bottom bilan qo'shilmaydi) */
+  const keyboardLift = useKeyboardLift()
 
   const activeConv = conversations.find(x => x.id === activeId) ?? null
   const selectionMode = selectedIds.size > 0
@@ -340,11 +343,12 @@ export default function MessagesScreen({
     const ro = new ResizeObserver(sync)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [activeId, pendingFile, showAttach, inputFocused, selectionMode])
+  }, [activeId, pendingFile, showAttach, selectionMode, keyboardLift])
 
+  // Faqat yangi xabar / fayl — keyboard ochilganda scroll qilma
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, pendingFile, composerH])
+  }, [messages, pendingFile])
 
   useEffect(() => {
     const close = () => setContextMenu(null)
@@ -464,7 +468,9 @@ export default function MessagesScreen({
   const bubbleOther = dark ? '#1E1E38' : '#FFFFFF'
 
   if (activeConv) {
-    // adjustNothing: --ime-bottom = klaviatura balandligi; navbar chatda yo'q
+    // keyboardLift > 0 → composer klaviatura ustida (bottom offset).
+    // keyboardLift === 0 → pastga yopishadi, faqat system nav (safe-bottom).
+    // --ime-bottom ISHLATILMAYDI — duplicate inset bo'lmasin.
     return (
       <div
         className="lm-chat-screen"
@@ -720,10 +726,15 @@ export default function MessagesScreen({
               position: 'fixed',
               left: 0,
               right: 0,
-              bottom: 0,
+              bottom: keyboardLift,
               borderTop: `1px solid ${c.border}`,
               background: c.card,
-              padding: '10px 12px max(var(--ime-bottom), var(--safe-bottom))',
+              paddingTop: 10,
+              paddingLeft: 12,
+              paddingRight: 12,
+              // Klaviatura ochiq: faqat ichki bo'shliq. Yopiq: system nav.
+              // ime-bottom QO'SHILMAYDI (keyboardLift allaqachon bottom'da).
+              paddingBottom: keyboardLift > 0 ? 10 : 'max(10px, var(--safe-bottom))',
               zIndex: 200,
               boxSizing: 'border-box',
             }}

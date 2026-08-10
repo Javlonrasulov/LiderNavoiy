@@ -18,15 +18,17 @@ import ProfileScreen from './screens/ProfileScreen'
 import MessagesScreen from './screens/MessagesScreen'
 import ClientOrdersScreen from './screens/ClientOrdersScreen'
 import FactoryOrdersScreen from './screens/FactoryOrdersScreen'
+import NotificationsScreen from './screens/NotificationsScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
 import { showToast, ToastHost } from './components/Toast'
 import { initManagerPush, syncPushLanguage } from './push/registerPush'
+import { fetchNotificationUnreadCount } from './api/notifications'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { dispatchHardwareBack } from './utils/hardwareBack'
 
 type Phase = 'splash' | 'login' | 'app'
-type Overlay = 'addClient' | 'products' | 'clientOrders' | 'factoryOrders' | 'employeeTracking' | 'profile' | null
+type Overlay = 'addClient' | 'products' | 'clientOrders' | 'factoryOrders' | 'employeeTracking' | 'profile' | 'notifications' | null
 
 function loadDark(): boolean {
   const v = localStorage.getItem('lm-dark')
@@ -52,16 +54,20 @@ export default function App() {
   const [editingClient, setEditingClient] = useState<import('./api/types').Client | null>(null)
   const [resubmitRequestId, setResubmitRequestId] = useState<string | null>(null)
   const [messagesUnread, setMessagesUnread] = useState(0)
+  const [notifUnread, setNotifUnread] = useState(0)
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const [messagesChatOpen, setMessagesChatOpen] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
 
   useEffect(() => {
     const syncKeyboard = () => {
-      const root = document.documentElement
-      const attr = root.getAttribute('data-keyboard-open') === '1'
-      const ime = parseFloat(getComputedStyle(root).getPropertyValue('--ime-bottom')) || 0
-      setKeyboardOpen(attr || ime > 40)
+      const vv = window.visualViewport
+      const covered = vv
+        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        : 0
+      const attr = document.documentElement.getAttribute('data-keyboard-open') === '1'
+      const ime = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ime-bottom')) || 0
+      setKeyboardOpen(attr || covered > 40 || ime > 40)
     }
     syncKeyboard()
     const obs = new MutationObserver(syncKeyboard)
@@ -71,11 +77,13 @@ export default function App() {
     })
     window.visualViewport?.addEventListener('resize', syncKeyboard)
     window.visualViewport?.addEventListener('scroll', syncKeyboard)
+    window.addEventListener('resize', syncKeyboard)
     const id = window.setInterval(syncKeyboard, 400)
     return () => {
       obs.disconnect()
       window.visualViewport?.removeEventListener('resize', syncKeyboard)
       window.visualViewport?.removeEventListener('scroll', syncKeyboard)
+      window.removeEventListener('resize', syncKeyboard)
       window.clearInterval(id)
     }
   }, [])
@@ -100,12 +108,25 @@ export default function App() {
     }
   }, [])
 
+  const refreshNotifUnread = useCallback(async () => {
+    try {
+      const res = await fetchNotificationUnreadCount()
+      setNotifUnread(Number(res?.count) || 0)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   useEffect(() => {
     if (phase !== 'app') return
     void refreshUnread()
-    const id = window.setInterval(() => void refreshUnread(), 45_000)
+    void refreshNotifUnread()
+    const id = window.setInterval(() => {
+      void refreshUnread()
+      void refreshNotifUnread()
+    }, 45_000)
     return () => window.clearInterval(id)
-  }, [phase, refreshUnread])
+  }, [phase, refreshUnread, refreshNotifUnread])
 
   useEffect(() => {
     if (phase !== 'app') return
@@ -210,6 +231,7 @@ export default function App() {
     else if (screen === 'addClient') setOverlay('addClient')
     else if (screen === 'clientOrders') setOverlay('clientOrders')
     else if (screen === 'factoryOrders') setOverlay('factoryOrders')
+    else if (screen === 'notifications') setOverlay('notifications')
   }
 
   const openEmployeeTracking = (distributor: Distributor, location?: EmployeeLocation) => {
@@ -263,6 +285,7 @@ export default function App() {
                 lang={lang}
                 tr={tr}
                 user={user}
+                notifUnread={notifUnread}
                 onNavigate={navigate}
                 onChangeLang={setLang}
                 onToggleDark={() => setDark(d => !d)}
@@ -405,6 +428,38 @@ export default function App() {
               tr={tr}
               user={user}
               onBack={() => setOverlay(null)}
+            />
+          )}
+
+          {overlay === 'notifications' && (
+            <NotificationsScreen
+              dark={dark}
+              lang={lang}
+              tr={tr}
+              onBack={() => {
+                setOverlay(null)
+                void refreshNotifUnread()
+              }}
+              onUnreadChange={setNotifUnread}
+              onOpen={(n) => {
+                const screen = (n.data?.screen || '').toLowerCase()
+                const type = (n.type || n.data?.type || '').toLowerCase()
+                if (screen === 'client_orders' || type === 'order' || n.data?.subtype?.includes('client_order')) {
+                  setOverlay('clientOrders')
+                  return
+                }
+                if (screen === 'plan' || type === 'plan') {
+                  setActiveTab('plan')
+                  setOverlay(null)
+                  return
+                }
+                if (screen === 'messages' || type === 'message') {
+                  setActiveTab('messages')
+                  setOverlay(null)
+                  const convId = n.data?.conversationId || n.data?.conversation_id
+                  if (convId) setOpenConversationId(convId)
+                }
+              }}
             />
           )}
         </div>

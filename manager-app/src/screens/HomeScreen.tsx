@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, CheckCircle, ClipboardList, Moon, Package, Plus, RefreshCw, TrendingDown, TrendingUp, Truck, User, Wallet } from '../icons'
+import { Bell, CheckCircle, ClipboardList, Moon, Package, Plus, RefreshCw, Sun, TrendingDown, TrendingUp, Truck, User, Wallet } from '../icons'
 import { fetchAdminDashboard, fetchClientOrders, fetchClients, fetchDistributors, fetchProducts } from '../api/manager'
 import type { AdminDashboard, AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
@@ -26,6 +26,7 @@ interface Props {
   lang: Lang
   tr: Translations
   user: AuthUser | null
+  notifUnread?: number
   onNavigate: (screen: string) => void
   onChangeLang: (lang: Lang) => void
   onToggleDark: () => void
@@ -44,7 +45,7 @@ async function loadExtras(companyId?: string) {
   }
 }
 
-export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeLang, onToggleDark }: Props) {
+export default function HomeScreen({ dark, lang, tr, user, notifUnread = 0, onNavigate, onChangeLang, onToggleDark }: Props) {
   const c = theme(dark)
   const [data, setData] = useState<AdminDashboard | null>(null)
   const [loading, setLoading] = useState(true)
@@ -52,8 +53,24 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const [refreshUpdates, setRefreshUpdates] = useState<string[]>([])
   const [showRefreshResult, setShowRefreshResult] = useState(false)
   const [hasStaleOrders, setHasStaleOrders] = useState(false)
+  const [nameExpanded, setNameExpanded] = useState(false)
+  const nameWrapRef = useRef<HTMLDivElement>(null)
   const snapshotRef = useRef<HomeRefreshSnapshot | null>(null)
   const successTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!nameExpanded) return
+    const onDoc = (e: MouseEvent | TouchEvent) => {
+      const el = nameWrapRef.current
+      if (el && !el.contains(e.target as Node)) setNameExpanded(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+    }
+  }, [nameExpanded])
 
   const checkStaleOrders = async () => {
     try {
@@ -175,15 +192,39 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div ref={nameWrapRef} style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 12, color: c.mutedText, fontWeight: 600 }}>{tr.greeting}</p>
-            <h1 style={{ fontSize: 20, fontWeight: 900, color: c.text, letterSpacing: '-0.3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <h1
+              role="button"
+              tabIndex={0}
+              onClick={() => setNameExpanded(v => !v)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setNameExpanded(v => !v)
+                }
+              }}
+              title={user?.fullName || tr.appName}
+              style={{
+                fontSize: 20,
+                fontWeight: 900,
+                color: c.text,
+                letterSpacing: '-0.3px',
+                margin: 0,
+                cursor: 'pointer',
+                overflow: nameExpanded ? 'visible' : 'hidden',
+                textOverflow: nameExpanded ? 'clip' : 'ellipsis',
+                whiteSpace: nameExpanded ? 'normal' : 'nowrap',
+                wordBreak: nameExpanded ? 'break-word' : undefined,
+                lineHeight: nameExpanded ? 1.25 : undefined,
+              }}
+            >
               {user?.fullName || tr.appName}
             </h1>
           </div>
           <LangDropdown lang={lang} dark={dark} onChange={onChangeLang} />
           <button type="button" onClick={onToggleDark} style={{ width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <Moon size={16} color={c.text} />
+            {dark ? <Sun size={16} color={c.text} /> : <Moon size={16} color={c.text} />}
           </button>
           <button
             type="button"
@@ -208,9 +249,38 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
               />
             )}
           </button>
-          <div style={{ width: 36, height: 36, borderRadius: 12, background: c.muted, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={() => onNavigate('notifications')}
+            title={tr.notificationsTitle}
+            style={{
+              width: 36, height: 36, borderRadius: 12, border: 'none', background: c.muted,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              position: 'relative',
+            }}
+          >
             <Bell size={16} color={c.text} />
-          </div>
+            {notifUnread > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: 4,
+                right: 4,
+                minWidth: 14,
+                height: 14,
+                padding: '0 3px',
+                borderRadius: 99,
+                background: '#FF3B5C',
+                color: '#fff',
+                fontSize: 9,
+                fontWeight: 800,
+                lineHeight: '14px',
+                textAlign: 'center',
+                boxShadow: '0 0 0 2px ' + (dark ? '#080812' : '#F8F9FC'),
+              }}>
+                {notifUnread > 99 ? '99+' : notifUnread}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 

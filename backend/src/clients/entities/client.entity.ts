@@ -41,6 +41,13 @@ export class Client {
   @Column({ type: 'varchar', nullable: true })
   companyId: string | null;
 
+  /**
+   * Mijoz ko‘rinadigan tashkilotlar (companyId + qo‘shimchalar).
+   * Ro‘yxat filtri: companyId yoki linkedCompanyIds ichida.
+   */
+  @Column({ type: 'jsonb', default: [] })
+  linkedCompanyIds: string[];
+
   @Column({ type: 'varchar', nullable: true })
   lineCode: string | null;
 

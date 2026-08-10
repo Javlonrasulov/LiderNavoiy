@@ -7,7 +7,7 @@ import { theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
 import { showToast } from '../components/Toast'
 import {
-  ChevronRight, Eye, EyeOff, Globe, Lock, LogOut, Moon, Shield, User, X, ArrowLeft,
+  ChevronRight, Eye, EyeOff, Globe, Lock, LogOut, Moon, Shield, Sun, User, X, ArrowLeft,
 } from '../icons'
 
 interface Props {
@@ -122,7 +122,7 @@ export default function ProfileScreen({ dark, tr, lang, user, onToggleDark, onCh
             background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
           }}>
             <div style={{ width: 40, height: 40, borderRadius: 13, background: 'rgba(108,92,231,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Moon size={18} color="#6C5CE7" />
+              {dark ? <Sun size={18} color="#6C5CE7" /> : <Moon size={18} color="#6C5CE7" />}
             </div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: c.text }}>{tr.appearance}</p>

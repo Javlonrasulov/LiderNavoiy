@@ -17,7 +17,6 @@ import {
   makeTashkentDate,
 } from '../common/time/tashkent-time';
 
-const DEFAULT_AGENT_MONTHLY_PLAN = 15_000_000;
 const CATEGORY_COLORS: Record<string, string> = {
   standard: '#6366f1',
   vip: '#8b5cf6',
@@ -428,9 +427,9 @@ export class DashboardService {
     const payments = paymentsFallback;
     const prevPayments = prevPaymentsFallback;
 
-    const fallbackPlan = Math.max(agentCount, 1) * DEFAULT_AGENT_MONTHLY_PLAN;
-    const plan = planFromDb > 0 ? planFromDb : fallbackPlan;
-    const prevPlan = prevPlanFromDb > 0 ? prevPlanFromDb : fallbackPlan;
+    // Faqat haqiqiy DB rejasi — qo‘yilmagan bo‘lsa 0 (sunʼiy 15mln fallback yo‘q)
+    const plan = planFromDb;
+    const prevPlan = prevPlanFromDb;
     const planPct = plan > 0 ? Math.round((sales / plan) * 100) : 0;
     const prevPlanPct = prevPlan > 0 ? Math.round((prevSales / prevPlan) * 100) : 0;
 
@@ -490,7 +489,7 @@ export class DashboardService {
 
     const topAgents = agentRows.map(row => {
       const agentSales = Number(row.sales);
-      const agentPlan = agentPlanMap.get(row.distributorId) || DEFAULT_AGENT_MONTHLY_PLAN;
+      const agentPlan = agentPlanMap.get(row.distributorId) || 0;
       return {
         distributorId: row.distributorId,
         name: row.fullName,

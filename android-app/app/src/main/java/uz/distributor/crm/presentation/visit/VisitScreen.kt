@@ -1267,8 +1267,8 @@ private fun VisitProductImageCard(
                     Modifier
                         .fillMaxWidth()
                         .height(150.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
+                        contentAlignment = Alignment.Center,
+                    ) {
                     Icon(
                         Icons.Default.Inventory2,
                         contentDescription = null,
@@ -1361,8 +1361,8 @@ private fun VisitDetailCartPreview(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(AppStrings.cartEmpty(lang), color = subColor, fontSize = 12.sp)
-            }
-        } else {
+                    }
+                } else {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Text(
                     AppStrings.cartPreviewTitle(lang, cart.size),
@@ -1649,7 +1649,7 @@ private fun VisitQuantityCard(
                                 isDark -> Color(0xFF374151)
                                 else -> Color(0xFFF3F4F6)
                             },
-                            modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f),
                         ) {
                             Text(
                                 if (preset % 1.0 == 0.0) preset.toInt().toString() else stockFmt.format(preset),
@@ -1937,13 +1937,13 @@ private fun VisitNavProductButton(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(12.dp),
         color = if (enabled) cardBg else cardBg.copy(alpha = 0.5f),
         modifier = modifier.border(1.dp, borderColor, RoundedCornerShape(12.dp)),
-    ) {
-        Row(
+                            ) {
+                                Row(
             Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                                    verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
             if (isPrev) {
@@ -2130,9 +2130,9 @@ private fun VisitSelectedProductCard(
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
+                                    Column(modifier = Modifier.weight(1f)) {
                     Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFFD1FAE5)) {
-                        Text(
+                                        Text(
                             product.code,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             fontSize = 10.sp,
@@ -2153,7 +2153,7 @@ private fun VisitSelectedProductCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
-                            fontSize = 12.sp,
+                                            fontSize = 12.sp,
                             color = subColor,
                         )
                         if (promotion != null) {
@@ -2200,11 +2200,11 @@ private fun VisitSelectedProductCard(
                         color = Color(0xFF10B981),
                     )
                     Text(product.unit, fontSize = 11.sp, color = subColor)
+                        }
+                    }
                 }
             }
         }
-    }
-}
 
 @Composable
 private fun VisitCategoriesHeader(
@@ -2783,8 +2783,8 @@ private fun VisitProductCard(
                 .fillMaxWidth()
                 .padding(14.dp),
             verticalAlignment = Alignment.Top,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = Color(0xFFEFF6FF),

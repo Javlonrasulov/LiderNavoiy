@@ -17,6 +17,7 @@ import uz.distributor.crm.data.remote.dto.CreateClientRequest
 import uz.distributor.crm.data.remote.dto.LineDto
 import uz.distributor.crm.data.remote.dto.UpdateClientLocationRequest
 import uz.distributor.crm.domain.model.Client
+import uz.distributor.crm.util.UzScript
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -120,7 +121,16 @@ class ClientRepository @Inject constructor(
                 db.clientDao().insertAll(it)
             }.map { it.toDomain() }
         } catch (_: Exception) {
-            db.clientDao().search(query).map { it.toDomain() }
+            val q = query.trim()
+            if (q.isEmpty()) emptyList()
+            else {
+                db.clientDao().getAll()
+                    .filter { entity ->
+                        UzScript.matches(entity.name, q) || UzScript.matches(entity.code, q)
+                    }
+                    .take(50)
+                    .map { it.toDomain() }
+            }
         }
     }
 

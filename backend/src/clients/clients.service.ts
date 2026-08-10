@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { Client } from './entities/client.entity';
 import { UserClientMembership } from './entities/user-client-membership.entity';
 import { CreateClientDto, TransferClientsDto, UpdateClientDto } from './dto/client.dto';
@@ -12,6 +12,7 @@ import { LinesService } from '../lines/lines.service';
 import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../common/enums';
 import { User } from '../auth/entities/user.entity';
+import { searchScriptVariants } from '../common/uz-script.util';
 
 function normalizeInn(inn?: string | null): string | null {
   const v = inn?.trim();
@@ -38,6 +39,25 @@ function sameCoord(a: number | null | undefined, b: number | null | undefined): 
 function actorLabel(actor?: User | null): string | null {
   if (!actor) return null;
   return actor.fullName?.trim() || actor.username?.trim() || null;
+}
+
+function normalizeCompanyIds(
+  companyIds?: string[] | null,
+  companyId?: string | null,
+): string[] {
+  const raw = [
+    ...(Array.isArray(companyIds) ? companyIds : []),
+    ...(companyId ? [companyId] : []),
+  ];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of raw) {
+    const v = String(id || '').trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
 }
 
 @Injectable()
@@ -83,9 +103,78 @@ export class ClientsService {
     return map;
   }
 
+  /** Top/Savdo: buyurtma soni, summa, oxirgi sana, miqdor, vazn */
+  private async activityByClientIds(
+    ids: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        ordersCount: number;
+        totalSales: number;
+        lastOrderAt: string | null;
+        goodsQty: number;
+        goodsWeight: number;
+      }
+    >
+  > {
+    const map = new Map<
+      string,
+      {
+        ordersCount: number;
+        totalSales: number;
+        lastOrderAt: string | null;
+        goodsQty: number;
+        goodsWeight: number;
+      }
+    >();
+    if (!ids.length) return map;
+
+    const orders = await this.orderRepo.find({
+      where: { clientId: In(ids) },
+      select: ['clientId', 'totalAmount', 'returnedAmount', 'createdAt', 'items', 'status'],
+    });
+
+    for (const o of orders) {
+      if (o.status === OrderStatus.CANCELLED || o.status === OrderStatus.DRAFT) continue;
+      const cur = map.get(o.clientId) ?? {
+        ordersCount: 0,
+        totalSales: 0,
+        lastOrderAt: null as string | null,
+        goodsQty: 0,
+        goodsWeight: 0,
+      };
+      cur.ordersCount += 1;
+      cur.totalSales += toNum(o.totalAmount) - toNum(o.returnedAmount);
+      const createdIso =
+        o.createdAt instanceof Date
+          ? o.createdAt.toISOString()
+          : new Date(o.createdAt).toISOString();
+      if (!cur.lastOrderAt || createdIso > cur.lastOrderAt) {
+        cur.lastOrderAt = createdIso;
+      }
+      const items = Array.isArray(o.items) ? o.items : [];
+      for (const it of items) {
+        const qty = toNum(it?.quantity);
+        const weight =
+          it?.actualQuantity != null && Number.isFinite(Number(it.actualQuantity))
+            ? toNum(it.actualQuantity)
+            : qty;
+        cur.goodsQty += qty;
+        cur.goodsWeight += weight;
+      }
+      map.set(o.clientId, cur);
+    }
+    return map;
+  }
+
   private async withDebts(clients: Client[]): Promise<Client[]> {
     if (!clients.length) return clients;
-    const unpaidMap = await this.unpaidDebtsByClientIds(clients.map((c) => c.id));
+    const ids = clients.map((c) => c.id);
+    const [unpaidMap, activityMap] = await Promise.all([
+      this.unpaidDebtsByClientIds(ids),
+      this.activityByClientIds(ids),
+    ]);
     for (const c of clients) {
       const stored = toNum(c.balance);
       const unpaid = unpaidMap.get(c.id) ?? 0;
@@ -99,8 +188,52 @@ export class ClientsService {
         c.balance = -unpaid;
       }
       (c as Client & { debt?: number }).debt = debt;
+      const act = activityMap.get(c.id);
+      const enriched = c as Client & {
+        ordersCount?: number;
+        totalSales?: number;
+        lastOrderAt?: string | null;
+        goodsQty?: number;
+        goodsWeight?: number;
+      };
+      enriched.ordersCount = act?.ordersCount ?? 0;
+      enriched.totalSales = act?.totalSales ?? 0;
+      enriched.lastOrderAt = act?.lastOrderAt ?? null;
+      enriched.goodsQty = act?.goodsQty ?? 0;
+      enriched.goodsWeight = act?.goodsWeight ?? 0;
     }
     return clients;
+  }
+
+  private applyCompanyScope(
+    qb: ReturnType<ClientsService['baseQuery']>,
+    companyId?: string | string[],
+  ) {
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (ids.length === 1) {
+      qb.andWhere(
+        `(c.companyId = :companyId
+          OR (c.companyId IS NULL AND distributor.companyId = :companyId)
+          OR c.linkedCompanyIds @> CAST(:cidJson AS jsonb))`,
+        { companyId: ids[0], cidJson: JSON.stringify([ids[0]]) },
+      );
+    } else if (ids.length > 1) {
+      qb.andWhere(
+        `(c.companyId IN (:...companyIds)
+          OR (c.companyId IS NULL AND distributor.companyId IN (:...companyIds))
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(c.linkedCompanyIds, '[]'::jsonb)) AS x(val)
+            WHERE x.val IN (:...companyIds)
+          ))`,
+        { companyIds: ids },
+      );
+    }
+    return ids;
   }
 
   async findAll(
@@ -109,23 +242,11 @@ export class ClientsService {
     distributorId?: string,
     agentLineCodes?: string[],
   ) {
+    // Bo'sh/harfli kodlarni ketma-ket raqam bilan to'ldirish (bir marta, kerak bo'lsa)
+    await this.ensureNumericCodes(companyId);
+
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
-    const ids = Array.isArray(companyId)
-      ? companyId.map((id) => id?.trim()).filter(Boolean)
-      : companyId?.trim()
-        ? [companyId.trim()]
-        : [];
-    if (ids.length === 1) {
-      qb.andWhere(
-        '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
-        { companyId: ids[0] },
-      );
-    } else if (ids.length > 1) {
-      qb.andWhere(
-        '(c.companyId IN (:...companyIds) OR (c.companyId IS NULL AND distributor.companyId IN (:...companyIds)))',
-        { companyIds: ids },
-      );
-    }
+    this.applyCompanyScope(qb, companyId);
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
     if (distributorId) {
       const codes = (agentLineCodes ?? [])
@@ -161,25 +282,7 @@ export class ClientsService {
   /** Faqat admin korzinka — o'chirilgan mijozlar */
   async findTrash(companyId?: string | string[]) {
     const qb = this.baseQuery().where('c.deletedAt IS NOT NULL');
-    const ids = Array.isArray(companyId)
-      ? companyId.map((id) => id?.trim()).filter(Boolean)
-      : (companyId || '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-    if (Array.isArray(companyId) && ids.length === 0) {
-      qb.andWhere('1 = 0');
-    } else if (ids.length === 1) {
-      qb.andWhere(
-        '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
-        { companyId: ids[0] },
-      );
-    } else if (ids.length > 1) {
-      qb.andWhere(
-        '(c.companyId IN (:...companyIds) OR (c.companyId IS NULL AND distributor.companyId IN (:...companyIds)))',
-        { companyIds: ids },
-      );
-    }
+    this.applyCompanyScope(qb, companyId);
     const clients = await qb.orderBy('c.deletedAt', 'DESC').getMany();
     return this.withDebts(clients);
   }
@@ -234,8 +337,22 @@ export class ClientsService {
     agentLineCodes?: string[],
     companyId?: string | string[],
   ) {
-    const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'))
-      .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
+    const variants = searchScriptVariants(query);
+    const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
+    if (variants.length === 0) {
+      qb.andWhere('1 = 0');
+    } else {
+      qb.andWhere(
+        new Brackets((sub) => {
+          variants.forEach((v, i) => {
+            const key = `sq${i}`;
+            sub.orWhere(`(c.name ILIKE :${key} OR c.code ILIKE :${key})`, {
+              [key]: `%${v}%`,
+            });
+          });
+        }),
+      );
+    }
     if (distributorId) {
       const codes = (agentLineCodes ?? [])
         .map((c) => c?.trim())
@@ -269,14 +386,102 @@ export class ClientsService {
     return this.linesService.findAll(companyId);
   }
 
+  private normalizeNumericCode(raw?: string | null): string | null {
+    if (raw == null) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    const cleaned = /^\d+(\.0+)?$/.test(s) ? s.replace(/\.0+$/, '') : s;
+    if (!/^\d+$/.test(cleaned)) {
+      throw new BadRequestException("Mijoz kodi faqat raqam bo'lishi kerak");
+    }
+    return cleaned;
+  }
+
+  /** Bo'sh kod uchun kompaniya bo'yicha keyingi raqamli kod */
+  private async nextNumericCode(companyId?: string | null): Promise<string> {
+    const qb = this.repo
+      .createQueryBuilder('c')
+      .select(['c.code'])
+      .where('c.deletedAt IS NULL')
+      .andWhere(`c.code ~ '^[0-9]+$'`)
+      .andWhere('length(c.code) < 9');
+    if (companyId?.trim()) {
+      qb.andWhere('c.companyId = :companyId', { companyId: companyId.trim() });
+    }
+    const rows = await qb.getMany();
+    let max = 0;
+    for (const r of rows) {
+      const n = parseInt(r.code, 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return String(max + 1);
+  }
+
+  /**
+   * Bo'sh/harfli yoki g'ayritabiiy uzun (≥9 raqam) kodlarni kompaniya bo'yicha
+   * ketma-ket raqam bilan to'ldiradi. Oddiy OnTrade kodlari (qisqa raqamlar) saqlanadi.
+   */
+  async ensureNumericCodes(companyId?: string | string[] | null): Promise<number> {
+    const qb = this.notDeleted(this.baseQuery())
+      .andWhere(
+        `(c.code IS NULL OR c.code = '' OR c.code !~ '^[0-9]+$' OR length(c.code) >= 9)`,
+      )
+      .orderBy('c.createdAt', 'ASC')
+      .addOrderBy('c.name', 'ASC');
+    this.applyCompanyScope(qb, companyId ?? undefined);
+    const missing = await qb.getMany();
+    if (missing.length === 0) return 0;
+
+    const byCompany = new Map<string, typeof missing>();
+    for (const c of missing) {
+      const key = c.companyId?.trim() || '__none__';
+      const list = byCompany.get(key) ?? [];
+      list.push(c);
+      byCompany.set(key, list);
+    }
+
+    let updated = 0;
+    for (const [key, list] of byCompany) {
+      const companyKey = key === '__none__' ? null : key;
+      // Max faqat "yaxshi" (qisqa) kodlardan
+      const maxQb = this.repo
+        .createQueryBuilder('c')
+        .select(['c.code'])
+        .where('c.deletedAt IS NULL')
+        .andWhere(`c.code ~ '^[0-9]+$'`)
+        .andWhere('length(c.code) < 9');
+      if (companyKey) {
+        maxQb.andWhere('c.companyId = :companyId', { companyId: companyKey });
+      }
+      const rows = await maxQb.getMany();
+      let next = 1;
+      for (const r of rows) {
+        const n = parseInt(r.code, 10);
+        if (Number.isFinite(n) && n >= next) next = n + 1;
+      }
+      for (const client of list) {
+        const code = String(next++);
+        const prev = (client.code || '').trim();
+        if (!prev || client.onTradeId === prev) {
+          client.onTradeId = code;
+        }
+        client.code = code;
+        updated += 1;
+      }
+      await this.repo.save(list);
+    }
+    return updated;
+  }
+
   async create(
     dto: CreateClientDto,
     actor?: User,
     createdByOverride?: { id?: string | null; name?: string | null },
   ) {
-    const code =
-      dto.code?.trim() ||
-      `A${Date.now().toString(36).slice(-7).toUpperCase()}`;
+    const linkedIds = normalizeCompanyIds(dto.companyIds, dto.companyId);
+    const primaryCompanyId = linkedIds[0] ?? dto.companyId ?? null;
+    const fromDto = this.normalizeNumericCode(dto.code);
+    const code = fromDto || (await this.nextNumericCode(primaryCompanyId));
     const hasLocation = dto.latitude != null || dto.longitude != null;
     const createdById = createdByOverride?.id ?? actor?.id ?? null;
     const createdByName =
@@ -298,7 +503,8 @@ export class ClientsService {
             }))
         : [],
       address: dto.address ?? null,
-      companyId: dto.companyId ?? null,
+      companyId: primaryCompanyId,
+      linkedCompanyIds: linkedIds,
       lineCode: dto.lineCode ?? null,
       latitude: dto.latitude ?? null,
       longitude: dto.longitude ?? null,
@@ -319,7 +525,7 @@ export class ClientsService {
       photoUrl: dto.photoUrl ?? null,
       markColor: normalizeMarkColor(dto.markColor),
       canSeePromotions: dto.canSeePromotions === true,
-      isActive: true,
+      isActive: dto.isActive !== false,
       createdById,
       createdByName,
       deletedAt: null,
@@ -332,7 +538,11 @@ export class ClientsService {
 
   async update(id: string, dto: UpdateClientDto, actor?: User) {
     const client = await this.findOne(id);
-    if (dto.code !== undefined) client.code = dto.code;
+    if (dto.code !== undefined) {
+      const code = this.normalizeNumericCode(dto.code);
+      if (!code) throw new BadRequestException("Mijoz kodi faqat raqam bo'lishi kerak");
+      client.code = code;
+    }
     if (dto.onTradeId !== undefined) client.onTradeId = dto.onTradeId?.trim() || null;
     if (dto.name !== undefined) client.name = dto.name;
     if (dto.fullName !== undefined) client.fullName = dto.fullName;
@@ -379,7 +589,20 @@ export class ClientsService {
     if (dto.photoUrl !== undefined) client.photoUrl = dto.photoUrl;
     if (dto.markColor !== undefined) client.markColor = normalizeMarkColor(dto.markColor);
     if (dto.canSeePromotions !== undefined) client.canSeePromotions = !!dto.canSeePromotions;
-    if (dto.isActive !== undefined) client.isActive = dto.isActive;
+    if (dto.isActive !== undefined) {
+      client.isActive = dto.isActive;
+      await this.userRepo.update({ clientId: id }, { isActive: dto.isActive });
+    }
+
+    if (dto.companyIds !== undefined || dto.companyId !== undefined) {
+      const linkedIds = normalizeCompanyIds(
+        dto.companyIds,
+        dto.companyId !== undefined ? dto.companyId : client.companyId,
+      );
+      client.linkedCompanyIds = linkedIds;
+      client.companyId = linkedIds[0] ?? null;
+    }
+
     await this.repo.save(client);
     return this.findOne(id);
   }
@@ -504,6 +727,15 @@ export class ClientsService {
         }
       }
 
+      client.companyId = targetCompanyId;
+      client.linkedCompanyIds = normalizeCompanyIds(
+        client.linkedCompanyIds,
+        targetCompanyId,
+      );
+      if (!client.linkedCompanyIds.includes(targetCompanyId)) {
+        client.linkedCompanyIds = [...client.linkedCompanyIds, targetCompanyId];
+      }
+      // Asosiy orgni targetga o‘tkazamiz; bog‘langanlar ro‘yxatida saqlaymiz
       client.companyId = targetCompanyId;
       client.distributorId = null;
       await this.repo.save(client);

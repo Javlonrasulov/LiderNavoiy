@@ -5,9 +5,7 @@ export type SimilarityFieldKey =
   | 'fullName'
   | 'phone'
   | 'inn'
-  | 'address'
   | 'territory'
-  | 'lineCode'
 
 export type SimilarityFieldScore = {
   key: SimilarityFieldKey
@@ -28,19 +26,15 @@ export type SimilarityCandidate = {
   fullName?: string
   phone?: string
   inn?: string
-  address?: string
   territory?: string
-  lineCode?: string
 }
 
 const WEIGHTS: Record<SimilarityFieldKey, number> = {
-  name: 25,
-  fullName: 15,
-  phone: 20,
+  name: 30,
+  fullName: 20,
+  phone: 25,
   inn: 20,
-  address: 10,
   territory: 5,
-  lineCode: 5,
 }
 
 /** Dialog ochilishi uchun minimal umumiy foiz */
@@ -73,21 +67,6 @@ function textFieldScore(a: string, b: string): number {
   return 0
 }
 
-function addressScore(a: string, b: string): number {
-  if (!a || !b) return 0
-  if (a === b) return 100
-  if (a.includes(b) || b.includes(a)) return 50
-  const ta = a.split(' ').filter(t => t.length >= 2)
-  const tb = new Set(b.split(' ').filter(t => t.length >= 2))
-  if (ta.length === 0 || tb.size === 0) return 0
-  let overlap = 0
-  for (const t of ta) if (tb.has(t)) overlap += 1
-  const ratio = overlap / Math.max(ta.length, tb.size)
-  if (ratio >= 0.8) return 100
-  if (ratio >= 0.4) return 50
-  return 0
-}
-
 function scoreAgainst(input: SimilarityCandidate, existing: Client): SimilarityMatch {
   const fields: SimilarityFieldScore[] = []
 
@@ -102,9 +81,7 @@ function scoreAgainst(input: SimilarityCandidate, existing: Client): SimilarityM
   add('fullName', input.fullName, existing.fullName ?? undefined, textFieldScore)
   add('phone', input.phone, existing.phone ?? undefined, (a, b) => (a && b && a === b ? 100 : 0))
   add('inn', input.inn, existing.inn ?? undefined, (a, b) => (a && b && a === b ? 100 : 0))
-  add('address', input.address, existing.address ?? undefined, addressScore)
   add('territory', input.territory, existing.territory ?? undefined, textFieldScore)
-  add('lineCode', input.lineCode, existing.lineCode ?? undefined, (a, b) => (a && b && a === b ? 100 : 0))
 
   const totalWeight = fields.reduce((s, f) => s + f.weight, 0)
   if (totalWeight <= 0) {
@@ -132,6 +109,12 @@ export function findBestSimilarityMatch(
   return best
 }
 
+/** INN to‘liq mos — «Baribir qo‘shish» taqiqlanadi */
+export function hasExactInnCollision(match: SimilarityMatch | null | undefined): boolean {
+  if (!match) return false
+  return match.fields.some((f) => f.key === 'inn' && f.pct >= 100)
+}
+
 export type ClientListSimilarity = {
   pct: number
   matchName: string
@@ -153,9 +136,7 @@ export function buildClientSimilarityMap(
       fullName: cl.fullName ?? undefined,
       phone: cl.phone ?? undefined,
       inn: cl.inn ?? undefined,
-      address: cl.address ?? undefined,
       territory: cl.territory ?? undefined,
-      lineCode: cl.lineCode ?? undefined,
     }
     const match = findBestSimilarityMatch(input, clients, {
       excludeClientId: cl.id,

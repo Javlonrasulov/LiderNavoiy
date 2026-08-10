@@ -234,6 +234,18 @@ export class ClientsController {
     );
   }
 
+  @Post('ensure-numeric-codes')
+  @ApiOperation({ summary: 'Fill missing/invalid client codes with sequential numbers' })
+  async ensureNumericCodes(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    this.assertAdminOrManager(req.user);
+    const scope = this.scopeCompanyIds(req.user, companyId);
+    const updated = await this.service.ensureNumericCodes(scope);
+    return { updated };
+  }
+
   @Get('lines')
   @ApiOperation({ summary: 'List lines for client assignment' })
   findLines(

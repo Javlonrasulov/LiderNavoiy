@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Min,
   MinLength,
   ValidateNested,
@@ -28,9 +29,10 @@ export class ClientExtraPhoneDto {
 }
 
 export class CreateClientDto {
-  @ApiPropertyOptional({ example: 'C001' })
+  @ApiPropertyOptional({ example: '2001' })
   @IsOptional()
   @IsString()
+  @Matches(/^\d+$/, { message: "Mijoz kodi faqat raqam bo'lishi kerak" })
   code?: string;
 
   @ApiPropertyOptional({ example: '174912345678901234' })
@@ -69,6 +71,15 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   companyId?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Mijoz ko‘rinadigan tashkilotlar (birinchi = asosiy companyId)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -136,6 +147,11 @@ export class CreateClientDto {
   @IsIn(MARK_COLORS)
   markColor?: string | null;
 
+  @ApiPropertyOptional({ description: 'Ishlaydi / ishlamaydi' })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
   @ApiPropertyOptional({
     description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi',
     default: false,
@@ -163,10 +179,20 @@ export class UpdateClientDto {
   @IsString()
   companyId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Mijoz ko‘rinadigan tashkilotlar (birinchi = asosiy companyId)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
+
+  @ApiPropertyOptional({ example: '2001' })
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @Matches(/^\d+$/, { message: "Mijoz kodi faqat raqam bo'lishi kerak" })
   code?: string;
 
   @ApiPropertyOptional({ example: '174912345678901234' })

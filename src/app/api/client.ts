@@ -186,8 +186,19 @@ export interface Client {
   phone?: string | null;
   address: string | null;
   companyId?: string | null;
+  linkedCompanyIds?: string[];
   lineCode?: string | null;
   balance: string | number;
+  /** Buyurtmalar soni (bekor/draftsiz) */
+  ordersCount?: number;
+  /** Savdo summasi (total - returned) */
+  totalSales?: number;
+  /** Oxirgi buyurtma vaqti (ISO) */
+  lastOrderAt?: string | null;
+  /** Tovar miqdori (qty sum) */
+  goodsQty?: number;
+  /** Tovar vazni (actualQuantity yoki qty) */
+  goodsWeight?: number;
   latitude: number | null;
   longitude: number | null;
   locationUpdatedAt?: string | null;
@@ -203,6 +214,9 @@ export interface Client {
   priceCategory?: string | null;
   isActive?: boolean;
   canSeePromotions?: boolean;
+  /** Manager belgi: green | yellow | red */
+  markColor?: string | null;
+  extraPhones?: { phone: string; note?: string }[];
   createdAt?: string;
   createdById?: string | null;
   createdByName?: string | null;
@@ -810,12 +824,13 @@ export const api = {
   },
 
   createClient: (body: {
-    code: string;
+    code?: string;
     name: string;
     fullName?: string;
     phone?: string;
     address?: string;
     companyId?: string;
+    companyIds?: string[];
     lineCode?: string;
     latitude?: number;
     longitude?: number;
@@ -827,6 +842,8 @@ export const api = {
     photoUrl?: string;
     clientClass?: string;
     priceCategory?: string;
+    isActive?: boolean;
+    extraPhones?: { phone: string; note?: string }[];
     onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
@@ -842,6 +859,8 @@ export const api = {
     fullName?: string;
     phone?: string;
     address?: string;
+    companyId?: string;
+    companyIds?: string[];
     lineCode?: string;
     latitude?: number;
     longitude?: number;
@@ -854,6 +873,7 @@ export const api = {
     clientClass?: string;
     priceCategory?: string;
     isActive?: boolean;
+    extraPhones?: { phone: string; note?: string }[];
     onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
@@ -1247,6 +1267,15 @@ export const api = {
 
   deletePromotion: (id: string) =>
     request<{ ok: boolean }>(`/promotions/${id}`, { method: 'DELETE' }),
+
+  // ─── Client categories (От, Тт, Хорека, …) ───
+  getClientCategories: (companyId?: string) =>
+    request<Array<{
+      id: string;
+      name: string;
+      companyId: string | null;
+      isActive: boolean;
+    }>>(`/client-categories${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`),
 
   // ─── Lines ───
   getLines: (companyId?: string) =>

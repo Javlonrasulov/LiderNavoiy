@@ -1,8 +1,11 @@
-import { AlertTriangle, MapPin, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import { AlertTriangle, MapPin, Maximize2, X } from 'lucide-react';
 import { StoreIcon } from '../icons';
 import type { ClientRow } from '../../data/adminData';
 import { clientIdHash } from '../../utils/clientApi';
 import { formatDisplayDate } from '../../utils/dateFormat';
+import { MapLayerSwitcher, switchTileLayer, type LayerId } from '../MapLayerSwitcher';
 
 function parseClientGps(gps: string | undefined | null): { lat: number; lng: number } | null {
   if (!gps?.includes(',')) return null;
@@ -67,30 +70,83 @@ export function ClientGpsWarningModal({ client, D, t, onClose }: Props) {
   );
 }
 
-/** Haqiqiy GPS bilan OSM embed (Leaflet yo'q — production crash oldini olish) */
+/** Haqiqiy GPS — Leaflet (OSM iframe bloklanganda ham Carto/Esri ishlaydi) */
 export function ClientMapModal({ client, D, t, onClose }: Props) {
   const coords = parseClientGps(client.gps);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const tileRef = useRef<L.TileLayer | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  // shortbread = CartoCDN — openstreetmap.org bloklangan tarmoqlarda ham ochiladi
+  const [activeLayer, setActiveLayer] = useState<LayerId>('shortbread');
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!coords || !containerRef.current || mapRef.current) return;
+
+    const pinIcon = L.divIcon({
+      className: '',
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+      html: `<div style="width:28px;height:28px;background:#0ea5e9;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 10px rgba(0,0,0,.35);"></div>`,
+    });
+
+    const map = L.map(containerRef.current, {
+      center: [coords.lat, coords.lng],
+      zoom: 16,
+      zoomControl: true,
+      attributionControl: false,
+    });
+    switchTileLayer(map, tileRef, activeLayer, D);
+    markerRef.current = L.marker([coords.lat, coords.lng], { icon: pinIcon }).addTo(map);
+    mapRef.current = map;
+
+    requestAnimationFrame(() => map.invalidateSize());
+    const tmr = window.setTimeout(() => map.invalidateSize(), 120);
+
+    return () => {
+      window.clearTimeout(tmr);
+      map.remove();
+      mapRef.current = null;
+      tileRef.current = null;
+      markerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!coords, client.id]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    switchTileLayer(map, tileRef, activeLayer, D);
+  }, [activeLayer, D]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const tmr = window.setTimeout(() => map.invalidateSize(), 80);
+    return () => window.clearTimeout(tmr);
+  }, [mapFullscreen]);
 
   if (!coords) {
     return <ClientGpsWarningModal client={client} D={D} t={t} onClose={onClose} />;
   }
 
   const { lat, lng } = coords;
-  const delta = 0.008;
-  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - delta},${lat - delta},${lng + delta},${lat + delta}&layer=mapnik&marker=${lat},${lng}`;
+  const shellClass = mapFullscreen
+    ? 'fixed inset-0 z-[210] flex flex-col rounded-none'
+    : 'relative w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border';
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      className={`fixed inset-0 z-[200] flex items-center justify-center ${mapFullscreen ? 'p-0' : 'p-4'}`}
       style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.65)' }}
       onClick={onClose}
     >
       <div
-        className={`relative w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border
-          ${D ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}
+        className={`${shellClass} ${D ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}${mapFullscreen ? ' h-full w-full' : ''}`}
         onClick={e => e.stopPropagation()}
       >
-        <div className={`flex items-center justify-between px-4 py-3 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
+        <div className={`flex items-center justify-between px-4 py-3 border-b flex-shrink-0 ${D ? 'border-gray-700' : 'border-gray-100'}`}>
           <div className="flex items-center gap-2.5 min-w-0">
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${D ? 'bg-sky-900/60' : 'bg-sky-100'}`}>
               <StoreIcon size={16} color="currentColor" className={D ? 'text-sky-400' : 'text-sky-600'} animated={false} />
@@ -98,19 +154,28 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
             <div className="min-w-0">
               <p className="font-semibold text-sm truncate">{client.name}</p>
               <p className={`text-xs truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-                {client.territory || client.legalAddr || `ID: ${client.code}`}
+                {client.territory || client.legalAddr || `Kod: ${client.code}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setMapFullscreen(v => !v)}
+              title={mapFullscreen ? (t.closeBtn ?? 'Yopish') : 'Katta ekran'}
+              className={`w-7 h-7 flex items-center justify-center rounded-xl transition-colors
+                ${D ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
+            >
+              <Maximize2 size={14} />
+            </button>
             <a
-              href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`}
+              href={`https://www.google.com/maps?q=${lat},${lng}`}
               target="_blank"
               rel="noreferrer"
               className={`text-xs px-2 py-1 rounded-lg border font-medium transition-colors
                 ${D ? 'border-gray-700 hover:bg-gray-800 text-gray-300' : 'border-gray-200 hover:bg-gray-50 text-gray-700'}`}
             >
-              OSM
+              Maps
             </a>
             <button
               onClick={onClose}
@@ -122,7 +187,7 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
           </div>
         </div>
 
-        <div className={`flex items-center gap-4 px-4 py-2 text-xs font-mono ${D ? 'bg-gray-800/60 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
+        <div className={`flex items-center gap-4 px-4 py-2 text-xs font-mono flex-shrink-0 ${D ? 'bg-gray-800/60 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
           <span>lat: {lat.toFixed(5)}</span>
           <span>lng: {lng.toFixed(5)}</span>
           <span className={`ml-auto text-[10px] flex items-center gap-1 ${D ? 'text-emerald-400' : 'text-emerald-600'}`}>
@@ -132,7 +197,7 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
         </div>
 
         {(client.locationUpdatedAt || client.locationUpdatedBy) && (
-          <div className={`px-4 py-2 text-xs flex flex-wrap gap-x-4 gap-y-1 border-b ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
+          <div className={`px-4 py-2 text-xs flex flex-wrap gap-x-4 gap-y-1 border-b flex-shrink-0 ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
             {client.locationUpdatedAt && (
               <span>
                 <span className="opacity-60">{t.gpsUpdatedAt ?? 'Qachon'}: </span>
@@ -148,15 +213,24 @@ export function ClientMapModal({ client, D, t, onClose }: Props) {
           </div>
         )}
 
-        <iframe
-          src={mapSrc}
-          title={t.mapLabel ?? 'Xarita'}
-          style={{ width: '100%', height: 340, border: 0, display: 'block' }}
-          loading="lazy"
-        />
+        <div
+          className="relative flex-1 min-h-0"
+          style={mapFullscreen ? { flex: 1 } : { height: 340 }}
+        >
+          <div
+            ref={containerRef}
+            style={{ width: '100%', height: '100%', minHeight: mapFullscreen ? 0 : 340 }}
+          />
+          <MapLayerSwitcher
+            activeLayer={activeLayer}
+            onChange={setActiveLayer}
+            bottom={12}
+            left={12}
+          />
+        </div>
 
         {client.agent && (
-          <div className={`px-4 py-2.5 text-xs flex items-center gap-2 border-t ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
+          <div className={`px-4 py-2.5 text-xs flex items-center gap-2 border-t flex-shrink-0 ${D ? 'border-gray-700 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
             <span className="opacity-60">{t.colAgent}:</span>
             <span className="font-medium">{client.agent}</span>
           </div>
