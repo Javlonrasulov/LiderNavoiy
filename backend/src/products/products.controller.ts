@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -22,32 +23,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { RequirePage } from '../common/guards/permissions.guard';
 import { User } from '../auth/entities/user.entity';
-import { UserRole } from '../common/enums';
-
-function resolveAgentCompanyScope(
-  user: User,
-  queryCompanyId?: string,
-): string | string[] | null {
-  const q = queryCompanyId?.trim();
-  if (q) return q;
-
-  const isAgent = user.role === UserRole.DISTRIBUTOR;
-  if (!isAgent || !user.distributorProfile) return null;
-
-  const profile = user.distributorProfile;
-  const ids = [
-    ...new Set(
-      [
-        ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
-        profile.companyId,
-      ]
-        .map((id) => id?.trim())
-        .filter((id): id is string => !!id),
-    ),
-  ];
-  if (ids.length === 0) return null;
-  return ids.length === 1 ? ids[0] : ids;
-}
+import {
+  assertManagerCompanyAccess,
+  resolveCompanyScope,
+  resolveWritableCompanyId,
+} from '../common/company-scope.util';
 
 @ApiTags('Products')
 @ApiBearerAuth()
@@ -68,7 +48,7 @@ export class ProductsController {
   ) {
     return this.service.findAll(
       category,
-      resolveAgentCompanyScope(req.user, companyId),
+      resolveCompanyScope(req.user, companyId),
     );
   }
 
@@ -81,7 +61,7 @@ export class ProductsController {
   ) {
     const n = Math.min(Math.max(parseInt(limit || '30', 10) || 30, 1), 100);
     return this.service.findTopSelling(
-      resolveAgentCompanyScope(req.user, companyId),
+      resolveCompanyScope(req.user, companyId),
       n,
     );
   }
@@ -94,7 +74,7 @@ export class ProductsController {
   ) {
     return this.service.getCategories(
       false,
-      resolveAgentCompanyScope(req.user, companyId),
+      resolveCompanyScope(req.user, companyId),
     );
   }
 
@@ -133,12 +113,15 @@ export class ProductsController {
 
   @Get(':id/stats')
   @ApiOperation({ summary: 'Product detail with sales stats and rating' })
-  productStats(
+  async productStats(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Query('companyId') companyId?: string,
   ) {
-    const scope = resolveAgentCompanyScope(req.user, companyId);
+    const product = await this.service.findOne(id);
+    if (!product) throw new NotFoundException('Product not found');
+    assertManagerCompanyAccess(req.user, product.companyId);
+    const scope = resolveCompanyScope(req.user, companyId);
     const single =
       typeof scope === 'string' ? scope : Array.isArray(scope) ? scope[0] : null;
     return this.service.getProductStats(id, single);
@@ -146,8 +129,11 @@ export class ProductsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get product by ID' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    const product = await this.service.findOne(id);
+    if (!product) throw new NotFoundException('Product not found');
+    assertManagerCompanyAccess(req.user, product.companyId);
+    return product;
   }
 
   @Post('upload-image')
@@ -162,23 +148,38 @@ export class ProductsController {
   @UseGuards(AdminGuard)
   @RequirePage('products')
   @ApiOperation({ summary: 'Create product' })
-  create(@Body() dto: CreateProductDto) {
-    return this.service.create(dto);
+  create(@Request() req: { user: User }, @Body() dto: CreateProductDto) {
+    const companyId = resolveWritableCompanyId(req.user, dto.companyId);
+    return this.service.create({ ...dto, companyId });
   }
 
   @Patch(':id')
   @UseGuards(AdminGuard)
   @RequirePage('products')
   @ApiOperation({ summary: 'Update product' })
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.service.update(id, dto);
+  async update(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+  ) {
+    const existing = await this.service.findOne(id);
+    if (!existing) throw new NotFoundException('Product not found');
+    assertManagerCompanyAccess(req.user, existing.companyId);
+    const nextDto =
+      dto.companyId !== undefined
+        ? { ...dto, companyId: resolveWritableCompanyId(req.user, dto.companyId) }
+        : dto;
+    return this.service.update(id, nextDto);
   }
 
   @Delete(':id')
   @UseGuards(AdminGuard)
   @RequirePage('products')
   @ApiOperation({ summary: 'Deactivate product' })
-  remove(@Param('id') id: string) {
+  async remove(@Request() req: { user: User }, @Param('id') id: string) {
+    const existing = await this.service.findOne(id);
+    if (!existing) throw new NotFoundException('Product not found');
+    assertManagerCompanyAccess(req.user, existing.companyId);
     return this.service.remove(id);
   }
 }

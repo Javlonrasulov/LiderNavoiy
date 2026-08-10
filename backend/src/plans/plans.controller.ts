@@ -13,6 +13,8 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { PlansService } from './plans.service';
 import { UpsertPlanDto } from './dto/plan.dto';
 import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
+import { resolveCompanyIds } from '../common/company-scope.util';
 
 @ApiTags('Plans')
 @ApiBearerAuth()
@@ -32,11 +34,15 @@ export class PlansController {
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'List agent plans for a month (admin)' })
   list(
+    @Request() req: { user: User },
     @Query('year') year?: string,
     @Query('month') month?: string,
     @Query('companyId') companyId?: string,
   ) {
-    const companyIds = companyId ? companyId.split(',').filter(Boolean) : undefined;
+    const companyIds = resolveCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
     return this.service.listPlans(
       year ? Number(year) : undefined,
       month ? Number(month) : undefined,

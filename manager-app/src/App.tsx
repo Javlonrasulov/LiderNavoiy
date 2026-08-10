@@ -298,11 +298,12 @@ export default function App() {
                 }}
               />
             )}
-            {activeTab === 'plan' && <PlanScreen dark={dark} lang={lang} tr={tr} />}
+            {activeTab === 'plan' && <PlanScreen dark={dark} lang={lang} tr={tr} user={user} />}
             {activeTab === 'messages' && (
               <MessagesScreen
                 dark={dark}
                 tr={tr}
+                user={user}
                 openConversationId={openConversationId}
                 onUnreadChange={setMessagesUnread}
                 onConversationOpened={() => setOpenConversationId(null)}
@@ -316,6 +317,7 @@ export default function App() {
               dark={dark}
               lang={lang}
               tr={tr}
+              user={user}
               onBack={() => setOverlay(null)}
             />
           )}
@@ -401,6 +403,7 @@ export default function App() {
               dark={dark}
               lang={lang}
               tr={tr}
+              user={user}
               onBack={() => setOverlay(null)}
             />
           )}

@@ -100,6 +100,10 @@ export class Client {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
+  /** Manager belgi: green | yellow | red (default yashil) */
+  @Column({ type: 'varchar', nullable: true, default: 'green' })
+  markColor: string | null;
+
   /** Mijoz APK da admin yoqgan aksiyalarni ko‘ra oladimi (default o‘chirilgan) */
   @Column({ default: false })
   canSeePromotions: boolean;

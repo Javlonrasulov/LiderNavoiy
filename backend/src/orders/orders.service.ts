@@ -22,6 +22,7 @@ import { Product } from '../products/entities/product.entity';
 import { Visit } from '../visits/entities/visit.entity';
 import { TrackingGateway } from '../tracking/tracking.gateway';
 import { OrderPayment } from '../payments/entities/order-payment.entity';
+import { assertManagerCompanyAccess } from '../common/company-scope.util';
 
 @Injectable()
 export class OrdersService {
@@ -214,6 +215,21 @@ export class OrdersService {
     );
   }
 
+  /** Manager — faqat o‘z org buyurtmasi */
+  private async assertManagerOwnsOrder(actor: User | null | undefined, order: Order) {
+    if (!actor || actor.role !== UserRole.MANAGER) return;
+    let companyId = order.companyId?.trim() || null;
+    if (!companyId) {
+      const client = await this.clientRepo.findOne({ where: { id: order.clientId } });
+      companyId = client?.companyId?.trim() || null;
+    }
+    if (!companyId) {
+      const profile = await this.profileRepo.findOne({ where: { id: order.distributorId } });
+      companyId = profile?.companyId?.trim() || null;
+    }
+    assertManagerCompanyAccess(actor, companyId);
+  }
+
   private async notifyManagersClientOrder(
     distributorId: string,
     clientId: string,
@@ -231,6 +247,10 @@ export class OrdersService {
       profile?.companyName?.trim() ||
       'Agent';
     const client = await this.clientRepo.findOne({ where: { id: clientId } });
+    const companyId =
+      client?.companyId?.trim() ||
+      profile?.companyId?.trim() ||
+      null;
     await this.notifications.notifyAdminsClientOrder(
       agentName,
       totalAmount,
@@ -239,6 +259,7 @@ export class OrdersService {
         orderId,
         stale: opts?.stale,
         hoursWaiting: opts?.hoursWaiting,
+        companyId,
       },
     );
   }
@@ -266,6 +287,7 @@ export class OrdersService {
       {
         territory: client?.territory ?? null,
         orderId,
+        companyId: client?.companyId?.trim() || profile?.companyId?.trim() || null,
       },
     );
   }
@@ -696,10 +718,26 @@ export class OrdersService {
   /** Manager/admin: barcha agentlarga kelgan klient buyurtmalari */
   async findClientOrdersForAdmin(opts?: {
     companyId?: string;
+    companyIds?: string[];
     status?: OrderStatus;
     limit?: number;
   }) {
     const take = Math.min(Math.max(opts?.limit ?? 200, 1), 500);
+    const scopeIds = [
+      ...new Set(
+        [
+          ...(opts?.companyIds ?? []),
+          opts?.companyId,
+        ]
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    // Bo‘sh massiv = manager org yo‘q — hech narsa
+    if (Array.isArray(opts?.companyIds) && opts!.companyIds!.length === 0) {
+      return [];
+    }
+
     const qb = this.repo
       .createQueryBuilder('o')
       .where('o.source = :source', { source: OrderSource.CLIENT })
@@ -758,8 +796,8 @@ export class OrdersService {
         };
       })
       .filter(o => {
-        if (!opts?.companyId) return true;
-        return o.agentCompanyId === opts.companyId;
+        if (!scopeIds.length) return true;
+        return !!o.agentCompanyId && scopeIds.includes(o.agentCompanyId);
       });
   }
 
@@ -814,6 +852,7 @@ export class OrdersService {
     if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
+    await this.assertManagerOwnsOrder(actor, order);
     if (order.source !== OrderSource.CLIENT) {
       throw new BadRequestException('Only client orders can be edited this way');
     }
@@ -887,6 +926,7 @@ export class OrdersService {
     if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
+    await this.assertManagerOwnsOrder(actor, order);
     if (order.source !== OrderSource.CLIENT) {
       throw new BadRequestException('Only client orders can be sent to warehouse this way');
     }
@@ -1036,6 +1076,7 @@ export class OrdersService {
     if (!asAdmin && order.distributorId !== distributorId) {
       throw new ForbiddenException('Not your order');
     }
+    await this.assertManagerOwnsOrder(actor, order);
     if (order.source !== OrderSource.CLIENT) {
       throw new BadRequestException('Only client orders can be rejected this way');
     }
@@ -1375,10 +1416,12 @@ export class OrdersService {
       })
       .filter((o) => {
         if (!companyId) return true;
+        const ids = companyId.split(',').map((s) => s.trim()).filter(Boolean);
+        if (!ids.length) return true;
         const clientCo = o.client?.companyId ?? null;
         const agentCo = o.agentCompanyId ?? null;
-        if (clientCo === companyId || agentCo === companyId) return true;
-        if (!clientCo && !agentCo) return true;
+        if (clientCo && ids.includes(clientCo)) return true;
+        if (agentCo && ids.includes(agentCo)) return true;
         return false;
       });
   }
@@ -1393,9 +1436,31 @@ export class OrdersService {
     };
   }
 
-  async update(id: string, dto: UpdateOrderDto) {
+  async findOneForUser(id: string, user: User) {
+    const order = await this.repo.findOne({ where: { id } });
+    if (!order) return null;
+    await this.assertManagerOwnsOrder(user, order);
+    if (user.role === UserRole.DISTRIBUTOR) {
+      const myId = user.distributorProfile?.id;
+      if (
+        myId &&
+        order.distributorId !== myId &&
+        order.deliveryDistributorId !== myId
+      ) {
+        throw new ForbiddenException('Not your order');
+      }
+    }
+    const auditMap = await this.loadAuditsByOrderIds([id]);
+    return {
+      ...order,
+      audit: auditMap.get(id) ?? [],
+    };
+  }
+
+  async update(id: string, dto: UpdateOrderDto, actor?: User) {
     const order = await this.repo.findOne({ where: { id } });
     if (!order) throw new NotFoundException('Order not found');
+    await this.assertManagerOwnsOrder(actor, order);
     const prevStatus = order.status;
     const prevDriver = order.deliveryDistributorId;
 

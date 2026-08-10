@@ -92,6 +92,10 @@ export class ClientRequest {
   @Column({ type: 'varchar', nullable: true })
   photoUrl: string | null;
 
+  /** Manager belgi: green | yellow | red (default yashil) */
+  @Column({ type: 'varchar', nullable: true, default: 'green' })
+  markColor: string | null;
+
   @Column({ default: false })
   canSeePromotions: boolean;
 

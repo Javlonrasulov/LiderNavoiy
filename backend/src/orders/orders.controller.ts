@@ -6,6 +6,7 @@ import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto, Upd
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole, OrderStatus } from '../common/enums';
+import { resolveCompanyIds } from '../common/company-scope.util';
 
 @ApiTags('Orders')
 @ApiBearerAuth()
@@ -42,13 +43,18 @@ export class OrdersController {
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Manager/admin: client orders for all agents (with wait times)' })
   findClientOrdersAdmin(
+    @Request() req: { user: User },
     @Query('status') status?: OrderStatus,
     @Query('companyId') companyId?: string,
     @Query('limit') limit?: string,
   ) {
+    const companyIds = resolveCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
     return this.service.findClientOrdersForAdmin({
       status: status || OrderStatus.PENDING,
-      companyId: companyId || undefined,
+      companyIds,
       limit: limit ? Number(limit) : 200,
     });
   }
@@ -98,13 +104,23 @@ export class OrdersController {
         ? new Date(to.includes('T') ? to : `${to}T23:59:59.999+05:00`)
         : undefined,
     };
-    return this.service.findForAdmin(companyId, Number.isFinite(take) ? take : 500, opts);
+    const companyIds = resolveCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
+    const companyFilter =
+      companyIds?.length === 1
+        ? companyIds[0]
+        : companyIds?.length
+          ? companyIds.join(',')
+          : undefined;
+    return this.service.findForAdmin(companyFilter, Number.isFinite(take) ? take : 500, opts);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get order by ID' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  async findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.service.findOneForUser(id, req.user);
   }
 
   @Patch(':id/items')
@@ -159,7 +175,11 @@ export class OrdersController {
   @Patch(':id')
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Update order status / delivery assignment (admin)' })
-  update(@Param('id') id: string, @Body() dto: UpdateOrderDto) {
-    return this.service.update(id, dto);
+  update(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+  ) {
+    return this.service.update(id, dto, req.user);
   }
 }

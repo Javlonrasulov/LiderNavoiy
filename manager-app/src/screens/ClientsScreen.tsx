@@ -18,6 +18,12 @@ import { formatMoney, theme } from '../theme'
 import ClientStatsPanel from '../components/ClientStatsPanel'
 import { showToast } from '../components/Toast'
 import { pushBackHandler } from '../utils/hardwareBack'
+import { managerCompanyId, managerCompanySet } from '../utils/staffScope'
+import {
+  buildClientSimilarityMap,
+  similarityRisk,
+  similarityRiskColors,
+} from '../utils/clientSimilarity'
 
 type ClientSort = 'all' | 'top_desc' | 'top_asc' | 'debt_desc' | 'debt_asc'
 
@@ -55,7 +61,9 @@ function statusStyle(status: ClientRequestRow['status'], dark: boolean) {
 
 export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditRequest }: Props) {
   const c = theme(dark)
-  const companyId = getStoredUser()?.companyId || undefined
+  const user = getStoredUser()
+  const companyId = managerCompanyId(user)
+  const companySet = managerCompanySet(user)
   const [list, setList] = useState<Client[]>([])
   const [lines, setLines] = useState<SalesLine[]>([])
   const [requests, setRequests] = useState<ClientRequestRow[]>([])
@@ -102,6 +110,8 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
     return agentNameByCode.get(key) || '—'
   }
 
+  const similarityById = useMemo(() => buildClientSimilarityMap(list), [list])
+
   const load = async () => {
     setLoading(true)
     try {
@@ -110,8 +120,22 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
         fetchClientRequests({ companyId, status: 'all' }).catch(() => [] as ClientRequestRow[]),
         fetchLines(companyId).catch(() => [] as SalesLine[]),
       ])
-      setList(Array.isArray(data) ? data : [])
-      setRequests(Array.isArray(reqs) ? reqs : [])
+      setList(
+        (Array.isArray(data) ? data : []).filter(cl => {
+          if (!companySet) return true
+          const cid = cl.companyId?.trim()
+          if (!cid) return false
+          return companySet.has(cid)
+        }),
+      )
+      setRequests(
+        (Array.isArray(reqs) ? reqs : []).filter(r => {
+          if (!companySet) return true
+          const cid = r.companyId?.trim()
+          if (!cid) return false
+          return companySet.has(cid)
+        }),
+      )
       setLines(Array.isArray(lineRows) ? lineRows : [])
     } catch {
       setList([])
@@ -122,7 +146,7 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
     }
   }
 
-  useEffect(() => { void load() }, [companyId])
+  useEffect(() => { void load() }, [companyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return pushBackHandler(() => {
@@ -360,7 +384,11 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
 
         {loading && <p style={{ textAlign: 'center', color: c.mutedText, padding: 24 }}>{tr.loading}</p>}
 
-        {!loading && filtered.map(cl => (
+        {!loading && filtered.map(cl => {
+          const sim = similarityById.get(cl.id)
+          const risk = sim ? similarityRisk(sim.pct) : null
+          const riskColors = risk ? similarityRiskColors(risk, dark) : null
+          return (
           <div
             key={cl.id}
             role="button"
@@ -371,18 +399,40 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
               if (e.key === 'Enter' || e.key === ' ') setSelected(cl)
             }}
             style={{
-              borderRadius: 20, padding: 16, background: c.card, border: `1px solid ${c.border}`,
+              borderRadius: 20, padding: 16, background: c.card,
+              border: `1px solid ${riskColors ? riskColors.border : c.border}`,
               textAlign: 'left', cursor: 'pointer', width: '100%',
+              boxShadow: riskColors ? `inset 3px 0 0 ${riskColors.color}` : undefined,
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{
-                  fontSize: 18, fontWeight: 800, color: c.primary, lineHeight: 1.25,
-                  letterSpacing: '-0.02em',
-                }}>
-                  {cl.name}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <p style={{
+                    margin: 0,
+                    fontSize: 18, fontWeight: 800, color: c.primary, lineHeight: 1.25,
+                    letterSpacing: '-0.02em',
+                  }}>
+                    {cl.name}
+                  </p>
+                  {sim && riskColors && (
+                    <span
+                      title={`${sim.matchName} · ${sim.pct}%`}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        padding: '3px 8px', borderRadius: 999,
+                        background: riskColors.bg, color: riskColors.color,
+                        border: `1px solid ${riskColors.border}`,
+                        fontSize: 10, fontWeight: 800, flexShrink: 0,
+                      }}
+                    >
+                      <span style={{
+                        width: 7, height: 7, borderRadius: 99, background: riskColors.color,
+                      }} />
+                      {tr.dupSimilarBadge.replace('{pct}', String(sim.pct))}
+                    </span>
+                  )}
+                </div>
                 {cl.fullName && cl.fullName !== cl.name && (
                   <p style={{ fontSize: 12, color: c.mutedText, marginTop: 3 }}>{cl.fullName}</p>
                 )}
@@ -442,7 +492,8 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
               </div>
             </div>
           </div>
-        ))}
+          )
+        })}
 
         {!loading && filtered.length === 0 && visibleRequests.length === 0 && (
           <p style={{ textAlign: 'center', color: c.mutedText, padding: 32 }}>{tr.noData}</p>

@@ -12,6 +12,7 @@ import {
   SendToUsersDto,
 } from './dto/notification.dto';
 import { UserRole } from '../common/enums';
+import { allowedCompanyIds } from '../common/company-scope.util';
 import { normalizePushLang, PushI18n, PushLang } from './push-i18n';
 
 export interface SendResult {
@@ -211,18 +212,25 @@ export class NotificationsService {
     return this.deliverMulticast(tokens, dto.title, dto.body, type, data);
   }
 
-  /** Notify all admins/managers when agent creates order */
+  /** Notify admins + same-org managers when agent creates order */
   async notifyAdminsNewOrder(
     agentName: string,
     orderTotal: number,
     clientName?: string,
-    extras?: { territory?: string | null; orderId?: string },
+    extras?: { territory?: string | null; orderId?: string; companyId?: string | null },
   ) {
     const admins = await this.userRepo.find({
       where: {
         role: In([UserRole.ADMIN, UserRole.MANAGER]),
         isActive: true,
       },
+      relations: ['distributorProfile'],
+    });
+    const companyId = extras?.companyId?.trim() || null;
+    const targets = admins.filter((u) => {
+      if (u.role === UserRole.ADMIN) return true;
+      if (!companyId) return false;
+      return allowedCompanyIds(u).includes(companyId);
     });
 
     const agent = (agentName || 'Agent').trim() || 'Agent';
@@ -240,7 +248,7 @@ export class NotificationsService {
     if (territory) data.territory = territory;
 
     let sent = 0;
-    for (const admin of admins) {
+    for (const admin of targets) {
       const lang = normalizePushLang(admin.preferredLanguage);
       const title = PushI18n.adminNewOrderTitle(lang, agent);
       const body = PushI18n.adminNewOrderBody(lang, agent, place, sum);
@@ -253,21 +261,33 @@ export class NotificationsService {
       );
       if (result.sent) sent++;
     }
-    return { sent, total: admins.length };
+    return { sent, total: targets.length };
   }
 
-  /** Mijoz agentga buyurtma yuborganida — manager/admin push */
+  /** Mijoz agentga buyurtma yuborganida — faqat shu org managerlari + admin */
   async notifyAdminsClientOrder(
     agentName: string,
     orderTotal: number,
     clientName?: string,
-    extras?: { orderId?: string; stale?: boolean; hoursWaiting?: number },
+    extras?: {
+      orderId?: string;
+      stale?: boolean;
+      hoursWaiting?: number;
+      companyId?: string | null;
+    },
   ) {
     const admins = await this.userRepo.find({
       where: {
         role: In([UserRole.ADMIN, UserRole.MANAGER]),
         isActive: true,
       },
+      relations: ['distributorProfile'],
+    });
+    const companyId = extras?.companyId?.trim() || null;
+    const targets = admins.filter((u) => {
+      if (u.role === UserRole.ADMIN) return true;
+      if (!companyId) return false;
+      return allowedCompanyIds(u).includes(companyId);
     });
 
     const agent = (agentName || 'Agent').trim() || 'Agent';
@@ -284,7 +304,7 @@ export class NotificationsService {
     if (extras?.orderId) data.orderId = extras.orderId;
 
     let sent = 0;
-    for (const admin of admins) {
+    for (const admin of targets) {
       const lang = normalizePushLang(admin.preferredLanguage);
       const title = extras?.stale
         ? PushI18n.adminClientOrderStaleTitle(lang, agent)
@@ -301,7 +321,7 @@ export class NotificationsService {
       );
       if (result.sent) sent++;
     }
-    return { sent, total: admins.length };
+    return { sent, total: targets.length };
   }
 
   /** Notify agent */

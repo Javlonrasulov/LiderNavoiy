@@ -15,6 +15,54 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LinesService } from './lines.service';
 import { CreateLineDto, UpdateLineDto } from './dto/line.dto';
 import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
+
+function resolveCompanyIds(user: User, queryCompanyId?: string): string[] | undefined {
+  const fromQuery = (queryCompanyId || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (user.role === UserRole.ADMIN) {
+    return fromQuery.length ? fromQuery : undefined;
+  }
+
+  if (user.role === UserRole.MANAGER) {
+    const profile = user.distributorProfile;
+    const allowed = [
+      ...new Set(
+        [
+          ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+          profile?.companyId,
+        ]
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (!allowed.length) return [];
+    if (fromQuery.length) {
+      return fromQuery.filter((id) => allowed.includes(id));
+    }
+    return allowed;
+  }
+
+  const profile = user.distributorProfile;
+  if (profile) {
+    const ids = [
+      ...new Set(
+        [
+          ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
+          profile.companyId,
+        ]
+          .map((id) => id?.trim())
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (ids.length) return ids;
+  }
+
+  return fromQuery.length ? fromQuery : undefined;
+}
 
 @ApiTags('Lines')
 @ApiBearerAuth()
@@ -29,9 +77,11 @@ export class LinesController {
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
   ) {
-    const scopedCompany =
-      companyId ?? req.user.distributorProfile?.companyId ?? undefined;
-    return this.service.findAll(scopedCompany);
+    const companyIds = resolveCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
+    return this.service.findAll(companyIds);
   }
 
   @Get(':id')

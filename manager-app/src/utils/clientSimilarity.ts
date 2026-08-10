@@ -131,3 +131,31 @@ export function findBestSimilarityMatch(
   if (!best || best.overallPct < threshold) return null
   return best
 }
+
+export type SimilarityRiskLevel = 'red' | 'yellow' | 'green'
+
+/** Umumiy o‘xshashlik foiziga qarab xavf darajasi */
+export function similarityRisk(pct: number): SimilarityRiskLevel {
+  if (pct >= 70) return 'red'
+  if (pct >= 40) return 'yellow'
+  return 'green'
+}
+
+export function similarityRiskColors(
+  risk: SimilarityRiskLevel,
+  dark: boolean,
+): { color: string; bg: string; border: string } {
+  if (risk === 'red') {
+    return dark
+      ? { color: '#FCA5A5', bg: 'rgba(239,68,68,0.18)', border: 'rgba(239,68,68,0.45)' }
+      : { color: '#DC2626', bg: 'rgba(239,68,68,0.10)', border: 'rgba(239,68,68,0.35)' }
+  }
+  if (risk === 'yellow') {
+    return dark
+      ? { color: '#FCD34D', bg: 'rgba(245,158,11,0.18)', border: 'rgba(245,158,11,0.45)' }
+      : { color: '#D97706', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.35)' }
+  }
+  return dark
+    ? { color: '#6EE7B7', bg: 'rgba(16,185,129,0.18)', border: 'rgba(16,185,129,0.45)' }
+    : { color: '#059669', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.30)' }
+}

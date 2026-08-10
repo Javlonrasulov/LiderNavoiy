@@ -22,18 +22,31 @@ export class ClientCategoriesService {
     private readonly clientRepo: Repository<Client>,
   ) {}
 
-  async findAll(companyId?: string): Promise<ClientCategoryItemDto[]> {
+  async findAll(companyId?: string | string[]): Promise<ClientCategoryItemDto[]> {
     const qb = this.repo
       .createQueryBuilder('c')
       .where('c.isActive = true')
       .orderBy('c.name', 'ASC');
-    if (companyId) {
-      qb.andWhere('(c.companyId = :companyId OR c.companyId IS NULL)', {
-        companyId,
-      });
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (Array.isArray(companyId) && ids.length === 0) {
+      qb.andWhere('1 = 0');
+    } else if (ids.length === 1) {
+      qb.andWhere('c.companyId = :companyId', { companyId: ids[0] });
+    } else if (ids.length > 1) {
+      qb.andWhere('c.companyId IN (:...companyIds)', { companyIds: ids });
     }
     const rows = await qb.getMany();
     return rows.map((row) => this.toItem(row));
+  }
+
+  async findOne(id: string): Promise<ClientCategoryItemDto> {
+    const row = await this.repo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Category not found');
+    return this.toItem(row);
   }
 
   async create(dto: CreateClientCategoryDto): Promise<ClientCategoryItemDto> {

@@ -367,6 +367,29 @@ export class DashboardService {
   }
 
   async getAdminDashboard(companyIds?: string[]) {
+    // Bo‘sh massiv = ruxsat yo‘q (manager org biriktirilmagan)
+    if (Array.isArray(companyIds) && companyIds.length === 0) {
+      const currentMonth = monthRange(0);
+      return {
+        period: { year: currentMonth.year, month: currentMonth.month },
+        kpi: {
+          sales: 0,
+          payments: 0,
+          debt: 0,
+          plan: 0,
+          planPct: 0,
+          salesTrend: 0,
+          paymentsTrend: 0,
+          debtTrend: 0,
+          planTrend: 0,
+        },
+        clientCategories: [],
+        topAgents: [],
+        employeeLocations: [],
+        salesChart: { day: [], week: [], month: [] },
+      };
+    }
+
     const currentMonth = monthRange(0);
     const previousMonth = monthRange(-1);
 
@@ -488,7 +511,7 @@ export class DashboardService {
       .andWhere('u.isActive = true');
 
     if (companyIds?.length) {
-      locQb.andWhere('(d.companyId IN (:...companyIds) OR d.companyId IS NULL)', { companyIds });
+      locQb.andWhere('d.companyId IN (:...companyIds)', { companyIds });
     }
 
     let profiles: DistributorProfile[] = [];

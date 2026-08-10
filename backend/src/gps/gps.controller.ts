@@ -9,6 +9,8 @@ import {
   Request,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { GpsService } from './gps.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -18,13 +20,24 @@ import {
   NearbyClientsQueryDto,
 } from './dto/gps.dto';
 import { User } from '../auth/entities/user.entity';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { assertManagerCompanyAccess } from '../common/company-scope.util';
 
 @ApiTags('GPS Tracking')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('gps')
 export class GpsController {
-  constructor(private readonly gpsService: GpsService) {}
+  constructor(
+    private readonly gpsService: GpsService,
+    @InjectRepository(DistributorProfile)
+    private readonly profileRepo: Repository<DistributorProfile>,
+  ) {}
+
+  private async assertDistributorAccess(user: User, distributorId: string) {
+    const profile = await this.profileRepo.findOne({ where: { id: distributorId } });
+    assertManagerCompanyAccess(user, profile?.companyId);
+  }
 
   @Post('location')
   @ApiOperation({ summary: 'Send single GPS location point' })
@@ -49,10 +62,12 @@ export class GpsController {
 
   @Get('route/:distributorId')
   @ApiOperation({ summary: 'Get route history for distributor' })
-  getRoute(
+  async getRoute(
+    @Request() req: { user: User },
     @Param('distributorId') distributorId: string,
     @Query() query: RouteHistoryQueryDto,
   ) {
+    await this.assertDistributorAccess(req.user, distributorId);
     return this.gpsService.getRouteHistory(distributorId, query);
   }
 

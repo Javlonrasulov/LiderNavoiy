@@ -30,9 +30,12 @@ import ClientPinMap from '../components/ClientPinMap'
 import { showToast } from '../components/Toast'
 import {
   findBestSimilarityMatch,
+  similarityRisk,
+  similarityRiskColors,
   type SimilarityFieldKey,
   type SimilarityMatch,
 } from '../utils/clientSimilarity'
+import { managerCompanyId } from '../utils/staffScope'
 
 interface Props {
   dark: boolean
@@ -107,7 +110,9 @@ export default function AddClientScreen({
   dark, tr, user, editClient = null, resubmitRequestId = null, onBack, onCreated,
 }: Props) {
   const c = theme(dark)
-  const companyId = user?.companyId ?? undefined
+  const companyId = managerCompanyId(user) || user?.companyId || undefined
+  // create/update uchun bitta org
+  const primaryCompanyId = user?.companyIds?.[0] || user?.companyId || undefined
   const isResubmit = !!resubmitRequestId
   const isEdit = !!editClient?.id && !isResubmit
 
@@ -334,7 +339,7 @@ export default function AddClientScreen({
           const created = await createLine({
             name: value,
             code: nextNumericLineCode(lines),
-            companyId,
+            companyId: primaryCompanyId,
           })
           setLines(prev => {
             const next = [...prev.filter(l => l.id !== created.id), created]
@@ -358,7 +363,7 @@ export default function AddClientScreen({
           }
           showToast(tr.categoryUpdated, 'success')
         } else {
-          const created = await createClientCategory({ name: value, companyId })
+          const created = await createClientCategory({ name: value, companyId: primaryCompanyId })
           setCategories(prev => {
             const next = [...prev.filter(x => x.id !== created.id), created]
             next.sort((a, b) => a.name.localeCompare(b.name))
@@ -544,7 +549,7 @@ export default function AddClientScreen({
       address: address.trim(),
       territory: territory.trim() || undefined,
       photoUrl: photoUrl || undefined,
-      companyId,
+      companyId: primaryCompanyId,
       lineCode: lineCode.trim(),
       category: category.trim(),
       latitude: lat,
@@ -1036,24 +1041,40 @@ export default function AddClientScreen({
               overflowY: 'auto',
             }}
           >
+            {(() => {
+              const risk = similarityRisk(similarityMatch.overallPct)
+              const colors = similarityRiskColors(risk, dark)
+              const riskLabel = risk === 'red' ? tr.dupRiskRed : risk === 'yellow' ? tr.dupRiskYellow : tr.dupRiskGreen
+              return (
+                <>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: c.text }}>{tr.dupTitle}</p>
                 <p style={{
                   margin: '8px 0 0', fontSize: 15, fontWeight: 800,
-                  color: similarityMatch.overallPct >= 70 ? '#DC2626' : '#D97706',
+                  color: colors.color,
                 }}>
                   {tr.dupChance.replace('{pct}', String(similarityMatch.overallPct))}
                 </p>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  marginTop: 8, padding: '4px 10px', borderRadius: 999,
+                  background: colors.bg, color: colors.color, border: `1px solid ${colors.border}`,
+                  fontSize: 11, fontWeight: 800,
+                }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: 99, background: colors.color, flexShrink: 0,
+                  }} />
+                  {riskLabel}
+                </span>
               </div>
               <div style={{
                 width: 64, height: 64, borderRadius: 18, flexShrink: 0,
-                background: similarityMatch.overallPct >= 70
-                  ? 'rgba(220,38,38,0.14)'
-                  : 'rgba(217,119,6,0.16)',
+                background: colors.bg,
+                border: `1px solid ${colors.border}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontWeight: 900, fontSize: 20,
-                color: similarityMatch.overallPct >= 70 ? '#DC2626' : '#D97706',
+                color: colors.color,
               }}>
                 {similarityMatch.overallPct}%
               </div>
@@ -1062,7 +1083,7 @@ export default function AddClientScreen({
             <div style={{
               borderRadius: 14, padding: 12, marginBottom: 14,
               background: dark ? '#1A1A2E' : '#F3F4F6',
-              border: `1px solid ${c.border}`,
+              border: `1px solid ${colors.border}`,
             }}>
               <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: c.mutedText }}>{tr.dupMatchedClient}</p>
               <p style={{ margin: '4px 0 0', fontSize: 15, fontWeight: 800, color: c.text }}>
@@ -1075,7 +1096,9 @@ export default function AddClientScreen({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
               {similarityMatch.fields.map(f => {
-                const barColor = f.pct >= 100 ? '#DC2626' : f.pct >= 50 ? '#D97706' : c.mutedText
+                const barColor = f.pct <= 0
+                  ? c.mutedText
+                  : similarityRiskColors(f.pct >= 70 ? 'red' : f.pct >= 40 ? 'yellow' : 'green', dark).color
                 return (
                   <div key={f.key}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
@@ -1120,6 +1143,9 @@ export default function AddClientScreen({
                 {loading ? tr.loading : tr.dupAddAnyway}
               </button>
             </div>
+                </>
+              )
+            })()}
           </div>
         </div>,
         document.body,

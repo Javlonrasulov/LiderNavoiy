@@ -5,10 +5,16 @@ import {
   fetchDistributors,
   fetchVisitsForDistributor,
 } from '../api/manager'
+import { getStoredUser } from '../api/client'
 import type { Distributor, EmployeeLocation } from '../api/types'
 import type { Translations } from '../i18n'
 import { theme } from '../theme'
 import { firstOnSiteOrderMs, todayLocal } from '../utils/dayTrack'
+import {
+  filterEmployeeLocationsForManager,
+  filterStaffForManager,
+  managerCompanyId,
+} from '../utils/staffScope'
 
 type Filter = 'all' | 'agent' | 'delivery'
 
@@ -56,13 +62,15 @@ export default function StaffScreen({ dark, tr, onSelectEmployee }: Props) {
     void (async () => {
       setLoading(true)
       try {
+        const user = getStoredUser()
+        const companyId = managerCompanyId(user)
         const [d, dash] = await Promise.all([
-          fetchDistributors(),
-          fetchAdminDashboard().catch(() => null),
+          fetchDistributors(companyId),
+          fetchAdminDashboard(companyId).catch(() => null),
         ])
-        const distributors = Array.isArray(d) ? d : []
+        const distributors = filterStaffForManager(Array.isArray(d) ? d : [], user)
         setList(distributors)
-        setLocs(dash?.employeeLocations ?? [])
+        setLocs(filterEmployeeLocationsForManager(dash?.employeeLocations ?? [], user))
 
         const date = todayLocal()
         const entries = await Promise.all(

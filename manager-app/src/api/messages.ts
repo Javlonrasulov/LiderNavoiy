@@ -115,8 +115,9 @@ async function compressChatImage(file: File): Promise<File> {
   })
 }
 
-export function getContacts() {
-  return api<ChatContact[]>('messages/contacts')
+export function getContacts(companyId?: string) {
+  const q = companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''
+  return api<ChatContact[]>(`messages/contacts${q}`)
 }
 
 export function getClientContacts() {

@@ -94,7 +94,7 @@ export class ClientRequestsService {
   }
 
   async findList(opts: {
-    companyId?: string;
+    companyId?: string | string[];
     status?: ClientRequestStatus | 'all';
     distributorId?: string;
   }) {
@@ -102,10 +102,19 @@ export class ClientRequestsService {
     if (opts.status && opts.status !== 'all') {
       qb.andWhere('r.status = :status', { status: opts.status });
     }
-    if (opts.companyId) {
-      qb.andWhere('(r.companyId = :companyId OR r.companyId IS NULL)', {
-        companyId: opts.companyId,
-      });
+    const companyIds = (
+      Array.isArray(opts.companyId)
+        ? opts.companyId
+        : opts.companyId
+          ? opts.companyId.split(',')
+          : []
+    )
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
+    if (companyIds.length === 1) {
+      qb.andWhere('r.companyId = :companyId', { companyId: companyIds[0] });
+    } else if (companyIds.length > 1) {
+      qb.andWhere('r.companyId IN (:...companyIds)', { companyIds });
     }
     if (opts.distributorId) {
       qb.andWhere('r.distributorId = :distributorId', {

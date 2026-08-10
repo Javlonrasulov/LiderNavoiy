@@ -13,6 +13,7 @@ import { MessageDeletion } from './entities/message-deletion.entity';
 import { User } from '../auth/entities/user.entity';
 import { Client } from '../clients/entities/client.entity';
 import { UserRole } from '../common/enums';
+import { allowedCompanyIds, assertManagerCompanyAccess } from '../common/company-scope.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { PushI18n, normalizePushLang } from '../notifications/push-i18n';
@@ -122,20 +123,40 @@ export class MessagesService {
   }
 
   async getContacts(userId: string, _companyId?: string): Promise<ChatUserDto[]> {
-    // Xodimlar: admin, menejer, agent (klientlar alohida — client-contacts)
+    const viewer = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['distributorProfile'],
+    });
+    if (!viewer) return [];
+
     const users = await this.userRepo
       .createQueryBuilder('u')
+      .leftJoinAndSelect('u.distributorProfile', 'd')
       .where('u.isActive = :active', { active: true })
       .andWhere('u.id != :userId', { userId })
       .andWhere('u.role != :clientRole', { clientRole: UserRole.CLIENT })
       .orderBy('u.fullName', 'ASC')
       .getMany();
+
+    if (viewer.role === UserRole.MANAGER) {
+      const allowed = new Set(allowedCompanyIds(viewer));
+      if (!allowed.size) return [];
+      return users
+        .filter((u) => {
+          if (u.role === UserRole.ADMIN) return true;
+          const ids = allowedCompanyIds(u);
+          if (!ids.length) return false;
+          return ids.some((id) => allowed.has(id));
+        })
+        .map((u) => this.toUserDto(u));
+    }
+
     return users.map((u) => this.toUserDto(u));
   }
 
   /**
    * Agentga biriktirilgan va ilova loginiga ega klientlar.
-   * Admin/menejer — barcha faol klient akkauntlari.
+   * Admin — barcha; menejer — faqat o‘z org klientlari.
    */
   async getClientContacts(userId: string): Promise<ChatUserDto[]> {
     const viewer = await this.userRepo.findOne({
@@ -178,10 +199,19 @@ export class MessagesService {
     }
 
     if (viewer.role === UserRole.ADMIN || viewer.role === UserRole.MANAGER) {
-      const users = await this.userRepo.find({
-        where: { role: UserRole.CLIENT, isActive: true },
-        relations: ['client'],
-      });
+      const qb = this.userRepo
+        .createQueryBuilder('u')
+        .leftJoinAndSelect('u.client', 'c')
+        .where('u.role = :role', { role: UserRole.CLIENT })
+        .andWhere('u.isActive = :active', { active: true });
+
+      if (viewer.role === UserRole.MANAGER) {
+        const allowed = allowedCompanyIds(viewer);
+        if (!allowed.length) return [];
+        qb.andWhere('c.companyId IN (:...companyIds)', { companyIds: allowed });
+      }
+
+      const users = await qb.getMany();
       return users
         .map((u) => ({
           id: u.id,
@@ -196,8 +226,6 @@ export class MessagesService {
   }
 
   private async assertCanStartConversation(actorId: string, other: User) {
-    if (other.role !== UserRole.CLIENT) return;
-
     const actor = await this.userRepo.findOne({
       where: { id: actorId },
       relations: ['distributorProfile'],
@@ -205,7 +233,7 @@ export class MessagesService {
     if (!actor) throw new ForbiddenException('Not allowed');
 
     // Agent faqat o'ziga biriktirilgan klient bilan yozishadi
-    if (actor.role === UserRole.DISTRIBUTOR) {
+    if (actor.role === UserRole.DISTRIBUTOR && other.role === UserRole.CLIENT) {
       const distributorId = actor.distributorProfile?.id;
       if (!distributorId || !other.clientId) {
         throw new ForbiddenException('Client is not assigned to you');
@@ -213,6 +241,26 @@ export class MessagesService {
       const client = await this.clientRepo.findOne({ where: { id: other.clientId } });
       if (!client || client.distributorId !== distributorId) {
         throw new ForbiddenException('Client is not assigned to you');
+      }
+      return;
+    }
+
+    if (actor.role === UserRole.MANAGER) {
+      if (other.role === UserRole.ADMIN) return;
+      if (other.role === UserRole.CLIENT) {
+        if (!other.clientId) throw new ForbiddenException('Boshqa tashkilot');
+        const client = await this.clientRepo.findOne({ where: { id: other.clientId } });
+        assertManagerCompanyAccess(actor, client?.companyId);
+        return;
+      }
+      const otherFull = await this.userRepo.findOne({
+        where: { id: other.id },
+        relations: ['distributorProfile'],
+      });
+      const mine = allowedCompanyIds(actor);
+      const theirs = allowedCompanyIds(otherFull);
+      if (!mine.length || !theirs.some((id) => mine.includes(id))) {
+        throw new ForbiddenException('Boshqa tashkilot');
       }
     }
   }

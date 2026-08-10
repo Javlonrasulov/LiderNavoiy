@@ -17,6 +17,7 @@ import { formatMoney, theme } from '../theme'
 import { showToast } from '../components/Toast'
 import { getStoredUser } from '../api/client'
 import { pushBackHandler } from '../utils/hardwareBack'
+import { managerCompanyId } from '../utils/staffScope'
 import type {
   FactoryReportPayload,
   ReportFormat,
@@ -58,7 +59,7 @@ function productCategoryKey(p: Product) {
 
 export default function FactoryOrdersScreen({ dark, lang, tr, onBack }: Props) {
   const c = theme(dark)
-  const companyId = getStoredUser()?.companyId || undefined
+  const companyId = managerCompanyId(getStoredUser()) || undefined
   const [tab, setTab] = useState<Tab>('list')
   const [loading, setLoading] = useState(true)
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])

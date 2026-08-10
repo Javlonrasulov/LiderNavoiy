@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
 import { fetchPlans } from '../api/manager'
-import type { PlanRow } from '../api/types'
+import type { AuthUser, PlanRow } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, formatPct, theme } from '../theme'
+import { managerCompanyId } from '../utils/staffScope'
 
 interface Props {
   dark: boolean
   lang: Lang
   tr: Translations
+  user?: AuthUser | null
 }
 
-export default function PlanScreen({ dark, lang, tr }: Props) {
+export default function PlanScreen({ dark, lang, tr, user }: Props) {
   const c = theme(dark)
+  const companyId = managerCompanyId(user)
   const [list, setList] = useState<PlanRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -19,7 +22,7 @@ export default function PlanScreen({ dark, lang, tr }: Props) {
     void (async () => {
       setLoading(true)
       try {
-        const data = await fetchPlans()
+        const data = await fetchPlans(undefined, undefined, companyId)
         setList(Array.isArray(data) ? data : [])
       } catch {
         setList([])
@@ -27,7 +30,7 @@ export default function PlanScreen({ dark, lang, tr }: Props) {
         setLoading(false)
       }
     })()
-  }, [])
+  }, [companyId])
 
   const totals = list.reduce(
     (acc, r) => {

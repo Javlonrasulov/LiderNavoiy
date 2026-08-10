@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { DistributorProfile } from './entities/distributor-profile.entity';
 import { RedisService } from '../common/redis/redis.service';
-import { DistributorStatus } from '../common/enums';
+import { DistributorStatus, UserRole } from '../common/enums';
 
 /** Redis TTL va dashboard bilan bir xil — sticky DB isOnline emas */
 const LOCATION_ONLINE_MAX_AGE_MS = 300_000;
@@ -18,11 +18,35 @@ export class DistributorsService {
     private readonly redis: RedisService,
   ) {}
 
-  async findAll(companyId?: string) {
-    const qb = this.repo.createQueryBuilder('d').leftJoinAndSelect('d.user', 'user');
-    if (companyId) {
-      qb.where('(d.companyId = :companyId OR d.companyId IS NULL)', { companyId });
+  /**
+   * Faqat agent/dostavka (distributor role).
+   * companyIds berilsa — faqat shu org(lar); NULL company ko‘rinmaydi.
+   */
+  async findAll(
+    companyId?: string | string[],
+    opts?: { excludeUserId?: string },
+  ) {
+    const companyIds = (Array.isArray(companyId) ? companyId : companyId ? [companyId] : [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
+
+    const qb = this.repo
+      .createQueryBuilder('d')
+      .leftJoinAndSelect('d.user', 'user')
+      .where('user.role = :role', { role: UserRole.DISTRIBUTOR })
+      .andWhere('user.isActive = true')
+      .andWhere('user.deletedAt IS NULL');
+
+    if (companyIds.length) {
+      qb.andWhere('d.companyId IN (:...companyIds)', { companyIds });
     }
+
+    if (opts?.excludeUserId) {
+      qb.andWhere('(d.userId IS NULL OR d.userId != :excludeUserId)', {
+        excludeUserId: opts.excludeUserId,
+      });
+    }
+
     const list = await qb.getMany();
     return this.applyLiveGps(list);
   }

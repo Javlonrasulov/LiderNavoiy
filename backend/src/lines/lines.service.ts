@@ -36,18 +36,24 @@ export class LinesService {
     private readonly clientRepo: Repository<Client>,
   ) {}
 
-  async findAll(companyId?: string): Promise<LineListItemDto[]> {
+  async findAll(companyId?: string | string[]): Promise<LineListItemDto[]> {
+    const companyIds = (Array.isArray(companyId) ? companyId : companyId ? [companyId] : [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
+
     const qb = this.lineRepo
       .createQueryBuilder('l')
       .where('l.isActive = true')
       .orderBy('l.code', 'ASC');
-    if (companyId) {
-      qb.andWhere('(l.companyId = :companyId OR l.companyId IS NULL)', {
-        companyId,
-      });
+    if (companyIds.length === 1) {
+      qb.andWhere('l.companyId = :companyId', { companyId: companyIds[0] });
+    } else if (companyIds.length > 1) {
+      qb.andWhere('l.companyId IN (:...companyIds)', { companyIds });
     }
     const lines = await qb.getMany();
-    const counts = await this.clientCountsByLine(companyId);
+    const counts = await this.clientCountsByLine(
+      companyIds.length === 1 ? companyIds[0] : companyIds.length > 1 ? companyIds : undefined,
+    );
     return lines.map((line) =>
       this.toListItem(line, counts.get(line.code) ?? 0),
     );
@@ -129,7 +135,10 @@ export class LinesService {
     return { ok: true };
   }
 
-  private async clientCountsByLine(companyId?: string) {
+  private async clientCountsByLine(companyId?: string | string[]) {
+    const companyIds = (Array.isArray(companyId) ? companyId : companyId ? [companyId] : [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
     const qb = this.clientRepo
       .createQueryBuilder('c')
       .select('c.lineCode', 'code')
@@ -138,8 +147,10 @@ export class LinesService {
       .andWhere('c.lineCode IS NOT NULL')
       .andWhere("TRIM(c.lineCode) <> ''")
       .groupBy('c.lineCode');
-    if (companyId) {
-      qb.andWhere('c.companyId = :companyId', { companyId });
+    if (companyIds.length === 1) {
+      qb.andWhere('c.companyId = :companyId', { companyId: companyIds[0] });
+    } else if (companyIds.length > 1) {
+      qb.andWhere('c.companyId IN (:...companyIds)', { companyIds });
     }
     const rows = await qb.getRawMany<{ code: string; count: string }>();
     const map = new Map<string, number>();

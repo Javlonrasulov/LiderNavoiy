@@ -1,17 +1,25 @@
 import { Controller, Get, Post, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { VisitsService } from './visits.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { CreateVisitDto, BatchSyncDto } from './dto/visit.dto';
 import { User } from '../auth/entities/user.entity';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { assertManagerCompanyAccess } from '../common/company-scope.util';
 
 @ApiTags('Visits')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('visits')
 export class VisitsController {
-  constructor(private readonly service: VisitsService) {}
+  constructor(
+    private readonly service: VisitsService,
+    @InjectRepository(DistributorProfile)
+    private readonly profileRepo: Repository<DistributorProfile>,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Record a client visit' })
@@ -28,7 +36,8 @@ export class VisitsController {
   @Get('admin')
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'List visits for a distributor (admin)' })
-  findForDistributor(
+  async findForDistributor(
+    @Request() req: { user: User },
     @Query('distributorId') distributorId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -37,6 +46,8 @@ export class VisitsController {
     if (!distributorId) {
       return [];
     }
+    const profile = await this.profileRepo.findOne({ where: { id: distributorId } });
+    assertManagerCompanyAccess(req.user, profile?.companyId);
     if (date) {
       const dayFrom = new Date(`${date}T00:00:00+05:00`);
       const dayTo = new Date(`${date}T23:59:59.999+05:00`);

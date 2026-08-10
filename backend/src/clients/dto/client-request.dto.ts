@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+
+const MARK_COLORS = ['green', 'yellow', 'red'] as const;
 
 export class CreateClientRequestDto {
   @ApiProperty({ example: 'Yangi Do\'kon MCHJ' })
@@ -76,6 +85,11 @@ export class CreateClientRequestDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ enum: ['green', 'yellow', 'red'] })
+  @IsOptional()
+  @IsIn(MARK_COLORS)
+  markColor?: string | null;
 
   @ApiPropertyOptional({ description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi' })
   @IsOptional()

@@ -18,6 +18,12 @@ import {
   UpdateClientCategoryDto,
 } from './dto/client-category.dto';
 import { User } from '../auth/entities/user.entity';
+import { UserRole } from '../common/enums';
+import {
+  assertManagerCompanyAccess,
+  resolveCompanyIds,
+  resolveWritableCompanyId,
+} from '../common/company-scope.util';
 
 @ApiTags('Client categories')
 @ApiBearerAuth()
@@ -32,9 +38,11 @@ export class ClientCategoriesController {
     @Request() req: { user: User },
     @Query('companyId') companyId?: string,
   ) {
-    const scoped =
-      companyId ?? req.user.distributorProfile?.companyId ?? undefined;
-    return this.service.findAll(scoped);
+    const companyIds = resolveCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
+    return this.service.findAll(companyIds);
   }
 
   @Post()
@@ -43,22 +51,27 @@ export class ClientCategoriesController {
     @Request() req: { user: User },
     @Body() dto: CreateClientCategoryDto,
   ) {
-    const companyId =
-      dto.companyId?.trim() ||
-      req.user.distributorProfile?.companyId ||
-      undefined;
-    return this.service.create({ ...dto, companyId });
+    const cid = resolveWritableCompanyId(req.user, dto.companyId);
+    return this.service.create({ ...dto, companyId: cid });
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update client category' })
-  update(@Param('id') id: string, @Body() dto: UpdateClientCategoryDto) {
+  async update(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: UpdateClientCategoryDto,
+  ) {
+    const existing = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, existing.companyId);
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Deactivate client category' })
-  remove(@Param('id') id: string) {
+  async remove(@Request() req: { user: User }, @Param('id') id: string) {
+    const existing = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, existing.companyId);
     return this.service.remove(id);
   }
 }

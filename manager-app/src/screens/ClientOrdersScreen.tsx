@@ -9,16 +9,18 @@ import {
   updateClientOrderItems,
   type ClientOrderRow,
 } from '../api/manager'
-import type { Product } from '../api/types'
+import type { AuthUser, Product } from '../api/types'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import RefreshResultCard from '../components/RefreshResultCard'
 import { showToast } from '../components/Toast'
+import { managerCompanyId } from '../utils/staffScope'
 
 interface Props {
   dark: boolean
   lang: Lang
   tr: Translations
+  user?: AuthUser | null
   onBack: () => void
 }
 
@@ -62,8 +64,9 @@ function waitingLabel(mins: number, tr: Translations, stale = false): string {
   return tr.clientOrderWaitingHourMin.replace('{h}', String(h)).replace('{m}', String(m))
 }
 
-export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
+export default function ClientOrdersScreen({ dark, lang, tr, user, onBack }: Props) {
   const c = theme(dark)
+  const companyId = managerCompanyId(user)
   const [orders, setOrders] = useState<ClientOrderRow[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
@@ -96,7 +99,7 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
       setLoading(true)
     }
     try {
-      const data = await fetchClientOrders('pending')
+      const data = await fetchClientOrders('pending', companyId)
       const list = Array.isArray(data) ? data : []
       const before = prevCountRef.current
       setOrders(list)
@@ -137,7 +140,7 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
       window.clearInterval(id)
       if (successTimerRef.current) window.clearTimeout(successTimerRef.current)
     }
-  }, [])
+  }, [companyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async (order: ClientOrderRow) => {
     if (actionId) return
@@ -183,8 +186,8 @@ export default function ClientOrdersScreen({ dark, lang, tr, onBack }: Props) {
     setProductsLoading(true)
     try {
       const [data, cats] = await Promise.all([
-        fetchProducts(),
-        fetchProductCategories().catch(() => [] as { category: string }[]),
+        fetchProducts(companyId),
+        fetchProductCategories(companyId).catch(() => [] as { category: string }[]),
       ])
       const list = Array.isArray(data) ? data : []
       setProducts(list)

@@ -9,6 +9,7 @@ export interface AuthUser {
   permissions?: string[] | null
   distributorId?: string
   companyId?: string | null
+  companyIds?: string[]
   companyName?: string | null
 }
 
@@ -71,8 +72,10 @@ export interface Distributor {
   id: string
   userId?: string
   user?: {
+    id?: string
     fullName?: string
     username?: string
+    role?: string
     lastLoginAt?: string | null
   } | null
   fullName?: string

@@ -8,12 +8,16 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Logger, Inject, forwardRef } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { LocationPointDto } from '../gps/dto/gps.dto';
 import { JwtPayload } from '../auth/auth.service';
 import { GpsService } from '../gps/gps.service';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { UserRole } from '../common/enums';
 
 @WebSocketGateway({
   cors: {
@@ -28,7 +32,6 @@ import { GpsService } from '../gps/gps.service';
         callback(null, true);
         return;
       }
-      // Netlify preview / lokal
       if (
         origin.includes('localhost') ||
         origin.includes('127.0.0.1') ||
@@ -52,13 +55,49 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   /** distributorId → ulangan socket id lar (presence) */
   private readonly presenceSockets = new Map<string, Set<string>>();
   private readonly offlineTimers = new Map<string, NodeJS.Timeout>();
+  /** distributorId → companyId cache */
+  private readonly distributorCompany = new Map<string, string | null>();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     @Inject(forwardRef(() => GpsService))
     private readonly gpsService: GpsService,
+    @InjectRepository(DistributorProfile)
+    private readonly profileRepo: Repository<DistributorProfile>,
   ) {}
+
+  private staffRooms(companyIds: string[]): string[] {
+    if (!companyIds.length) return [];
+    return companyIds.map((id) => `company:${id}`);
+  }
+
+  private async resolveCompanyId(distributorId: string): Promise<string | null> {
+    if (this.distributorCompany.has(distributorId)) {
+      return this.distributorCompany.get(distributorId) ?? null;
+    }
+    const profile = await this.profileRepo.findOne({
+      where: { id: distributorId },
+      select: ['id', 'companyId'],
+    });
+    const companyId = profile?.companyId?.trim() || null;
+    this.distributorCompany.set(distributorId, companyId);
+    return companyId;
+  }
+
+  private async emitToStaff(
+    event: string,
+    payload: unknown,
+    distributorId?: string,
+  ) {
+    this.server.to('admins').emit(event, payload);
+    const companyId = distributorId
+      ? await this.resolveCompanyId(distributorId)
+      : null;
+    if (companyId) {
+      this.server.to(`company:${companyId}`).emit(event, payload);
+    }
+  }
 
   async handleConnection(client: Socket) {
     try {
@@ -82,12 +121,15 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (payload.distributorId) {
         client.join(`distributor:${payload.distributorId}`);
         this.trackPresence(payload.distributorId, client.id);
-        // GPS kelmasa ham admin xaritada online
         const last = await this.gpsService.markPresenceOnline(payload.distributorId);
-        this.server.to('admins').emit('distributor:online', {
-          distributorId: payload.distributorId,
-          timestamp: new Date().toISOString(),
-        });
+        await this.emitToStaff(
+          'distributor:online',
+          {
+            distributorId: payload.distributorId,
+            timestamp: new Date().toISOString(),
+          },
+          payload.distributorId,
+        );
         if (last) {
           this.broadcastLocationUpdate(payload.distributorId, {
             latitude: last.latitude,
@@ -97,16 +139,43 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
         }
       }
 
-      // Admin panel — agent GPS ni darhol olish uchun
-      const isStaff =
-        payload.role === 'admin' ||
-        payload.role === 'manager' ||
-        (!payload.distributorId && payload.role !== 'client');
-      if (isStaff) {
+      if (payload.role === UserRole.ADMIN) {
+        client.join('admins');
+      } else if (payload.role === UserRole.MANAGER) {
+        let profile = payload.distributorId
+          ? await this.profileRepo.findOne({
+              where: { id: payload.distributorId },
+              select: ['id', 'companyId', 'companyIds'],
+            })
+          : null;
+        if (!profile) {
+          profile = await this.profileRepo.findOne({
+            where: { userId: payload.sub },
+            select: ['id', 'companyId', 'companyIds'],
+          });
+        }
+        const ids = [
+          ...new Set(
+            [
+              ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+              profile?.companyId,
+            ]
+              .map((id) => id?.trim())
+              .filter((id): id is string => !!id),
+          ),
+        ];
+        for (const room of this.staffRooms(ids)) {
+          client.join(room);
+        }
+      } else if (
+        !payload.distributorId &&
+        payload.role !== UserRole.CLIENT
+      ) {
+        // Legacy staff without distributor profile
         client.join('admins');
       }
 
-      if (payload.role === 'client') {
+      if (payload.role === UserRole.CLIENT) {
         client.join(`client:${payload.sub}`);
       }
 
@@ -126,17 +195,20 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (set && set.size > 0) return;
     this.presenceSockets.delete(distributorId);
 
-    // Qisqa uzilishda miltillamasin — 75s kutamiz
     const prev = this.offlineTimers.get(distributorId);
     if (prev) clearTimeout(prev);
     const timer = setTimeout(() => {
       this.offlineTimers.delete(distributorId);
       if (this.presenceSockets.has(distributorId)) return;
       void this.gpsService.markOffline(distributorId).then(() => {
-        this.server.to('admins').emit('distributor:offline', {
+        void this.emitToStaff(
+          'distributor:offline',
+          {
+            distributorId,
+            timestamp: new Date().toISOString(),
+          },
           distributorId,
-          timestamp: new Date().toISOString(),
-        });
+        );
       });
     }, 75_000);
     this.offlineTimers.set(distributorId, timer);
@@ -159,10 +231,14 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!distributorId) return { status: 'skip' };
     this.trackPresence(distributorId, client.id);
     await this.gpsService.refreshPresence(distributorId);
-    this.server.to('admins').emit('distributor:online', {
+    await this.emitToStaff(
+      'distributor:online',
+      {
+        distributorId,
+        timestamp: new Date().toISOString(),
+      },
       distributorId,
-      timestamp: new Date().toISOString(),
-    });
+    );
     return { status: 'ok' };
   }
 
@@ -174,7 +250,6 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
     const { distributorId } = client.data;
     if (!distributorId) return;
 
-    // Global ValidationPipe class DTO ni rad etmasin — yumshoq parse
     const lat = Number(data?.latitude);
     const lng = Number(data?.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { status: 'bad_coords' };
@@ -234,16 +309,18 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
       ...data,
       receivedAt: new Date().toISOString(),
     };
-    this.server.to('admins').emit('location:live', payload);
-    this.server.to('admins').emit('distributor:online', {
+    void this.emitToStaff('location:live', payload, distributorId);
+    void this.emitToStaff(
+      'distributor:online',
+      {
+        distributorId,
+        timestamp: payload.receivedAt,
+      },
       distributorId,
-      timestamp: payload.receivedAt,
-    });
-    // Mijoz APK — Yandex Taxi uslubida jonli kuzatuv
+    );
     this.server.to(`watch:${distributorId}`).emit('courier:location', payload);
   }
 
-  /** Dostavkachi yo‘nalish tartibi o‘zgarganda — mijoz xaritasi darhol yangilansin. */
   broadcastRouteReorder(distributorId: string, orderIds: string[]) {
     const payload = {
       distributorId,
@@ -251,14 +328,18 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
       updatedAt: new Date().toISOString(),
     };
     this.server.to(`watch:${distributorId}`).emit('courier:route', payload);
-    this.server.to('admins').emit('courier:route', payload);
+    void this.emitToStaff('courier:route', payload, distributorId);
   }
 
   broadcastStatusUpdate(distributorId: string, status: string) {
-    this.server.to('admins').emit('distributor:status', {
+    void this.emitToStaff(
+      'distributor:status',
+      {
+        distributorId,
+        status,
+        timestamp: new Date().toISOString(),
+      },
       distributorId,
-      status,
-      timestamp: new Date().toISOString(),
-    });
+    );
   }
 }

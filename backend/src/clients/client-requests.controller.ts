@@ -23,6 +23,7 @@ import {
   ClientRequestStatus,
   ClientRequestType,
 } from './entities/client-request.entity';
+import { assertManagerCompanyAccess } from '../common/company-scope.util';
 
 function resolveSubmitterMeta(user: User): { name: string; position: string | null } {
   const name = user.fullName ?? user.username;
@@ -51,16 +52,44 @@ export class ClientRequestsController {
     private readonly companiesService: CompaniesService,
   ) {}
 
-  private resolveCompanyId(
+  private resolveCompanyIds(
     user: User,
-    dtoCompanyId?: string | null,
-  ): string | undefined {
-    const fromDto = dtoCompanyId?.trim();
-    if (fromDto) return fromDto;
+    queryCompanyId?: string | null,
+  ): string[] | undefined {
+    const fromQuery = (queryCompanyId || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (user.role === UserRole.ADMIN) {
+      return fromQuery.length ? fromQuery : undefined;
+    }
+
+    if (user.role === UserRole.MANAGER) {
+      const profile = user.distributorProfile;
+      const allowed = [
+        ...new Set(
+          [
+            ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+            profile?.companyId,
+          ]
+            .map((id) => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      if (!allowed.length) return [];
+      if (fromQuery.length) {
+        return fromQuery.filter((id) => allowed.includes(id));
+      }
+      return allowed;
+    }
+
+    const fromDto = queryCompanyId?.trim();
+    if (fromDto && !fromDto.includes(',')) return [fromDto];
     const profile = user.distributorProfile;
-    if (!profile) return undefined;
+    if (!profile) return fromQuery.length ? fromQuery : undefined;
     const primary = profile.companyId?.trim();
-    if (primary) return primary;
+    if (primary) return [primary];
     const ids = [
       ...new Set(
         (Array.isArray(profile.companyIds) ? profile.companyIds : [])
@@ -68,7 +97,16 @@ export class ClientRequestsController {
           .filter((id): id is string => !!id),
       ),
     ];
-    return ids[0];
+    return ids.length ? ids : undefined;
+  }
+
+  /** Bitta companyId kerak bo‘lgan joylar (create) uchun */
+  private resolveCompanyId(
+    user: User,
+    dtoCompanyId?: string | null,
+  ): string | undefined {
+    const ids = this.resolveCompanyIds(user, dtoCompanyId);
+    return ids?.[0];
   }
 
   @Get()
@@ -81,7 +119,7 @@ export class ClientRequestsController {
     @Query('companyId') companyId?: string,
     @Query('status') status?: string,
   ) {
-    const resolvedCompany = this.resolveCompanyId(req.user, companyId);
+    const companyIds = this.resolveCompanyIds(req.user, companyId);
     const normalized =
       status === 'approved' ||
       status === 'rejected' ||
@@ -90,9 +128,13 @@ export class ClientRequestsController {
         ? status
         : undefined;
 
+    if (req.user.role === UserRole.MANAGER && (!companyIds || companyIds.length === 0)) {
+      return [];
+    }
+
     if (req.user.role === UserRole.DISTRIBUTOR) {
       return this.service.findList({
-        companyId: resolvedCompany,
+        companyId: companyIds,
         distributorId: req.user.distributorProfile?.id,
         status: (normalized as ClientRequestStatus | 'all' | undefined) ?? 'all',
       });
@@ -102,7 +144,7 @@ export class ClientRequestsController {
     const defaultStatus: ClientRequestStatus | 'all' =
       req.user.role === UserRole.MANAGER ? 'all' : ClientRequestStatus.PENDING;
     return this.service.findList({
-      companyId: resolvedCompany ?? companyId,
+      companyId: companyIds,
       status: (normalized as ClientRequestStatus | 'all' | undefined) ?? defaultStatus,
     });
   }
@@ -180,6 +222,8 @@ export class ClientRequestsController {
   @Post(':id/approve')
   @ApiOperation({ summary: 'Admin approves client request' })
   async approve(@Request() req: { user: User }, @Param('id') id: string) {
+    const existing = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, existing.companyId);
     const reviewer = req.user.fullName ?? req.user.username;
     const result = await this.service.approve(id, reviewer, req.user);
     if (result.request.requestType !== ClientRequestType.UPDATE) {
@@ -190,7 +234,9 @@ export class ClientRequestsController {
 
   @Post(':id/reject')
   @ApiOperation({ summary: 'Admin rejects client request' })
-  reject(@Request() req: { user: User }, @Param('id') id: string) {
+  async reject(@Request() req: { user: User }, @Param('id') id: string) {
+    const existing = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, existing.companyId);
     const reviewer = req.user.fullName ?? req.user.username;
     return this.service.reject(id, reviewer);
   }
@@ -275,7 +321,9 @@ export class ClientRequestsController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Dismiss/delete pending or rejected client request' })
-  dismiss(@Param('id') id: string) {
+  async dismiss(@Request() req: { user: User }, @Param('id') id: string) {
+    const existing = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, existing.companyId);
     return this.service.dismiss(id);
   }
 }

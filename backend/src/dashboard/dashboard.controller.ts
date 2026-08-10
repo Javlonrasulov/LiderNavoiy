@@ -21,9 +21,39 @@ export class DashboardController {
   @Get('admin')
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Admin dashboard: KPI, categories, top agents, employee map' })
-  getAdminDashboard(@Query('companyId') companyId?: string | string[]) {
+  getAdminDashboard(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string | string[],
+  ) {
     const raw = companyId == null ? [] : Array.isArray(companyId) ? companyId : [companyId];
-    const companyIds = raw.flatMap(v => v.split(',')).map(v => v.trim()).filter(Boolean);
-    return this.service.getAdminDashboard(companyIds.length ? companyIds : undefined);
+    const fromQuery = raw.flatMap(v => v.split(',')).map(v => v.trim()).filter(Boolean);
+
+    const user = req.user;
+    let companyIds: string[] | undefined = fromQuery.length ? fromQuery : undefined;
+
+    if (user.role === 'manager') {
+      const profile = user.distributorProfile;
+      const allowed = [
+        ...new Set(
+          [
+            ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+            profile?.companyId,
+          ]
+            .map((id) => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      if (!allowed.length) {
+        return this.service.getAdminDashboard([]);
+      }
+      companyIds = fromQuery.length
+        ? fromQuery.filter((id) => allowed.includes(id))
+        : allowed;
+      if (!companyIds.length) {
+        return this.service.getAdminDashboard([]);
+      }
+    }
+
+    return this.service.getAdminDashboard(companyIds);
   }
 }

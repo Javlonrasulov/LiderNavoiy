@@ -5,9 +5,10 @@ import { VisitsService } from './visits.service';
 import { Visit } from './entities/visit.entity';
 import { Client } from '../clients/entities/client.entity';
 import { Order } from '../orders/entities/order.entity';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Visit, Client, Order])],
+  imports: [TypeOrmModule.forFeature([Visit, Client, Order, DistributorProfile])],
   controllers: [VisitsController],
   providers: [VisitsService],
   exports: [VisitsService],

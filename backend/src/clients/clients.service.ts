@@ -18,6 +18,12 @@ function normalizeInn(inn?: string | null): string | null {
   return v ? v : null;
 }
 
+function normalizeMarkColor(v?: string | null): string | null {
+  const c = v?.trim().toLowerCase();
+  if (c === 'green' || c === 'yellow' || c === 'red') return c;
+  return 'green';
+}
+
 function toNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -153,12 +159,25 @@ export class ClientsService {
   }
 
   /** Faqat admin korzinka — o'chirilgan mijozlar */
-  async findTrash(companyId?: string) {
+  async findTrash(companyId?: string | string[]) {
     const qb = this.baseQuery().where('c.deletedAt IS NOT NULL');
-    if (companyId) {
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : (companyId || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+    if (Array.isArray(companyId) && ids.length === 0) {
+      qb.andWhere('1 = 0');
+    } else if (ids.length === 1) {
       qb.andWhere(
         '(c.companyId = :companyId OR (c.companyId IS NULL AND distributor.companyId = :companyId))',
-        { companyId },
+        { companyId: ids[0] },
+      );
+    } else if (ids.length > 1) {
+      qb.andWhere(
+        '(c.companyId IN (:...companyIds) OR (c.companyId IS NULL AND distributor.companyId IN (:...companyIds)))',
+        { companyIds: ids },
       );
     }
     const clients = await qb.orderBy('c.deletedAt', 'DESC').getMany();
@@ -209,7 +228,12 @@ export class ClientsService {
     return qb.getOne();
   }
 
-  async search(query: string, distributorId?: string, agentLineCodes?: string[]) {
+  async search(
+    query: string,
+    distributorId?: string,
+    agentLineCodes?: string[],
+    companyId?: string | string[],
+  ) {
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'))
       .andWhere('(c.name ILIKE :q OR c.code ILIKE :q)', { q: `%${query}%` });
     if (distributorId) {
@@ -224,6 +248,18 @@ export class ClientsService {
       } else {
         qb.andWhere('c.distributorId = :distributorId', { distributorId });
       }
+    }
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (Array.isArray(companyId) && ids.length === 0) {
+      qb.andWhere('1 = 0');
+    } else if (ids.length === 1) {
+      qb.andWhere('c.companyId = :companyId', { companyId: ids[0] });
+    } else if (ids.length > 1) {
+      qb.andWhere('c.companyId IN (:...companyIds)', { companyIds: ids });
     }
     const clients = await qb.limit(50).getMany();
     return this.withDebts(clients);
@@ -281,6 +317,7 @@ export class ClientsService {
       clientClass: dto.clientClass ?? null,
       priceCategory: dto.priceCategory ?? null,
       photoUrl: dto.photoUrl ?? null,
+      markColor: normalizeMarkColor(dto.markColor),
       canSeePromotions: dto.canSeePromotions === true,
       isActive: true,
       createdById,
@@ -340,6 +377,7 @@ export class ClientsService {
     if (dto.clientClass !== undefined) client.clientClass = dto.clientClass;
     if (dto.priceCategory !== undefined) client.priceCategory = dto.priceCategory;
     if (dto.photoUrl !== undefined) client.photoUrl = dto.photoUrl;
+    if (dto.markColor !== undefined) client.markColor = normalizeMarkColor(dto.markColor);
     if (dto.canSeePromotions !== undefined) client.canSeePromotions = !!dto.canSeePromotions;
     if (dto.isActive !== undefined) client.isActive = dto.isActive;
     await this.repo.save(client);

@@ -29,28 +29,15 @@ function mergeEmployees(
 
   for (const [id, patch] of Object.entries(live)) {
     const existing = byId.get(id)
+    if (!existing) continue // boshqa org pinlarini qo‘shma
     const hasCoords = isInServiceArea(patch.lat, patch.lng)
 
-    if (existing) {
-      byId.set(id, {
-        ...existing,
-        lat: hasCoords ? patch.lat : existing.lat,
-        lng: hasCoords ? patch.lng : existing.lng,
-        online: patch.online,
-        lastSeen: patch.lastSeen,
-      })
-      continue
-    }
-
-    if (!hasCoords) continue
     byId.set(id, {
-      distributorId: id,
-      name: id.slice(0, 8),
-      role: 'agent',
+      ...existing,
+      lat: hasCoords ? patch.lat : existing.lat,
+      lng: hasCoords ? patch.lng : existing.lng,
       online: patch.online,
       lastSeen: patch.lastSeen,
-      lat: patch.lat,
-      lng: patch.lng,
     })
   }
 

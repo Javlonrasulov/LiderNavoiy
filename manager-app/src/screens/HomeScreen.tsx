@@ -8,11 +8,16 @@ import LangDropdown from '../components/LangDropdown'
 import EmployeeMap from '../components/EmployeeMap'
 import RefreshResultCard from '../components/RefreshResultCard'
 import { showToast } from '../components/Toast'
+import { getStoredUser } from '../api/client'
 import {
   buildHomeRefreshUpdates,
   snapshotFromDashboard,
   type HomeRefreshSnapshot,
 } from '../utils/homeRefresh'
+import {
+  filterEmployeeLocationsForManager,
+  managerCompanyId,
+} from '../utils/staffScope'
 
 type RefreshBtnState = 'idle' | 'loading' | 'success'
 
@@ -26,11 +31,11 @@ interface Props {
   onToggleDark: () => void
 }
 
-async function loadExtras() {
+async function loadExtras(companyId?: string) {
   const [staff, clients, products] = await Promise.all([
-    fetchDistributors().catch(() => []),
-    fetchClients().catch(() => []),
-    fetchProducts().catch(() => []),
+    fetchDistributors(companyId).catch(() => []),
+    fetchClients(companyId).catch(() => []),
+    fetchProducts(companyId).catch(() => []),
   ])
   return {
     staffCount: Array.isArray(staff) ? staff.length : 0,
@@ -52,7 +57,8 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
 
   const checkStaleOrders = async () => {
     try {
-      const list = await fetchClientOrders('pending')
+      const companyId = managerCompanyId(user ?? getStoredUser())
+      const list = await fetchClientOrders('pending', companyId)
       const rows = Array.isArray(list) ? list : []
       setHasStaleOrders(rows.some(o => o.stale || (o.waitingMinutes ?? 0) >= 60))
     } catch {
@@ -63,12 +69,18 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
   const loadInitial = async () => {
     setLoading(true)
     try {
+      const me = user ?? getStoredUser()
+      const companyId = managerCompanyId(me)
       const [dash, extras] = await Promise.all([
-        fetchAdminDashboard(),
-        loadExtras(),
+        fetchAdminDashboard(companyId),
+        loadExtras(companyId),
       ])
-      setData(dash)
-      snapshotRef.current = snapshotFromDashboard(dash, extras)
+      const scoped = {
+        ...dash,
+        employeeLocations: filterEmployeeLocationsForManager(dash.employeeLocations ?? [], me),
+      }
+      setData(scoped)
+      snapshotRef.current = snapshotFromDashboard(scoped, extras)
     } catch {
       showToast(tr.noData)
     } finally {
@@ -87,15 +99,21 @@ export default function HomeScreen({ dark, lang, tr, user, onNavigate, onChangeL
     setShowRefreshResult(false)
 
     try {
+      const me = user ?? getStoredUser()
+      const companyId = managerCompanyId(me)
       const before = snapshotRef.current
       const [dash, extras] = await Promise.all([
-        fetchAdminDashboard(),
-        loadExtras(),
+        fetchAdminDashboard(companyId),
+        loadExtras(companyId),
       ])
-      const after = snapshotFromDashboard(dash, extras)
+      const scoped = {
+        ...dash,
+        employeeLocations: filterEmployeeLocationsForManager(dash.employeeLocations ?? [], me),
+      }
+      const after = snapshotFromDashboard(scoped, extras)
       const updates = buildHomeRefreshUpdates(before, after, tr, lang)
       snapshotRef.current = after
-      setData(dash)
+      setData(scoped)
       setRefreshUpdates(updates)
       setShowRefreshResult(true)
       setRefreshState('success')

@@ -38,12 +38,15 @@ import {
   type MessagesSocket,
 } from '../api/messages'
 import { showToast } from '../components/Toast'
+import type { AuthUser } from '../api/types'
+import { managerCompanyId } from '../utils/staffScope'
 
 type ListTab = 'chats' | 'contacts' | 'clients'
 
 interface Props {
   dark: boolean
   tr: Translations
+  user?: AuthUser | null
   openConversationId?: string | null
   onUnreadChange?: (count: number) => void
   onConversationOpened?: () => void
@@ -101,12 +104,14 @@ function previewText(msg: { text?: string; messageType?: string; fileName?: stri
 export default function MessagesScreen({
   dark,
   tr,
+  user,
   openConversationId,
   onUnreadChange,
   onConversationOpened,
   onChatOpenChange,
 }: Props) {
   const c = theme(dark)
+  const companyId = managerCompanyId(user)
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [contacts, setContacts] = useState<ChatContact[]>([])
   const [clientContacts, setClientContacts] = useState<ChatContact[]>([])
@@ -154,7 +159,7 @@ export default function MessagesScreen({
     try {
       const [convs, staff, clients] = await Promise.all([
         getConversations(),
-        getContacts().catch(() => [] as ChatContact[]),
+        getContacts(companyId).catch(() => [] as ChatContact[]),
         getClientContacts().catch(() => [] as ChatContact[]),
       ])
       setConversations(convs)
@@ -166,7 +171,7 @@ export default function MessagesScreen({
     } finally {
       setLoading(false)
     }
-  }, [emitUnread, tr.msgError])
+  }, [emitUnread, tr.msgError, companyId])
 
   const setChatOpenFlag = useCallback((open: boolean) => {
     onChatOpenChange?.(open)

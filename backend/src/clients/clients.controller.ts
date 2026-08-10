@@ -29,6 +29,10 @@ import { SetClientCredentialsDto } from './dto/client-credentials.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
+import {
+  assertManagerCompanyAccess,
+  resolveWritableCompanyId,
+} from '../common/company-scope.util';
 
 function resolveSubmitterMeta(user: User): { name: string; position: string | null } {
   const name = user.fullName ?? user.username;
@@ -67,46 +71,65 @@ export class ClientsController {
     return undefined;
   }
 
-  /** DTO yoki profil companyId / companyIds[0] */
+  /** DTO yoki profil — manager uchun faqat allow-list */
   private resolveCompanyId(
     user: User,
     dtoCompanyId?: string | null,
   ): string | undefined {
-    const fromDto = dtoCompanyId?.trim();
-    if (fromDto) return fromDto;
-    const profile = user.distributorProfile;
-    if (!profile) return undefined;
-    const primary = profile.companyId?.trim();
-    if (primary) return primary;
-    const ids = [
-      ...new Set(
-        (Array.isArray(profile.companyIds) ? profile.companyIds : [])
-          .map((id) => id?.trim())
-          .filter((id): id is string => !!id),
-      ),
-    ];
-    return ids[0];
+    return resolveWritableCompanyId(user, dtoCompanyId);
   }
 
   private scopeCompanyIds(user: User, queryCompanyId?: string): string | string[] | undefined {
-    const q = queryCompanyId?.trim();
-    if (q) return q;
-    if (user.role !== UserRole.DISTRIBUTOR || !user.distributorProfile) {
-      return undefined;
+    const fromQuery = (queryCompanyId || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (user.role === UserRole.ADMIN) {
+      if (!fromQuery.length) return undefined;
+      return fromQuery.length === 1 ? fromQuery[0] : fromQuery;
     }
-    const profile = user.distributorProfile;
-    const ids = [
-      ...new Set(
-        [
-          ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
-          profile.companyId,
-        ]
-          .map((id) => id?.trim())
-          .filter((id): id is string => !!id),
-      ),
-    ];
-    if (ids.length === 0) return undefined;
-    return ids.length === 1 ? ids[0] : ids;
+
+    if (user.role === UserRole.MANAGER) {
+      const profile = user.distributorProfile;
+      const allowed = [
+        ...new Set(
+          [
+            ...(Array.isArray(profile?.companyIds) ? profile.companyIds : []),
+            profile?.companyId,
+          ]
+            .map((id) => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      // Org biriktirilmagan manager — hech narsa ko‘rsatilmasin
+      if (!allowed.length) return [];
+      const ids = fromQuery.length
+        ? fromQuery.filter((id) => allowed.includes(id))
+        : allowed;
+      if (!ids.length) return [];
+      return ids.length === 1 ? ids[0] : ids;
+    }
+
+    // Agent: o‘z org(lar)i
+    if (user.role === UserRole.DISTRIBUTOR && user.distributorProfile) {
+      const profile = user.distributorProfile;
+      const ids = [
+        ...new Set(
+          [
+            ...(Array.isArray(profile.companyIds) ? profile.companyIds : []),
+            profile.companyId,
+          ]
+            .map((id) => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      if (!ids.length) return undefined;
+      return ids.length === 1 ? ids[0] : ids;
+    }
+
+    if (!fromQuery.length) return undefined;
+    return fromQuery.length === 1 ? fromQuery[0] : fromQuery;
   }
 
   private assertAdminOrManager(user: User) {
@@ -152,8 +175,12 @@ export class ClientsController {
     const agentLineCodes = scoped
       ? await this.agentLineCodesFor(req.user)
       : undefined;
+    const companyScope = this.scopeCompanyIds(req.user, companyId);
+    if (Array.isArray(companyScope) && companyScope.length === 0) {
+      return [];
+    }
     return this.service.findAll(
-      this.scopeCompanyIds(req.user, companyId),
+      companyScope,
       lineCode,
       filterDistributorId,
       agentLineCodes,
@@ -167,17 +194,31 @@ export class ClientsController {
     @Query('companyId') companyId?: string,
   ) {
     this.assertAdminOrManager(req.user);
-    return this.service.findTrash(companyId);
+    const scope = this.scopeCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!scope || (Array.isArray(scope) && scope.length === 0))) {
+      return [];
+    }
+    const asQuery =
+      Array.isArray(scope) ? scope.join(',') : typeof scope === 'string' ? scope : companyId;
+    return this.service.findTrash(asQuery);
   }
 
   @Get('search')
   @ApiOperation({ summary: 'Search clients' })
-  async search(@Request() req: { user: User }, @Query('q') q: string) {
+  async search(
+    @Request() req: { user: User },
+    @Query('q') q: string,
+    @Query('companyId') companyId?: string,
+  ) {
     const scoped = this.scopeDistributorId(req.user);
     const agentLineCodes = scoped
       ? await this.agentLineCodesFor(req.user)
       : undefined;
-    return this.service.search(q, scoped, agentLineCodes);
+    const companyScope = this.scopeCompanyIds(req.user, companyId);
+    if (req.user.role === UserRole.MANAGER && (!companyScope || (Array.isArray(companyScope) && companyScope.length === 0))) {
+      return [];
+    }
+    return this.service.search(q, scoped, agentLineCodes, companyScope);
   }
 
   @Post('assign-line-distributor')
@@ -251,12 +292,14 @@ export class ClientsController {
 
   @Get(':id/reconciliation')
   @ApiOperation({ summary: 'Client reconciliation statement' })
-  getReconciliation(
+  async getReconciliation(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
     const fromDate = new Date(from);
     const toDate = new Date(to);
     return this.reconciliationService.getStatement(
@@ -269,13 +312,15 @@ export class ClientsController {
 
   @Get(':id/stats')
   @ApiOperation({ summary: 'Client purchase statistics for admin panel' })
-  getStats(
+  async getStats(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Query('period') period?: 'hafta' | 'oy' | '6oy' | 'custom',
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.statsService.getStats(
       id,
       period ?? 'oy',
@@ -287,22 +332,28 @@ export class ClientsController {
 
   @Post(':id/restore')
   @ApiOperation({ summary: 'Restore client from trash' })
-  restore(@Request() req: { user: User }, @Param('id') id: string) {
+  async restore(@Request() req: { user: User }, @Param('id') id: string) {
     this.assertAdminOrManager(req.user);
+    const client = await this.service.findOne(id, undefined, { includeDeleted: true });
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.service.restore(id);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Soft-delete client (move to trash)' })
-  softDelete(@Request() req: { user: User }, @Param('id') id: string) {
+  async softDelete(@Request() req: { user: User }, @Param('id') id: string) {
     this.assertAdminOrManager(req.user);
+    const client = await this.service.findOne(id);
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.service.softDelete(id, req.user);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get client by ID' })
-  findOne(@Request() req: { user: User }, @Param('id') id: string) {
-    return this.service.findOne(id, this.scopeDistributorId(req.user));
+  async findOne(@Request() req: { user: User }, @Param('id') id: string) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
+    return client;
   }
 
   @Post('upload-photo')

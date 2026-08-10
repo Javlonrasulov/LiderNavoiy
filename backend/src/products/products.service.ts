@@ -58,9 +58,12 @@ export class ProductsService {
   ) {
     if (Array.isArray(companyId)) {
       const ids = companyId.map((id) => id?.trim()).filter(Boolean);
-      if (ids.length === 1) {
+      if (ids.length === 0) {
+        // Manager org biriktirilmagan — hech narsa
+        qb.andWhere('1 = 0');
+      } else if (ids.length === 1) {
         qb.andWhere('p.companyId = :companyId', { companyId: ids[0] });
-      } else if (ids.length > 1) {
+      } else {
         qb.andWhere('p.companyId IN (:...companyIds)', { companyIds: ids });
       }
       return qb;

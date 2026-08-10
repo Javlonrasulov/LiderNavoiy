@@ -6,11 +6,14 @@ import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import { resolveProductImageUrl } from '../utils/productImageUrl'
 import { pushBackHandler } from '../utils/hardwareBack'
+import type { AuthUser } from '../api/types'
+import { managerCompanyId } from '../utils/staffScope'
 
 interface Props {
   dark: boolean
   lang: Lang
   tr: Translations
+  user?: AuthUser | null
   onBack: () => void
 }
 
@@ -87,8 +90,9 @@ function ProductThumb({
   )
 }
 
-export default function ProductsScreen({ dark, lang, tr, onBack }: Props) {
+export default function ProductsScreen({ dark, lang, tr, user, onBack }: Props) {
   const c = theme(dark)
+  const companyId = managerCompanyId(user)
   const [list, setList] = useState<Product[]>([])
   const [topList, setTopList] = useState<ProductStats[]>([])
   const [q, setQ] = useState('')
@@ -106,8 +110,8 @@ export default function ProductsScreen({ dark, lang, tr, onBack }: Props) {
       setLoading(true)
       try {
         const [products, top] = await Promise.all([
-          fetchProducts(),
-          fetchTopProducts(undefined, 40),
+          fetchProducts(companyId),
+          fetchTopProducts(companyId, 40),
         ])
         setList(Array.isArray(products) ? products : [])
         setTopList(Array.isArray(top) ? top : [])
@@ -118,7 +122,7 @@ export default function ProductsScreen({ dark, lang, tr, onBack }: Props) {
         setLoading(false)
       }
     })()
-  }, [])
+  }, [companyId])
 
   useEffect(() => {
     return pushBackHandler(() => {
@@ -162,7 +166,7 @@ export default function ProductsScreen({ dark, lang, tr, onBack }: Props) {
       })
     }
     try {
-      const stats = await fetchProductStats(product.id)
+      const stats = await fetchProductStats(product.id, companyId)
       setDetail(stats)
     } catch {
       if (!cached) {

@@ -266,11 +266,13 @@ export function clientFromRequest(req: ClientRequestRow): Client {
   }
 }
 
-export function fetchPlans(year?: number, month?: number) {
+export function fetchPlans(year?: number, month?: number, companyId?: string) {
   const now = new Date()
   const y = year ?? now.getFullYear()
   const m = month ?? now.getMonth() + 1
-  return api<PlanRow[]>(`plans?year=${y}&month=${m}`)
+  const q = new URLSearchParams({ year: String(y), month: String(m) })
+  if (companyId) q.set('companyId', companyId)
+  return api<PlanRow[]>(`plans?${q.toString()}`)
 }
 
 export function fetchCompanies() {
@@ -306,9 +308,10 @@ export type ClientOrderRow = {
 }
 
 /** Manager: agentlarga kelgan pending klient buyurtmalari */
-export function fetchClientOrders(status: string = 'pending') {
-  const q = `?status=${encodeURIComponent(status)}`
-  return api<ClientOrderRow[]>(`orders/client-pending${q}`)
+export function fetchClientOrders(status: string = 'pending', companyId?: string) {
+  const q = new URLSearchParams({ status })
+  if (companyId) q.set('companyId', companyId)
+  return api<ClientOrderRow[]>(`orders/client-pending?${q.toString()}`)
 }
 
 export function sendClientOrderToWarehouse(orderId: string, isUrgent = false) {

@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,6 +12,8 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+const MARK_COLORS = ['green', 'yellow', 'red'] as const;
 
 export class ClientExtraPhoneDto {
   @ApiProperty({ example: '+998901234567' })
@@ -127,6 +130,11 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ enum: ['green', 'yellow', 'red'] })
+  @IsOptional()
+  @IsIn(MARK_COLORS)
+  markColor?: string | null;
 
   @ApiPropertyOptional({
     description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi',
@@ -259,6 +267,11 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ enum: ['green', 'yellow', 'red'] })
+  @IsOptional()
+  @IsIn(MARK_COLORS)
+  markColor?: string | null;
 
   @ApiPropertyOptional({ description: 'Mijoz APK da aksiyalarni ko‘rishi mumkinmi' })
   @IsOptional()

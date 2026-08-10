@@ -100,12 +100,19 @@ export class GoodsReceiptsService {
     return { created, skipped };
   }
 
-  async findAll(opts: { companyId?: string | null; ox?: boolean }) {
+  async findAll(opts: { companyId?: string | string[] | null; ox?: boolean }) {
     const qb = this.receiptRepo.createQueryBuilder('r').orderBy('r.createdAt', 'DESC');
-    if (opts.companyId) {
-      qb.andWhere('(r.companyId = :companyId OR r.companyId IS NULL)', {
-        companyId: opts.companyId,
-      });
+    const ids = Array.isArray(opts.companyId)
+      ? opts.companyId.map((id) => id?.trim()).filter(Boolean)
+      : opts.companyId?.trim()
+        ? [opts.companyId.trim()]
+        : [];
+    if (Array.isArray(opts.companyId) && ids.length === 0) {
+      qb.andWhere('1 = 0');
+    } else if (ids.length === 1) {
+      qb.andWhere('r.companyId = :companyId', { companyId: ids[0] });
+    } else if (ids.length > 1) {
+      qb.andWhere('r.companyId IN (:...companyIds)', { companyIds: ids });
     }
     if (opts.ox !== undefined) {
       qb.andWhere('r.ox = :ox', { ox: opts.ox });
@@ -315,10 +322,19 @@ export class GoodsReceiptsService {
     };
   }
 
-  async stats(companyId?: string | null) {
+  async stats(companyId?: string | string[] | null) {
     const qb = this.reconRepo.createQueryBuilder('f').where("f.status = 'done'");
-    if (companyId) {
-      qb.andWhere('(f.companyId = :companyId OR f.companyId IS NULL)', { companyId });
+    const ids = Array.isArray(companyId)
+      ? companyId.map((id) => id?.trim()).filter(Boolean)
+      : companyId?.trim()
+        ? [companyId.trim()]
+        : [];
+    if (Array.isArray(companyId) && ids.length === 0) {
+      qb.andWhere('1 = 0');
+    } else if (ids.length === 1) {
+      qb.andWhere('f.companyId = :companyId', { companyId: ids[0] });
+    } else if (ids.length > 1) {
+      qb.andWhere('f.companyId IN (:...companyIds)', { companyIds: ids });
     }
     const rows = await qb.getMany();
 
