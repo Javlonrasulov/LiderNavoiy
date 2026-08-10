@@ -26,9 +26,16 @@ object ApiErrorMapper {
     }
 
     private fun mapHttpException(e: HttpException): String {
-        val serverMsg = e.response()?.errorBody()?.use { it.string() }?.let(::parseMessage)
+        val body = e.response()?.errorBody()?.use { it.string() }
+        if (e.code() == 409 && body != null) {
+            val sessionKey = sessionActiveKey(body)
+            if (sessionKey != null) return sessionKey
+        }
+        val serverMsg = body?.let(::parseMessage)
         if (serverMsg != null) {
-            // UI da aniq server xabari chiqsin (kalit emas)
+            if (serverMsg.equals("SESSION_ACTIVE", ignoreCase = true)) {
+                return "session_active"
+            }
             val mapped = mapServerMessage(serverMsg)
             return if (mapped == "save_failed" || mapped == "photo_upload_failed") {
                 "raw:$serverMsg"
@@ -39,7 +46,31 @@ object ApiErrorMapper {
         return when (e.code()) {
             in 500..599 -> "server_error"
             401, 403 -> "unauthorized"
+            409 -> "session_active"
             else -> "save_failed"
+        }
+    }
+
+    /** session_active yoki session_active:Samsung Galaxy... */
+    private fun sessionActiveKey(body: String): String? {
+        return try {
+            val json = JsonParser.parseString(body).asJsonObject
+            val code = when {
+                json.has("code") && json.get("code").isJsonPrimitive ->
+                    json.get("code").asString
+                json.has("message") && json.get("message").isJsonPrimitive ->
+                    json.get("message").asString
+                else -> null
+            }
+            if (code != "SESSION_ACTIVE") return null
+            val device = if (json.has("activeDevice") && !json.get("activeDevice").isJsonNull) {
+                json.get("activeDevice").asString?.trim().orEmpty()
+            } else {
+                ""
+            }
+            if (device.isNotBlank()) "session_active:$device" else "session_active"
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -86,6 +117,8 @@ object ApiErrorMapper {
             msg.contains("upload", ignoreCase = true) ||
             msg.contains("rasm", ignoreCase = true) ->
             "photo_upload_failed"
+        msg.contains("SESSION_ACTIVE", ignoreCase = true) ->
+            "session_active"
         msg.contains("Invalid amount", ignoreCase = true) ->
             "invalid_amount"
         else -> "save_failed"

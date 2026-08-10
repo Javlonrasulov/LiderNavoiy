@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   Logger,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -102,6 +103,34 @@ export class AuthService {
     }
 
     await this.loginSecurity.recordSuccess(username, meta.ip, meta.userAgent);
+
+    // Agent APK: bir login — bir qurilma (boshqa qurilma ochiq bo‘lsa ogohlantirish)
+    if (user.role === UserRole.DISTRIBUTOR) {
+      const deviceKey = this.deviceKeyOf(dto.device);
+      const sessions = await this.sessions.listUserSessions(user.id);
+      const otherSessions = sessions.filter((s) => {
+        if (!deviceKey) return true;
+        if (!s.deviceKey) return true;
+        return s.deviceKey !== deviceKey;
+      });
+      if (otherSessions.length > 0) {
+        const active = otherSessions[0];
+        const deviceLabel = [active.brand, active.model].filter(Boolean).join(' ').trim();
+        throw new ConflictException({
+          message: 'SESSION_ACTIVE',
+          code: 'SESSION_ACTIVE',
+          activeDevice: deviceLabel || null,
+        });
+      }
+      if (deviceKey) {
+        // Shu qurilmadagi eski sessiyalarni yopish
+        for (const s of sessions) {
+          if (s.deviceKey === deviceKey) {
+            await this.sessions.revokeSession(user.id, s.sessionId);
+          }
+        }
+      }
+    }
 
     user.lastLoginAt = new Date();
     this.applyDeviceInfo(user, dto.device);

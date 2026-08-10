@@ -242,8 +242,13 @@ export class ClientsController {
   ) {
     this.assertAdminOrManager(req.user);
     const scope = this.scopeCompanyIds(req.user, companyId);
-    const updated = await this.service.ensureNumericCodes(scope);
-    return { updated };
+    try {
+      const updated = await this.service.ensureNumericCodes(scope);
+      return { updated };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Kodlarni yangilab bo‘lmadi';
+      return { updated: 0, error: msg };
+    }
   }
 
   @Get('lines')

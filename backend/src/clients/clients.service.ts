@@ -171,10 +171,30 @@ export class ClientsService {
   private async withDebts(clients: Client[]): Promise<Client[]> {
     if (!clients.length) return clients;
     const ids = clients.map((c) => c.id);
-    const [unpaidMap, activityMap] = await Promise.all([
-      this.unpaidDebtsByClientIds(ids),
-      this.activityByClientIds(ids),
-    ]);
+    let unpaidMap = new Map<string, number>();
+    let activityMap = new Map<
+      string,
+      {
+        ordersCount: number;
+        totalSales: number;
+        lastOrderAt: string | null;
+        goodsQty: number;
+        goodsWeight: number;
+      }
+    >();
+    try {
+      [unpaidMap, activityMap] = await Promise.all([
+        this.unpaidDebtsByClientIds(ids),
+        this.activityByClientIds(ids),
+      ]);
+    } catch {
+      // Qarz/savdo agregatsiyasi yiqilsa ham mijozlar ro‘yxati ochilsin
+      try {
+        unpaidMap = await this.unpaidDebtsByClientIds(ids);
+      } catch {
+        unpaidMap = new Map();
+      }
+    }
     for (const c of clients) {
       const stored = toNum(c.balance);
       const unpaid = unpaidMap.get(c.id) ?? 0;
@@ -242,9 +262,6 @@ export class ClientsService {
     distributorId?: string,
     agentLineCodes?: string[],
   ) {
-    // Bo'sh/harfli kodlarni ketma-ket raqam bilan to'ldirish (bir marta, kerak bo'lsa)
-    await this.ensureNumericCodes(companyId);
-
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
     this.applyCompanyScope(qb, companyId);
     if (lineCode) qb.andWhere('c.lineCode = :lineCode', { lineCode });
@@ -461,10 +478,7 @@ export class ClientsService {
       }
       for (const client of list) {
         const code = String(next++);
-        const prev = (client.code || '').trim();
-        if (!prev || client.onTradeId === prev) {
-          client.onTradeId = code;
-        }
+        // Faqat code — onTradeId unique bo‘lishi mumkin, tegmaymiz
         client.code = code;
         updated += 1;
       }

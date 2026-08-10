@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -46,6 +47,12 @@ export class LoginDto {
   @ValidateNested()
   @Type(() => LoginDeviceDto)
   device?: LoginDeviceDto;
+
+  /** Optional when HttpOnly refresh cookie is present (web) — kept for API compat */
+  @ApiPropertyOptional({ default: false, deprecated: true })
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
 }
 
 export class RefreshTokenDto {

@@ -608,6 +608,24 @@ object AppStrings {
     fun showPassword(lang: AppLanguage) = tr(lang, "Parolni ko'rish", "Паролни кўриш", "Показать пароль")
     fun loginButton(lang: AppLanguage) = tr(lang, "Kirish", "Кириш", "Войти")
     fun loginError(lang: AppLanguage) = tr(lang, "Kirish xatosi", "Кириш хатоси", "Ошибка входа")
+    fun sessionConflictBlocked(lang: AppLanguage, device: String?) = tr(
+        lang,
+        if (!device.isNullOrBlank()) {
+            "Hozir «$device» qurilmasida sessiya bor. Avval u yerdan chiqing, keyin kiring."
+        } else {
+            "Bu login boshqa joyda ochiq. Avval u yerdan chiqing, keyin kiring."
+        },
+        if (!device.isNullOrBlank()) {
+            "Ҳозир «$device» қурилмасида сессия бор. Аввал у ердан чиқинг, кейин киринг."
+        } else {
+            "Бу логин бошқа жойда очиқ. Аввал у ердан чиқинг, кейин киринг."
+        },
+        if (!device.isNullOrBlank()) {
+            "Сейчас сессия открыта на «$device». Сначала выйдите там, затем войдите здесь."
+        } else {
+            "Этот логин уже используется. Сначала выйдите на другом устройстве."
+        },
+    )
     fun errorInvalidCredentials(lang: AppLanguage) = tr(
         lang,
         "Login yoki parol noto'g'ri",
@@ -720,6 +738,10 @@ object AppStrings {
     fun apiError(lang: AppLanguage, key: String): String {
         if (key.startsWith("raw:")) {
             return key.removePrefix("raw:").ifBlank { errorSaveFailed(lang) }
+        }
+        if (key.startsWith("session_active")) {
+            val device = key.substringAfter("session_active:", "").takeIf { it.isNotBlank() && it != key }
+            return sessionConflictBlocked(lang, device)
         }
         return when (key) {
         "invalid_credentials" -> errorInvalidCredentials(lang)

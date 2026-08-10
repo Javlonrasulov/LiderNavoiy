@@ -5,6 +5,7 @@ import {
 import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
 import { useCompanies } from '../CompaniesContext';
 import { companyShowsTarozi, useAdminAuth } from '../AdminAuthContext';
+import { CompanyAvatar } from '../CompanyAvatar';
 import { ClientRequestBell } from './ClientRequestBell';
 
 interface AdminNavbarProps {
@@ -116,7 +117,15 @@ export function AdminNavbar({
                 >
                   <div className="flex -space-x-1 flex-shrink-0 pt-0.5">
                     {companies.filter(c => selectedCompanyIds.has(c.id)).slice(0, 4).map(c => (
-                      <span key={c.id} className="text-xs md:text-sm leading-none">{c.icon}</span>
+                      <CompanyAvatar
+                        key={c.id}
+                        icon={c.icon}
+                        imageUrl={c.imageUrl}
+                        shortName={c.shortName}
+                        size={16}
+                        rounded="full"
+                        className="ring-1 ring-white dark:ring-gray-900"
+                      />
                     ))}
                   </div>
                   <p className={`text-[10px] md:text-xs ${sub} max-w-[120px] md:max-w-[320px] leading-tight whitespace-normal`}>
@@ -191,13 +200,23 @@ export function AdminNavbar({
             <button className="md:hidden flex-shrink-0" onClick={() => setSidebarOpen(true)}>
               <Menu size={13} />
             </button>
-            <span className={`text-[11px] font-semibold truncate ${sub}`}>
+            <span className={`text-[11px] font-semibold truncate ${sub} flex items-center gap-1.5`}>
               {navItems.flatMap(n => n.children ? [n, ...n.children] : [n]).find(n => n.id === tab)?.label}
-              {selectedOrgs.length === 1
-                ? ` · ${selectedOrgs[0].icon} ${selectedOrgs[0].shortName}`
-                : selectedOrgs.length > 1
-                  ? ` · ${selectedOrgs.map(c => c.shortName).join(' · ')}`
-                  : ''}
+              {selectedOrgs.length === 1 ? (
+                <>
+                  <span>·</span>
+                  <CompanyAvatar
+                    icon={selectedOrgs[0].icon}
+                    imageUrl={selectedOrgs[0].imageUrl}
+                    shortName={selectedOrgs[0].shortName}
+                    size={14}
+                    rounded="full"
+                  />
+                  <span className="truncate">{selectedOrgs[0].shortName}</span>
+                </>
+              ) : selectedOrgs.length > 1 ? (
+                <span className="truncate"> · {selectedOrgs.map(c => c.shortName).join(' · ')}</span>
+              ) : null}
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -303,7 +322,13 @@ export function AdminNavbar({
                         : D ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <span className="text-xl flex-shrink-0">{c.icon}</span>
+                    <CompanyAvatar
+                      icon={c.icon}
+                      imageUrl={c.imageUrl}
+                      shortName={c.shortName}
+                      size={28}
+                      rounded="xl"
+                    />
                     <div className="flex-1 text-left min-w-0">
                       <p className={`font-medium text-sm truncate ${isSel ? D ? 'text-indigo-300' : 'text-indigo-700' : text}`}>{c.shortName}</p>
                       <p className={`text-xs ${sub} truncate`}>{d ? fmt(d.sales) + ' savdo' : c.description}</p>

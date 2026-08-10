@@ -119,7 +119,6 @@ class LoginViewModel @Inject constructor(
                     authRepository.login(username, password)
                 }
                 runCatching { messagesRealtime.start() }
-                // FCM kutish loginni bloklamasin
                 _uiState.update { it.copy(isLoading = false, isSuccess = true) }
                 runCatching { pushRepository.registerCurrentToken() }
             } catch (e: Exception) {
