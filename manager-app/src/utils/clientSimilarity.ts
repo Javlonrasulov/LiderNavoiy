@@ -132,6 +132,45 @@ export function findBestSimilarityMatch(
   return best
 }
 
+export type ClientListSimilarity = {
+  pct: number
+  matchName: string
+  matchId: string
+}
+
+/**
+ * Ro‘yxatdagi har bir mijoz uchun eng o‘xshash boshqa mijoz.
+ * Threshold dan past o‘xshashliklar map ga kiritilmaydi.
+ */
+export function buildClientSimilarityMap(
+  clients: Client[],
+  threshold = SIMILARITY_DIALOG_THRESHOLD,
+): Map<string, ClientListSimilarity> {
+  const out = new Map<string, ClientListSimilarity>()
+  for (const cl of clients) {
+    const input: SimilarityCandidate = {
+      name: cl.name ?? '',
+      fullName: cl.fullName ?? undefined,
+      phone: cl.phone ?? undefined,
+      inn: cl.inn ?? undefined,
+      address: cl.address ?? undefined,
+      territory: cl.territory ?? undefined,
+      lineCode: cl.lineCode ?? undefined,
+    }
+    const match = findBestSimilarityMatch(input, clients, {
+      excludeClientId: cl.id,
+      threshold,
+    })
+    if (!match) continue
+    out.set(cl.id, {
+      pct: match.overallPct,
+      matchName: match.client.name || match.client.fullName || '—',
+      matchId: match.client.id,
+    })
+  }
+  return out
+}
+
 export type SimilarityRiskLevel = 'red' | 'yellow' | 'green'
 
 /** Umumiy o‘xshashlik foiziga qarab xavf darajasi */

@@ -408,6 +408,21 @@ export default function ClientsScreen({ dark, lang, tr, onAdd, onEdit, onEditReq
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  {(() => {
+                    const mark = cl.markColor === 'yellow' || cl.markColor === 'red' ? cl.markColor : 'green'
+                    return (
+                      <span
+                        title={mark}
+                        style={{
+                          width: 12, height: 12, borderRadius: 99, flexShrink: 0,
+                          background:
+                            mark === 'green' ? '#22C55E'
+                              : mark === 'yellow' ? '#EAB308'
+                                : '#EF4444',
+                        }}
+                      />
+                    )
+                  })()}
                   <p style={{
                     margin: 0,
                     fontSize: 18, fontWeight: 800, color: c.primary, lineHeight: 1.25,

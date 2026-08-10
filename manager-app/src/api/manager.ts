@@ -194,6 +194,7 @@ export type ClientRequestRow = {
   address?: string | null
   territory?: string | null
   photoUrl?: string | null
+  markColor?: string | null
   lineCode?: string | null
   category?: string | null
   inn?: string | null
@@ -232,6 +233,7 @@ export function resubmitClientRequest(
     address?: string
     territory?: string
     photoUrl?: string
+    markColor?: string | null
     companyId?: string
     lineCode?: string
     category?: string
@@ -256,6 +258,7 @@ export function clientFromRequest(req: ClientRequestRow): Client {
     address: req.address,
     territory: req.territory,
     photoUrl: req.photoUrl,
+    markColor: req.markColor,
     lineCode: req.lineCode,
     category: req.category,
     inn: req.inn,

@@ -61,6 +61,7 @@ type SaveBody = {
   address: string
   territory?: string
   photoUrl?: string
+  markColor?: string | null
   companyId?: string
   lineCode: string
   category: string
@@ -132,6 +133,7 @@ export default function AddClientScreen({
   const [lng, setLng] = useState<number | null>(null)
   const [radius, setRadius] = useState(100)
   const [canSeePromotions, setCanSeePromotions] = useState(false)
+  const [markColor, setMarkColor] = useState<'green' | 'yellow' | 'red'>('green')
   const [geoLoading, setGeoLoading] = useState(false)
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [photoFullscreen, setPhotoFullscreen] = useState(false)
@@ -249,6 +251,8 @@ export default function AddClientScreen({
           : 100,
       )
       setCanSeePromotions(cl.canSeePromotions === true)
+      const mc = cl.markColor?.trim().toLowerCase()
+      setMarkColor(mc === 'yellow' || mc === 'red' ? mc : 'green')
     }
 
     apply(editClient)
@@ -462,6 +466,7 @@ export default function AddClientScreen({
           address: body.address,
           territory: body.territory,
           photoUrl: body.photoUrl,
+          markColor: body.markColor ?? 'green',
           companyId: body.companyId,
           lineCode: body.lineCode,
           category: body.category,
@@ -549,6 +554,7 @@ export default function AddClientScreen({
       address: address.trim(),
       territory: territory.trim() || undefined,
       photoUrl: photoUrl || undefined,
+      markColor,
       companyId: primaryCompanyId,
       lineCode: lineCode.trim(),
       category: category.trim(),
@@ -909,6 +915,42 @@ export default function AddClientScreen({
                 <span>{tr.pickGallery}</span>
               </button>
             </div>
+          </div>
+        </div>
+
+        <div style={{
+          marginBottom: 14, padding: 14, borderRadius: 16,
+          border: `1px solid ${c.border}`, background: c.card,
+        }}>
+          <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 800, color: c.text }}>{tr.markColor}</p>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {([
+              { id: 'green' as const, color: '#22C55E', label: tr.markGreen },
+              { id: 'yellow' as const, color: '#EAB308', label: tr.markYellow },
+              { id: 'red' as const, color: '#EF4444', label: tr.markRed },
+            ]).map(opt => {
+              const selected = markColor === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  title={opt.label}
+                  aria-label={opt.label}
+                  aria-pressed={selected}
+                  onClick={() => setMarkColor(opt.id)}
+                  style={{
+                    flex: 1, height: 52, borderRadius: 14, cursor: 'pointer',
+                    border: selected ? `2px solid ${opt.color}` : `1px solid ${c.border}`,
+                    background: selected ? `${opt.color}22` : (dark ? '#1A1A2E' : '#F9FAFB'),
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    boxShadow: selected ? `0 0 0 3px ${opt.color}33` : 'none',
+                  }}
+                >
+                  <span style={{ width: 20, height: 20, borderRadius: 99, background: opt.color, display: 'block' }} />
+                  <span style={{ fontSize: 11, fontWeight: 800, color: selected ? opt.color : c.mutedText }}>{opt.label}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

@@ -169,6 +169,8 @@ export interface Client {
   /** Ориентр (do‘kon yaqinidagi belgi) */
   territory?: string | null
   photoUrl?: string | null
+  /** green | yellow | red */
+  markColor?: string | null
   companyId?: string | null
   lineCode?: string | null
   category?: string | null
@@ -241,6 +243,7 @@ export interface CreateClientBody {
   address?: string
   territory?: string
   photoUrl?: string
+  markColor?: string | null
   companyId?: string
   lineCode?: string
   category?: string
