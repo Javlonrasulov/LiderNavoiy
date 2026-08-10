@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction, type MouseEvent as ReactMouseEvent } from 'react';
 import * as XLSX from 'xlsx';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, Edit2, Filter, ImageIcon, MapPin, Maximize2, Minimize2, Plus, Search, X, BarChart3, ArrowRightLeft, Trash2, RotateCcw, AlertTriangle, Upload, ShoppingCart } from 'lucide-react';
 import { fmtFull, type ClientRow } from '../../../data/adminData';
@@ -88,6 +88,8 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [sortDebt, setSortDebt] = useState<'none' | 'high' | 'low'>('none');
   const [quickOpen, setQuickOpen] = useState<'line' | 'agent' | 'mark' | 'top' | 'debt' | null>(null);
   const [showSalesCols, setShowSalesCols] = useState(false);
+  const [territoryColWidth, setTerritoryColWidth] = useState(240);
+  const territoryResizeRef = useRef<{ startX: number; startW: number } | null>(null);
   const [activeClient, setActiveClient] = useState<ClientRow | null>(null);
   const [clientMapOpen, setClientMapOpen] = useState(false);
   const [clientGpsWarnOpen, setClientGpsWarnOpen] = useState(false);
@@ -356,9 +358,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     clients.forEach((c) => {
       const cat = c.category?.trim();
       if (cat) names.add(cat);
+      const cls = c.cls?.trim();
+      if (cls) names.add(cls);
     });
     return [...names].sort((a, b) => a.localeCompare(b, 'uz'));
   }, [categoryCatalog, clients]);
+
+  const clientTtClass = (c: ClientRow) => (c.cls || c.category || '').trim();
 
   const territoryOptions = useMemo(() => uniqueField(clients, c => c.territory), [clients]);
   const clsOptions = useMemo(() => uniqueField(clients, c => c.cls), [clients]);
@@ -381,7 +387,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         c.phone.replace(/\s/g, '').includes(phoneQ) ||
         String(c.id).includes(q);
       if (!matchSearch) return false;
-      if (clientCatFilter.size > 0 && !clientCatFilter.has(c.category)) return false;
+      if (clientCatFilter.size > 0) {
+        const tt = clientTtClass(c);
+        if (!clientCatFilter.has(tt) && !clientCatFilter.has(c.category) && !(c.cls && clientCatFilter.has(c.cls))) {
+          return false;
+        }
+      }
       if (clientMarkFilter.size > 0 && !clientMarkFilter.has(resolveClientMark(c))) return false;
       if (clientAgentFilter.size > 0) {
         const noAgentSelected = clientAgentFilter.has(NO_AGENT_KEY);
@@ -529,7 +540,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       [t.colClientName]: c.name,
       [t.colFullName]:   c.fullName,
       [t.colLine]:       c.line,
-      [t.colCategory]:   c.category,
+      [t.colCategory]:   clientTtClass(c) || c.category,
       [t.colPriceCat]:   c.priceCat || 'Standard',
       [t.colTerritory]:  c.territory,
       [t.colINN]:        c.inn,
@@ -645,6 +656,29 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const thCls = `px-2 py-2 text-left whitespace-nowrap select-none border-r ${D ? 'border-gray-700' : 'border-gray-200'} text-[11px] font-semibold ${sub} bg-inherit`;
   const tdCls = `px-2 py-[5px] text-[11px] whitespace-nowrap border-r ${D ? 'border-gray-800' : 'border-gray-100'}`;
+
+  const startTerritoryResize = (e: ReactMouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    territoryResizeRef.current = { startX: e.clientX, startW: territoryColWidth };
+    const onMove = (ev: MouseEvent) => {
+      const s = territoryResizeRef.current;
+      if (!s) return;
+      const next = Math.min(520, Math.max(100, s.startW + (ev.clientX - s.startX)));
+      setTerritoryColWidth(next);
+    };
+    const onUp = () => {
+      territoryResizeRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   // ── Status filter options with translations ──
   const statusOptions = [
@@ -1504,7 +1538,20 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                 <th className={`${thCls} cursor-pointer`}>{t.colLine} <span className="ml-0.5 opacity-60">↕</span></th>
                 <th className={thCls}>{t.colCategory}</th>
                 <th className={thCls}>{t.colPriceCat}</th>
-                <th className={thCls}>{t.colTerritory}</th>
+                <th
+                  className={`${thCls} relative`}
+                  style={{ width: territoryColWidth, minWidth: territoryColWidth, maxWidth: territoryColWidth }}
+                >
+                  {t.colTerritory}
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    title={t.resizeColHint ?? 'Enini o‘zgartirish'}
+                    onMouseDown={startTerritoryResize}
+                    className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-10
+                      ${D ? 'hover:bg-indigo-400/50' : 'hover:bg-indigo-400/40'}`}
+                  />
+                </th>
                 <th className={thCls}>{t.colINN}</th>
                 <th className={thCls}>{t.colLegalAddr}</th>
                 <th className={thCls}>{t.colPhone}</th>
@@ -1557,14 +1604,19 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     <td className={`${tdCls} ${rowText} whitespace-nowrap`}>{c.line}</td>
                     <td className={`${tdCls} ${rowText}`}>
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap
-                        ${c.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
-                          c.category === 'Premium' ? 'bg-violet-500/20 text-violet-400' :
+                        ${clientTtClass(c) === 'VIP' || c.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
+                          clientTtClass(c) === 'Premium' || c.category === 'Premium' ? 'bg-violet-500/20 text-violet-400' :
                           'bg-indigo-500/15 text-indigo-400'}`}>
-                        {c.category}
+                        {clientTtClass(c) || '—'}
                       </span>
                     </td>
                     <td className={`${tdCls} ${rowText}`}>{c.priceCat || 'Standard'}</td>
-                    <td className={`${tdCls} ${rowText} min-w-[220px] max-w-[320px]`}>{c.territory}</td>
+                    <td
+                      className={`${tdCls} ${rowText}`}
+                      style={{ width: territoryColWidth, minWidth: territoryColWidth, maxWidth: territoryColWidth }}
+                    >
+                      <span className="block truncate" title={c.territory || undefined}>{c.territory}</span>
+                    </td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.inn || ''}</td>
                     <td className={`${tdCls} ${rowText} max-w-[150px] truncate`}>{c.legalAddr}</td>
                     <td className={`${tdCls} ${rowText}`}>{c.phone}</td>
@@ -1785,10 +1837,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-0.5 rounded-lg text-[11px] font-semibold
-                        ${activeClient.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
-                          activeClient.category === 'Premium' ? 'bg-violet-500/20 text-violet-400' :
+                        ${clientTtClass(activeClient) === 'VIP' || activeClient.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
+                          clientTtClass(activeClient) === 'Premium' || activeClient.category === 'Premium' ? 'bg-violet-500/20 text-violet-400' :
                           'bg-indigo-500/15 text-indigo-400'}`}>
-                        {activeClient.category}
+                        {clientTtClass(activeClient) || '—'}
                       </span>
                       <span className={`text-[11px] font-mono ${D ? 'text-gray-500' : 'text-gray-400'}`}>{t.colCode}: {displayClientCode(activeClient)}</span>
                     </div>

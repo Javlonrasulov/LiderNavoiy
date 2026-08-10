@@ -27,6 +27,7 @@ type ImportRow = {
   lineName: string;
   isActive: boolean;
   clientClass: string;
+  territory: string;
   address: string;
   lat: number | null;
   lng: number | null;
@@ -176,7 +177,8 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
       const cName = findCol(hdr, ['торг.точк', 'торг точк', 'torg', 'точка', 'nomi', 'name']);
       const cLine = findCol(hdr, ['линия', 'liniya', 'line']);
       const cStatus = findCol(hdr, ['статус', 'status', 'holat']);
-      const cClass = findCol(hdr, ['класс', 'klas', 'class', 'тт']);
+      const cClass = findCol(hdr, ['класс тт', 'класстт', 'klas tt', 'класс', 'klas', 'class']);
+      const cTerritory = findCol(hdr, ['территория', 'hudud', 'ҳудуд', 'territory', 'регион']);
       const cAddr = findCol(hdr, ['адрес', 'adres', 'address', 'manzil']);
       const cGps = findCol(hdr, ['gps', 'коорд', 'координат']);
 
@@ -204,6 +206,7 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
           lineName: existing?.name || parsedLine.name || lineRaw,
           isActive: parseActiveStatus(cStatus >= 0 ? String(r[cStatus] ?? '') : ''),
           clientClass: cClass >= 0 ? String(r[cClass] ?? '').trim() : '',
+          territory: cTerritory >= 0 ? String(r[cTerritory] ?? '').trim() : '',
           address: cAddr >= 0 ? String(r[cAddr] ?? '').trim() : '',
           lat: gps.lat,
           lng: gps.lng,
@@ -303,17 +306,21 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
         }
 
         const lineCode = row.lineRaw ? lineMap[row.lineRaw] || row.lineCode || undefined : undefined;
+        const klassTt = row.clientClass.trim();
         const body = {
           ...(row.code ? { code: row.code } : {}),
           name: row.name,
           fullName: row.name,
           address: row.address || undefined,
+          territory: row.territory || undefined,
           companyId,
           lineCode,
           latitude: row.lat ?? undefined,
           longitude: row.lng ?? undefined,
-          clientClass: row.clientClass || undefined,
-          category: 'Standard',
+          // Excel «Класс ТТ» → sinf + kategoriya (Standard o‘rniga)
+          ...(klassTt
+            ? { clientClass: klassTt, category: klassTt }
+            : { category: 'Standard' }),
         };
         let saved = await api.createClient(body);
         // Production create DTO isActive qabul qilmasligi mumkin — holatni update bilan qo‘yamiz
@@ -458,7 +465,7 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
                       <th className="p-2 text-left">{tr('excelImportColName', 'Nomi')}</th>
                       <th className="p-2 text-left">{tr('excelImportColLine', 'Liniya')}</th>
                       <th className="p-2 text-left">{tr('excelImportColStatus', 'Holat')}</th>
-                      <th className="p-2 text-left">{tr('excelImportColCategory', 'Kategoriya')}</th>
+                      <th className="p-2 text-left">{tr('excelImportColCategory', 'Klass TT')}</th>
                       <th className="p-2 text-left">{tr('excelImportColAddr', 'Manzil')}</th>
                       <th className="p-2 text-left">{tr('excelImportColGps', 'GPS')}</th>
                     </tr>
