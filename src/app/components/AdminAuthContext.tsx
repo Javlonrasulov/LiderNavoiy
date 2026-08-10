@@ -15,6 +15,8 @@ export interface Company {
   clients: number;
   /** kg_dona / kg → Tarozi; dona → tayyorlanmagan buyurtmalar */
   productType: ProductType;
+  /** /uploads/companies/... yoki to‘liq URL */
+  imageUrl?: string | null;
   /** Ombor sahifasida kiritiladigan sklad nomi */
   warehouseName?: string | null;
   /** Agent/dostavkachi mijoz qo‘sha oladimi (default false) */

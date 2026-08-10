@@ -21,6 +21,7 @@ function mapCompany(row: BackendCompany): Company {
     agents: row.agents,
     clients: row.clients,
     productType: (row.productType as ProductType) || 'kg_dona',
+    imageUrl: row.imageUrl ?? null,
     warehouseName: row.warehouseName ?? null,
     agentsCanAddClients: !!row.agentsCanAddClients,
     clientsAddWithoutApproval: !!row.clientsAddWithoutApproval,

@@ -15,6 +15,7 @@ export interface CompanyListItem {
   shortName: string | null;
   icon: string | null;
   color: string | null;
+  imageUrl: string | null;
   description: string | null;
   productType: string;
   warehouseName: string | null;
@@ -46,6 +47,7 @@ export class CompaniesService {
       shortName: company.shortName,
       icon: company.icon,
       color: company.color,
+      imageUrl: company.imageUrl ?? null,
       description: company.description,
       productType: company.productType || 'kg_dona',
       warehouseName: company.warehouseName ?? null,
@@ -126,6 +128,7 @@ export class CompaniesService {
         shortName,
         icon: dto.icon ?? '🏢',
         color: dto.color ?? 'from-indigo-500 to-blue-600',
+        imageUrl: dto.imageUrl?.trim() || null,
         description: dto.description?.trim() || null,
         productType: dto.productType ?? 'kg_dona',
         agentsCanAddClients: dto.agentsCanAddClients ?? false,
@@ -144,6 +147,7 @@ export class CompaniesService {
     if (dto.shortName !== undefined) company.shortName = dto.shortName.trim() || null;
     if (dto.icon !== undefined) company.icon = dto.icon;
     if (dto.color !== undefined) company.color = dto.color;
+    if (dto.imageUrl !== undefined) company.imageUrl = dto.imageUrl?.trim() || null;
     if (dto.description !== undefined) company.description = dto.description.trim() || null;
     if (dto.productType !== undefined) company.productType = dto.productType;
     if (dto.warehouseName !== undefined) company.warehouseName = dto.warehouseName.trim() || null;

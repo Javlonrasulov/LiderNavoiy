@@ -16,7 +16,6 @@ export function AdminDepartmentsTab({ D, t }: Props) {
   const [deleteRow, setDeleteRow] = useState<BackendDepartment | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState('');
-  const [addCode, setAddCode] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -71,24 +70,17 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     count: t.deptCount || 'ta',
     namePlaceholder: t.deptNamePlaceholder || "Bo'linma nomi",
     save: t.save || 'Saqlash',
-    codeLbl: t.deptCodeLabel || 'Kod',
     nameLbl: t.deptNameLabel || 'Nom',
     edit: t.editLabel || "O'zgartirish",
   };
-
-  const nextCode = () => Math.max(0, ...rows.map(r => r.code)) + 1;
 
   const saveAdd = async () => {
     if (!addName.trim() || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await api.createDepartment({
-        name: addName.trim(),
-        code: Number(addCode) || undefined,
-      });
+      await api.createDepartment({ name: addName.trim() });
       setAddName('');
-      setAddCode('');
       setShowAdd(false);
       await refresh();
     } catch (e) {
@@ -104,7 +96,6 @@ export function AdminDepartmentsTab({ D, t }: Props) {
     setError(null);
     try {
       await api.updateDepartment(editDraft.id, {
-        code: editDraft.code,
         name: editDraft.name.trim(),
       });
       setEditRow(null);
@@ -119,13 +110,15 @@ export function AdminDepartmentsTab({ D, t }: Props) {
 
   const confirmDelete = async () => {
     if (!deleteRow || saving) return;
+    const id = deleteRow.id;
     setSaving(true);
     setError(null);
     try {
-      await api.deleteDepartment(deleteRow.id);
-      if (selected === deleteRow.id) setSelected(null);
+      await api.deleteDepartment(id);
+      setRows(prev => prev.filter(r => r.id !== id));
+      if (selected === id) setSelected(null);
       setDeleteRow(null);
-      await refresh();
+      void refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "O'chirishda xatolik");
     } finally {
@@ -144,10 +137,10 @@ export function AdminDepartmentsTab({ D, t }: Props) {
   };
 
   const FormModal = ({
-    title, codeVal, nameVal, onCode, onName, onSave, onClose,
+    title, nameVal, onName, onSave, onClose,
   }: {
-    title: string; codeVal: string; nameVal: string;
-    onCode: (v: string) => void; onName: (v: string) => void;
+    title: string; nameVal: string;
+    onName: (v: string) => void;
     onSave: () => void; onClose: () => void;
   }) => (
     <div
@@ -185,22 +178,16 @@ export function AdminDepartmentsTab({ D, t }: Props) {
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={lblSt}>{T.codeLbl}</label>
-            <input style={inputSt} type="number" min={1} value={codeVal} onChange={e => onCode(e.target.value)} placeholder="1" />
-          </div>
-          <div>
-            <label style={lblSt}>{T.nameLbl}</label>
-            <input
-              style={inputSt}
-              value={nameVal}
-              onChange={e => onName(e.target.value)}
-              placeholder={T.namePlaceholder}
-              onKeyDown={e => e.key === 'Enter' && onSave()}
-              autoFocus
-            />
-          </div>
+        <div>
+          <label style={lblSt}>{T.nameLbl}</label>
+          <input
+            style={inputSt}
+            value={nameVal}
+            onChange={e => onName(e.target.value)}
+            placeholder={T.namePlaceholder}
+            onKeyDown={e => e.key === 'Enter' && onSave()}
+            autoFocus
+          />
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
@@ -232,18 +219,17 @@ export function AdminDepartmentsTab({ D, t }: Props) {
       {showAdd && (
         <FormModal
           title={T.addTitle}
-          codeVal={addCode} nameVal={addName}
-          onCode={setAddCode} onName={setAddName}
+          nameVal={addName}
+          onName={setAddName}
           onSave={() => { void saveAdd(); }}
-          onClose={() => { setShowAdd(false); setAddName(''); setAddCode(''); }}
+          onClose={() => { setShowAdd(false); setAddName(''); }}
         />
       )}
 
       {editRow && editDraft && (
         <FormModal
           title={T.editTitle}
-          codeVal={String(editDraft.code)} nameVal={editDraft.name}
-          onCode={v => setEditDraft(d => d ? { ...d, code: Number(v) || d.code } : d)}
+          nameVal={editDraft.name}
           onName={v => setEditDraft(d => d ? { ...d, name: v } : d)}
           onSave={() => { void saveEdit(); }}
           onClose={() => { setEditRow(null); setEditDraft(null); }}
@@ -305,7 +291,7 @@ export function AdminDepartmentsTab({ D, t }: Props) {
             </span>
           </div>
           <button
-            onClick={() => { setAddCode(String(nextCode())); setShowAdd(true); }}
+            onClick={() => setShowAdd(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 7,
               padding: '8px 16px', borderRadius: 11, border: 'none',

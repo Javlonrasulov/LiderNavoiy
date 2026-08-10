@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
 import { PRODUCT_TYPES, type ProductType } from './create-company.dto';
 
 export class UpdateCompanyDto {
@@ -28,6 +28,13 @@ export class UpdateCompanyDto {
   @IsString()
   @MaxLength(80)
   color?: string;
+
+  @ApiPropertyOptional({ example: '/uploads/companies/uuid.jpg' })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(500)
+  imageUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

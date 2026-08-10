@@ -23,6 +23,10 @@ export class Company {
   @Column({ type: 'varchar', nullable: true })
   color: string | null;
 
+  /** Organizatsiya rasmi — /uploads/companies/... */
+  @Column({ type: 'varchar', nullable: true })
+  imageUrl: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   description: string | null;
 

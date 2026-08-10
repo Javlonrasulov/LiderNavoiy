@@ -8,18 +8,27 @@ import { useTheme } from '../components/ThemeContext';
 import { useAdminAuth, type Company, type ProductType } from '../components/AdminAuthContext';
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang, Lang } from '../components/LangContext';
-import { api } from '../api/client';
+import { api, resolveFileUrl } from '../api/client';
 
 /* ─── Types ─────────────────────────────────────────────── */
-interface LocalCompany extends Company {
-  imageUrl?: string;
-}
+type LocalCompany = Company;
 
 const PRODUCT_TYPE_OPTIONS: { id: ProductType; labelKey: 'productTypeKgDona' | 'productTypeDona' | 'productTypeKg' }[] = [
   { id: 'kg_dona', labelKey: 'productTypeKgDona' },
   { id: 'dona', labelKey: 'productTypeDona' },
   { id: 'kg', labelKey: 'productTypeKg' },
 ];
+
+/** data: / http(s) / relative → DB da saqlanadigan /uploads/... yo‘li */
+function toStoredImagePath(url: string | null | undefined): string | null {
+  if (!url?.trim()) return null;
+  const raw = url.trim();
+  if (raw.startsWith('data:')) return raw; // hali yuklanmagan
+  const marker = '/uploads/';
+  const idx = raw.indexOf(marker);
+  if (idx >= 0) return raw.slice(idx);
+  return raw.startsWith('/') ? raw : null;
+}
 
 /* ─── Lang ───────────────────────────────────────────────── */
 const LANGS: { id: Lang; label: string; flag: string }[] = [
@@ -174,7 +183,7 @@ export default function AdminSelectCompany() {
       shortName: company.shortName || company.name.trim().split(/\s+/)[0] || '',
       description: company.description,
       icon: company.icon, color: company.color,
-      imageUrl: company.imageUrl ?? '',
+      imageUrl: company.imageUrl ? resolveFileUrl(company.imageUrl) : '',
       productType: company.productType ?? 'kg_dona',
     });
     setIconTab(company.imageUrl ? 'image' : 'icon');
@@ -189,16 +198,26 @@ export default function AdminSelectCompany() {
     if (!form.name.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
-    const payload = {
-      name: form.name.trim(),
-      shortName: form.shortName.trim() || form.name.trim().split(/\s+/)[0] || form.name.trim(),
-      description: form.description.trim(),
-      icon: form.icon,
-      color: form.color,
-      productType: form.productType,
-    };
     const hasToken = !!localStorage.getItem('api_access_token');
     try {
+      let imageUrl: string | null = toStoredImagePath(form.imageUrl);
+      if (imageUrl?.startsWith('data:')) {
+        if (hasToken) {
+          const uploaded = await api.uploadCompanyImage(imageUrl);
+          imageUrl = uploaded.url;
+        }
+      }
+
+      const payload = {
+        name: form.name.trim(),
+        shortName: form.shortName.trim() || form.name.trim().split(/\s+/)[0] || form.name.trim(),
+        description: form.description.trim(),
+        icon: form.icon,
+        color: form.color,
+        productType: form.productType,
+        imageUrl,
+      };
+
       if (modalMode === 'add') {
         if (hasToken) {
           await api.createCompany(payload);
@@ -207,7 +226,6 @@ export default function AdminSelectCompany() {
           const newCo: LocalCompany = {
             id: `org_${Date.now()}`,
             ...payload,
-            imageUrl: form.imageUrl || undefined,
             agents: 0, clients: 0,
           };
           setCompanies(prev => [...prev, newCo]);
@@ -221,34 +239,12 @@ export default function AdminSelectCompany() {
             const msg = e instanceof Error ? e.message : '';
             if (!/404|not found/i.test(msg)) throw e;
             setCompanies(prev => prev.map(c =>
-              c.id === editingId
-                ? {
-                    ...c,
-                    name: payload.name,
-                    shortName: payload.shortName,
-                    description: payload.description,
-                    icon: payload.icon,
-                    color: payload.color,
-                    productType: payload.productType,
-                    imageUrl: form.imageUrl || undefined,
-                  }
-                : c
+              c.id === editingId ? { ...c, ...payload } : c
             ));
           }
         } else {
           setCompanies(prev => prev.map(c =>
-            c.id === editingId
-              ? {
-                  ...c,
-                  name: payload.name,
-                  shortName: payload.shortName,
-                  description: payload.description,
-                  icon: payload.icon,
-                  color: payload.color,
-                  productType: payload.productType,
-                  imageUrl: form.imageUrl || undefined,
-                }
-              : c
+            c.id === editingId ? { ...c, ...payload } : c
           ));
         }
       }
@@ -401,7 +397,7 @@ export default function AdminSelectCompany() {
                 {/* Icon / Image */}
                 {company.imageUrl ? (
                   <div className="w-12 h-12 rounded-2xl overflow-hidden mb-3 shadow-md flex-shrink-0">
-                    <img src={company.imageUrl} alt={company.name} className="w-full h-full object-cover" />
+                    <img src={resolveFileUrl(company.imageUrl)} alt={company.name} className="w-full h-full object-cover" />
                   </div>
                 ) : (
                   <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${company.color} flex items-center justify-center text-2xl mb-3 shadow-md flex-shrink-0`}>

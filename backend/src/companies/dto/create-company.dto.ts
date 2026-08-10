@@ -29,6 +29,12 @@ export class CreateCompanyDto {
   @MaxLength(80)
   color?: string;
 
+  @ApiPropertyOptional({ example: '/uploads/companies/uuid.jpg' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  imageUrl?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

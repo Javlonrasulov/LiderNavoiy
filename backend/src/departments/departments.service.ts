@@ -33,6 +33,9 @@ export class DepartmentsService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    // Eski soft-delete qatorlar kodni band qilib turardi
+    await this.repo.delete({ isActive: false });
+
     const count = await this.repo.count();
     if (count > 0) return;
     await this.repo.save(
@@ -60,17 +63,8 @@ export class DepartmentsService implements OnModuleInit {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Name required');
 
-    let code = dto.code;
-    if (!code) {
-      const max = await this.repo
-        .createQueryBuilder('d')
-        .select('MAX(d.code)', 'max')
-        .getRawOne<{ max: string | null }>();
-      code = (Number(max?.max) || 0) + 1;
-    }
-
-    const dup = await this.repo.findOne({ where: { code } });
-    if (dup) throw new BadRequestException('Bu kod bilan bo\'linma mavjud');
+    // Kod har doim avtomatik — dublikat xatolik bo‘lmasin
+    const code = await this.nextAvailableCode();
 
     const saved = await this.repo.save(
       this.repo.create({ code, name, isActive: true }),
@@ -80,13 +74,7 @@ export class DepartmentsService implements OnModuleInit {
 
   async update(id: string, dto: UpdateDepartmentDto): Promise<DepartmentDto> {
     const row = await this.findOne(id);
-    if (dto.code !== undefined) {
-      const dup = await this.repo.findOne({ where: { code: dto.code } });
-      if (dup && dup.id !== id) {
-        throw new BadRequestException('Bu kod bilan bo\'linma mavjud');
-      }
-      row.code = dto.code;
-    }
+    // Kod o‘zgartirilmaydi — faqat nom / holat
     if (dto.name !== undefined) row.name = dto.name.trim();
     if (dto.isActive !== undefined) row.isActive = dto.isActive;
     return this.toDto(await this.repo.save(row));
@@ -94,9 +82,17 @@ export class DepartmentsService implements OnModuleInit {
 
   async remove(id: string) {
     const row = await this.findOne(id);
-    row.isActive = false;
-    await this.repo.save(row);
+    await this.repo.remove(row);
     return { ok: true };
+  }
+
+  /** Eng kichik bo‘sh kod (o‘chirilganlar ham hisobga olinadi) */
+  private async nextAvailableCode(): Promise<number> {
+    const rows = await this.repo.find({ select: ['code'] });
+    const used = new Set(rows.map((r) => r.code));
+    let code = 1;
+    while (used.has(code)) code += 1;
+    return code;
   }
 
   private toDto(row: Department): DepartmentDto {

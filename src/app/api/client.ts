@@ -118,6 +118,7 @@ export interface BackendCompany {
   shortName: string | null;
   icon: string | null;
   color: string | null;
+  imageUrl?: string | null;
   description: string | null;
   productType?: 'kg_dona' | 'dona' | 'kg' | null;
   warehouseName?: string | null;
@@ -546,6 +547,7 @@ export const api = {
     shortName?: string;
     icon?: string;
     color?: string;
+    imageUrl?: string | null;
     description?: string;
     productType?: 'kg_dona' | 'dona' | 'kg';
     agentsCanAddClients?: boolean;
@@ -563,6 +565,7 @@ export const api = {
       shortName?: string;
       icon?: string;
       color?: string;
+      imageUrl?: string | null;
       description?: string;
       productType?: 'kg_dona' | 'dona' | 'kg';
       warehouseName?: string | null;
@@ -574,6 +577,12 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
+
+  uploadCompanyImage: (dataUrl: string) =>
+    request<{ url: string; fullUrl: string; mimeType: string; fileSize: number }>(
+      '/companies/upload-image',
+      { method: 'POST', body: JSON.stringify({ dataUrl }) },
+    ),
 
   // ─── App users (APK login) ───
   listAppUsers: () => request<AppUserRecord[]>('/users/app'),
