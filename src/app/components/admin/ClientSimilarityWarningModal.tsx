@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import {
   SIMILARITY_FIELD_LABELS,
   hasExactInnCollision,
@@ -87,16 +87,27 @@ export function ClientSimilarityWarningModal({
   };
 
   const innBlocked = hasExactInnCollision(match);
+  const displayPct = innBlocked ? 100 : match.overallPct;
   const risk = innBlocked ? 'red' : similarityRisk(match.overallPct);
   const colors = similarityRiskColors(risk, D);
   const riskLabel =
     risk === 'red' ? L.riskHigh : risk === 'yellow' ? L.riskMedium : L.riskLow;
 
+  const fieldsOrdered = [...match.fields].sort((a, b) => {
+    if (a.key === 'inn') return -1;
+    if (b.key === 'inn') return 1;
+    return 0;
+  });
+
+  const close = () => {
+    if (!busy) onCancel();
+  };
+
   return (
     <div
       className="fixed inset-0 z-[400] flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
-      onClick={() => { if (!busy) onCancel(); }}
+      onClick={close}
     >
       <div
         className={`relative w-full max-w-md rounded-2xl border shadow-2xl p-5 sm:p-6 ${
@@ -104,7 +115,18 @@ export function ClientSimilarityWarningModal({
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-3 mb-4">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={close}
+          aria-label="Close"
+          className={`absolute top-3 right-3 w-9 h-9 rounded-xl flex items-center justify-center transition-colors disabled:opacity-50
+            ${D ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
+        >
+          <X size={18} />
+        </button>
+
+        <div className="flex items-start gap-3 mb-4 pr-8">
           <div
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
               innBlocked
@@ -120,7 +142,8 @@ export function ClientSimilarityWarningModal({
           <div className="flex-1 min-w-0">
             <p className={`text-base font-bold ${D ? 'text-white' : 'text-gray-900'}`}>{L.title}</p>
             <p className="mt-1.5 text-sm font-bold" style={{ color: colors.color }}>
-              {L.probability}: {match.overallPct}%
+              {L.probability}: {displayPct}%
+              {innBlocked ? ' · INN 100%' : ''}
             </p>
             <span
               className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-[11px] font-bold"
@@ -134,7 +157,7 @@ export function ClientSimilarityWarningModal({
             className="w-14 h-14 rounded-2xl flex items-center justify-center text-lg font-black shrink-0"
             style={{ background: colors.bg, color: colors.color, border: `1px solid ${colors.border}` }}
           >
-            {match.overallPct}%
+            {displayPct}%
           </div>
         </div>
 
@@ -163,8 +186,13 @@ export function ClientSimilarityWarningModal({
             {match.client.name || '—'}
           </p>
           {match.client.inn && (
-            <p className={`text-xs mt-0.5 font-mono ${D ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p
+              className={`text-xs mt-0.5 font-mono font-bold ${
+                innBlocked ? 'text-rose-500' : D ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            >
               INN: {match.client.inn}
+              {innBlocked ? ' · 100%' : ''}
             </p>
           )}
           {match.client.phone && (
@@ -173,13 +201,14 @@ export function ClientSimilarityWarningModal({
         </div>
 
         <div className="flex flex-col gap-2.5 mb-5">
-          {match.fields.map((f) => {
+          {fieldsOrdered.map((f) => {
+            const pct = f.key === 'inn' && innBlocked ? 100 : f.pct;
             const barColor =
-              f.pct <= 0
+              pct <= 0
                 ? D
                   ? '#6b7280'
                   : '#9ca3af'
-                : similarityRiskColors(f.pct >= 70 ? 'red' : f.pct >= 40 ? 'yellow' : 'green', D).color;
+                : similarityRiskColors(pct >= 70 ? 'red' : pct >= 40 ? 'yellow' : 'green', D).color;
             return (
               <div key={f.key}>
                 <div className="flex justify-between gap-2 mb-1">
@@ -187,13 +216,13 @@ export function ClientSimilarityWarningModal({
                     {fieldLabel(f.key)}
                   </span>
                   <span className="text-xs font-bold" style={{ color: barColor }}>
-                    {f.pct}%
+                    {pct}%
                   </span>
                 </div>
                 <div className={`h-1.5 rounded-full overflow-hidden ${D ? 'bg-gray-800' : 'bg-gray-200'}`}>
                   <div
                     className="h-full rounded-full transition-all"
-                    style={{ width: `${f.pct}%`, background: barColor }}
+                    style={{ width: `${pct}%`, background: barColor }}
                   />
                 </div>
               </div>
@@ -201,31 +230,34 @@ export function ClientSimilarityWarningModal({
           })}
         </div>
 
-        <div className={`grid gap-2.5 ${innBlocked ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
             disabled={busy}
-            onClick={onCancel}
+            onClick={close}
             className={`h-11 rounded-xl text-sm font-bold border transition-colors disabled:opacity-60 ${
-              innBlocked
-                ? 'bg-indigo-600 hover:bg-indigo-500 border-indigo-600 text-white'
-                : D
-                  ? 'border-gray-700 text-gray-300 hover:bg-gray-800'
-                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              D
+                ? 'border-gray-700 text-gray-300 hover:bg-gray-800'
+                : 'border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
             {innBlocked ? L.understand : L.cancelLabel}
           </button>
-          {!innBlocked && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onConfirm}
-              className="h-11 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 shadow-lg shadow-indigo-500/20"
-            >
-              {L.confirmLabel}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={busy || innBlocked}
+            onClick={() => {
+              if (innBlocked || busy) return;
+              onConfirm();
+            }}
+            title={innBlocked ? L.innBlocked : undefined}
+            className={`h-11 rounded-xl text-sm font-bold text-white shadow-lg shadow-indigo-500/20
+              ${innBlocked
+                ? 'bg-gray-400 cursor-not-allowed opacity-50 shadow-none'
+                : 'bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60'}`}
+          >
+            {L.confirmLabel}
+          </button>
         </div>
       </div>
     </div>
