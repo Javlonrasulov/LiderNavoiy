@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
+import { Check, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { api, type BackendClient } from '../../api/client';
 import { ClientSimilarityWarningModal } from './ClientSimilarityWarningModal';
 import AddClient from '../AddClient';
@@ -174,8 +174,9 @@ export function ClientExcelImportModal({
   const [manualDraft, setManualDraft] = useState<ClientRow | null>(null);
   const [manualFailKey, setManualFailKey] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<string[]>([]);
-  const [skipExactDuplicates, setSkipExactDuplicates] = useState(true);
+  const [skipExactDuplicates, setSkipExactDuplicates] = useState(false);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [parseBusy, setParseBusy] = useState(false);
 
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
 
@@ -286,7 +287,8 @@ export function ClientExcelImportModal({
 
   const parseFiles = useCallback(
     async (fileList: FileList | File[]) => {
-      const files = Array.from(fileList).filter((f) => /\.xlsx?$/i.test(f.name) || f.name.length > 0);
+      // FileList live — input tozalansa bo'shaydi; darhol nusxa olish kerak
+      const files = Array.from(fileList).filter((f) => f && f.size >= 0);
       if (files.length === 0) {
         setError(tr('excelImportNoFiles', 'Excel fayl tanlang.'));
         return;
@@ -294,7 +296,10 @@ export function ClientExcelImportModal({
       setError(null);
       setImportReport(null);
       setFailedImports([]);
+      setParseBusy(true);
+      setProgress(tr('excelImportReading', "Excel o'qilmoqda…"));
       try {
+        setProgress(tr('excelImportLoadingMeta', 'Liniya va mijozlar yuklanmoqda…'));
         const [lineListRaw, clients] = await Promise.all([
           api.getLines(companyId),
           api.getClients(companyId),
@@ -307,14 +312,21 @@ export function ClientExcelImportModal({
         const newNames: string[] = [];
         const fileErrors: string[] = [];
 
-        for (const file of files) {
+        for (let fi = 0; fi < files.length; fi++) {
+          const file = files[fi];
+          setProgress(`${tr('excelImportReading', "Excel o'qilmoqda…")} ${fi + 1}/${files.length}: ${file.name}`);
           try {
             const buf = await file.arrayBuffer();
             const wb = XLSX.read(buf, { type: 'array' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
+            const sheetName = wb.SheetNames[0];
+            if (!sheetName || !wb.Sheets[sheetName]) {
+              throw new Error(`${file.name}: varaq topilmadi`);
+            }
+            const ws = wb.Sheets[sheetName];
             const sheet = XLSX.utils.sheet_to_json<string[]>(ws, {
               header: 1,
               defval: '',
+              raw: false,
             }) as string[][];
             const parsed = parseSheetRows(sheet, lineList, file.name);
             allParsed.push(...parsed);
@@ -326,6 +338,7 @@ export function ClientExcelImportModal({
 
         if (allParsed.length === 0) {
           setError(fileErrors.join('\n') || tr('excelImportNoRows', "Excel'da mijoz qatorlari topilmadi."));
+          setProgress('');
           return;
         }
 
@@ -344,11 +357,17 @@ export function ClientExcelImportModal({
           for (const n of newNames) set.add(n);
           return Array.from(set);
         });
+        setProgress(
+          `${newNames.length} fayl · ${allParsed.length} ${tr('excelImportRowsLoaded', 'qator yuklandi')}`,
+        );
         if (fileErrors.length > 0) {
           setError(fileErrors.join('\n'));
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Excel o‘qishda xatolik');
+        setProgress('');
+      } finally {
+        setParseBusy(false);
       }
     },
     [companyId, t],
@@ -637,7 +656,7 @@ export function ClientExcelImportModal({
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center p-4"
       style={{ background: 'rgba(0,0,0,0.55)' }}
-      onClick={() => !busy && onClose()}
+      onClick={() => !busy && !parseBusy && onClose()}
     >
       <div
         className={`w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border shadow-xl ${card}`}
@@ -665,27 +684,32 @@ export function ClientExcelImportModal({
           <input
             ref={fileRef}
             type="file"
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             multiple
             className="hidden"
             onChange={(e) => {
               const list = e.target.files;
+              if (!list || list.length === 0) return;
+              // Muhim: value='' FileListni bo'shatadi — avval Array.from
+              const files = Array.from(list);
               e.target.value = '';
-              if (list && list.length > 0) void parseFiles(list);
+              void parseFiles(files);
             }}
           />
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || parseBusy}
             onClick={() => fileRef.current?.click()}
             className={`w-full h-11 rounded-xl border border-dashed flex items-center justify-center gap-2 text-sm font-semibold ${
               D ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}
+            } disabled:opacity-50`}
           >
             <Upload size={16} />{' '}
-            {loadedFiles.length > 0
-              ? tr('excelImportPickMore', "Yana Excel qo'shish (.xlsx)")
-              : tr('excelImportPick', 'Excel fayllarni tanlash (.xlsx)')}
+            {parseBusy
+              ? tr('excelImportReading', "Excel o'qilmoqda…")
+              : loadedFiles.length > 0
+                ? tr('excelImportPickMore', "Yana Excel qo'shish (.xlsx)")
+                : tr('excelImportPick', 'Excel fayllarni tanlash (.xlsx)')}
           </button>
 
           {loadedFiles.length > 0 && (
@@ -713,18 +737,25 @@ export function ClientExcelImportModal({
             </div>
           )}
 
-          <label
-            className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 cursor-pointer select-none ${
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setSkipExactDuplicates((v) => !v)}
+            className={`w-full flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left select-none transition-colors disabled:opacity-50 ${
               D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'
             }`}
           >
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={skipExactDuplicates}
-              disabled={busy}
-              onChange={(e) => setSkipExactDuplicates(e.target.checked)}
-            />
+            <span
+              className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                skipExactDuplicates
+                  ? 'bg-indigo-600 border-indigo-600'
+                  : D
+                    ? 'border-gray-600 bg-transparent'
+                    : 'border-gray-300 bg-white'
+              }`}
+            >
+              {skipExactDuplicates && <Check size={10} className="text-white" strokeWidth={3} />}
+            </span>
             <span className="min-w-0">
               <span className={`block text-sm font-semibold ${text}`}>
                 {tr('excelImportSkipExact', "100% bir xilliklarni o'tkazib yuborish")}
@@ -736,7 +767,7 @@ export function ClientExcelImportModal({
                 )}
               </span>
             </span>
-          </label>
+          </button>
 
           {error && (
             <div className="rounded-xl px-3 py-2 text-sm text-red-500 bg-red-500/10 border border-red-500/30 whitespace-pre-wrap">
@@ -863,15 +894,25 @@ export function ClientExcelImportModal({
                     {rows.map((r) => (
                       <tr key={r.key} className={`border-t ${D ? 'border-gray-800' : 'border-gray-100'}`}>
                         <td className="p-2">
-                          <input
-                            type="checkbox"
-                            checked={r.selected}
-                            onChange={() =>
+                          <button
+                            type="button"
+                            onClick={() =>
                               setRows((prev) =>
                                 prev.map((x) => (x.key === r.key ? { ...x, selected: !x.selected } : x)),
                               )
                             }
-                          />
+                            className={`w-4 h-4 rounded border flex items-center justify-center ${
+                              r.selected
+                                ? 'bg-indigo-600 border-indigo-600'
+                                : D
+                                  ? 'border-gray-600'
+                                  : 'border-gray-300'
+                            }`}
+                            aria-checked={r.selected}
+                            role="checkbox"
+                          >
+                            {r.selected && <Check size={10} className="text-white" strokeWidth={3} />}
+                          </button>
                         </td>
                         <td className={`p-2 font-mono ${text}`}>{r.code || '—'}</td>
                         <td className={`p-2 ${text}`}>{r.name}</td>
@@ -900,7 +941,7 @@ export function ClientExcelImportModal({
         <div className={`flex justify-end gap-2 px-5 py-4 border-t ${D ? 'border-gray-800' : 'border-gray-100'}`}>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || parseBusy}
             onClick={onClose}
             className={`h-10 px-4 rounded-xl text-sm font-bold border ${
               D ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-700'
@@ -910,7 +951,7 @@ export function ClientExcelImportModal({
           </button>
           <button
             type="button"
-            disabled={busy || selectedCount === 0}
+            disabled={busy || parseBusy || selectedCount === 0}
             onClick={() => void runImport()}
             className="h-10 px-4 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
           >
