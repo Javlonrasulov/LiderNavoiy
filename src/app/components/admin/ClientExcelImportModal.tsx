@@ -654,12 +654,12 @@ export function ClientExcelImportModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
       style={{ background: 'rgba(0,0,0,0.55)' }}
       onClick={() => !busy && !parseBusy && onClose()}
     >
       <div
-        className={`w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border shadow-xl ${card}`}
+        className={`w-full max-w-4xl my-auto max-h-[min(90vh,100dvh-1.5rem)] flex flex-col overflow-hidden rounded-2xl border shadow-xl ${card}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-5 py-4 border-b border-inherit flex-shrink-0">
@@ -680,7 +680,7 @@ export function ClientExcelImportModal({
           </button>
         </div>
 
-        <div className="px-5 py-4 overflow-auto flex-1 space-y-3">
+        <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0 space-y-3">
           <input
             ref={fileRef}
             type="file"
@@ -876,7 +876,7 @@ export function ClientExcelImportModal({
                   {tr('excelImportToggleAll', 'Barchasini belgilash / olish')}
                 </button>
               </div>
-              <div className="overflow-auto rounded-xl border border-inherit max-h-[46vh]">
+              <div className="overflow-x-auto rounded-xl border border-inherit">
                 <table className="w-full text-xs">
                   <thead className={D ? 'bg-[#121212] sticky top-0' : 'bg-gray-50 sticky top-0'}>
                     <tr className={sub}>
@@ -938,7 +938,7 @@ export function ClientExcelImportModal({
           )}
         </div>
 
-        <div className={`flex justify-end gap-2 px-5 py-4 border-t ${D ? 'border-gray-800' : 'border-gray-100'}`}>
+        <div className={`flex justify-end gap-2 px-5 py-4 border-t flex-shrink-0 ${D ? 'border-gray-800' : 'border-gray-100'}`}>
           <button
             type="button"
             disabled={busy || parseBusy}
