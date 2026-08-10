@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { FileSpreadsheet, Upload, X } from 'lucide-react';
+import { FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { api, type BackendClient } from '../../api/client';
 import { ClientSimilarityWarningModal } from './ClientSimilarityWarningModal';
+import AddClient from '../AddClient';
+import type { ClientRow } from '../../data/adminData';
 import {
   findBestSimilarityMatch,
   normalizeClientCode,
@@ -34,6 +36,20 @@ type ImportRow = {
   selected: boolean;
 };
 
+type FailedImport = {
+  row: ImportRow;
+  error: string;
+};
+
+type ImportReport = {
+  created: number;
+  skippedExact: number;
+  skippedSimilar: number;
+  failed: number;
+  aborted: boolean;
+  files: number;
+};
+
 type MissingLinePrompt = {
   label: string;
   suggestedCode: string;
@@ -43,10 +59,50 @@ type MissingLinePrompt = {
 type Props = {
   D: boolean;
   companyId?: string;
+  agents?: { id: string; name: string; lineCode?: string }[];
+  lineOptions?: string[];
   onClose: () => void;
   onDone: () => void;
+  onCreateClient?: (data: Partial<ClientRow> & {
+    appUsername?: string;
+    appPassword?: string;
+    isActive?: boolean;
+  }) => Promise<string | void>;
   t?: Record<string, string>;
 };
+
+function importRowToDraft(row: ImportRow, companyId?: string): ClientRow {
+  const gps =
+    row.lat != null && row.lng != null ? `${row.lat},${row.lng}` : '';
+  const line =
+    row.lineName && row.lineCode
+      ? (row.lineRaw || `${row.lineCode} - ${row.lineName}`)
+      : row.lineRaw || row.lineCode || '';
+  return {
+    id: '',
+    code: row.code || '',
+    name: row.name,
+    fullName: row.name,
+    line,
+    lineCode: row.lineCode || '',
+    priceCat: 'Standard',
+    territory: row.territory || '',
+    inn: '',
+    legalAddr: row.address || '',
+    phone: '',
+    contact: '',
+    cls: row.clientClass || '',
+    gps,
+    agent: '',
+    balance: 0,
+    category: row.clientClass || 'Standard',
+    lastVisit: '',
+    rowType: 'normal',
+    isActive: row.isActive,
+    companyId,
+    companyIds: companyId ? [companyId] : [],
+  };
+}
 
 function normHeader(h: string): string {
   return String(h || '')
@@ -81,7 +137,16 @@ function matchExistingLine(
   return undefined;
 }
 
-export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }: Props) {
+export function ClientExcelImportModal({
+  D,
+  companyId,
+  agents = [],
+  lineOptions = [],
+  onClose,
+  onDone,
+  onCreateClient,
+  t = {},
+}: Props) {
   const text = D ? 'text-white' : 'text-gray-900';
   const sub = D ? 'text-gray-400' : 'text-gray-500';
   const card = D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-200';
@@ -103,7 +168,14 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
   const [lineResolutions, setLineResolutions] = useState<Record<string, string>>({});
   const missingResolveRef = useRef<((code: string | null) => void) | null>(null);
   const [similarityMatch, setSimilarityMatch] = useState<SimilarityMatch | null>(null);
-  const similarityResolveRef = useRef<((ok: boolean) => void) | null>(null);
+  const [similarityProgress, setSimilarityProgress] = useState<{ index: number; total: number } | null>(null);
+  const similarityResolveRef = useRef<((decision: 'add' | 'skip' | 'abort') => void) | null>(null);
+  const [failedImports, setFailedImports] = useState<FailedImport[]>([]);
+  const [manualDraft, setManualDraft] = useState<ClientRow | null>(null);
+  const [manualFailKey, setManualFailKey] = useState<string | null>(null);
+  const [loadedFiles, setLoadedFiles] = useState<string[]>([]);
+  const [skipExactDuplicates, setSkipExactDuplicates] = useState(true);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
 
@@ -124,105 +196,173 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
     fn?.(code);
   };
 
-  const askSimilarity = (match: SimilarityMatch) =>
-    new Promise<boolean>((resolve) => {
+  const askSimilarity = (
+    match: SimilarityMatch,
+    progress?: { index: number; total: number },
+  ) =>
+    new Promise<'add' | 'skip' | 'abort'>((resolve) => {
       similarityResolveRef.current = resolve;
+      setSimilarityProgress(progress ?? null);
       setSimilarityMatch(match);
     });
 
-  const finishSimilarity = (ok: boolean) => {
+  const finishSimilarity = (decision: 'add' | 'skip' | 'abort') => {
     const fn = similarityResolveRef.current;
     similarityResolveRef.current = null;
     setSimilarityMatch(null);
-    fn?.(ok);
+    setSimilarityProgress(null);
+    fn?.(decision);
   };
 
-  const parseFile = useCallback(async (file: File) => {
-    setError(null);
-    setRows([]);
-    setLineResolutions({});
-    try {
-      const [lineList, clients] = await Promise.all([
-        api.getLines(companyId),
-        api.getClients(companyId),
-      ]);
-      setLines(lineList.map((l) => ({ id: l.id, code: l.code, name: l.name })));
-      setExistingClients(clients);
-
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const sheet = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][];
-
-      let hdrIdx = -1;
-      for (let i = 0; i < Math.min(sheet.length, 40); i++) {
-        const joined = sheet[i].map(normHeader).join('|');
-        if (
-          (joined.includes('торг') && joined.includes('точк')) ||
-          joined.includes('torg') ||
-          (joined.includes('код') && joined.includes('линия')) ||
-          (joined.includes('kod') && joined.includes('liniya'))
-        ) {
-          hdrIdx = i;
-          break;
-        }
+  const parseSheetRows = (
+    sheet: string[][],
+    lineList: LineRow[],
+    fileName: string,
+  ): ImportRow[] => {
+    let hdrIdx = -1;
+    for (let i = 0; i < Math.min(sheet.length, 40); i++) {
+      const joined = sheet[i].map(normHeader).join('|');
+      if (
+        (joined.includes('торг') && joined.includes('точк')) ||
+        joined.includes('torg') ||
+        (joined.includes('код') && joined.includes('линия')) ||
+        (joined.includes('kod') && joined.includes('liniya'))
+      ) {
+        hdrIdx = i;
+        break;
       }
-      if (hdrIdx < 0) {
-        setError('Jadval sarlavhasi topilmadi. "Торг.точка" / "Код" ustunlari kerak.');
-        return;
-      }
-
-      const hdr = sheet[hdrIdx].map(normHeader);
-      const cCode = findCol(hdr, ['код', 'kod', 'code']);
-      const cName = findCol(hdr, ['торг.точк', 'торг точк', 'torg', 'точка', 'nomi', 'name']);
-      const cLine = findCol(hdr, ['линия', 'liniya', 'line']);
-      const cStatus = findCol(hdr, ['статус', 'status', 'holat']);
-      const cClass = findCol(hdr, ['класс тт', 'класстт', 'klas tt', 'класс', 'klas', 'class']);
-      const cTerritory = findCol(hdr, ['территория', 'hudud', 'ҳудуд', 'territory', 'регион']);
-      const cAddr = findCol(hdr, ['адрес', 'adres', 'address', 'manzil']);
-      const cGps = findCol(hdr, ['gps', 'коорд', 'координат']);
-
-      if (cName < 0) {
-        setError('"Торг.точка" (nomi) ustuni topilmadi.');
-        return;
-      }
-
-      const parsed: ImportRow[] = [];
-      for (let i = hdrIdx + 1; i < sheet.length; i++) {
-        const r = sheet[i];
-        const name = String(r[cName] ?? '').trim();
-        if (!name || /итого|всего|жами/i.test(name)) continue;
-        const code = normalizeClientCode(cCode >= 0 ? r[cCode] : '');
-        const lineRaw = cLine >= 0 ? String(r[cLine] ?? '').trim() : '';
-        const parsedLine = parseLineLabel(lineRaw);
-        const gps = parseGpsCell(cGps >= 0 ? String(r[cGps] ?? '') : '');
-        const existing = matchExistingLine(lineList, lineRaw, parsedLine);
-        parsed.push({
-          key: `${i}-${code}-${name}`,
-          code,
-          name,
-          lineRaw,
-          lineCode: existing?.code || parsedLine.code,
-          lineName: existing?.name || parsedLine.name || lineRaw,
-          isActive: parseActiveStatus(cStatus >= 0 ? String(r[cStatus] ?? '') : ''),
-          clientClass: cClass >= 0 ? String(r[cClass] ?? '').trim() : '',
-          territory: cTerritory >= 0 ? String(r[cTerritory] ?? '').trim() : '',
-          address: cAddr >= 0 ? String(r[cAddr] ?? '').trim() : '',
-          lat: gps.lat,
-          lng: gps.lng,
-          selected: true,
-        });
-      }
-
-      if (parsed.length === 0) {
-        setError("Excel'da mijoz qatorlari topilmadi.");
-        return;
-      }
-      setRows(parsed);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Excel o‘qishda xatolik');
     }
-  }, [companyId]);
+    if (hdrIdx < 0) {
+      throw new Error(
+        `${fileName}: jadval sarlavhasi topilmadi. "Торг.точка" / "Код" ustunlari kerak.`,
+      );
+    }
+
+    const hdr = sheet[hdrIdx].map(normHeader);
+    const cCode = findCol(hdr, ['код', 'kod', 'code']);
+    const cName = findCol(hdr, ['торг.точк', 'торг точк', 'torg', 'точка', 'nomi', 'name']);
+    const cLine = findCol(hdr, ['линия', 'liniya', 'line']);
+    const cStatus = findCol(hdr, ['статус', 'status', 'holat']);
+    const cClass = findCol(hdr, ['класс тт', 'класстт', 'klas tt', 'класс', 'klas', 'class']);
+    const cTerritory = findCol(hdr, ['территория', 'hudud', 'ҳудуд', 'territory', 'регион']);
+    const cAddr = findCol(hdr, ['адрес', 'adres', 'address', 'manzil']);
+    const cGps = findCol(hdr, ['gps', 'коорд', 'координат']);
+
+    if (cName < 0) {
+      throw new Error(`${fileName}: "Торг.точка" (nomi) ustuni topilmadi.`);
+    }
+
+    const parsed: ImportRow[] = [];
+    for (let i = hdrIdx + 1; i < sheet.length; i++) {
+      const r = sheet[i];
+      const name = String(r[cName] ?? '').trim();
+      if (!name || /итого|всего|жами/i.test(name)) continue;
+      const code = normalizeClientCode(cCode >= 0 ? r[cCode] : '');
+      const lineRaw = cLine >= 0 ? String(r[cLine] ?? '').trim() : '';
+      const parsedLine = parseLineLabel(lineRaw);
+      const gps = parseGpsCell(cGps >= 0 ? String(r[cGps] ?? '') : '');
+      const existing = matchExistingLine(lineList, lineRaw, parsedLine);
+      parsed.push({
+        key: `${fileName}::${i}-${code}-${name}`,
+        code,
+        name,
+        lineRaw,
+        lineCode: existing?.code || parsedLine.code,
+        lineName: existing?.name || parsedLine.name || lineRaw,
+        isActive: parseActiveStatus(cStatus >= 0 ? String(r[cStatus] ?? '') : ''),
+        clientClass: cClass >= 0 ? String(r[cClass] ?? '').trim() : '',
+        territory: cTerritory >= 0 ? String(r[cTerritory] ?? '').trim() : '',
+        address: cAddr >= 0 ? String(r[cAddr] ?? '').trim() : '',
+        lat: gps.lat,
+        lng: gps.lng,
+        selected: true,
+      });
+    }
+    if (parsed.length === 0) {
+      throw new Error(`${fileName}: mijoz qatorlari topilmadi.`);
+    }
+    return parsed;
+  };
+
+  const parseFiles = useCallback(
+    async (fileList: FileList | File[]) => {
+      const files = Array.from(fileList).filter((f) => /\.xlsx?$/i.test(f.name) || f.name.length > 0);
+      if (files.length === 0) {
+        setError(tr('excelImportNoFiles', 'Excel fayl tanlang.'));
+        return;
+      }
+      setError(null);
+      setImportReport(null);
+      setFailedImports([]);
+      try {
+        const [lineListRaw, clients] = await Promise.all([
+          api.getLines(companyId),
+          api.getClients(companyId),
+        ]);
+        const lineList = lineListRaw.map((l) => ({ id: l.id, code: l.code, name: l.name }));
+        setLines(lineList);
+        setExistingClients(clients);
+
+        const allParsed: ImportRow[] = [];
+        const newNames: string[] = [];
+        const fileErrors: string[] = [];
+
+        for (const file of files) {
+          try {
+            const buf = await file.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const sheet = XLSX.utils.sheet_to_json<string[]>(ws, {
+              header: 1,
+              defval: '',
+            }) as string[][];
+            const parsed = parseSheetRows(sheet, lineList, file.name);
+            allParsed.push(...parsed);
+            newNames.push(file.name);
+          } catch (e) {
+            fileErrors.push(e instanceof Error ? e.message : String(e));
+          }
+        }
+
+        if (allParsed.length === 0) {
+          setError(fileErrors.join('\n') || tr('excelImportNoRows', "Excel'da mijoz qatorlari topilmadi."));
+          return;
+        }
+
+        setRows((prev) => {
+          const seen = new Set(prev.map((r) => r.key));
+          const merged = [...prev];
+          for (const row of allParsed) {
+            if (seen.has(row.key)) continue;
+            seen.add(row.key);
+            merged.push(row);
+          }
+          return merged;
+        });
+        setLoadedFiles((prev) => {
+          const set = new Set(prev);
+          for (const n of newNames) set.add(n);
+          return Array.from(set);
+        });
+        if (fileErrors.length > 0) {
+          setError(fileErrors.join('\n'));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Excel o‘qishda xatolik');
+      }
+    },
+    [companyId, t],
+  );
+
+  const clearLoaded = () => {
+    setRows([]);
+    setLoadedFiles([]);
+    setLineResolutions({});
+    setFailedImports([]);
+    setImportReport(null);
+    setError(null);
+    setProgress('');
+  };
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -238,6 +378,10 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
         lastErr = e;
         const msg = e instanceof Error ? e.message : String(e);
         const is429 = /429|too many requests|throttler/i.test(msg);
+        // Unique/duplicate — qayta urinish foydasiz
+        if (/unique|duplicate|allaqachon mavjud|400/i.test(msg) && !is429) {
+          throw e;
+        }
         if (!is429 || attempt === tries) throw e;
         setProgress(`Kutish (juda ko‘p so‘rov)… ${attempt}/${tries}`);
         await sleep(1500 * attempt);
@@ -302,8 +446,13 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
     }
     setBusy(true);
     setError(null);
+    setFailedImports([]);
+    setImportReport(null);
     let created = 0;
-    let skipped = 0;
+    let skippedExact = 0;
+    let skippedSimilar = 0;
+    let aborted = false;
+    const failed: FailedImport[] = [];
     try {
       const lineMap = await resolveLinesForImport(selected);
       let known = [...existingClients];
@@ -315,14 +464,38 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
           {
             name: row.name,
             fullName: row.name,
-            territory: row.address,
+            territory: row.territory || row.address,
           },
           known,
         );
         if (match) {
-          const ok = await askSimilarity(match);
-          if (!ok) {
-            skipped += 1;
+          // 100% bir xillik — ixtiyoriy avtomatik o'tkazish
+          if (skipExactDuplicates && match.overallPct >= 100) {
+            skippedExact += 1;
+            continue;
+          }
+          const decision = await askSimilarity(match, {
+            index: i + 1,
+            total: selected.length,
+          });
+          if (decision === 'abort') {
+            aborted = true;
+            setError(tr('excelImportAborted', 'Import to‘xtatildi'));
+            break;
+          }
+          if (decision === 'skip') {
+            if (match.overallPct >= 100) {
+              skippedExact += 1;
+            } else {
+              skippedSimilar += 1;
+              failed.push({
+                row,
+                error: tr(
+                  'excelImportSkippedSimilar',
+                  "O'xshashlik sabab o'tkazildi — qo'lda tekshiring",
+                ),
+              });
+            }
             continue;
           }
         }
@@ -339,31 +512,90 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
           lineCode,
           latitude: row.lat ?? undefined,
           longitude: row.lng ?? undefined,
-          // Excel «Класс ТТ» → sinf + kategoriya (Standard o‘rniga)
           ...(klassTt
             ? { clientClass: klassTt, category: klassTt }
             : { category: 'Standard' }),
         };
-        let saved = await createClientWithRetry(body);
-        // Production create DTO isActive qabul qilmasligi mumkin — holatni update bilan qo‘yamiz
-        if (row.isActive === false) {
-          saved = await api.updateClient(saved.id, { isActive: false });
+        let saved;
+        try {
+          saved = await createClientWithRetry(body);
+          if (row.isActive === false) {
+            saved = await api.updateClient(saved.id, { isActive: false });
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          failed.push({
+            row,
+            error: msg.replace(/^HTTP \d+:\s*/i, '') || 'Xato',
+          });
+          setProgress(`${i + 1}/${selected.length}: xato — ${row.name}`);
+          if (i + 1 < selected.length) await sleep(120);
+          continue;
         }
         known = [...known, saved];
         created += 1;
-        // Limitga tushmaslik uchun biroz pauza
         if (i + 1 < selected.length) await sleep(80);
       }
 
-      setProgress(`Tayyor: ${created} qo‘shildi${skipped ? `, ${skipped} o‘tkazib yuborildi` : ''}`);
-      onDone();
-      if (created > 0) onClose();
+      setFailedImports(failed);
+      const report: ImportReport = {
+        created,
+        skippedExact,
+        skippedSimilar,
+        failed: failed.length,
+        aborted,
+        files: loadedFiles.length,
+      };
+      setImportReport(report);
+      if (created > 0) onDone();
+      setProgress('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import xatosi');
     } finally {
       setBusy(false);
-      setProgress('');
     }
+  };
+
+  const openManualAdd = (item: FailedImport) => {
+    setManualFailKey(item.row.key);
+    setManualDraft(importRowToDraft(item.row, companyId));
+  };
+
+  const handleManualSave = async (
+    data: Partial<ClientRow> & {
+      appUsername?: string;
+      appPassword?: string;
+      isActive?: boolean;
+    },
+  ) => {
+    if (onCreateClient) {
+      await onCreateClient(data);
+    } else {
+      const { appUsername, appPassword, isActive, ...rest } = data;
+      await api.createClient({
+        code: rest.code,
+        name: rest.name || '',
+        fullName: rest.fullName,
+        address: rest.legalAddr,
+        territory: rest.territory,
+        companyId: rest.companyId || companyId,
+        companyIds: rest.companyIds,
+        lineCode: rest.line?.split(' - ')[0]?.trim() || rest.lineCode,
+        clientClass: rest.cls,
+        category: rest.category || rest.cls || 'Standard',
+        phone: rest.phone,
+        inn: rest.inn,
+        isActive,
+        appUsername,
+        appPassword,
+      });
+    }
+    if (manualFailKey) {
+      setFailedImports((prev) => prev.filter((f) => f.row.key !== manualFailKey));
+    }
+    setManualDraft(null);
+    setManualFailKey(null);
+    onDone();
   };
 
   const confirmCreateFromExcel = async () => {
@@ -434,11 +666,12 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
             ref={fileRef}
             type="file"
             accept=".xlsx,.xls"
+            multiple
             className="hidden"
             onChange={(e) => {
-              const f = e.target.files?.[0];
+              const list = e.target.files;
               e.target.value = '';
-              if (f) void parseFile(f);
+              if (list && list.length > 0) void parseFiles(list);
             }}
           />
           <button
@@ -449,16 +682,148 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
               D ? 'border-gray-600 text-gray-300 hover:bg-gray-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            <Upload size={16} /> {tr('excelImportPick', 'Excel fayl tanlash (.xlsx)')}
+            <Upload size={16} />{' '}
+            {loadedFiles.length > 0
+              ? tr('excelImportPickMore', "Yana Excel qo'shish (.xlsx)")
+              : tr('excelImportPick', 'Excel fayllarni tanlash (.xlsx)')}
           </button>
 
+          {loadedFiles.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {loadedFiles.map((name) => (
+                <span
+                  key={name}
+                  className={`inline-flex items-center gap-1.5 max-w-full truncate rounded-lg px-2.5 py-1 text-xs font-medium ${
+                    D ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-50 text-emerald-800'
+                  }`}
+                  title={name}
+                >
+                  <FileSpreadsheet size={12} className="flex-shrink-0" />
+                  <span className="truncate">{name}</span>
+                </span>
+              ))}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={clearLoaded}
+                className={`text-xs font-semibold ${sub} hover:underline disabled:opacity-50`}
+              >
+                {tr('excelImportClearFiles', 'Tozalash')}
+              </button>
+            </div>
+          )}
+
+          <label
+            className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 cursor-pointer select-none ${
+              D ? 'border-gray-700 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={skipExactDuplicates}
+              disabled={busy}
+              onChange={(e) => setSkipExactDuplicates(e.target.checked)}
+            />
+            <span className="min-w-0">
+              <span className={`block text-sm font-semibold ${text}`}>
+                {tr('excelImportSkipExact', "100% bir xilliklarni o'tkazib yuborish")}
+              </span>
+              <span className={`block text-xs mt-0.5 ${sub}`}>
+                {tr(
+                  'excelImportSkipExactHint',
+                  "Belgilansa, mavjud mijoz bilan 100% bir xil qatorlar so'ralmasdan o'tkaziladi.",
+                )}
+              </span>
+            </span>
+          </label>
+
           {error && (
-            <div className="rounded-xl px-3 py-2 text-sm text-red-500 bg-red-500/10 border border-red-500/30">
+            <div className="rounded-xl px-3 py-2 text-sm text-red-500 bg-red-500/10 border border-red-500/30 whitespace-pre-wrap">
               {error}
             </div>
           )}
           {progress && (
             <div className={`text-xs font-medium ${sub}`}>{progress}</div>
+          )}
+
+          {importReport && (
+            <div
+              className={`rounded-xl border p-3 space-y-2 ${
+                D ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-emerald-300 bg-emerald-50'
+              }`}
+            >
+              <p className={`text-sm font-bold ${D ? 'text-emerald-200' : 'text-emerald-900'}`}>
+                {tr('excelImportReportTitle', 'Import hisoboti')}
+                {importReport.aborted
+                  ? ` · ${tr('excelImportAborted', "Import to'xtatildi")}`
+                  : ''}
+              </p>
+              <ul className={`text-sm space-y-1 ${D ? 'text-emerald-100/90' : 'text-emerald-900'}`}>
+                <li>
+                  {tr('excelImportReportFiles', 'Fayllar')}: <b>{importReport.files}</b>
+                </li>
+                <li>
+                  {tr('excelImportReportCreated', "Qo'shildi")}: <b>{importReport.created}</b>
+                </li>
+                <li>
+                  {tr('excelImportReportExact', "100% bir xillik o'tkazildi")}:{' '}
+                  <b>{importReport.skippedExact}</b>
+                </li>
+                <li>
+                  {tr('excelImportReportSimilar', "O'xshashlik o'tkazildi")}:{' '}
+                  <b>{importReport.skippedSimilar}</b>
+                </li>
+                <li>
+                  {tr('excelImportReportFailed', "Qo'lda / xato")}: <b>{importReport.failed}</b>
+                </li>
+              </ul>
+            </div>
+          )}
+
+          {failedImports.length > 0 && (
+            <div
+              className={`rounded-xl border p-3 space-y-2 ${
+                D ? 'border-amber-500/40 bg-amber-500/10' : 'border-amber-300 bg-amber-50'
+              }`}
+            >
+              <p className={`text-sm font-bold ${D ? 'text-amber-200' : 'text-amber-900'}`}>
+                {tr('excelImportFailedTitle', "Qo'lda kiritish kerak")} ({failedImports.length})
+              </p>
+              <p className={`text-xs ${D ? 'text-amber-200/80' : 'text-amber-800'}`}>
+                {tr(
+                  'excelImportFailedHint',
+                  "Importda o'tkazilgan yoki xato bergan mijozlar. Bitta-bitta ochib qo'shing.",
+                )}
+              </p>
+              <ul className="max-h-48 overflow-auto space-y-1.5">
+                {failedImports.map((item) => (
+                  <li
+                    key={item.row.key}
+                    className={`flex items-start gap-2 rounded-lg px-2.5 py-2 text-sm ${
+                      D ? 'bg-black/20' : 'bg-white/80'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${text}`}>
+                        {item.row.code ? `${item.row.code} · ` : ''}
+                        {item.row.name}
+                      </p>
+                      <p className={`text-xs truncate ${sub}`}>{item.error}</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openManualAdd(item)}
+                      className="flex-shrink-0 h-8 px-2.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      <Plus size={12} />
+                      {tr('excelImportManualAdd', "Qo'lda")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {rows.length > 0 && (
@@ -665,8 +1030,25 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
           D={D}
           match={similarityMatch}
           busy={false}
-          onCancel={() => finishSimilarity(false)}
-          onConfirm={() => finishSimilarity(true)}
+          progressIndex={similarityProgress?.index}
+          progressTotal={similarityProgress?.total}
+          progressHint={
+            similarityProgress
+              ? tr(
+                  'excelImportSimProgress',
+                  '{i} / {t} · {r} ta qoldi',
+                )
+                  .replace('{i}', String(similarityProgress.index))
+                  .replace('{t}', String(similarityProgress.total))
+                  .replace(
+                    '{r}',
+                    String(Math.max(0, similarityProgress.total - similarityProgress.index + 1)),
+                  )
+              : undefined
+          }
+          onCancel={() => finishSimilarity('skip')}
+          onConfirm={() => finishSimilarity('add')}
+          onClose={() => finishSimilarity('abort')}
           title={tr('excelImportDupTitle', "O'xshash mijoz topildi")}
           confirmLabel={tr('excelImportDupConfirm', "Baribir qo'shish")}
           cancelLabel={tr('excelImportDupSkip', "O'tkazib yuborish")}
@@ -686,6 +1068,20 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
             fieldPhone: tr('simFieldPhone', 'Telefon'),
             fieldInn: tr('simFieldInn', 'INN'),
             fieldTerritory: tr('simFieldTerritory', 'Hudud'),
+          }}
+        />
+      )}
+
+      {manualDraft && (
+        <AddClient
+          client={manualDraft}
+          agents={agents}
+          lines={lineOptions}
+          companyId={companyId}
+          onSave={handleManualSave}
+          onClose={() => {
+            setManualDraft(null);
+            setManualFailKey(null);
           }}
         />
       )}

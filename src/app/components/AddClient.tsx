@@ -621,7 +621,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
   const langKey = lang === 'cy' ? 'uz_cyrl' : lang === 'ru' ? 'ru' : 'uz_latn';
   const t = TRANS[langKey as keyof typeof TRANS] ?? TRANS.uz_cyrl;
 
-  const isEdit = !!client;
+  // Draft without id (e.g. Excel import retry) = create with prefill, not edit
+  const isEdit = !!(client?.id);
   const initial = client ? clientToForm(client) : null;
 
   const [activeTab, setActiveTab]     = useState<TabKey>('rekvizit');
@@ -2059,6 +2060,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
             fieldTerritory: t.simFieldTerritory,
           }}
           onCancel={() => { setSimilarityMatch(null); setPendingSave(null); }}
+          onClose={() => { setSimilarityMatch(null); setPendingSave(null); }}
           onConfirm={() => {
             if (!pendingSave || !onSave) return;
             void (async () => {

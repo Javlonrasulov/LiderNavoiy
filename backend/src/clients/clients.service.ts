@@ -487,6 +487,20 @@ export class ClientsService {
     return updated;
   }
 
+  private async allocateUniqueOnTradeId(preferred: string): Promise<string> {
+    const base = preferred.trim() || `c${Date.now()}`;
+    let candidate = base;
+    for (let i = 0; i < 80; i++) {
+      const exists = await this.repo.findOne({
+        where: { onTradeId: candidate },
+        select: ['id'],
+      });
+      if (!exists) return candidate;
+      candidate = `${base}-${i + 1}`;
+    }
+    return `${base}-${Date.now()}`;
+  }
+
   async create(
     dto: CreateClientDto,
     actor?: User,
@@ -502,9 +516,11 @@ export class ClientsService {
       createdByOverride?.name?.trim() ||
       actorLabel(actor) ||
       null;
+    const preferredOnTrade = dto.onTradeId?.trim() || code;
+    const onTradeId = await this.allocateUniqueOnTradeId(preferredOnTrade);
     const client = this.repo.create({
       code,
-      onTradeId: dto.onTradeId?.trim() || code,
+      onTradeId,
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
       phone: dto.phone ?? null,
@@ -546,8 +562,18 @@ export class ClientsService {
       deletedById: null,
       deletedByName: null,
     });
-    const saved = await this.repo.save(client);
-    return this.findOne(saved.id);
+    try {
+      const saved = await this.repo.save(client);
+      return this.findOne(saved.id);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/unique|duplicate|onTradeId/i.test(msg)) {
+        throw new BadRequestException(
+          'Bu kod / OnTradeID allaqachon mavjud. Boshqa kod bilan urinib ko‘ring.',
+        );
+      }
+      throw e;
+    }
   }
 
   async update(id: string, dto: UpdateClientDto, actor?: User) {

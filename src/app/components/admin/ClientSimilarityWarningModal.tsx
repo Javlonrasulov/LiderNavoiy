@@ -30,12 +30,19 @@ type Props = {
   D: boolean;
   match: SimilarityMatch;
   busy?: boolean;
+  /** «O‘tkazib yuborish» — keyingi qadam (masalan keyingi mijoz) */
   onCancel: () => void;
   onConfirm: () => void;
+  /** X / overlay — dialogni yopish (importni to‘xtatish). Berilmasa onCancel */
+  onClose?: () => void;
   title?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   labels?: SimilarityModalLabels;
+  /** Import progress: joriy indeks (1-based) va jami */
+  progressIndex?: number;
+  progressTotal?: number;
+  progressHint?: string;
 };
 
 export function ClientSimilarityWarningModal({
@@ -44,10 +51,14 @@ export function ClientSimilarityWarningModal({
   busy,
   onCancel,
   onConfirm,
+  onClose,
   title,
   confirmLabel,
   cancelLabel,
   labels = {},
+  progressIndex,
+  progressTotal,
+  progressHint,
 }: Props) {
   const L = {
     title: title ?? labels.title ?? "O'xshash mijoz topildi",
@@ -99,15 +110,31 @@ export function ClientSimilarityWarningModal({
     return 0;
   });
 
-  const close = () => {
-    if (!busy) onCancel();
+  const closeOnly = () => {
+    if (busy) return;
+    (onClose ?? onCancel)();
   };
+
+  const skipOrCancel = () => {
+    if (busy) return;
+    onCancel();
+  };
+
+  const remaining =
+    progressIndex != null && progressTotal != null && progressTotal > 0
+      ? Math.max(0, progressTotal - progressIndex + 1)
+      : null;
+  const progressText =
+    progressHint
+    || (progressIndex != null && progressTotal != null
+      ? `${progressIndex} / ${progressTotal}${remaining != null ? ` · ${remaining} ta qoldi` : ''}`
+      : null);
 
   return (
     <div
       className="fixed inset-0 z-[400] flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
-      onClick={close}
+      onClick={closeOnly}
     >
       <div
         className={`relative w-full max-w-md rounded-2xl border shadow-2xl p-5 sm:p-6 ${
@@ -118,7 +145,7 @@ export function ClientSimilarityWarningModal({
         <button
           type="button"
           disabled={busy}
-          onClick={close}
+          onClick={closeOnly}
           aria-label="Close"
           className={`absolute top-3 right-3 w-9 h-9 rounded-xl flex items-center justify-center transition-colors disabled:opacity-50
             ${D ? 'text-gray-400 hover:bg-white/10 hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'}`}
@@ -141,6 +168,11 @@ export function ClientSimilarityWarningModal({
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-base font-bold ${D ? 'text-white' : 'text-gray-900'}`}>{L.title}</p>
+            {progressText && (
+              <p className={`mt-1 text-xs font-semibold tabular-nums ${D ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                {progressText}
+              </p>
+            )}
             <p className="mt-1.5 text-sm font-bold" style={{ color: colors.color }}>
               {L.probability}: {displayPct}%
               {innBlocked ? ' · INN 100%' : ''}
@@ -234,7 +266,7 @@ export function ClientSimilarityWarningModal({
           <button
             type="button"
             disabled={busy}
-            onClick={close}
+            onClick={skipOrCancel}
             className={`h-11 rounded-xl text-sm font-bold border transition-colors disabled:opacity-60 ${
               D
                 ? 'border-gray-700 text-gray-300 hover:bg-gray-800'

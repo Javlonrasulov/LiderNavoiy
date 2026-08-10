@@ -1140,7 +1140,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         <ClientExcelImportModal
           D={D}
           companyId={companyId}
+          agents={agents}
+          lineOptions={(lineCatalog.length
+            ? lineCatalog.map((l) => (l.name ? `${l.code} - ${l.name}` : l.code))
+            : lines
+          ).sort((a, b) => a.localeCompare(b))}
           t={t}
+          onCreateClient={handleCreateClient}
           onClose={() => setShowExcelImport(false)}
           onDone={() => { void refreshClients(); }}
         />
