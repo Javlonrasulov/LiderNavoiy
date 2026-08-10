@@ -23,6 +23,8 @@ const uzc = {
   loginError: 'Кириш хатоси',
   invalidCredentials: 'Логин ёки парол нотўғри',
   managerOnly: 'Бу ҳисоб менежер иловаси учун эмас',
+  sessionActive: 'Бу логин бошқа қурилмада очиқ. Аввал у ердан чиқинг, кейин киринг.',
+  sessionActiveDevice: 'Ҳозир «{device}» қурилмасида сессия бор. Аввал у ердан чиқинг, кейин киринг.',
   home: 'Асосий',
   staffNav: 'Ходимлар',
   clientsNav: 'Мижозлар',
@@ -386,6 +388,8 @@ const uzl: typeof uzc = {
   loginError: 'Kirish xatosi',
   invalidCredentials: 'Login yoki parol noto‘g‘ri',
   managerOnly: 'Bu hisob menejer ilovasi uchun emas',
+  sessionActive: 'Bu login boshqa qurilmada ochiq. Avval u yerdan chiqing, keyin kiring.',
+  sessionActiveDevice: 'Hozir «{device}» qurilmasida sessiya bor. Avval u yerdan chiqing, keyin kiring.',
   home: 'Asosiy',
   staffNav: 'Xodimlar',
   clientsNav: 'Mijozlar',
@@ -749,6 +753,8 @@ const ru: typeof uzc = {
   loginError: 'Ошибка входа',
   invalidCredentials: 'Неверный логин или пароль',
   managerOnly: 'Этот аккаунт не для менеджерского приложения',
+  sessionActive: 'Этот логин уже открыт на другом устройстве. Сначала выйдите там.',
+  sessionActiveDevice: 'Сейчас сессия открыта на «{device}». Сначала выйдите там.',
   home: 'Главная',
   staffNav: 'Сотрудники',
   clientsNav: 'Клиенты',
@@ -1096,6 +1102,15 @@ export type Translations = typeof uzc
 export function localizeApiError(message: string, tr: Translations): string {
   const text = message.trim()
   if (!text) return tr.loginError
+
+  if (text === 'SESSION_ACTIVE' || text.startsWith('SESSION_ACTIVE:')) {
+    const device = text.startsWith('SESSION_ACTIVE:')
+      ? text.slice('SESSION_ACTIVE:'.length).trim()
+      : ''
+    return device
+      ? tr.sessionActiveDevice.replace('{device}', device)
+      : tr.sessionActive
+  }
 
   const unknown = text.match(/^property\s+(\w+)\s+should not exist$/i)
   if (unknown) {

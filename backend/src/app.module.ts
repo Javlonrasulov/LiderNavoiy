@@ -46,7 +46,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,
-        limit: 120,
+        limit: 400,
       },
     ]),
     TypeOrmModule.forRootAsync({

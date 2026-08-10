@@ -224,6 +224,28 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
     }
   }, [companyId]);
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const createClientWithRetry = async (
+    body: Parameters<typeof api.createClient>[0],
+    tries = 5,
+  ) => {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= tries; attempt++) {
+      try {
+        return await api.createClient(body);
+      } catch (e) {
+        lastErr = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        const is429 = /429|too many requests|throttler/i.test(msg);
+        if (!is429 || attempt === tries) throw e;
+        setProgress(`Kutish (juda ko‘p so‘rov)… ${attempt}/${tries}`);
+        await sleep(1500 * attempt);
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('Import xatosi');
+  };
+
   const createLineOnServer = async (code: string, name: string): Promise<string> => {
     const created = await api.createLine({
       code: code.trim(),
@@ -322,13 +344,15 @@ export function ClientExcelImportModal({ D, companyId, onClose, onDone, t = {} }
             ? { clientClass: klassTt, category: klassTt }
             : { category: 'Standard' }),
         };
-        let saved = await api.createClient(body);
+        let saved = await createClientWithRetry(body);
         // Production create DTO isActive qabul qilmasligi mumkin — holatni update bilan qo‘yamiz
         if (row.isActive === false) {
           saved = await api.updateClient(saved.id, { isActive: false });
         }
         known = [...known, saved];
         created += 1;
+        // Limitga tushmaslik uchun biroz pauza
+        if (i + 1 < selected.length) await sleep(80);
       }
 
       setProgress(`Tayyor: ${created} qo‘shildi${skipped ? `, ${skipped} o‘tkazib yuborildi` : ''}`);

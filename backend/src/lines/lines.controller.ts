@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SkipThrottle } from '@nestjs/throttler';
 import { LinesService } from './lines.service';
 import { CreateLineDto, UpdateLineDto } from './dto/line.dto';
 import { User } from '../auth/entities/user.entity';
@@ -91,6 +92,7 @@ export class LinesController {
   }
 
   @Post()
+  @SkipThrottle()
   @ApiOperation({ summary: 'Create line' })
   create(@Request() req: { user: User }, @Body() dto: CreateLineDto) {
     const companyId =

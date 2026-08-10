@@ -104,8 +104,8 @@ export class AuthService {
 
     await this.loginSecurity.recordSuccess(username, meta.ip, meta.userAgent);
 
-    // Agent APK: bir login — bir qurilma (boshqa qurilma ochiq bo‘lsa ogohlantirish)
-    if (user.role === UserRole.DISTRIBUTOR) {
+    // Agent / Manager ilova: bir login — bir qurilma
+    if (user.role === UserRole.DISTRIBUTOR || user.role === UserRole.MANAGER) {
       const deviceKey = this.deviceKeyOf(dto.device);
       const sessions = await this.sessions.listUserSessions(user.id);
       const otherSessions = sessions.filter((s) => {

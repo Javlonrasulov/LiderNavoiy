@@ -4,6 +4,7 @@ import { login } from '../api/auth'
 import { ApiError } from '../api/client'
 import type { AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
+import { localizeApiError } from '../i18n'
 import { theme } from '../theme'
 import LangDropdown from '../components/LangDropdown'
 import { showToast } from '../components/Toast'
@@ -34,8 +35,11 @@ export default function LoginScreen({ dark, tr, lang, onChangeLang, onToggleDark
       const msg = e instanceof Error ? e.message : String(e)
       const status = e instanceof ApiError ? e.status : Number((e as { status?: number })?.status)
       if (msg === 'manager_only') showToast(tr.managerOnly)
+      else if (status === 409 || msg === 'SESSION_ACTIVE' || msg.startsWith('SESSION_ACTIVE:')) {
+        showToast(localizeApiError(msg, tr))
+      }
       else if (status === 401 || /invalid credentials/i.test(msg)) showToast(tr.invalidCredentials)
-      else showToast(`${tr.loginError}: ${msg.slice(0, 80)}`)
+      else showToast(`${tr.loginError}: ${localizeApiError(msg, tr).slice(0, 120)}`)
     } finally {
       setLoading(false)
     }

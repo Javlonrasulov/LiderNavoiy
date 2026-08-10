@@ -85,10 +85,25 @@ async function rawRequest(
 
 function errorMessage(data: unknown, fallback: string): string {
   if (!data || typeof data !== 'object') return fallback
-  const j = data as { message?: string | string[]; error?: string }
-  if (Array.isArray(j.message)) return j.message.join(', ')
-  if (typeof j.message === 'string') return j.message
-  if (typeof j.error === 'string') return j.error
+  const j = data as {
+    message?: string | string[]
+    error?: string
+    code?: string
+    activeDevice?: string | null
+  }
+  const code = typeof j.code === 'string' ? j.code : null
+  const msg = Array.isArray(j.message)
+    ? j.message.join(', ')
+    : typeof j.message === 'string'
+      ? j.message
+      : typeof j.error === 'string'
+        ? j.error
+        : null
+  if (code === 'SESSION_ACTIVE' || msg === 'SESSION_ACTIVE') {
+    const device = typeof j.activeDevice === 'string' ? j.activeDevice.trim() : ''
+    return device ? `SESSION_ACTIVE:${device}` : 'SESSION_ACTIVE'
+  }
+  if (msg) return msg
   return fallback
 }
 

@@ -24,6 +24,7 @@ import { ClientCredentialsService } from './client-credentials.service';
 import { ClientStatsService } from './client-stats.service';
 import { CompaniesService } from '../companies/companies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { SkipThrottle } from '@nestjs/throttler';
 import { CreateClientDto, UpdateClientDto, TransferClientsDto } from './dto/client.dto';
 import { SetClientCredentialsDto } from './dto/client-credentials.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
@@ -397,6 +398,7 @@ export class ClientsController {
   }
 
   @Post()
+  @SkipThrottle()
   @ApiOperation({ summary: 'Create client' })
   async create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
     const { appUsername, appPassword, ...clientDto } = dto;
@@ -462,6 +464,7 @@ export class ClientsController {
   }
 
   @Patch(':id')
+  @SkipThrottle()
   @ApiOperation({ summary: 'Update client' })
   async update(
     @Request() req: { user: User },
