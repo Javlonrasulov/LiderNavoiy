@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadLang, t, type Lang } from './i18n'
-import { getStoredUser, clearSession } from './api/client'
+import { getStoredUser, clearSession, resetSessionExpiredGuard } from './api/client'
 import { isManagerRole, logout } from './api/auth'
+import SessionExpiredOverlay from './components/SessionExpiredOverlay'
 import { getConversations } from './api/messages'
 import type { AuthUser, Distributor, EmployeeLocation } from './api/types'
 import SplashScreen from './screens/SplashScreen'
@@ -58,6 +59,24 @@ export default function App() {
   const [openConversationId, setOpenConversationId] = useState<string | null>(null)
   const [messagesChatOpen, setMessagesChatOpen] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
+  const [sessionExpired, setSessionExpired] = useState(false)
+
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null)
+      setActiveTab('home')
+      setOverlay(null)
+      setTrackingEmp(null)
+      setMessagesUnread(0)
+      setOpenConversationId(null)
+      setMessagesChatOpen(false)
+      setNotifUnread(0)
+      setSessionExpired(true)
+      setPhase('login')
+    }
+    window.addEventListener('lider:manager-session-expired', onExpired)
+    return () => window.removeEventListener('lider:manager-session-expired', onExpired)
+  }, [])
 
   useEffect(() => {
     const syncKeyboard = () => {
@@ -217,6 +236,8 @@ export default function App() {
     setMessagesUnread(0)
     setOpenConversationId(null)
     setMessagesChatOpen(false)
+    setSessionExpired(false)
+    resetSessionExpiredGuard()
     setPhase('login')
   }
 
@@ -258,17 +279,28 @@ export default function App() {
       )}
 
       {phase === 'login' && (
-        <LoginScreen
-          dark={dark}
-          tr={tr}
-          lang={lang}
-          onChangeLang={setLang}
-          onToggleDark={() => setDark(d => !d)}
-          onSuccess={(u) => {
-            setUser(u)
-            setPhase('app')
-          }}
-        />
+        <>
+          <LoginScreen
+            dark={dark}
+            tr={tr}
+            lang={lang}
+            onChangeLang={setLang}
+            onToggleDark={() => setDark(d => !d)}
+            onSuccess={(u) => {
+              resetSessionExpiredGuard()
+              setSessionExpired(false)
+              setUser(u)
+              setPhase('app')
+            }}
+          />
+          {sessionExpired && (
+            <SessionExpiredOverlay
+              dark={dark}
+              tr={tr}
+              onReLogin={() => setSessionExpired(false)}
+            />
+          )}
+        </>
       )}
 
       {phase === 'app' && (

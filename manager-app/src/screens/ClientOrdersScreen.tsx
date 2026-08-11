@@ -10,6 +10,7 @@ import {
   type ClientOrderRow,
 } from '../api/manager'
 import type { AuthUser, Product } from '../api/types'
+import { isSessionExpiredError } from '../api/client'
 import type { Lang, Translations } from '../i18n'
 import { formatMoney, theme } from '../theme'
 import RefreshResultCard from '../components/RefreshResultCard'
@@ -124,9 +125,9 @@ export default function ClientOrdersScreen({ dark, lang, tr, user, onBack }: Pro
           successTimerRef.current = null
         }, 2500)
       }
-    } catch {
+    } catch (e) {
       setOrders([])
-      showToast(tr.noData)
+      if (!isSessionExpiredError(e)) showToast(tr.noData)
       if (manual) setRefreshState('idle')
     } finally {
       setLoading(false)

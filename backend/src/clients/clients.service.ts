@@ -19,6 +19,35 @@ function normalizeInn(inn?: string | null): string | null {
   return v ? v : null;
 }
 
+/** +998 99 999 99 99 — barcha kirish manbalari uchun bir xil */
+function formatUzPhone(raw?: string | null): string | null {
+  if (raw == null) return null;
+  let digits = String(raw).replace(/\D/g, '');
+  if (!digits || digits === '998') return null;
+  if (digits.startsWith('998')) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  if (!digits) return null;
+  let out = '+998';
+  if (digits.length > 0) out += ` ${digits.slice(0, 2)}`;
+  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) out += ` ${digits.slice(5, 7)}`;
+  if (digits.length > 7) out += ` ${digits.slice(7, 9)}`;
+  return out;
+}
+
+function normalizeExtraPhones(
+  list?: Array<{ phone: string; note?: string }> | null,
+): Array<{ phone: string; note?: string }> {
+  if (!Array.isArray(list)) return [];
+  const out: Array<{ phone: string; note?: string }> = [];
+  for (const p of list) {
+    const phone = formatUzPhone(p?.phone);
+    if (!phone) continue;
+    out.push({ phone, note: p.note?.trim() || undefined });
+  }
+  return out;
+}
+
 function normalizeMarkColor(v?: string | null): string | null {
   const c = v?.trim().toLowerCase();
   if (c === 'green' || c === 'yellow' || c === 'red') return c;
@@ -523,15 +552,8 @@ export class ClientsService {
       onTradeId,
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
-      phone: dto.phone ?? null,
-      extraPhones: Array.isArray(dto.extraPhones)
-        ? dto.extraPhones
-            .filter((p) => p?.phone?.trim())
-            .map((p) => ({
-              phone: p.phone.trim(),
-              note: p.note?.trim() || undefined,
-            }))
-        : [],
+      phone: formatUzPhone(dto.phone),
+      extraPhones: normalizeExtraPhones(dto.extraPhones),
       address: dto.address ?? null,
       companyId: primaryCompanyId,
       linkedCompanyIds: linkedIds,
@@ -586,16 +608,9 @@ export class ClientsService {
     if (dto.onTradeId !== undefined) client.onTradeId = dto.onTradeId?.trim() || null;
     if (dto.name !== undefined) client.name = dto.name;
     if (dto.fullName !== undefined) client.fullName = dto.fullName;
-    if (dto.phone !== undefined) client.phone = dto.phone;
+    if (dto.phone !== undefined) client.phone = formatUzPhone(dto.phone);
     if (dto.extraPhones !== undefined) {
-      client.extraPhones = Array.isArray(dto.extraPhones)
-        ? dto.extraPhones
-            .filter((p) => p?.phone?.trim())
-            .map((p) => ({
-              phone: p.phone.trim(),
-              note: p.note?.trim() || undefined,
-            }))
-        : [];
+      client.extraPhones = normalizeExtraPhones(dto.extraPhones);
     }
     if (dto.address !== undefined) client.address = dto.address;
     if (dto.lineCode !== undefined) client.lineCode = dto.lineCode;

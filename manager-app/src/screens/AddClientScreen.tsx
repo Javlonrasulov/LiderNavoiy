@@ -100,12 +100,13 @@ function formatUzPhone(raw: string): string {
   return out
 }
 
-/** API: +998935599699 */
+/** API: +998 93 559 96 99 (admin bilan bir xil) */
 function phoneToStorage(formatted: string): string | undefined {
   const digits = formatted.replace(/\D/g, '')
   if (!digits || digits === '998') return undefined
-  const full = digits.startsWith('998') ? digits : `998${digits}`
-  return `+${full.slice(0, 12)}`
+  const local = digits.startsWith('998') ? digits.slice(3) : digits
+  if (local.length === 0) return undefined
+  return formatUzPhone(digits)
 }
 
 export default function AddClientScreen({
@@ -516,7 +517,8 @@ export default function AddClientScreen({
       return
     }
     const phoneClean = phoneToStorage(phone)
-    if (!phoneClean || phoneClean.length < 13) {
+    const phoneDigits = (phoneClean || '').replace(/\D/g, '')
+    if (!phoneClean || phoneDigits.length < 12) {
       showToast(tr.phoneInvalid)
       return
     }

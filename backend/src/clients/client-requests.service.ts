@@ -20,6 +20,21 @@ function normalizeInn(inn?: string | null): string | null {
   return v ? v : null;
 }
 
+function formatUzPhone(raw?: string | null): string | null {
+  if (raw == null) return null;
+  let digits = String(raw).replace(/\D/g, '');
+  if (!digits || digits === '998') return null;
+  if (digits.startsWith('998')) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  if (!digits) return null;
+  let out = '+998';
+  if (digits.length > 0) out += ` ${digits.slice(0, 2)}`;
+  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) out += ` ${digits.slice(5, 7)}`;
+  if (digits.length > 7) out += ` ${digits.slice(7, 9)}`;
+  return out;
+}
+
 type ClientFieldSnapshot = {
   name: string | null;
   fullName: string | null;
@@ -185,7 +200,7 @@ export class ClientRequestsService {
       companyId: dto.companyId ?? null,
       name: dto.name,
       fullName: dto.fullName ?? dto.name,
-      phone: dto.phone ?? null,
+      phone: formatUzPhone(dto.phone),
       address: dto.address ?? null,
       lineCode: dto.lineCode ?? null,
       latitude: dto.latitude ?? null,
@@ -224,7 +239,7 @@ export class ClientRequestsService {
     const merged = {
       name: dto.name ?? existing.name,
       fullName: dto.fullName ?? existing.fullName ?? existing.name,
-      phone: dto.phone !== undefined ? dto.phone : existing.phone,
+      phone: dto.phone !== undefined ? formatUzPhone(dto.phone) : existing.phone,
       address: dto.address !== undefined ? dto.address : existing.address,
       lineCode: dto.lineCode !== undefined ? dto.lineCode : existing.lineCode,
       latitude: dto.latitude !== undefined ? dto.latitude : existing.latitude,
@@ -457,7 +472,7 @@ export class ClientRequestsService {
 
     if (dto.name !== undefined) request.name = dto.name.trim();
     if (dto.fullName !== undefined) request.fullName = dto.fullName?.trim() || request.name;
-    if (dto.phone !== undefined) request.phone = dto.phone?.trim() || null;
+    if (dto.phone !== undefined) request.phone = formatUzPhone(dto.phone);
     if (dto.address !== undefined) request.address = dto.address?.trim() || null;
     if (dto.lineCode !== undefined) request.lineCode = dto.lineCode?.trim() || null;
     if (dto.latitude !== undefined) request.latitude = dto.latitude ?? null;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { ApiError } from '../api/client'
+import { ApiError, isSessionExpiredError } from '../api/client'
 import { changePassword } from '../api/auth'
 import type { AuthUser } from '../api/types'
 import type { Lang, Translations } from '../i18n'
@@ -223,7 +223,9 @@ function ChangePasswordModal({ dark, tr, onClose, onSuccess }: {
         onSuccess()
       }, 1000)
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) {
+      if (isSessionExpiredError(e)) {
+        /* App overlay */
+      } else if (e instanceof ApiError && e.status === 401) {
         showToast(tr.wrongCurrentPassword)
       } else {
         showToast(e instanceof Error ? e.message : tr.loginError)

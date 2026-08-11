@@ -1,5 +1,6 @@
 import type { BackendClient, Distributor } from '../api/client';
 import type { ClientRow } from '../data/adminData';
+import { formatUzPhoneInput } from './phoneFormat';
 
 export const DEFAULT_CLIENT_APP_PASSWORD = '123456';
 
@@ -120,8 +121,9 @@ export function formatClientContact(c: {
   for (const p of extras) {
     const phone = p?.phone?.trim();
     if (!phone) continue;
+    const nice = formatUzPhoneInput(phone);
     const note = p.note?.trim();
-    parts.push(note ? `${phone} (${note})` : phone);
+    parts.push(note ? `${nice} (${note})` : nice);
   }
   return parts.join(', ');
 }
@@ -162,7 +164,7 @@ export function apiClientToRow(
     territory: c.territory ?? '',
     inn: normalizeInnDisplay(c.inn),
     legalAddr: c.address ?? '',
-    phone: c.phone ?? '',
+    phone: c.phone ? formatUzPhoneInput(c.phone) : '',
     contact: c.contactPerson ?? '',
     cls: c.clientClass ?? '',
     gps: parseGps(c.latitude, c.longitude),

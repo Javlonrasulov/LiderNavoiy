@@ -16,6 +16,7 @@ import {
   type AppNotification,
 } from '../api/notifications'
 import type { Lang, Translations } from '../i18n'
+import { isSessionExpiredError } from '../api/client'
 import { theme } from '../theme'
 import { showToast } from '../components/Toast'
 import { pushBackHandler } from '../utils/hardwareBack'
@@ -107,9 +108,9 @@ export default function NotificationsScreen({
       const rows = Array.isArray(data) ? data : []
       setList(rows)
       onUnreadChange?.(rows.filter(n => !n.isRead).length)
-    } catch {
+    } catch (e) {
       setList([])
-      showToast(tr.noData)
+      if (!isSessionExpiredError(e)) showToast(tr.noData)
     } finally {
       setLoading(false)
     }
@@ -136,8 +137,8 @@ export default function NotificationsScreen({
       setList(prev => prev.map(n => ({ ...n, isRead: true })))
       onUnreadChange?.(0)
       showToast(tr.notificationsAllRead, 'success')
-    } catch {
-      showToast(tr.noData)
+    } catch (e) {
+      if (!isSessionExpiredError(e)) showToast(tr.noData)
     } finally {
       setMarking(false)
     }

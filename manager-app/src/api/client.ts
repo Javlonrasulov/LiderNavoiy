@@ -6,6 +6,10 @@ const TOKEN_KEY = 'lm-access'
 const REFRESH_KEY = 'lm-refresh'
 const USER_KEY = 'lm-user'
 
+/** Parallel 401: bitta refresh — qolganlari shu Promise ni kutadi */
+let refreshInFlight: Promise<string | null> | null = null
+let unauthorizedEmitted = false
+
 export function getAccessToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -20,6 +24,7 @@ export function getStoredUser(): AuthResponse['user'] | null {
 }
 
 export function saveSession(res: AuthResponse) {
+  unauthorizedEmitted = false
   localStorage.setItem(TOKEN_KEY, res.accessToken)
   localStorage.setItem(REFRESH_KEY, res.refreshToken)
   localStorage.setItem(USER_KEY, JSON.stringify(res.user))
@@ -33,9 +38,27 @@ export function clearSession() {
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code?: string
+  constructor(status: number, message: string, code?: string) {
     super(message)
     this.status = status
+    this.code = code
+  }
+}
+
+export function isSessionExpiredError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.code === 'SESSION_EXPIRED')
+}
+
+export function resetSessionExpiredGuard(): void {
+  unauthorizedEmitted = false
+}
+
+function emitSessionExpired(): void {
+  if (unauthorizedEmitted) return
+  unauthorizedEmitted = true
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('lider:manager-session-expired'))
   }
 }
 
@@ -107,7 +130,7 @@ function errorMessage(data: unknown, fallback: string): string {
   return fallback
 }
 
-async function refreshTokens(): Promise<string | null> {
+async function doRefreshOnce(): Promise<string | null> {
   const refresh = localStorage.getItem(REFRESH_KEY)
   if (!refresh) return null
   try {
@@ -120,11 +143,27 @@ async function refreshTokens(): Promise<string | null> {
     )
     if (r.status < 200 || r.status >= 300) return null
     const data = r.data as AuthResponse
+    if (!data?.accessToken || !data?.refreshToken) return null
     saveSession(data)
     return data.accessToken
   } catch {
     return null
   }
+}
+
+/** Bitta parallel refresh — rotation conflict yo‘q */
+async function refreshTokens(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = doRefreshOnce().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
+function forceSessionExpired(): never {
+  clearSession()
+  emitSessionExpired()
+  throw new ApiError(401, 'Session expired', 'SESSION_EXPIRED')
 }
 
 export async function api<T>(
@@ -149,7 +188,13 @@ export async function api<T>(
     if (next) {
       h.set('Authorization', `Bearer ${next}`)
       res = await rawRequest(url, String(method).toUpperCase(), h, bodyStr)
+    } else {
+      forceSessionExpired()
     }
+  }
+
+  if (res.status === 401 && auth) {
+    forceSessionExpired()
   }
 
   if (res.status < 200 || res.status >= 300) {

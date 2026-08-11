@@ -8,7 +8,7 @@ import LangDropdown from '../components/LangDropdown'
 import EmployeeMap from '../components/EmployeeMap'
 import RefreshResultCard from '../components/RefreshResultCard'
 import { showToast } from '../components/Toast'
-import { getStoredUser } from '../api/client'
+import { getStoredUser, isSessionExpiredError } from '../api/client'
 import {
   buildHomeRefreshUpdates,
   snapshotFromDashboard,
@@ -98,8 +98,8 @@ export default function HomeScreen({ dark, lang, tr, user, notifUnread = 0, onNa
       }
       setData(scoped)
       snapshotRef.current = snapshotFromDashboard(scoped, extras)
-    } catch {
-      showToast(tr.noData)
+    } catch (e) {
+      if (!isSessionExpiredError(e)) showToast(tr.noData)
     } finally {
       setLoading(false)
     }
@@ -139,8 +139,8 @@ export default function HomeScreen({ dark, lang, tr, user, notifUnread = 0, onNa
         setRefreshState(prev => (prev === 'success' ? 'idle' : prev))
         successTimerRef.current = null
       }, 2500)
-    } catch {
-      showToast(tr.noData)
+    } catch (e) {
+      if (!isSessionExpiredError(e)) showToast(tr.noData)
       setRefreshState('idle')
     }
   }

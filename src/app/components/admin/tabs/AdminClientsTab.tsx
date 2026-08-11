@@ -86,7 +86,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const [sortTop, setSortTop] = useState<'none' | 'high' | 'low'>('none');
   /** Qarzdorlik: ko‘p qarz / kam qarz */
   const [sortDebt, setSortDebt] = useState<'none' | 'high' | 'low'>('none');
-  const [quickOpen, setQuickOpen] = useState<'line' | 'agent' | 'mark' | 'top' | 'debt' | null>(null);
+  const [quickOpen, setQuickOpen] = useState<'line' | 'ttClass' | 'agent' | 'mark' | 'top' | 'debt' | null>(null);
   const [showSalesCols, setShowSalesCols] = useState(false);
   const [territoryColWidth, setTerritoryColWidth] = useState(240);
   const territoryResizeRef = useRef<{ startX: number; startW: number } | null>(null);
@@ -469,6 +469,22 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       .sort((a, b) => (lineCounts[b.value] ?? 0) - (lineCounts[a.value] ?? 0));
   }, [lineOptions, lineCatalog, lineCounts]);
 
+  const ttClassCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of clients) {
+      const tt = clientTtClass(c);
+      if (!tt) continue;
+      counts[tt] = (counts[tt] ?? 0) + 1;
+    }
+    return counts;
+  }, [clients]);
+
+  const ttClassOptions = useMemo(() => {
+    return categoryOptions
+      .slice()
+      .sort((a, b) => (ttClassCounts[b] ?? 0) - (ttClassCounts[a] ?? 0));
+  }, [categoryOptions, ttClassCounts]);
+
   const markCounts = useMemo(() => {
     const counts: Record<MarkColor, number> = { green: 0, yellow: 0, red: 0 };
     for (const c of clients) counts[resolveClientMark(c)] += 1;
@@ -478,6 +494,16 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const quickLineLabel = quickLineValue
     ? (lineSelectOptions.find((o) => o.value === quickLineValue)?.label ?? quickLineValue)
     : (t.colLine ?? 'Liniya');
+  const quickTtClassValue = clientCatFilter.size === 1 ? [...clientCatFilter][0] : '';
+  const quickTtClassLabel = (() => {
+    if (clientCatFilter.size === 0) return t.colCategory ?? 'Klass TT';
+    if (clientCatFilter.size === 1) {
+      const name = quickTtClassValue;
+      const n = ttClassCounts[name] ?? 0;
+      return n > 0 ? `${name} (${n})` : name;
+    }
+    return `${t.colCategory ?? 'Klass TT'} (${clientCatFilter.size})`;
+  })();
   const quickAgentLabel = !quickAgentValue
     ? (t.colAgent ?? 'Agent')
     : quickAgentValue === NO_AGENT_KEY
@@ -866,7 +892,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   {/* Kategoriya (API: От, Тт, Хорека, …) */}
                   {categoryOptions.length > 0 && (
                     <div>
-                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.catFilterLabel}</p>
+                      <p className={`text-[10px] font-semibold uppercase tracking-widest ${sub} mb-2`}>{t.colCategory || t.catFilterLabel}</p>
                       <div className="space-y-1.5 max-h-40 overflow-y-auto">
                         {categoryOptions.map((name, idx) => {
                           const active = clientCatFilter.has(name);
@@ -877,8 +903,9 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                               className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
                                 ${active ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
                               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                              <span className={`truncate ${active ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{name}</span>
-                              {active && <Check size={11} className="ml-auto text-indigo-400 flex-shrink-0" />}
+                              <span className={`truncate flex-1 text-left ${active ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{name}</span>
+                              {countBadge(ttClassCounts[name] ?? 0, color)}
+                              {active && <Check size={11} className="text-indigo-400 flex-shrink-0" />}
                             </button>
                           );
                         })}
@@ -1219,6 +1246,52 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     {quickLineValue === o.value && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Klass TT */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setQuickOpen(quickOpen === 'ttClass' ? null : 'ttClass')}
+              className={quickPill(clientCatFilter.size > 0)}
+              title={t.colCategory ?? 'Klass TT'}
+            >
+              <span className="truncate">{quickTtClassLabel}</span>
+              <ChevronDown size={13} className={`flex-shrink-0 opacity-70 transition-transform ${quickOpen === 'ttClass' ? 'rotate-180' : ''}`} />
+            </button>
+            {quickOpen === 'ttClass' && (
+              <div className={quickMenu}>
+                <button
+                  type="button"
+                  className={quickItem(clientCatFilter.size === 0)}
+                  onClick={() => { setClientCatFilter(new Set()); setClientPage(1); }}
+                >
+                  <span className="flex-1 truncate">{t.quickFilterClassAll ?? `${t.colCategory}: ${t.allLabel ?? 'Barchasi'}`}</span>
+                  {clientCatFilter.size === 0 && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                </button>
+                {ttClassOptions.map((name, idx) => {
+                  const active = clientCatFilter.has(name);
+                  const palette = ['#6366f1', '#8b5cf6', '#a78bfa', '#06b6d4', '#10b981', '#f59e0b', '#f43f5e', '#64748b'];
+                  const color = palette[idx % palette.length];
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      className={quickItem(active)}
+                      onClick={() => { toggleCat(name); setClientPage(1); }}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                      <span className="flex-1 truncate text-left">{name}</span>
+                      {countBadge(ttClassCounts[name] ?? 0, color)}
+                      {active && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+                {ttClassOptions.length === 0 && (
+                  <p className={`px-3 py-2 text-xs ${sub}`}>{t.noResults}</p>
+                )}
               </div>
             )}
           </div>

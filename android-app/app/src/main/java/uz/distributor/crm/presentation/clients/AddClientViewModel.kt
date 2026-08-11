@@ -162,10 +162,18 @@ class AddClientViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, validationError = null, errorMessage = null) }
             try {
                 val user = authRepository.getUserFlow().first()
+                val d = state.phoneDigits.filter { it.isDigit() }.take(9)
+                val phoneFormatted = buildString {
+                    append("+998")
+                    if (d.isNotEmpty()) append(" ${d.take(2)}")
+                    if (d.length > 2) append(" ${d.substring(2, minOf(5, d.length))}")
+                    if (d.length > 5) append(" ${d.substring(5, minOf(7, d.length))}")
+                    if (d.length > 7) append(" ${d.substring(7, minOf(9, d.length))}")
+                }
                 val result = clientRepository.createClient(
                     name = state.name,
                     inn = state.inn,
-                    phone = "+998${state.phoneDigits}",
+                    phone = phoneFormatted,
                     address = state.address,
                     territory = state.territory,
                     latitude = state.latitude,
