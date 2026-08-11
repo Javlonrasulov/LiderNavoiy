@@ -13,6 +13,7 @@ import {
   parseLineLabel,
   type SimilarityMatch,
 } from '../../utils/clientSimilarity';
+import { formatUzPhoneInput } from '../../utils/phoneFormat';
 
 type LineRow = {
   id: string;
@@ -31,6 +32,7 @@ type ImportRow = {
   clientClass: string;
   territory: string;
   address: string;
+  phone: string;
   lat: number | null;
   lng: number | null;
   selected: boolean;
@@ -89,7 +91,7 @@ function importRowToDraft(row: ImportRow, companyId?: string): ClientRow {
     territory: row.territory || '',
     inn: '',
     legalAddr: row.address || '',
-    phone: '',
+    phone: row.phone || '',
     contact: '',
     cls: row.clientClass || '',
     gps,
@@ -114,6 +116,23 @@ function normHeader(h: string): string {
 
 function findCol(hdr: string[], keywords: string[]): number {
   return hdr.findIndex((h) => keywords.some((k) => h.includes(k)));
+}
+
+/** Excel telefon katakchasini (+998 …) formatiga keltirish */
+function parsePhoneCell(raw: unknown): string {
+  let s = String(raw ?? '').trim();
+  if (!s) return '';
+  // Ba'zan Excel scientific notation qoldiradi
+  if (/e[+-]?\d+/i.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) s = String(Math.round(n));
+  }
+  const digits = s.replace(/\D/g, '');
+  if (digits.length < 7) return s;
+  if (digits.startsWith('998') || digits.length === 9) {
+    return formatUzPhoneInput(digits);
+  }
+  return digits.startsWith('998') ? `+${digits}` : s;
 }
 
 function matchExistingLine(
@@ -248,6 +267,16 @@ export function ClientExcelImportModal({
     const cTerritory = findCol(hdr, ['территория', 'hudud', 'ҳудуд', 'territory', 'регион']);
     const cAddr = findCol(hdr, ['адрес', 'adres', 'address', 'manzil']);
     const cGps = findCol(hdr, ['gps', 'коорд', 'координат']);
+    const cPhone = findCol(hdr, [
+      'телефон',
+      'phone',
+      'telef',
+      'тел.',
+      'тел ',
+      'моб.',
+      'мобиль',
+      'mobile',
+    ]);
 
     if (cName < 0) {
       throw new Error(`${fileName}: "Торг.точка" (nomi) ustuni topilmadi.`);
@@ -274,6 +303,7 @@ export function ClientExcelImportModal({
         clientClass: cClass >= 0 ? String(r[cClass] ?? '').trim() : '',
         territory: cTerritory >= 0 ? String(r[cTerritory] ?? '').trim() : '',
         address: cAddr >= 0 ? String(r[cAddr] ?? '').trim() : '',
+        phone: cPhone >= 0 ? parsePhoneCell(r[cPhone]) : '',
         lat: gps.lat,
         lng: gps.lng,
         selected: true,
@@ -484,6 +514,7 @@ export function ClientExcelImportModal({
             name: row.name,
             fullName: row.name,
             territory: row.territory || row.address,
+            phone: row.phone || undefined,
           },
           known,
         );
@@ -527,6 +558,7 @@ export function ClientExcelImportModal({
           fullName: row.name,
           address: row.address || undefined,
           territory: row.territory || undefined,
+          phone: row.phone || undefined,
           companyId,
           lineCode,
           latitude: row.lat ?? undefined,
@@ -667,7 +699,7 @@ export function ClientExcelImportModal({
           <div className="flex-1 min-w-0">
             <p className={`text-base font-bold ${text}`}>{tr('excelImportTitle', "Excel'dan mijoz yuklash")}</p>
             <p className={`text-xs ${sub}`}>
-              {tr('excelImportHint', 'Торг.точка, Линия, Статус, Класс ТТ, Адрес, GPS')}
+              {tr('excelImportHint', 'Торг.точка, Линия, Статус, Класс ТТ, Адрес, Телефон, GPS')}
             </p>
           </div>
           <button
@@ -886,6 +918,7 @@ export function ClientExcelImportModal({
                       <th className="p-2 text-left">{tr('excelImportColLine', 'Liniya')}</th>
                       <th className="p-2 text-left">{tr('excelImportColStatus', 'Holat')}</th>
                       <th className="p-2 text-left">{tr('excelImportColCategory', 'Klass TT')}</th>
+                      <th className="p-2 text-left">{tr('excelImportColPhone', 'Telefon')}</th>
                       <th className="p-2 text-left">{tr('excelImportColAddr', 'Manzil')}</th>
                       <th className="p-2 text-left">{tr('excelImportColGps', 'GPS')}</th>
                     </tr>
@@ -925,6 +958,7 @@ export function ClientExcelImportModal({
                           </span>
                         </td>
                         <td className={`p-2 ${sub}`}>{r.clientClass || '—'}</td>
+                        <td className={`p-2 font-mono ${sub}`}>{r.phone || '—'}</td>
                         <td className={`p-2 ${sub}`}>{r.address || '—'}</td>
                         <td className={`p-2 font-mono ${sub}`}>
                           {r.lat != null && r.lng != null ? `${r.lat}, ${r.lng}` : '—'}
