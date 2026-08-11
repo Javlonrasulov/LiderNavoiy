@@ -3,7 +3,6 @@ import {
   UnauthorizedException,
   Logger,
   ForbiddenException,
-  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -104,26 +103,12 @@ export class AuthService {
 
     await this.loginSecurity.recordSuccess(username, meta.ip, meta.userAgent);
 
-    // Agent / Manager ilova: bir login — bir qurilma
+    // Agent / Manager: bir nechta qurilmadan kirish mumkin.
+    // Faqat shu qurilmadagi eski sessiyani yangilab yopamiz.
     if (user.role === UserRole.DISTRIBUTOR || user.role === UserRole.MANAGER) {
       const deviceKey = this.deviceKeyOf(dto.device);
-      const sessions = await this.sessions.listUserSessions(user.id);
-      const otherSessions = sessions.filter((s) => {
-        if (!deviceKey) return true;
-        if (!s.deviceKey) return true;
-        return s.deviceKey !== deviceKey;
-      });
-      if (otherSessions.length > 0) {
-        const active = otherSessions[0];
-        const deviceLabel = [active.brand, active.model].filter(Boolean).join(' ').trim();
-        throw new ConflictException({
-          message: 'SESSION_ACTIVE',
-          code: 'SESSION_ACTIVE',
-          activeDevice: deviceLabel || null,
-        });
-      }
       if (deviceKey) {
-        // Shu qurilmadagi eski sessiyalarni yopish
+        const sessions = await this.sessions.listUserSessions(user.id);
         for (const s of sessions) {
           if (s.deviceKey === deviceKey) {
             await this.sessions.revokeSession(user.id, s.sessionId);
