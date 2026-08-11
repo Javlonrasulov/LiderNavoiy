@@ -65,16 +65,24 @@ export interface AppUserListRow {
   companyId?: string | null;
   companyIds?: string[];
   positionId?: string | null;
+  departmentId?: string | null;
 }
 
 function formatDeviceLabel(brand?: string | null, model?: string | null, os?: string | null): string {
   const b = (brand || '').trim();
   const m = (model || '').trim();
-  const o = (os || '').trim();
+  let o = (os || '').trim();
+  // Eski manager login: to‘liq User-Agent saqlangan — qisqartirish
+  if (/Mozilla\/|AppleWebKit|Chrome\//i.test(o)) {
+    const ver = /Android\s+([\d.]+)/i.exec(o);
+    o = ver ? `Android ${ver[1]}` : 'Android';
+  }
+  // Fake "Lider Manager" yorlig‘ini yashirmaymiz — yangi login haqiqiy model yuboradi
 
   let phone = '';
   if (b && m) {
-    phone = m.toLowerCase().startsWith(b.toLowerCase()) ? m : `${b} ${m}`;
+    const same = m.toLowerCase().startsWith(b.toLowerCase());
+    phone = same ? m : `${b} ${m}`;
   } else {
     phone = m || b;
   }
@@ -221,6 +229,9 @@ export function appUserToRow(
   const positionLabel = (app.position || '')
     .replace(/\s*·\s*delivery\s*$/i, '')
     .trim();
+  const isManager =
+    app.role === 'MANAGER' ||
+    /menejer|manager|директор|direktor/i.test(positionLabel);
   return {
     id: localId,
     code: String(localId).padStart(4, '0'),
@@ -233,17 +244,18 @@ export function appUserToRow(
     emp: app.fullName.length > 14 ? `${app.fullName.slice(0, 13)}...` : app.fullName,
     onTrade: app.username,
     backendUserId: app.id,
-    dirs: '',
+    dirs: (app.department || '').trim(),
     acceptPay: true,
     consig: false,
-    canAddClients: !!app.canAddClients,
-    gps: true,
+    canAddClients: isManager ? true : !!app.canAddClients,
+    gps: !isManager,
     isOnline: app.isOnline,
     device: deviceInfo.summary,
     devices: deviceInfo.devices,
     companyId: app.companyId ?? companyIds[0] ?? null,
     companyIds,
     positionId: app.positionId ?? null,
+    departmentId: app.departmentId ?? null,
   };
 }
 
@@ -331,7 +343,11 @@ export function appUserToSotrudnikRow(
     deptKey,
     posKey,
     phone: distributor?.phone || '',
-    orgId: distributor?.companyId || 'boran',
+    orgId:
+      distributor?.companyId
+      || app.companyId
+      || app.companyIds?.[0]
+      || 'boran',
     backendUserId: app.id,
     distributorId: distributor?.id,
     username: app.username,

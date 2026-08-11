@@ -341,16 +341,19 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const red      = '#ef4444';
 
   // ── filtered list ────────────────────────────────────────────────────────
+  // Tashkilot filtri `rows` da allaqachon qo‘llangan (profile companyIds)
   const selectedIds = Array.from(selectedCompanyIds);
   const employees = rows.filter(e => {
-    const orgMatch = selectedIds.length === 0 || selectedIds.includes(e.orgId);
     const q = search.trim().toLowerCase();
+    if (!q) return true;
     const dept = sotrudnikDeptLabel(e, t).toLowerCase();
     const pos = sotrudnikPosLabel(e, t).toLowerCase();
-    return orgMatch && (!q ||
+    return (
       e.name.toLowerCase().includes(q) ||
       pos.includes(q) ||
-      dept.includes(q)
+      dept.includes(q) ||
+      (e.username || '').toLowerCase().includes(q) ||
+      (e.phone || '').toLowerCase().includes(q)
     );
   });
 

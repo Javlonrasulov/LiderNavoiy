@@ -63,16 +63,17 @@ function formToUserRow(
     emp,
     onTrade: appLogin,
     backendUserId: backendUserId || '',
-    dirs: '',
+    dirs: data.department.trim(),
     acceptPay: data.appAcceptPay,
-    consig: data.appConsig,
+    consig: false,
     canAddClients: data.appAddClient,
-    gps: true,
+    gps: data.appGps,
     device: prevDevice || '',
     devices: [],
     companyId: data.companyIds[0] ?? null,
     companyIds: data.companyIds,
     positionId: data.positionId || null,
+    departmentId: data.departmentId || null,
   };
 }
 
@@ -122,6 +123,8 @@ async function syncAppCredentials(
       isActive,
       position,
       positionId: pos.id,
+      department: data.department.trim() || undefined,
+      departmentId: data.departmentId.trim() || undefined,
       canAddClients: data.appAddClient,
     });
     storeAppPassword(username, password);
@@ -138,6 +141,8 @@ async function syncAppCredentials(
     companyIds,
     position,
     positionId: pos.id,
+    department: data.department.trim() || '',
+    departmentId: data.departmentId.trim() || '',
     canAddClients: data.appAddClient,
   };
   if (password) payload.password = password;
@@ -252,7 +257,7 @@ function MobileUserCard({ u, D, isSelected, onSelect, t }: {
       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', minWidth: 0 }}>
         {[
           { Icon: CreditCard, label: t.userAcceptPay || "To'lov", val: u.acceptPay, activeColor: green },
-          { Icon: Package,    label: t.userConsig    || 'Konsig',  val: u.consig,    activeColor: '#f59e0b' },
+          { Icon: Package,    label: t.userPermNewClient || "Mijoz qo'shish", val: u.canAddClients, activeColor: '#8b5cf6' },
           { Icon: Navigation, label: t.userGPS       || 'GPS',     val: u.gps,       activeColor: '#3b82f6' },
         ].map(({ Icon, label, val, activeColor }) => (
           <span key={label} style={{
@@ -294,8 +299,12 @@ export function AdminUsersTab({ D, t, card, divider, sub, selectedCompanyIds }: 
     }
     setLoadingUsers(true);
     try {
-      const appUsers = await api.listAppUsers();
+      const [appUsers, depts] = await Promise.all([
+        api.listAppUsers(),
+        api.getDepartments().catch(() => [] as Awaited<ReturnType<typeof api.getDepartments>>),
+      ]);
       const nameById = new Map(companies.map(c => [c.id, c.name]));
+      const deptById = new Map(depts.map(d => [d.id, d.name]));
       const rows = appUsers.map((u, i) => {
         const row = appUserToRow(u, i + 1, t);
         const ids = row.companyIds ?? [];
@@ -303,6 +312,12 @@ export function AdminUsersTab({ D, t, card, divider, sub, selectedCompanyIds }: 
           const label = ids.map(id => nameById.get(id) || id).join(', ');
           row.org = label.length > 14 ? `${label.slice(0, 13)}...` : label;
         }
+        const deptName =
+          (u.departmentId && deptById.get(u.departmentId))
+          || (u.department || '').trim()
+          || '';
+        row.dirs = deptName;
+        row.departmentId = u.departmentId ?? null;
         return row;
       });
       setUsers(rows);

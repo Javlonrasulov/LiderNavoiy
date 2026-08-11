@@ -7,7 +7,7 @@ import {
 } from '../../../data/adminData';
 import { getStoredAppPassword, translateApiError } from '../../../utils/appUserCreds';
 import { useCompanies } from '../../CompaniesContext';
-import { api, type BackendStaffPosition } from '../../../api/client';
+import { api, type BackendDepartment, type BackendStaffPosition } from '../../../api/client';
 
 /* ═══════════ Types ═══════════ */
 type ModalTab = 'asosiy' | 'ontrade';
@@ -32,6 +32,7 @@ export interface UserFormRow {
   companyId?: string | null;
   companyIds?: string[];
   positionId?: string | null;
+  departmentId?: string | null;
 }
 
 interface FormData {
@@ -43,17 +44,18 @@ interface FormData {
   /** Lavozim nomi (ro‘yxatda ko‘rinadi) */
   role: string;
   positionId: string;
+  departmentId: string;
+  department: string;
   telegramId: string;
   org: string;
-  ombor: string;
   grafik: string;
   companyIds: string[];
   appLogin: string;
   appPassword: string;
   appAcceptPay: boolean;
-  appConsig: boolean;
   appAddClient: boolean;
-  appOffline: boolean;
+  /** Agent APK da GPS doim; menejer ilovasida GPS yo‘q */
+  appGps: boolean;
 }
 
 export type UserFormData = FormData;
@@ -80,12 +82,6 @@ function grafikList(t: Record<string, string>) {
 }
 
 /* ═══════════ Constants ═══════════ */
-const OMBOR_LIST  = ['Ombor SHERIN', 'Ombor SOF IN', 'Brak'];
-const XODIM_LIST  = [
-  'Abduxakimov Diyorbek', 'Amriddinov Sardor', 'Baxodirov Utkir',
-  'Buronov Feruz', 'Juraboev Fayzillo', 'Zaripov Begzod',
-  'Irgashev Azizjon', 'Ismatov Asadbek', 'Patipov Umrzok',
-];
 
 /* ═══════════ Dropdown helper ═══════════ */
 function SelectField({
@@ -195,6 +191,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [positions, setPositions] = useState<BackendStaffPosition[]>([]);
+  const [departments, setDepartments] = useState<BackendDepartment[]>([]);
 
   useEffect(() => {
     const fn = () => setIsMobile(window.innerWidth < 640);
@@ -206,10 +203,19 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     let cancelled = false;
     (async () => {
       try {
-        const rows = await api.getPositions();
-        if (!cancelled) setPositions(rows);
+        const [posRows, deptRows] = await Promise.all([
+          api.getPositions(),
+          api.getDepartments(),
+        ]);
+        if (!cancelled) {
+          setPositions(posRows);
+          setDepartments(deptRows);
+        }
       } catch {
-        if (!cancelled) setPositions([]);
+        if (!cancelled) {
+          setPositions([]);
+          setDepartments([]);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -220,8 +226,16 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
   const grafikOptions = grafikList(t);
   const orgNames = companies.map(c => c.name);
   const posNames = positions.map(p => p.name);
+  const deptNames = departments.map(d => d.name);
   const orgNameById = (id: string) =>
     companies.find(c => c.id === id)?.name || id;
+
+  const isManagerPosition = (positionId: string, roleName: string) => {
+    const byId = positionId ? positions.find(p => p.id === positionId) : undefined;
+    if (byId) return byId.appAccess === 'manager';
+    const byName = positions.find(p => p.name === roleName);
+    return byName?.appAccess === 'manager';
+  };
 
   /* ── form state ── */
   const [form, setForm] = useState<FormData>(() => {
@@ -236,6 +250,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             .filter((id): id is string => !!id),
         ),
       ];
+      const roleName = user.role;
+      // positions hali yuklanmagan — menejer nomidan taxmin; keyin effect aniqlaydi
+      const maybeManager = /menejer|manager|директор|direktor/i.test(roleName);
       return {
         code: user.code,
         uid: String(user.id),
@@ -244,52 +261,96 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         fio: user.name,
         role: user.role,
         positionId: user.positionId || '',
+        departmentId: user.departmentId || '',
+        department: user.dirs || '',
         telegramId: user.tg || '',
         org: user.org.replace(/\.\.\.$/, ''),
-        ombor: '',
         grafik: grafikOptions[0],
         companyIds,
         appLogin: user.onTrade || '',
         appPassword: getStoredAppPassword(user.onTrade || ''),
         appAcceptPay: user.acceptPay,
-        appConsig: user.consig,
-        appAddClient: !!user.canAddClients,
-        appOffline: true,
+        appAddClient: maybeManager ? true : !!user.canAddClients,
+        appGps: !maybeManager,
       };
     }
     return {
       code: '', uid: '', status: statusOpen, xodim: '', fio: '',
-      role: '', positionId: '', telegramId: '', org: '', ombor: '', grafik: grafikOptions[0],
+      role: '', positionId: '', departmentId: '', department: '',
+      telegramId: '', org: '', grafik: grafikOptions[0],
       companyIds: [],
       appLogin: '', appPassword: '',
-      appAcceptPay: true, appConsig: false, appAddClient: false, appOffline: true,
+      appAcceptPay: true, appAddClient: false, appGps: true,
     };
   });
 
-  // Lavozimlar yuklanganda — positionId yoki nom bo‘yicha bog‘lash
+  // Lavozimlar yuklanganda — positionId yoki nom bo‘yicha bog‘lash + manager defaultlar
   useEffect(() => {
     if (positions.length === 0) return;
     setForm(f => {
+      let next = { ...f };
       if (f.positionId) {
         const byId = positions.find(p => p.id === f.positionId);
-        if (byId && f.role !== byId.name) return { ...f, role: byId.name };
+        if (byId && f.role !== byId.name) next = { ...next, role: byId.name };
+      } else if (f.role) {
+        const byName = positions.find(
+          p => p.name.trim().toLowerCase() === f.role.trim().toLowerCase(),
+        );
+        if (byName) next = { ...next, positionId: byName.id, role: byName.name };
+      }
+      const manager = isManagerPosition(next.positionId, next.role);
+      if (manager) {
+        next = {
+          ...next,
+          appGps: false,
+          appAddClient: true,
+        };
+      } else {
+        next = { ...next, appGps: true };
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- faqat positions yuklanganda
+  }, [positions]);
+
+  // Bo‘limlar yuklanganda — departmentId yoki nom bo‘yicha bog‘lash
+  useEffect(() => {
+    if (departments.length === 0) return;
+    setForm(f => {
+      if (f.departmentId) {
+        const byId = departments.find(d => d.id === f.departmentId);
+        if (byId && f.department !== byId.name) {
+          return { ...f, department: byId.name };
+        }
         return f;
       }
-      if (!f.role) return f;
-      const byName = positions.find(
-        p => p.name.trim().toLowerCase() === f.role.trim().toLowerCase(),
+      if (!f.department) return f;
+      const byName = departments.find(
+        d => d.name.trim().toLowerCase() === f.department.trim().toLowerCase(),
       );
-      if (byName) return { ...f, positionId: byName.id, role: byName.name };
+      if (byName) return { ...f, departmentId: byName.id, department: byName.name };
       return f;
     });
-  }, [positions]);
+  }, [departments]);
 
   const selectPositionByName = (name: string) => {
     const pos = positions.find(p => p.name === name);
+    const manager = pos?.appAccess === 'manager';
     setForm(f => ({
       ...f,
       role: name,
       positionId: pos?.id || '',
+      appGps: !manager,
+      appAddClient: manager ? true : false,
+    }));
+  };
+
+  const selectDepartmentByName = (name: string) => {
+    const dept = departments.find(d => d.name === name);
+    setForm(f => ({
+      ...f,
+      department: name,
+      departmentId: dept?.id || '',
     }));
   };
 
@@ -450,6 +511,23 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         />
       </div>
 
+      {/* Bo‘lim */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
+        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'empDeptCol', "Bo'lim:")}</span>
+        <SelectInline
+          value={form.department}
+          onChange={selectDepartmentByName}
+          placeholder={tr(t, 'empDeptNone', '— tanlanmagan —')}
+          options={deptNames}
+          D={D} border={border} txt={txt} muted={muted}
+        />
+        <ClearBtn
+          show={!!form.department || !!form.departmentId}
+          onClear={() => setForm(f => ({ ...f, department: '', departmentId: '' }))}
+          muted={muted}
+        />
+      </div>
+
       {/* Telegram ID */}
       <TextField label={tr(t, 'userFldTelegram', 'Telegram ID:')} value={form.telegramId} onChange={v => upd('telegramId', v)}
         placeholder="@username"
@@ -469,14 +547,6 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         <ClearBtn show={form.companyIds.length > 0 || !!form.org} onClear={() => setCompanyIds([])} muted={muted} />
       </div>
 
-      {/* Ombor */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
-        <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldWarehouse', 'Ombor:')}</span>
-        <SelectInline value={form.ombor} onChange={v => upd('ombor', v)} placeholder={tr(t, 'userSelect', '— tanlang —')}
-          options={OMBOR_LIST} D={D} border={border} txt={txt} muted={muted} />
-        <ClearBtn show={!!form.ombor} onClear={() => upd('ombor', '')} muted={muted} />
-      </div>
-
       {/* Grafik turi */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${border}`, padding: '9px 0' }}>
         <span style={{ flexShrink: 0, minWidth: 110, fontSize: 12.5, color: muted, fontWeight: 500 }}>{tr(t, 'userFldSchedule', 'Grafik turi:')}</span>
@@ -486,16 +556,18 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
     </div>
   );
 
+  const managerLavozim = isManagerPosition(form.positionId, form.role);
+
   const renderOntrade = () => (
     <div style={{ padding: isMobile ? '16px 14px' : '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* OnTrade login */}
+      {/* Ilova login */}
       <div style={{
         padding: '14px 16px', borderRadius: 12,
         background: D ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.05)',
         border: `1px solid ${D ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.2)'}`,
       }}>
         <div style={{ fontSize: 11, color: indigo, fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          {tr(t, 'userAppLoginTitle', 'Ontrade Mobile Login')}
+          {tr(t, 'userAppLoginTitle', 'Ilova login')}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -503,7 +575,8 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             <input
               value={form.appLogin}
               onChange={e => upd('appLogin', e.target.value)}
-              placeholder="javlon"
+              placeholder="login"
+              autoComplete="username"
               style={{
                 flex: 1, minWidth: 0, padding: '7px 10px', borderRadius: 8,
                 border: `1px solid ${border}`, background: D ? '#1a1a1a' : '#fff',
@@ -518,7 +591,8 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
                 type={showPassword ? 'text' : 'password'}
                 value={form.appPassword}
                 onChange={e => upd('appPassword', e.target.value)}
-                placeholder="••••••••"
+                placeholder={user ? tr(t, 'empAppPasswordKeepPh', "Bo'sh — o'zgarmaydi") : '••••••••'}
+                autoComplete="new-password"
                 style={{
                   width: '100%', padding: '7px 36px 7px 10px', borderRadius: 8,
                   border: `1px solid ${border}`, background: D ? '#1a1a1a' : '#fff',
@@ -540,7 +614,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             </div>
           </div>
           <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>
-            {tr(t, 'userAppHint', 'Bu login va parol mobil ilova (APK) ga kirish uchun ishlatiladi.')}
+            {tr(t, 'userAppHint', 'Login va parolni shu yerda o‘zgartirish mumkin. Mobil ilovaga kirish uchun ishlatiladi.')}
           </div>
         </div>
       </div>
@@ -548,12 +622,24 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: `1px solid ${border}`, borderRadius: 10, overflow: 'hidden' }}>
         {[
           { key: 'appAcceptPay' as const, label: tr(t, 'userAppAcceptPay', "To'lov qabul qilish"), locked: false },
-          { key: 'appGps' as const, label: tr(t, 'userAppGps', 'GPS tracking'), locked: true },
-          { key: 'appConsig' as const, label: tr(t, 'userAppConsig', 'Konsignatsiya'), locked: false },
-          { key: 'appAddClient' as const, label: tr(t, 'userPermNewClient', "Yangi mijoz qo'shish"), locked: false },
-          { key: 'appOffline' as const, label: tr(t, 'userAppOffline', 'Offline rejim'), locked: false },
+          {
+            key: 'appGps' as const,
+            label: tr(t, 'userAppGps', 'GPS tracking'),
+            locked: true,
+            hint: managerLavozim
+              ? tr(t, 'userAppGpsManagerOff', 'Menejer ilovasida GPS yo‘q')
+              : tr(t, 'userAppGpsAlwaysOn', 'GPS doim yoqiq'),
+          },
+          {
+            key: 'appAddClient' as const,
+            label: tr(t, 'userPermNewClient', "Yangi mijoz qo'shish"),
+            locked: managerLavozim,
+            hint: managerLavozim
+              ? tr(t, 'userAppAddClientManagerOn', 'Menejer mijoz qo‘sha oladi')
+              : undefined,
+          },
         ].map((item, i, arr) => {
-          const val = item.key === 'appGps' ? true : form[item.key];
+          const val = form[item.key];
           return (
           <div key={item.label} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -563,9 +649,9 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
           }}>
             <span style={{ fontSize: 12.5, color: txt }}>
               {item.label}
-              {item.locked && (
+              {item.locked && item.hint && (
                 <span style={{ marginLeft: 6, fontSize: 10, color: muted }}>
-                  ({tr(t, 'userAppGpsAlwaysOn', 'GPS doim yoqiq')})
+                  ({item.hint})
                 </span>
               )}
             </span>
@@ -739,9 +825,8 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
               {/* Permission badges summary */}
               {[
                 { label: tr(t, 'userAcceptPay', "To'lov"), active: form.appAcceptPay, color: green },
-                { label: tr(t, 'userConsig', 'Konsig'), active: form.appConsig, color: '#f59e0b' },
                 { label: tr(t, 'userPermNewClient', "Mijoz qo'shish"), active: form.appAddClient, color: '#8b5cf6' },
-                { label: tr(t, 'userGPS', 'GPS'), active: true, color: '#3b82f6' },
+                { label: tr(t, 'userGPS', 'GPS'), active: form.appGps, color: '#3b82f6' },
               ].map(b => (
                 <span key={b.label} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
