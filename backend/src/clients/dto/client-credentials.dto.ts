@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class SetClientCredentialsDto {
   @ApiProperty({ example: 'client29072' })
@@ -11,4 +11,15 @@ export class SetClientCredentialsDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiPropertyOptional({ description: 'Mijoz APK ga kira oladimi' })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class SetClientAppLoginActiveDto {
+  @ApiProperty({ example: true })
+  @IsBoolean()
+  isActive: boolean;
 }

@@ -108,6 +108,10 @@ const TRANS = {
     appNotSaved: "Saqlanmagan — «Saqlash va yopish» bosing",
     appSaved: "Saqlangan",
     appSaveLogin: "Login saqlash",
+    appLoginAccess: "Ilovaga kirish",
+    appLoginAccessOn: "Ruxsat bor",
+    appLoginAccessOff: "Ruxsat yo'q",
+    appLoginAccessHint: "O'chirilsa, mijoz login/parol bilan APK ga kira olmaydi (hisob saqlanadi).",
     simTitle: "O'xshash mijoz topildi",
     simConfirmAdd: "Baribir qo'shish",
     simConfirmSave: 'Baribir saqlash',
@@ -175,6 +179,10 @@ const TRANS = {
     appNotSaved: "Сақланмаган — «Сақлаш ва ёпиш» босинг",
     appSaved: "Сақланган",
     appSaveLogin: "Логинни сақлаш",
+    appLoginAccess: "Иловага кириш",
+    appLoginAccessOn: "Рухсат бор",
+    appLoginAccessOff: "Рухсат йўқ",
+    appLoginAccessHint: "Ўчирилса, мижоз login/parol билан APK га кира олмайди (ҳисоб сақланади).",
     simTitle: 'Ўхшаш мижоз топилди',
     simConfirmAdd: 'Барибир қўшиш',
     simConfirmSave: 'Барибир сақлаш',
@@ -242,6 +250,10 @@ const TRANS = {
     appNotSaved: "Не сохранено — нажмите «Записать и закрыть»",
     appSaved: "Сохранено",
     appSaveLogin: "Сохранить логин",
+    appLoginAccess: "Вход в приложение",
+    appLoginAccessOn: "Разрешён",
+    appLoginAccessOff: "Запрещён",
+    appLoginAccessHint: "Если выключено, клиент не сможет войти в APK (учётная запись сохраняется).",
     simTitle: 'Найден похожий клиент',
     simConfirmAdd: 'Всё равно добавить',
     simConfirmSave: 'Всё равно сохранить',
@@ -686,6 +698,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
   const [appPassword, setAppPassword] = useState(DEFAULT_CLIENT_APP_PASSWORD);
   const [showAppPassword, setShowAppPassword] = useState(false);
   const [hasAppLogin, setHasAppLogin] = useState(false);
+  const [appLoginEnabled, setAppLoginEnabled] = useState(true);
+  const [appLoginAccessBusy, setAppLoginAccessBusy] = useState(false);
   const [savedAppUsername, setSavedAppUsername] = useState<string | null>(null);
   const [appCredLoading, setAppCredLoading] = useState(false);
   const [appCredError, setAppCredError] = useState<string | null>(null);
@@ -817,6 +831,30 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
     setAppLogin(loginTrim);
     setAppPassword('');
     setAppCredError(null);
+  };
+
+  const handleToggleAppLoginAccess = async () => {
+    const clientId = client?.id;
+    if (!clientId || appLoginAccessBusy) return;
+    const next = !appLoginEnabled;
+    setAppLoginAccessBusy(true);
+    setAppCredError(null);
+    try {
+      const res = await api.setClientAppLoginActive(clientId, next);
+      if (res.hasCredentials) {
+        setHasAppLogin(true);
+        setSavedAppUsername(res.username);
+        setAppLogin(res.username);
+        setAppLoginEnabled(res.isActive !== false);
+      } else {
+        setAppLoginEnabled(false);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAppCredError(msg.replace(/^HTTP \d+:\s*/i, '') || t.appCredentialsError);
+    } finally {
+      setAppLoginAccessBusy(false);
+    }
   };
 
   const handleSaveAppCredentialsOnly = async () => {
@@ -1074,10 +1112,12 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
           setSavedAppUsername(cred.username);
           setAppLogin(cred.username);
           setAppPassword('');
+          setAppLoginEnabled(cred.isActive !== false);
         } else {
           setHasAppLogin(false);
           setSavedAppUsername(null);
           setAppLoginTouched(false);
+          setAppLoginEnabled(true);
           setAppLogin(
             cred.suggestedUsername
             ?? clientNameToLogin(client.name, client.code),
@@ -1630,6 +1670,35 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
                 <p style={{ fontSize: 12, color: lblClr, margin: 0 }}>...</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {isEdit && client?.id && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                      padding: '10px 12px', borderRadius: 10,
+                      background: D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                      border: `1px solid ${divClr}`,
+                    }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, color: valClr, fontWeight: 600 }}>{t.appLoginAccess}</div>
+                        <div style={{ fontSize: 11, color: lblClr, marginTop: 3, lineHeight: 1.35 }}>
+                          {t.appLoginAccessHint}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={appLoginAccessBusy}
+                        onClick={() => void handleToggleAppLoginAccess()}
+                        style={{
+                          flexShrink: 0, height: 34, minWidth: 100, padding: '0 12px', borderRadius: 10,
+                          border: 'none', cursor: appLoginAccessBusy ? 'wait' : 'pointer',
+                          fontWeight: 700, fontSize: 12, opacity: appLoginAccessBusy ? 0.7 : 1,
+                          background: appLoginEnabled ? 'rgba(16,185,129,0.14)' : inpBg,
+                          color: appLoginEnabled ? '#059669' : lblClr,
+                        }}
+                      >
+                        {appLoginEnabled ? t.appLoginAccessOn : t.appLoginAccessOff}
+                      </button>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ minWidth: 72, fontSize: 12, color: lblClr }}>{t.appLogin}:</span>
                     <input

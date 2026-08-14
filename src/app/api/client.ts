@@ -918,11 +918,20 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  setClientAppCredentials: (clientId: string, body: { username: string; password: string }) =>
-    request<{ userId: string; username: string; clientId: string; created: boolean }>(
+  setClientAppCredentials: (clientId: string, body: { username: string; password: string; isActive?: boolean }) =>
+    request<{ userId: string; username: string; clientId: string; created: boolean; isActive?: boolean }>(
       `/clients/${clientId}/app-credentials`,
       { method: 'POST', body: JSON.stringify(body) },
     ),
+
+  setClientAppLoginActive: (clientId: string, isActive: boolean) =>
+    request<
+      | { hasCredentials: false; isActive: false }
+      | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
+    >(`/clients/${clientId}/app-credentials/active`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    }),
 
   checkClientAppUsername: (username: string, excludeClientId?: string) => {
     const q = new URLSearchParams({ username: username.trim().toLowerCase() });

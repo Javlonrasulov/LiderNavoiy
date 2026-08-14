@@ -26,7 +26,7 @@ import { CompaniesService } from '../companies/companies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 import { CreateClientDto, UpdateClientDto, TransferClientsDto } from './dto/client.dto';
-import { SetClientCredentialsDto } from './dto/client-credentials.dto';
+import { SetClientCredentialsDto, SetClientAppLoginActiveDto } from './dto/client-credentials.dto';
 import { CreateClientRequestDto } from './dto/client-request.dto';
 import { User } from '../auth/entities/user.entity';
 import { UserRole } from '../common/enums';
@@ -306,6 +306,16 @@ export class ClientsController {
     @Body() dto: SetClientCredentialsDto,
   ) {
     return this.credentialsService.setCredentials(id, dto, req.user);
+  }
+
+  @Patch(':id/app-credentials/active')
+  @ApiOperation({ summary: 'Enable/disable client APK login' })
+  setAppLoginActive(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: SetClientAppLoginActiveDto,
+  ) {
+    return this.credentialsService.setLoginActive(id, dto.isActive, req.user);
   }
 
   @Get(':id/reconciliation')

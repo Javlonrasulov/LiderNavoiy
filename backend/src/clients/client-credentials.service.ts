@@ -148,11 +148,13 @@ export class ClientCredentialsService {
       where: { clientId, role: UserRole.CLIENT },
     });
 
+    const active = dto.isActive !== false;
+
     let created = false;
     if (account) {
       account.username = username;
       account.passwordHash = passwordHash;
-      account.isActive = true;
+      account.isActive = active;
     } else {
       account = this.userRepo.create({
         username,
@@ -160,7 +162,7 @@ export class ClientCredentialsService {
         fullName: client.fullName ?? client.name,
         role: UserRole.CLIENT,
         clientId,
-        isActive: true,
+        isActive: active,
       });
       created = true;
     }
@@ -172,6 +174,7 @@ export class ClientCredentialsService {
         username: saved.username,
         clientId,
         created,
+        isActive: saved.isActive,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -182,5 +185,41 @@ export class ClientCredentialsService {
       }
       throw err;
     }
+  }
+
+  /** Mijoz APK ga kirish ruxsatini yoqish / o‘chirish (login o‘chirilmaydi) */
+  async setLoginActive(clientId: string, isActive: boolean, user: User) {
+    await this.resolveClient(clientId, user);
+    let account = await this.userRepo.findOne({
+      where: { clientId, role: UserRole.CLIENT },
+    });
+    if (!account) {
+      if (!isActive) {
+        return { hasCredentials: false as const, isActive: false };
+      }
+      await this.ensureDefaultCredentials(clientId, user);
+      account = await this.userRepo.findOne({
+        where: { clientId, role: UserRole.CLIENT },
+      });
+      if (!account) {
+        throw new NotFoundException('Client app login topilmadi');
+      }
+      return {
+        hasCredentials: true as const,
+        userId: account.id,
+        username: account.username,
+        clientId,
+        isActive: account.isActive,
+      };
+    }
+    account.isActive = isActive;
+    const saved = await this.userRepo.save(account);
+    return {
+      hasCredentials: true as const,
+      userId: saved.id,
+      username: saved.username,
+      clientId,
+      isActive: saved.isActive,
+    };
   }
 }
