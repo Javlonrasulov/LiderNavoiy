@@ -149,33 +149,79 @@ function attachResume() {
   })
 }
 
+/** Web / brauzerda push majburiy emas */
+export function isNativePushRequired(): boolean {
+  return Capacitor.isNativePlatform()
+}
+
+export async function isPushPermissionGranted(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true
+  try {
+    const perm = await PushNotifications.checkPermissions()
+    return perm.receive === 'granted'
+  } catch {
+    return false
+  }
+}
+
+/** Dialog ochadi; true = ruxsat berildi */
+export async function requestPushPermission(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true
+  try {
+    let perm = await PushNotifications.checkPermissions()
+    if (perm.receive === 'granted') return true
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+      perm = await PushNotifications.requestPermissions()
+    }
+    return perm.receive === 'granted'
+  } catch {
+    return false
+  }
+}
+
+/** Telefon sozlamalarida bildirishnomalar sahifasini ochish */
+export async function openPushSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  const platform = Capacitor.getPlatform()
+  const url =
+    platform === 'ios'
+      ? 'app-settings:'
+      : 'intent:#Intent;action=android.settings.APP_NOTIFICATION_SETTINGS;' +
+        'S.android.provider.extra.APP_PACKAGE=uz.lider.manager;end'
+  try {
+    // CapApp.openUrl yo‘q — WebView orqali intent ochamiz
+    window.location.href = url
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Manager APK: FCM ruxsat + token → backend.
+ * Ruxsat yo‘q bo‘lsa false qaytaradi (ilova kirishni bloklaydi).
  */
 export async function initManagerPush(opts?: {
   onNavigate?: (target: PushNavigateTarget, data?: Record<string, string>) => void
   onForeground?: (payload: PushForegroundPayload) => void
-}): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return
+}): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true
 
   if (opts?.onNavigate) navigateHandler = opts.onNavigate
   if (opts?.onForeground) foregroundHandler = opts.onForeground
   attachListeners()
   await ensureChannels()
 
-  let perm = await PushNotifications.checkPermissions()
-  if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
-    perm = await PushNotifications.requestPermissions()
-  }
-  if (perm.receive !== 'granted') {
+  const granted = await requestPushPermission()
+  if (!granted) {
     console.warn('[push] permission denied')
-    return
+    return false
   }
 
   // Login almashgan bo‘lishi mumkin — tokenni albatta qayta bog‘laymiz
   forceNextSend = true
   await PushNotifications.register()
   attachResume()
+  return true
 }
 
 /** Til o‘zgaganda serverdagi preferredLanguage ni yangilash */

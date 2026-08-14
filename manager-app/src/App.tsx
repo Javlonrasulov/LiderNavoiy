@@ -21,15 +21,23 @@ import MessagesScreen from './screens/MessagesScreen'
 import ClientOrdersScreen from './screens/ClientOrdersScreen'
 import FactoryOrdersScreen from './screens/FactoryOrdersScreen'
 import NotificationsScreen from './screens/NotificationsScreen'
+import PushPermissionScreen from './screens/PushPermissionScreen'
 import BottomNav, { type Tab } from './components/BottomNav'
 import { showToast, ToastHost } from './components/Toast'
-import { initManagerPush, syncPushLanguage } from './push/registerPush'
+import {
+  initManagerPush,
+  syncPushLanguage,
+  isNativePushRequired,
+  isPushPermissionGranted,
+  requestPushPermission,
+  openPushSettings,
+} from './push/registerPush'
 import { fetchNotificationUnreadCount } from './api/notifications'
 import { App as CapApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 import { dispatchHardwareBack } from './utils/hardwareBack'
 
-type Phase = 'splash' | 'login' | 'app'
+type Phase = 'splash' | 'login' | 'pushRequired' | 'app'
 type Overlay = 'addClient' | 'products' | 'clientOrders' | 'factoryOrders' | 'employeeTracking' | 'profile' | 'notifications' | null
 
 function loadDark(): boolean {
@@ -62,8 +70,40 @@ export default function App() {
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const [incoming, setIncoming] = useState<IncomingMessage | null>(null)
+  const [pushBusy, setPushBusy] = useState(false)
   const activeChatIdRef = useRef<string | null>(null)
   const shownMsgIdsRef = useRef<Set<string>>(new Set())
+  const phaseRef = useRef<Phase>('splash')
+
+  /** Login/sessiya OK — push ruxsatisiz asosiy ilovaga o‘tkazmaymiz */
+  const enterAfterAuth = useCallback(async (u: AuthUser) => {
+    setUser(u)
+    if (!isNativePushRequired()) {
+      setPhase('app')
+      return
+    }
+    const granted = await isPushPermissionGranted()
+    setPhase(granted ? 'app' : 'pushRequired')
+  }, [])
+
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+
+  // Sozlamalardan qaytganda ruxsatni qayta tekshiramiz
+  useEffect(() => {
+    if (phase !== 'pushRequired') return
+    if (!Capacitor.isNativePlatform()) return
+    const sub = CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) return
+      void isPushPermissionGranted().then(ok => {
+        if (ok && phaseRef.current === 'pushRequired') setPhase('app')
+      })
+    })
+    return () => {
+      void sub.then(h => h.remove())
+    }
+  }, [phase])
 
   useEffect(() => {
     const onExpired = () => {
@@ -315,8 +355,7 @@ export default function App() {
   const afterSplash = () => {
     const u = getStoredUser()
     if (u && isManagerRole(u)) {
-      setUser(u)
-      setPhase('app')
+      void enterAfterAuth(u)
       return
     }
     if (u) clearSession()
@@ -333,8 +372,24 @@ export default function App() {
     setOpenConversationId(null)
     setMessagesChatOpen(false)
     setSessionExpired(false)
+    setPushBusy(false)
     resetSessionExpiredGuard()
     setPhase('login')
+  }
+
+  const handleAllowPush = async () => {
+    setPushBusy(true)
+    try {
+      const ok = await requestPushPermission()
+      if (ok) {
+        setPhase('app')
+        return
+      }
+      // Dialog chiqmasa (rad etilgan) — sozlamalarga yo‘naltiramiz
+      await openPushSettings()
+    } finally {
+      setPushBusy(false)
+    }
   }
 
   const navigate = (screen: string) => {
@@ -396,8 +451,7 @@ export default function App() {
             onSuccess={(u) => {
               resetSessionExpiredGuard()
               setSessionExpired(false)
-              setUser(u)
-              setPhase('app')
+              void enterAfterAuth(u)
             }}
           />
           {sessionExpired && (
@@ -408,6 +462,17 @@ export default function App() {
             />
           )}
         </>
+      )}
+
+      {phase === 'pushRequired' && (
+        <PushPermissionScreen
+          dark={dark}
+          tr={tr}
+          busy={pushBusy}
+          onAllow={() => { void handleAllowPush() }}
+          onOpenSettings={() => { void openPushSettings() }}
+          onLogout={() => { void handleLogout() }}
+        />
       )}
 
       {phase === 'app' && (
