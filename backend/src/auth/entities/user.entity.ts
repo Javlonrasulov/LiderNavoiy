@@ -46,6 +46,10 @@ export class User {
   @Column({ type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
+  /** Oxirgi kirgan qurilma nomi: "Alisher's Galaxy A54" */
+  @Column({ type: 'varchar', nullable: true })
+  lastDeviceName: string | null;
+
   /** Oxirgi kirgan telefon: Samsung, Xiaomi, ... */
   @Column({ type: 'varchar', nullable: true })
   lastDeviceBrand: string | null;

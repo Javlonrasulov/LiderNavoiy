@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
-import { ArrowLeft, Camera, CheckCircle, ChevronDown, ImageIcon, Locate, Maximize2, Pencil, Plus, X } from '../icons'
+import { ArrowLeft, Camera, CheckCircle, ChevronDown, Eye, EyeOff, ImageIcon, Locate, Lock, Maximize2, Pencil, Plus, X } from '../icons'
 import { pushBackHandler } from '../utils/hardwareBack'
 import {
   createClient,
@@ -11,9 +11,13 @@ import {
   fetchClient,
   fetchClientCategories,
   fetchClients,
+  checkClientAppUsername,
   fetchLines,
+  getClientAppCredentials,
   resolveMediaUrl,
   resubmitClientRequest,
+  setClientAppCredentials,
+  setClientAppLoginActive,
   updateClient,
   updateClientCategory,
   updateLine,
@@ -28,6 +32,7 @@ import { localizeApiError } from '../i18n'
 import { theme } from '../theme'
 import ClientPinMap from '../components/ClientPinMap'
 import { showToast } from '../components/Toast'
+import { clientNameToLogin, normalizeAppLogin, DEFAULT_CLIENT_APP_PASSWORD } from '../utils/clientLogin'
 import {
   findBestSimilarityMatch,
   hasExactInnCollision,
@@ -135,6 +140,22 @@ export default function AddClientScreen({
   const [lng, setLng] = useState<number | null>(null)
   const [radius, setRadius] = useState(100)
   const [canSeePromotions, setCanSeePromotions] = useState(false)
+  // Mijozning o'z ilovasiga kirish ruxsati (User.isActive) — admin bilan bir xil manba
+  const [appAccess, setAppAccess] = useState(false)
+  // Default: ruxsat o'chirilgan — login/parol yaratilmaguncha yoqilmaydi
+  const initialAppAccessRef = useRef(false)
+  const [appCredOpen, setAppCredOpen] = useState(false)
+  const [appLogin, setAppLogin] = useState('')
+  const [appPassword, setAppPassword] = useState(DEFAULT_CLIENT_APP_PASSWORD)
+  const [appPasswordVisible, setAppPasswordVisible] = useState(true)
+  const [hasAppLogin, setHasAppLogin] = useState(false)
+  const savedAppLoginRef = useRef('')
+  const [appLoginTouched, setAppLoginTouched] = useState(false)
+  const [appCredBusy, setAppCredBusy] = useState(false)
+  const [appCredError, setAppCredError] = useState<string | null>(null)
+  const [appCredNote, setAppCredNote] = useState<string | null>(null)
+  // Yangi mijoz uchun login/parol tayyor (mijoz saqlanganda yaratiladi)
+  const [appCredDraftReady, setAppCredDraftReady] = useState(false)
   const [markColor, setMarkColor] = useState<'green' | 'yellow' | 'red'>('green')
   const [geoLoading, setGeoLoading] = useState(false)
   const [mapFullscreen, setMapFullscreen] = useState(false)
@@ -277,8 +298,35 @@ export default function AddClientScreen({
         if (!cancelled) setPrefillLoading(false)
       })
 
+    // Ilovaga kirish ruxsati va login — login hisobidan o'qiladi (admin bilan bir xil)
+    void getClientAppCredentials(editClient.id)
+      .then(cred => {
+        if (cancelled) return
+        const active = cred.hasCredentials && cred.isActive !== false
+        setAppAccess(active)
+        initialAppAccessRef.current = active
+        setHasAppLogin(cred.hasCredentials)
+        if (cred.hasCredentials) {
+          setAppLogin(cred.username)
+          savedAppLoginRef.current = cred.username
+          setAppPassword('')
+          setAppCredOpen(active)
+        } else {
+          setAppLogin(cred.suggestedUsername || '')
+          setAppPassword(DEFAULT_CLIENT_APP_PASSWORD)
+        }
+      })
+      .catch(() => { /* ko'rsatkich default holatda qoladi */ })
+
     return () => { cancelled = true }
   }, [editClient?.id, isResubmit]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Yangi mijoz: login nomdan avtomatik taklif qilinadi (qo'lda tegilmagan bo'lsa)
+  useEffect(() => {
+    if (editClient || hasAppLogin || appLoginTouched) return
+    const suggestion = clientNameToLogin(name)
+    if (suggestion) setAppLogin(suggestion)
+  }, [name, editClient, hasAppLogin, appLoginTouched])
 
   // Modal/picker ochiqda fon scroll qulflansin; input fokus (klaviatura tepadagi dialogni yopmasin)
   useEffect(() => {
@@ -455,6 +503,125 @@ export default function AddClientScreen({
     await uploadBlob(file, file.name || 'photo.jpg')
   }
 
+  // Toggle o'zgargan bo'lsa, login ruxsatini serverga yozish (asosiy saqlashni buzmaydi)
+  const syncAppAccess = async (clientId: string) => {
+    if (!clientId || appAccess === initialAppAccessRef.current) return
+    try {
+      await setClientAppLoginActive(clientId, appAccess)
+      initialAppAccessRef.current = appAccess
+    } catch {
+      showToast(tr.loginError)
+    }
+  }
+
+  /** Login/parol yaratish yoki o'zgartirish. Yangi mijozda — saqlashga tayyorlanadi */
+  const saveAppCredentials = async () => {
+    if (appCredBusy) return
+    const login = normalizeAppLogin(appLogin)
+    const password = appPassword.trim()
+    setAppCredError(null)
+    setAppCredNote(null)
+
+    if (login.length < 3) {
+      setAppCredError(tr.appCredLoginShort)
+      return
+    }
+    // Mavjud hisobda parol bo'sh va login o'zgarmagan — faqat ruxsat yoqiladi
+    const loginUnchanged = hasAppLogin && login === normalizeAppLogin(savedAppLoginRef.current)
+    const onlyGrantAccess = loginUnchanged && password.length === 0
+    // Mavjud hisobda bo'sh parol eski parolni saqlaydi; yangi hisobda parol majburiy.
+    if ((!hasAppLogin && password.length < 6) || (password.length > 0 && password.length < 6)) {
+      setAppCredError(tr.appCredPasswordShort)
+      return
+    }
+
+    setAppCredBusy(true)
+    try {
+      const clientId = isEdit ? editClient?.id : undefined
+
+      if (clientId && onlyGrantAccess) {
+        const res = await setClientAppLoginActive(clientId, true)
+        const active = res.hasCredentials && res.isActive !== false
+        setAppAccess(active)
+        initialAppAccessRef.current = active
+        setAppCredNote(tr.appCredSaved)
+        return
+      }
+
+      const check = await checkClientAppUsername(login, clientId)
+      if (!check.available) {
+        const owner = check.takenBy?.clientName
+        setAppCredError(owner ? `${tr.appCredTaken} (${owner})` : tr.appCredTaken)
+        return
+      }
+
+      // Mijoz hali yaratilmagan — login/parol u saqlanganda yuboriladi
+      if (!clientId) {
+        setAppLogin(login)
+        setAppCredDraftReady(true)
+        setAppAccess(true)
+        setAppCredNote(tr.appCredReady)
+        return
+      }
+
+      // Yangi hisob yaratish = ruxsat berish niyati.
+      // Mavjud hisobda esa joriy toggle holati saqlanadi.
+      const res = await setClientAppCredentials(clientId, {
+        username: login,
+        password: password || undefined,
+        isActive: hasAppLogin ? appAccess : true,
+      })
+      setAppLogin(res.username)
+      savedAppLoginRef.current = res.username
+      setHasAppLogin(true)
+      setAppAccess(res.isActive !== false)
+      initialAppAccessRef.current = res.isActive !== false
+      setAppCredNote(res.created ? tr.appCredCreated : tr.appCredSaved)
+    } catch (e) {
+      setAppCredError(e instanceof ApiError ? localizeApiError(e.message, tr) : tr.loginError)
+    } finally {
+      setAppCredBusy(false)
+    }
+  }
+
+  const toggleAppAccess = () => {
+    setAppCredError(null)
+    setAppCredNote(null)
+    if (appAccess) {
+      setAppAccess(false)
+      // Tahrirlashda darhol serverga yoziladi (admin bilan bir xil)
+      if (isEdit && editClient?.id) {
+        void setClientAppLoginActive(editClient.id, false)
+          .then(() => { initialAppAccessRef.current = false })
+          .catch(() => {
+            setAppAccess(true)
+            showToast(tr.loginError)
+          })
+      }
+      return
+    }
+    // Ruxsat berish uchun login/parol shart
+    if (hasAppLogin || appCredDraftReady) {
+      setAppAccess(true)
+      setAppCredOpen(true)
+      if (isEdit && editClient?.id && hasAppLogin) {
+        void setClientAppLoginActive(editClient.id, true)
+          .then(res => {
+            const active = res.hasCredentials && res.isActive !== false
+            setAppAccess(active)
+            initialAppAccessRef.current = active
+          })
+          .catch(() => {
+            setAppAccess(false)
+            showToast(tr.loginError)
+          })
+      }
+      return
+    }
+    setAppCredOpen(true)
+    setAppCredNote(tr.appCredNeeded)
+  }
+
   const persistClient = async (body: SaveBody) => {
     setLoading(true)
     try {
@@ -483,16 +650,25 @@ export default function AddClientScreen({
       } else if (isEdit && editClient) {
         const updated = await updateClient(editClient.id, body)
         const pending = updated.status === 'pending'
+        if (!pending) await syncAppAccess(editClient.id)
         onCreated({
           message: pending ? tr.clientRequestSubmitted : tr.clientUpdated,
           kind: 'success',
         })
       } else {
+        // Login/parol tayyorlangan bo'lsa mijoz bilan birga yaratiladi
+        const draftLogin = appCredDraftReady ? normalizeAppLogin(appLogin) : ''
+        const draftPassword = appCredDraftReady ? appPassword.trim() : ''
+        const withCredentials = draftLogin.length >= 3 && draftPassword.length >= 6
         const created = await createClient({
           ...body,
           extraPhones: body.extraPhones.length ? body.extraPhones : undefined,
+          appUsername: withCredentials ? draftLogin : undefined,
+          appPassword: withCredentials ? draftPassword : undefined,
+          appLoginActive: withCredentials ? appAccess : undefined,
         })
         const pending = created.status === 'pending'
+        if (!pending && created.id) await syncAppAccess(created.id)
         onCreated({
           message: pending ? tr.clientRequestSubmitted : tr.clientCreated,
           kind: 'success',
@@ -678,12 +854,12 @@ export default function AddClientScreen({
         padding: 'var(--header-pad-top) max(16px, var(--safe-left)) 10px max(16px, var(--safe-right))',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-          <button type="button" onClick={onBack} style={{
-            width: 40, height: 40, borderRadius: 13, border: 'none', background: c.muted,
+        <button type="button" onClick={onBack} style={{
+          width: 40, height: 40, borderRadius: 13, border: 'none', background: c.muted,
             display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-          }}>
-            <ArrowLeft size={18} color={c.text} />
-          </button>
+        }}>
+          <ArrowLeft size={18} color={c.text} />
+        </button>
           <h1 style={{ flex: 1, fontSize: 20, fontWeight: 800, color: c.text, margin: 0 }}>
             {isResubmit ? tr.clientReqResubmit : isEdit ? tr.editClient : tr.addClient}
           </h1>
@@ -830,8 +1006,8 @@ export default function AddClientScreen({
                 }}>
                   <Camera size={28} color={c.mutedText} />
                   <p style={{ margin: '8px 0 0', fontSize: 12 }}>{tr.clientPhoto}</p>
-                </div>
-              )}
+          </div>
+        )}
               {photoUploading && (
                 <div style={{
                   position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)',
@@ -1021,30 +1197,160 @@ export default function AddClientScreen({
             <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.4 }}>{tr.orderRadiusHint}</p>
           </div>
 
-          <div style={{
-            marginTop: 14, padding: '12px 14px', borderRadius: 14,
-            border: `1px solid ${c.border}`, background: c.muted,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-          }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.text }}>{tr.canSeePromotions}</p>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.35 }}>
-                {tr.canSeePromotionsHint}
-              </p>
+          <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+            <div style={{
+              flex: 1, minWidth: 0, padding: '12px 12px', borderRadius: 14,
+              border: `1px solid ${c.border}`, background: c.muted,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.text }}>{tr.appAccess}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.35 }}>
+                  {tr.appAccessHint}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleAppAccess}
+                style={{
+                  marginTop: 'auto', height: 36, width: '100%', padding: '0 10px', borderRadius: 12,
+                  border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
+                  background: appAccess ? 'rgba(16,185,129,0.16)' : (dark ? '#252540' : '#E5E7EB'),
+                  color: appAccess ? '#059669' : c.mutedText,
+                }}
+              >
+                {appAccess ? tr.appAccessOn : tr.appAccessOff}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setCanSeePromotions(v => !v)}
-              style={{
-                flexShrink: 0, height: 36, minWidth: 96, padding: '0 12px', borderRadius: 12,
-                border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
-                background: canSeePromotions ? 'rgba(16,185,129,0.16)' : (dark ? '#252540' : '#E5E7EB'),
-                color: canSeePromotions ? '#059669' : c.mutedText,
-              }}
-            >
-              {canSeePromotions ? tr.canSeePromotionsOn : tr.canSeePromotionsOff}
-            </button>
+            <div style={{
+              flex: 1, minWidth: 0, padding: '12px 12px', borderRadius: 14,
+              border: `1px solid ${c.border}`, background: c.muted,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.text }}>{tr.canSeePromotions}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.35 }}>
+                  {tr.canSeePromotionsHint}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCanSeePromotions(v => !v)}
+                style={{
+                  marginTop: 'auto', height: 36, width: '100%', padding: '0 10px', borderRadius: 12,
+                  border: 'none', cursor: 'pointer', fontWeight: 800, fontSize: 12,
+                  background: canSeePromotions ? 'rgba(16,185,129,0.16)' : (dark ? '#252540' : '#E5E7EB'),
+                  color: canSeePromotions ? '#059669' : c.mutedText,
+                }}
+              >
+                {canSeePromotions ? tr.canSeePromotionsOn : tr.canSeePromotionsOff}
+              </button>
+            </div>
           </div>
+
+          {appCredOpen && (
+            <div style={{
+              marginTop: 10, padding: 14, borderRadius: 16,
+              border: `1px solid ${c.border}`, background: c.card,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{
+                  width: 28, height: 28, borderRadius: 10, flexShrink: 0,
+                  background: 'rgba(99,102,241,0.14)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Lock size={15} color={c.primary} />
+                </span>
+                <p style={{ margin: 0, flex: 1, fontSize: 13, fontWeight: 800, color: c.text }}>
+                  {tr.appCredTitle}
+                </p>
+                {(hasAppLogin || appCredDraftReady) && (
+                  <CheckCircle size={16} color="#10B981" />
+                )}
+              </div>
+
+              <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
+                {tr.appCredLogin}
+              </label>
+              <input
+                value={appLogin}
+                onChange={e => {
+                  setAppLoginTouched(true)
+                  setAppLogin(normalizeAppLogin(e.target.value))
+                  setAppCredError(null)
+                }}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                placeholder="mijoz01"
+                style={{ ...inputStyle, marginBottom: 12 }}
+              />
+
+              <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>
+                {tr.appCredPassword}
+              </label>
+              <div style={{ position: 'relative', marginBottom: 6 }}>
+                <input
+                  value={appPassword}
+                  onChange={e => {
+                    setAppPassword(e.target.value.trim())
+                    setAppCredError(null)
+                  }}
+                  type={appPasswordVisible ? 'text' : 'password'}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder={hasAppLogin ? tr.appCredPasswordKeep : DEFAULT_CLIENT_APP_PASSWORD}
+                  style={{ ...inputStyle, paddingRight: 52 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setAppPasswordVisible(v => !v)}
+                  style={{
+                    position: 'absolute', top: 6, right: 6, width: 36, height: 36, borderRadius: 12,
+                    border: 'none', background: c.muted, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {appPasswordVisible
+                    ? <EyeOff size={16} color={c.mutedText} />
+                    : <Eye size={16} color={c.mutedText} />}
+                </button>
+              </div>
+
+              {appCredError && (
+                <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 700, color: '#EF4444', lineHeight: 1.35 }}>
+                  {appCredError}
+                </p>
+              )}
+              {!appCredError && appCredNote && (
+                <p style={{ margin: '6px 0 0', fontSize: 11, fontWeight: 700, color: c.primary, lineHeight: 1.35 }}>
+                  {appCredNote}
+                </p>
+              )}
+              {!isEdit && !appCredDraftReady && (
+                <p style={{ margin: '6px 0 0', fontSize: 11, color: c.mutedText, lineHeight: 1.35 }}>
+                  {tr.appCredPendingNote}
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={appCredBusy}
+                onClick={() => void saveAppCredentials()}
+                style={{
+                  marginTop: 12, width: '100%', height: 46, borderRadius: 14, border: 'none',
+                  background: 'rgba(99,102,241,0.14)', color: c.primary,
+                  fontWeight: 800, fontSize: 13, cursor: appCredBusy ? 'wait' : 'pointer',
+                  opacity: appCredBusy ? 0.7 : 1,
+                }}
+              >
+                {appCredBusy
+                  ? tr.loading
+                  : hasAppLogin || appCredDraftReady ? tr.appCredSave : tr.appCredCreate}
+              </button>
+            </div>
+          )}
         </div>
 
         <button type="button" className="btn-primary" disabled={loading || photoUploading} onClick={() => void submit()}
@@ -1172,9 +1478,9 @@ export default function AddClientScreen({
                         height: '100%', width: `${f.pct}%`, borderRadius: 99,
                         background: barColor, transition: 'width .2s',
                       }} />
-                    </div>
-                  </div>
-                )
+      </div>
+    </div>
+  )
               })}
             </div>
 

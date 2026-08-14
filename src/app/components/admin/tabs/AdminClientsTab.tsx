@@ -234,6 +234,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     id: string;
     appUsername?: string;
     appPassword?: string;
+    appLoginActive?: boolean;
     appLoginChanged?: boolean;
     hasAppLogin?: boolean;
     isActive?: boolean;
@@ -242,7 +243,9 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     try {
       const distributorId = data.distributorId
         ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
-      const { appUsername, appPassword, appLoginChanged, hasAppLogin, isActive, ...rest } = data;
+      const {
+        appUsername, appPassword, appLoginActive, appLoginChanged, hasAppLogin, isActive, ...rest
+      } = data;
       const updated = await api.updateClient(
         data.id,
         {
@@ -250,6 +253,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           ...appCredentialsPayload(appUsername, appPassword, {
             hasExisting: hasAppLogin,
             loginChanged: appLoginChanged,
+            isActive: appLoginActive,
           }),
         },
       );
@@ -272,16 +276,17 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const handleCreateClient = async (data: Partial<ClientRow> & {
     appUsername?: string;
     appPassword?: string;
+    appLoginActive?: boolean;
     isActive?: boolean;
   }) => {
     setSaveError(null);
     try {
       const distributorId = data.distributorId
         ?? (data.agent ? agentNameToId(data.agent, agents) : undefined);
-      const { appUsername, appPassword, isActive, ...rest } = data;
+      const { appUsername, appPassword, appLoginActive, isActive, ...rest } = data;
       const created = await api.createClient({
         ...formToCreatePayload({ ...rest, distributorId, isActive }, companyId),
-        ...appCredentialsPayload(appUsername, appPassword),
+        ...appCredentialsPayload(appUsername, appPassword, { isActive: appLoginActive }),
       });
       if ((created as { status?: string }).status === 'pending') {
         setSaveError(

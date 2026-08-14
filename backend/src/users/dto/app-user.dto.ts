@@ -181,10 +181,12 @@ export class AppUserResponseDto {
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;
+  lastDeviceName?: string | null;
   lastDeviceBrand?: string | null;
   lastDeviceModel?: string | null;
   lastDeviceOs?: string | null;
   devices?: Array<{
+    name: string | null;
     brand: string | null;
     model: string | null;
     os: string | null;

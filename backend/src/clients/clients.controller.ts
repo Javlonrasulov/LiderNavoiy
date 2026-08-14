@@ -294,27 +294,33 @@ export class ClientsController {
 
   @Get(':id/app-credentials')
   @ApiOperation({ summary: 'Get client app login (admin/agent)' })
-  getAppCredentials(@Request() req: { user: User }, @Param('id') id: string) {
+  async getAppCredentials(@Request() req: { user: User }, @Param('id') id: string) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.credentialsService.getCredentials(id, req.user);
   }
 
   @Post(':id/app-credentials')
   @ApiOperation({ summary: 'Set client app login/password (admin/agent)' })
-  setAppCredentials(
+  async setAppCredentials(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Body() dto: SetClientCredentialsDto,
   ) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.credentialsService.setCredentials(id, dto, req.user);
   }
 
   @Patch(':id/app-credentials/active')
   @ApiOperation({ summary: 'Enable/disable client APK login' })
-  setAppLoginActive(
+  async setAppLoginActive(
     @Request() req: { user: User },
     @Param('id') id: string,
     @Body() dto: SetClientAppLoginActiveDto,
   ) {
+    const client = await this.service.findOne(id, this.scopeDistributorId(req.user));
+    assertManagerCompanyAccess(req.user, client.companyId);
     return this.credentialsService.setLoginActive(id, dto.isActive, req.user);
   }
 
@@ -394,15 +400,25 @@ export class ClientsController {
 
   private async applyAppCredentials(
     clientId: string,
-    dto: { appUsername?: string; appPassword?: string },
+    dto: { appUsername?: string; appPassword?: string; appLoginActive?: boolean },
     user: User,
   ) {
     const username = dto.appUsername?.trim().toLowerCase();
     const password = dto.appPassword;
-    if (!username || !password) return;
+    // Login yuborilmasa ham ruxsat holati alohida o'zgartirilishi mumkin.
+    if (!username) {
+      if (dto.appLoginActive !== undefined) {
+        await this.credentialsService.setLoginActive(
+          clientId,
+          dto.appLoginActive,
+          user,
+        );
+      }
+      return;
+    }
     await this.credentialsService.setCredentials(
       clientId,
-      { username, password },
+      { username, password, isActive: dto.appLoginActive },
       user,
     );
   }
@@ -411,7 +427,7 @@ export class ClientsController {
   @SkipThrottle()
   @ApiOperation({ summary: 'Create client' })
   async create(@Request() req: { user: User }, @Body() dto: CreateClientDto) {
-    const { appUsername, appPassword, ...clientDto } = dto;
+    const { appUsername, appPassword, appLoginActive, ...clientDto } = dto;
     const distributorId = this.scopeDistributorId(req.user);
     const companyId = this.resolveCompanyId(req.user, clientDto.companyId);
 
@@ -469,7 +485,11 @@ export class ClientsController {
       },
       req.user,
     );
-    await this.applyAppCredentials(client.id, { appUsername, appPassword }, req.user);
+    await this.applyAppCredentials(
+      client.id,
+      { appUsername, appPassword, appLoginActive },
+      req.user,
+    );
     return client;
   }
 
@@ -481,7 +501,7 @@ export class ClientsController {
     @Param('id') id: string,
     @Body() dto: UpdateClientDto,
   ) {
-    const { appUsername, appPassword, ...clientDto } = dto;
+    const { appUsername, appPassword, appLoginActive, ...clientDto } = dto;
     const distributorId = this.scopeDistributorId(req.user);
 
     const existing = await this.service.findOne(id, distributorId);
@@ -520,7 +540,11 @@ export class ClientsController {
     }
 
     const client = await this.service.update(id, clientDto, req.user);
-    await this.applyAppCredentials(id, { appUsername, appPassword }, req.user);
+    await this.applyAppCredentials(
+      id,
+      { appUsername, appPassword, appLoginActive },
+      req.user,
+    );
     return client;
   }
 }

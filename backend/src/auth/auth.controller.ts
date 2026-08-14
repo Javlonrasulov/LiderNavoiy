@@ -71,7 +71,10 @@ export class AuthController {
   ): Promise<AuthResponseDto> {
     const cookieToken =
       (req.cookies?.[REFRESH_COOKIE_NAME] as string | undefined) || undefined;
-    const refreshToken = cookieToken || dto.refreshToken;
+    // Mobil ilova tokenni body'da yuboradi — u ustuvor.
+    // Cookie faqat admin panel (body bo'sh) uchun zaxira: WebView'dagi eski
+    // cookie tufayli sessiya noto'g'ri bekor qilinmasin.
+    const refreshToken = dto.refreshToken?.trim() || cookieToken;
     const meta = {
       ip: clientIp(req),
       userAgent: typeof req.headers['user-agent'] === 'string'

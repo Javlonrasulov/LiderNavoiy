@@ -68,24 +68,40 @@ export interface AppUserListRow {
   departmentId?: string | null;
 }
 
-function formatDeviceLabel(brand?: string | null, model?: string | null, os?: string | null): string {
-  const b = (brand || '').trim();
-  const m = (model || '').trim();
+/** Ilova nomi qurilma nomi sifatida saqlanib qolgan eski yozuvlar */
+const FAKE_DEVICE = /^lider\s*(manager|agent|navoiy)?$/i;
+
+function formatDeviceLabel(
+  name?: string | null,
+  brand?: string | null,
+  model?: string | null,
+  os?: string | null,
+  t?: Record<string, string>,
+): string {
+  const n = (name || '').trim();
+  let b = (brand || '').trim();
+  let m = (model || '').trim();
   let o = (os || '').trim();
   // Eski manager login: to‘liq User-Agent saqlangan — qisqartirish
   if (/Mozilla\/|AppleWebKit|Chrome\//i.test(o)) {
     const ver = /Android\s+([\d.]+)/i.exec(o);
     o = ver ? `Android ${ver[1]}` : 'Android';
   }
-  // Fake "Lider Manager" yorlig‘ini yashirmaymiz — yangi login haqiqiy model yuboradi
-
-  let phone = '';
-  if (b && m) {
-    const same = m.toLowerCase().startsWith(b.toLowerCase());
-    phone = same ? m : `${b} ${m}`;
-  } else {
-    phone = m || b;
+  if (FAKE_DEVICE.test(`${b} ${m}`.trim())) {
+    b = '';
+    m = '';
   }
+
+  let phone = n;
+  if (!phone) {
+    if (b && m) {
+      const same = m.toLowerCase().startsWith(b.toLowerCase());
+      phone = same ? m : `${b} ${m}`;
+    } else {
+      phone = m || b;
+    }
+  }
+  if (!phone && o) phone = t?.userDeviceUnknown || "Noma'lum qurilma";
   if (phone && o) return `${phone} · ${o}`;
   return phone || o || '';
 }
@@ -109,12 +125,15 @@ export function formatRelativeTime(iso: string, t?: Record<string, string>): str
 }
 
 export function formatLastDevice(
-  app: Pick<AppUserRecord, 'lastDeviceBrand' | 'lastDeviceModel' | 'lastDeviceOs' | 'devices' | 'lastLoginAt'>,
+  app: Pick<
+    AppUserRecord,
+    'lastDeviceName' | 'lastDeviceBrand' | 'lastDeviceModel' | 'lastDeviceOs' | 'devices' | 'lastLoginAt'
+  >,
   t?: Record<string, string>,
 ): { summary: string; devices: AppUserDeviceRow[] } {
   const fromApi = (app.devices ?? [])
     .map(d => ({
-      label: formatDeviceLabel(d.brand, d.model, d.os),
+      label: formatDeviceLabel(d.name, d.brand, d.model, d.os, t),
       lastLoginAt: d.lastLoginAt,
       lastLoginLabel: formatRelativeTime(d.lastLoginAt, t),
     }))
@@ -127,7 +146,13 @@ export function formatLastDevice(
     };
   }
 
-  const legacy = formatDeviceLabel(app.lastDeviceBrand, app.lastDeviceModel, app.lastDeviceOs);
+  const legacy = formatDeviceLabel(
+    app.lastDeviceName,
+    app.lastDeviceBrand,
+    app.lastDeviceModel,
+    app.lastDeviceOs,
+    t,
+  );
   if (!legacy) return { summary: '', devices: [] };
 
   const at = app.lastLoginAt || new Date().toISOString();

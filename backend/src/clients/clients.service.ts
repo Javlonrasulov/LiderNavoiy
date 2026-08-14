@@ -645,8 +645,13 @@ export class ClientsService {
     if (dto.markColor !== undefined) client.markColor = normalizeMarkColor(dto.markColor);
     if (dto.canSeePromotions !== undefined) client.canSeePromotions = !!dto.canSeePromotions;
     if (dto.isActive !== undefined) {
+      const wasActive = client.isActive !== false;
       client.isActive = dto.isActive;
-      await this.userRepo.update({ clientId: id }, { isActive: dto.isActive });
+      // Faqat holat haqiqatan o'zgarganda login sinxronlanadi —
+      // aks holda oddiy saqlash APK kirish taqiqini (ban) bekor qilib yuborardi
+      if (wasActive !== dto.isActive) {
+        await this.userRepo.update({ clientId: id }, { isActive: dto.isActive });
+      }
     }
 
     if (dto.companyIds !== undefined || dto.companyId !== undefined) {
@@ -704,7 +709,8 @@ export class ClientsService {
     client.deletedByName = null;
     client.isActive = true;
     await this.repo.save(client);
-    await this.userRepo.update({ clientId: id }, { isActive: true });
+    // Ilova loginini avtomatik yoqmaymiz — korzinadan qaytganda ham
+    // ruxsat default o'chirilgan qoladi; admin/manager alohida beradi.
     return this.findOne(id);
   }
 

@@ -15,6 +15,11 @@ export class LoginDeviceDto {
   @IsString()
   id?: string;
 
+  @ApiPropertyOptional({ example: "Alisher's Galaxy A54", description: 'Qurilma nomi' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
   @ApiPropertyOptional({ example: 'Samsung' })
   @IsOptional()
   @IsString()

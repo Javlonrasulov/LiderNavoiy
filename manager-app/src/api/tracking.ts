@@ -1,4 +1,4 @@
-import { getAccessToken } from './client'
+import { getAccessToken, getFreshAccessToken } from './client'
 import { WS_BASE_URL } from './config'
 
 export type TrackingLocationEvent = {
@@ -23,7 +23,10 @@ export async function connectTracking(handlers: {
 
   const { io } = await import('socket.io-client')
   const socket = io(`${WS_BASE_URL}/tracking`, {
-    auth: { token },
+    // Har bir ulanish/qayta ulanishda yangi token — 4 soatdan keyin uzilmasin
+    auth: (cb: (data: { token: string }) => void) => {
+      void getFreshAccessToken().then(t => cb({ token: t || token }))
+    },
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,

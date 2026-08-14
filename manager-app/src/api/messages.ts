@@ -1,4 +1,4 @@
-import { api, getAccessToken } from './client'
+import { api, getAccessToken, getFreshAccessToken } from './client'
 import { API_BASE_URL, WS_BASE_URL } from './config'
 
 export interface ChatContact {
@@ -197,7 +197,10 @@ export async function connectMessages(handlers: {
 
   const { io } = await import('socket.io-client')
   const socket = io(`${WS_BASE_URL}/messages`, {
-    auth: { token },
+    // Har bir ulanish/qayta ulanishda yangi token — 4 soatdan keyin uzilmasin
+    auth: (cb: (data: { token: string }) => void) => {
+      void getFreshAccessToken().then(t => cb({ token: t || token }))
+    },
     transports: ['websocket', 'polling'],
     reconnection: true,
   })

@@ -8,6 +8,7 @@ export interface AuthSessionRecord {
   userId: string;
   refreshJti: string;
   deviceKey: string | null;
+  deviceName?: string | null;
   brand: string | null;
   model: string | null;
   os: string | null;
@@ -48,6 +49,7 @@ export class SessionStoreService {
     userId: string;
     refreshJti: string;
     deviceKey?: string | null;
+    deviceName?: string | null;
     brand?: string | null;
     model?: string | null;
     os?: string | null;
@@ -61,6 +63,7 @@ export class SessionStoreService {
       userId: input.userId,
       refreshJti: input.refreshJti,
       deviceKey: input.deviceKey ?? null,
+      deviceName: input.deviceName ?? null,
       brand: input.brand ?? null,
       model: input.model ?? null,
       os: input.os ?? null,

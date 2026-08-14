@@ -27,6 +27,10 @@ export class UserLoginDevice {
   @Column({ type: 'varchar', length: 160 })
   deviceKey: string;
 
+  /** Foydalanuvchi qurilmaga bergan nom: "Alisher's Galaxy A54" */
+  @Column({ type: 'varchar', nullable: true })
+  name: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   brand: string | null;
 

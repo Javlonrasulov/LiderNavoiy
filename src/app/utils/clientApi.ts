@@ -322,21 +322,25 @@ export function agentNameToId(name: string, agents: { id: string; name: string }
 export function appCredentialsPayload(
   appUsername?: string,
   appPassword?: string,
-  options?: { hasExisting?: boolean; loginChanged?: boolean },
-): { appUsername?: string; appPassword?: string } {
+  options?: { hasExisting?: boolean; loginChanged?: boolean; isActive?: boolean },
+): { appUsername?: string; appPassword?: string; appLoginActive?: boolean } {
+  const access = options?.isActive !== undefined ? { appLoginActive: options.isActive } : {};
   const username = appUsername?.trim().toLowerCase();
-  if (!username || username.length < 3) return {};
+  if (!username || username.length < 3) return access;
 
   if (options?.hasExisting) {
     const password = appPassword && appPassword.length >= 6 ? appPassword : '';
-    if (!options.loginChanged && !password) return {};
-    if (!password) return {};
-    return { appUsername: username, appPassword: password };
+    if (!options.loginChanged && !password) return access;
+    return {
+      appUsername: username,
+      appPassword: password || undefined,
+      ...access,
+    };
   }
 
   const password =
     appPassword && appPassword.length >= 6
       ? appPassword
       : DEFAULT_CLIENT_APP_PASSWORD;
-  return { appUsername: username, appPassword: password };
+  return { appUsername: username, appPassword: password, ...access };
 }

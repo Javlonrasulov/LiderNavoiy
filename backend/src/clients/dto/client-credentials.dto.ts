@@ -7,10 +7,14 @@ export class SetClientCredentialsDto {
   @MinLength(3)
   username: string;
 
-  @ApiProperty({ example: 'client123456' })
+  @ApiPropertyOptional({
+    example: 'client123456',
+    description: 'Yangi hisobda majburiy; mavjud hisobda berilmasa eski parol saqlanadi',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(6)
-  password: string;
+  password?: string;
 
   @ApiPropertyOptional({ description: 'Mijoz APK ga kira oladimi' })
   @IsOptional()

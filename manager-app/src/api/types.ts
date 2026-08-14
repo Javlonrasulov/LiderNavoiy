@@ -253,6 +253,9 @@ export interface CreateClientBody {
   inn?: string
   contactPerson?: string
   canSeePromotions?: boolean
+  appUsername?: string
+  appPassword?: string
+  appLoginActive?: boolean
 }
 
 export type UpdateClientBody = Partial<CreateClientBody>

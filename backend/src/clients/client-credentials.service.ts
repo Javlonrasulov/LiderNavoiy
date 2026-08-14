@@ -122,9 +122,11 @@ export class ClientCredentialsService {
       nameToLogin(client.name, client.code),
       clientId,
     );
+    // Login/parol yaratiladi, lekin ilovaga kirish default o'chirilgan —
+    // ruxsatni admin yoki manager alohida yoqadi
     return this.setCredentials(
       clientId,
-      { username, password: '123456' },
+      { username, password: '123456', isActive: false },
       user,
     );
   }
@@ -135,20 +137,28 @@ export class ClientCredentialsService {
     if (username.length < 3) {
       throw new BadRequestException('Login kamida 3 ta belgi bo‘lishi kerak');
     }
-    if (!dto.password || dto.password.length < 6) {
-      throw new BadRequestException('Parol kamida 6 ta belgi bo‘lishi kerak');
-    }
-
     // Aniq tanlangan login — boshqa mijozda bo'lsa ogohlantirish
     await this.assertUsernameAvailable(username, clientId);
-
-    const passwordHash = await bcrypt.hash(dto.password, 12);
 
     let account = await this.userRepo.findOne({
       where: { clientId, role: UserRole.CLIENT },
     });
+    if (!account && (!dto.password || dto.password.length < 6)) {
+      throw new BadRequestException('Yangi login uchun parol kamida 6 ta belgi bo‘lishi kerak');
+    }
+    if (dto.password !== undefined && dto.password.length < 6) {
+      throw new BadRequestException('Parol kamida 6 ta belgi bo‘lishi kerak');
+    }
 
-    const active = dto.isActive !== false;
+    // Mavjud hisobda parol berilmasa eski hash o'zgarishsiz qoladi.
+    const passwordHash = dto.password
+      ? await bcrypt.hash(dto.password, 12)
+      : account!.passwordHash;
+
+    // isActive berilmasa — mavjud holat saqlanadi (login/parol yangilash ban ni bekor qilmasin),
+    // yangi hisob esa default o'chirilgan holda yaratiladi
+    const active =
+      dto.isActive !== undefined ? dto.isActive : account ? account.isActive : false;
 
     let created = false;
     if (account) {
@@ -197,6 +207,7 @@ export class ClientCredentialsService {
       if (!isActive) {
         return { hasCredentials: false as const, isActive: false };
       }
+      // Login yo'q edi — standart login/parol yaratiladi va darhol yoqiladi
       await this.ensureDefaultCredentials(clientId, user);
       account = await this.userRepo.findOne({
         where: { clientId, role: UserRole.CLIENT },
@@ -204,13 +215,6 @@ export class ClientCredentialsService {
       if (!account) {
         throw new NotFoundException('Client app login topilmadi');
       }
-      return {
-        hasCredentials: true as const,
-        userId: account.id,
-        username: account.username,
-        clientId,
-        isActive: account.isActive,
-      };
     }
     account.isActive = isActive;
     const saved = await this.userRepo.save(account);

@@ -1,5 +1,6 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { API_BASE_URL } from './config'
+import { resolveLoginDevice } from '../utils/deviceInfo'
 import type { AuthResponse } from './types'
 
 const TOKEN_KEY = 'lm-access'
@@ -7,7 +8,7 @@ const REFRESH_KEY = 'lm-refresh'
 const USER_KEY = 'lm-user'
 
 /** Parallel 401: bitta refresh — qolganlari shu Promise ni kutadi */
-let refreshInFlight: Promise<string | null> | null = null
+let refreshInFlight: Promise<RefreshResult> | null = null
 let unauthorizedEmitted = false
 
 export function getAccessToken(): string | null {
@@ -130,34 +131,73 @@ function errorMessage(data: unknown, fallback: string): string {
   return fallback
 }
 
-async function doRefreshOnce(): Promise<string | null> {
+/**
+ * token — yangi access token; rejected = server sessiyani rad etdi (qayta login),
+ * rejected=false esa vaqtinchalik xato (internet yo‘q, server 5xx) — sessiya saqlanadi.
+ */
+type RefreshResult = { token: string | null; rejected: boolean }
+
+async function doRefreshOnce(): Promise<RefreshResult> {
   const refresh = localStorage.getItem(REFRESH_KEY)
-  if (!refresh) return null
+  if (!refresh) return { token: null, rejected: true }
   try {
     const h = new Headers({ 'Content-Type': 'application/json' })
+    const device = await resolveLoginDevice().catch(() => undefined)
     const r = await rawRequest(
       `${API_BASE_URL}auth/refresh`,
       'POST',
       h,
-      JSON.stringify({ refreshToken: refresh }),
+      JSON.stringify({ refreshToken: refresh, device }),
     )
-    if (r.status < 200 || r.status >= 300) return null
+    if (r.status === 401 || r.status === 403) return { token: null, rejected: true }
+    if (r.status < 200 || r.status >= 300) return { token: null, rejected: false }
     const data = r.data as AuthResponse
-    if (!data?.accessToken || !data?.refreshToken) return null
+    if (!data?.accessToken || !data?.refreshToken) return { token: null, rejected: false }
     saveSession(data)
-    return data.accessToken
+    return { token: data.accessToken, rejected: false }
   } catch {
-    return null
+    // Tarmoq uzilishi — foydalanuvchini tizimdan chiqarmaymiz
+    return { token: null, rejected: false }
   }
 }
 
 /** Bitta parallel refresh — rotation conflict yo‘q */
-async function refreshTokens(): Promise<string | null> {
+async function refreshTokens(): Promise<RefreshResult> {
   if (refreshInFlight) return refreshInFlight
   refreshInFlight = doRefreshOnce().finally(() => {
     refreshInFlight = null
   })
   return refreshInFlight
+}
+
+/** Access token muddati (sekundlarda) — o‘qib bo‘lmasa null */
+function accessTokenExpiry(token: string): number | null {
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
+    const payload = JSON.parse(json) as { exp?: number }
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch {
+    return null
+  }
+}
+
+/** WebSocket ulanishlari uchun: har safar yangi access token */
+export async function getFreshAccessToken(): Promise<string | null> {
+  return ensureFreshAccessToken()
+}
+
+/** Muddati tugashiga oz qolgan tokenni oldindan yangilaymiz — 401 kutmaymiz */
+async function ensureFreshAccessToken(): Promise<string | null> {
+  const token = getAccessToken()
+  if (!token) return null
+  const exp = accessTokenExpiry(token)
+  if (exp === null) return token
+  const secondsLeft = exp - Math.floor(Date.now() / 1000)
+  if (secondsLeft > 120) return token
+  const res = await refreshTokens()
+  return res.token ?? token
 }
 
 function forceSessionExpired(): never {
@@ -174,7 +214,7 @@ export async function api<T>(
   const h = new Headers(headers)
   if (!h.has('Content-Type') && body) h.set('Content-Type', 'application/json')
   if (auth) {
-    const token = getAccessToken()
+    const token = await ensureFreshAccessToken()
     if (token) h.set('Authorization', `Bearer ${token}`)
   }
 
@@ -185,11 +225,13 @@ export async function api<T>(
 
   if (res.status === 401 && auth) {
     const next = await refreshTokens()
-    if (next) {
-      h.set('Authorization', `Bearer ${next}`)
+    if (next.token) {
+      h.set('Authorization', `Bearer ${next.token}`)
       res = await rawRequest(url, String(method).toUpperCase(), h, bodyStr)
-    } else {
+    } else if (next.rejected) {
       forceSessionExpired()
+    } else {
+      throw new ApiError(0, 'network_error')
     }
   }
 

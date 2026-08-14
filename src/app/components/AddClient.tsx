@@ -40,6 +40,7 @@ type SavePayload = Partial<ClientRow> & {
   id?: string;
   appUsername?: string;
   appPassword?: string;
+  appLoginActive?: boolean;
   appLoginChanged?: boolean;
   hasAppLogin?: boolean;
   isActive?: boolean;
@@ -111,7 +112,7 @@ const TRANS = {
     appLoginAccess: "Ilovaga kirish",
     appLoginAccessOn: "Ruxsat bor",
     appLoginAccessOff: "Ruxsat yo'q",
-    appLoginAccessHint: "O'chirilsa, mijoz login/parol bilan APK ga kira olmaydi (hisob saqlanadi).",
+    appLoginAccessHint: "O'chirilsa, mijoz login/parol bilan ilovasiga kira olmaydi (hisob saqlanadi).",
     simTitle: "O'xshash mijoz topildi",
     simConfirmAdd: "Baribir qo'shish",
     simConfirmSave: 'Baribir saqlash',
@@ -182,7 +183,7 @@ const TRANS = {
     appLoginAccess: "Иловага кириш",
     appLoginAccessOn: "Рухсат бор",
     appLoginAccessOff: "Рухсат йўқ",
-    appLoginAccessHint: "Ўчирилса, мижоз login/parol билан APK га кира олмайди (ҳисоб сақланади).",
+    appLoginAccessHint: "Ўчирилса, мижоз login/parol билан иловасига кира олмайди (ҳисоб сақланади).",
     simTitle: 'Ўхшаш мижоз топилди',
     simConfirmAdd: 'Барибир қўшиш',
     simConfirmSave: 'Барибир сақлаш',
@@ -253,7 +254,7 @@ const TRANS = {
     appLoginAccess: "Вход в приложение",
     appLoginAccessOn: "Разрешён",
     appLoginAccessOff: "Запрещён",
-    appLoginAccessHint: "Если выключено, клиент не сможет войти в APK (учётная запись сохраняется).",
+    appLoginAccessHint: "Если выключено, клиент не сможет войти в своё приложение (учётная запись сохраняется).",
     simTitle: 'Найден похожий клиент',
     simConfirmAdd: 'Всё равно добавить',
     simConfirmSave: 'Всё равно сохранить',
@@ -698,7 +699,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
   const [appPassword, setAppPassword] = useState(DEFAULT_CLIENT_APP_PASSWORD);
   const [showAppPassword, setShowAppPassword] = useState(false);
   const [hasAppLogin, setHasAppLogin] = useState(false);
-  const [appLoginEnabled, setAppLoginEnabled] = useState(true);
+  // Ilovaga kirish default o'chirilgan — login yaratilgach alohida yoqiladi
+  const [appLoginEnabled, setAppLoginEnabled] = useState(false);
   const [appLoginAccessBusy, setAppLoginAccessBusy] = useState(false);
   const [savedAppUsername, setSavedAppUsername] = useState<string | null>(null);
   const [appCredLoading, setAppCredLoading] = useState(false);
@@ -818,10 +820,10 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
       ? appPassword
       : (!hasAppLogin && loginTrim.length >= 3 ? DEFAULT_CLIENT_APP_PASSWORD : '');
     const shouldSave = force
-      ? loginTrim.length >= 3 && passwordForSave.length >= 6
+      ? loginTrim.length >= 3 && (hasAppLogin || passwordForSave.length >= 6)
       : loginTrim.length >= 3
-        && passwordForSave.length >= 6
-        && (!hasAppLogin || loginChanged || appPassword.length >= 6);
+        && (!hasAppLogin || loginChanged || appPassword.length >= 6)
+        && (hasAppLogin || passwordForSave.length >= 6);
     return { loginTrim, loginChanged, passwordForSave, shouldSave };
   };
 
@@ -835,7 +837,12 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
 
   const handleToggleAppLoginAccess = async () => {
     const clientId = client?.id;
-    if (!clientId || appLoginAccessBusy) return;
+    if (appLoginAccessBusy) return;
+    // Yangi mijoz — holat saqlashda qo'llanadi
+    if (!clientId) {
+      setAppLoginEnabled(v => !v);
+      return;
+    }
     const next = !appLoginEnabled;
     setAppLoginAccessBusy(true);
     setAppCredError(null);
@@ -868,7 +875,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
       setAppCredError(t.appLoginRequired);
       return;
     }
-    if (passwordForSave.length < 6) {
+    if (!hasAppLogin && passwordForSave.length < 6) {
       setAppCredError(t.appPasswordRequired);
       return;
     }
@@ -878,7 +885,7 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
     try {
       await api.updateClient(clientId, {
         appUsername: loginTrim,
-        appPassword: passwordForSave,
+        appPassword: passwordForSave || undefined,
       });
       markCredentialsSaved(loginTrim);
     } catch (e) {
@@ -957,6 +964,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
       appLoginChanged: loginChanged,
       appUsername: shouldSave ? loginTrim : undefined,
       appPassword: shouldSave ? passwordForSave : undefined,
+      // Tahrirlashda ruxsat alohida endpoint bilan darhol yoziladi
+      appLoginActive: isEdit ? undefined : appLoginEnabled,
     };
 
     const persist = async (body: SavePayload) => {
@@ -1117,7 +1126,8 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
           setHasAppLogin(false);
           setSavedAppUsername(null);
           setAppLoginTouched(false);
-          setAppLoginEnabled(true);
+          // Login hisobi yo'q — mijoz APK ga kira olmaydi
+          setAppLoginEnabled(false);
           setAppLogin(
             cred.suggestedUsername
             ?? clientNameToLogin(client.name, client.code),
@@ -1670,35 +1680,33 @@ export default function AddClient({ onClose, client, agents = [], lines = [], co
                 <p style={{ fontSize: 12, color: lblClr, margin: 0 }}>...</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {isEdit && client?.id && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                      padding: '10px 12px', borderRadius: 10,
-                      background: D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                      border: `1px solid ${divClr}`,
-                    }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 13, color: valClr, fontWeight: 600 }}>{t.appLoginAccess}</div>
-                        <div style={{ fontSize: 11, color: lblClr, marginTop: 3, lineHeight: 1.35 }}>
-                          {t.appLoginAccessHint}
-                        </div>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    padding: '10px 12px', borderRadius: 10,
+                    background: D ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                    border: `1px solid ${divClr}`,
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, color: valClr, fontWeight: 600 }}>{t.appLoginAccess}</div>
+                      <div style={{ fontSize: 11, color: lblClr, marginTop: 3, lineHeight: 1.35 }}>
+                        {t.appLoginAccessHint}
                       </div>
-                      <button
-                        type="button"
-                        disabled={appLoginAccessBusy}
-                        onClick={() => void handleToggleAppLoginAccess()}
-                        style={{
-                          flexShrink: 0, height: 34, minWidth: 100, padding: '0 12px', borderRadius: 10,
-                          border: 'none', cursor: appLoginAccessBusy ? 'wait' : 'pointer',
-                          fontWeight: 700, fontSize: 12, opacity: appLoginAccessBusy ? 0.7 : 1,
-                          background: appLoginEnabled ? 'rgba(16,185,129,0.14)' : inpBg,
-                          color: appLoginEnabled ? '#059669' : lblClr,
-                        }}
-                      >
-                        {appLoginEnabled ? t.appLoginAccessOn : t.appLoginAccessOff}
-                      </button>
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      disabled={appLoginAccessBusy}
+                      onClick={() => void handleToggleAppLoginAccess()}
+                      style={{
+                        flexShrink: 0, height: 34, minWidth: 100, padding: '0 12px', borderRadius: 10,
+                        border: 'none', cursor: appLoginAccessBusy ? 'wait' : 'pointer',
+                        fontWeight: 700, fontSize: 12, opacity: appLoginAccessBusy ? 0.7 : 1,
+                        background: appLoginEnabled ? 'rgba(16,185,129,0.14)' : inpBg,
+                        color: appLoginEnabled ? '#059669' : lblClr,
+                      }}
+                    >
+                      {appLoginEnabled ? t.appLoginAccessOn : t.appLoginAccessOff}
+                    </button>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ minWidth: 72, fontSize: 12, color: lblClr }}>{t.appLogin}:</span>
                     <input

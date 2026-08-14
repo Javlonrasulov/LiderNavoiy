@@ -194,6 +194,7 @@ export class AuthService {
     const sessions = await this.sessions.listUserSessions(userId);
     return sessions.map((s) => ({
       id: s.sessionId,
+      name: s.deviceName ?? null,
       brand: s.brand,
       model: s.model,
       os: s.os,
@@ -256,9 +257,11 @@ export class AuthService {
 
   private applyDeviceInfo(user: User, device?: LoginDeviceDto) {
     if (!device) return;
+    const name = device.name?.trim();
     const brand = device.brand?.trim();
     const model = device.model?.trim();
     const os = device.os?.trim();
+    if (name) user.lastDeviceName = name.slice(0, 120);
     if (brand) user.lastDeviceBrand = brand.slice(0, 80);
     if (model) user.lastDeviceModel = model.slice(0, 120);
     if (os) user.lastDeviceOs = os.slice(0, 60);
@@ -272,6 +275,9 @@ export class AuthService {
     let row = await this.deviceRepo.findOne({ where: { userId, deviceKey } });
     if (row) {
       row.lastLoginAt = now;
+      // Eski ilova versiyalari soxta "Lider Manager" yorlig'ini yuborgan —
+      // yangi login kelganda qurilma ma'lumotini to'liq almashtiramiz.
+      row.name = device.name?.trim()?.slice(0, 120) || null;
       if (device.brand?.trim()) row.brand = device.brand.trim().slice(0, 80);
       if (device.model?.trim()) row.model = device.model.trim().slice(0, 120);
       if (device.os?.trim()) row.os = device.os.trim().slice(0, 60);
@@ -279,6 +285,7 @@ export class AuthService {
       row = this.deviceRepo.create({
         userId,
         deviceKey,
+        name: device.name?.trim()?.slice(0, 120) || null,
         brand: device.brand?.trim()?.slice(0, 80) || null,
         model: device.model?.trim()?.slice(0, 120) || null,
         os: device.os?.trim()?.slice(0, 60) || null,
@@ -298,6 +305,7 @@ export class AuthService {
       userId: user.id,
       refreshJti,
       deviceKey: this.deviceKeyOf(device),
+      deviceName: device?.name?.trim()?.slice(0, 120) || null,
       brand: device?.brand?.trim()?.slice(0, 80) || null,
       model: device?.model?.trim()?.slice(0, 120) || null,
       os: device?.os?.trim()?.slice(0, 60) || null,

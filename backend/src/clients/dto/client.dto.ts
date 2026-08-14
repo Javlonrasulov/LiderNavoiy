@@ -171,6 +171,14 @@ export class CreateClientDto {
   @IsString()
   @MinLength(6)
   appPassword?: string;
+
+  @ApiPropertyOptional({
+    description: 'Mijoz ilovaga kira oladimi (default: yo‘q)',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  appLoginActive?: boolean;
 }
 
 export class UpdateClientDto {
@@ -315,6 +323,11 @@ export class UpdateClientDto {
   @IsString()
   @MinLength(6)
   appPassword?: string;
+
+  @ApiPropertyOptional({ description: 'Mijoz ilovaga kira oladimi' })
+  @IsOptional()
+  @IsBoolean()
+  appLoginActive?: boolean;
 }
 
 export class TransferClientsDto {

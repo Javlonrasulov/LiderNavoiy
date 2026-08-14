@@ -399,8 +399,8 @@ export class UsersService {
     }
 
     let deviceRows = devices.map((d) => ({
-      brand: d.brand,
-      model: d.model,
+      name: d.name,
+      ...UsersService.sanitizeDeviceLabels(d.brand, d.model),
       os: d.os,
       lastLoginAt: d.lastLoginAt.toISOString(),
     }));
@@ -411,8 +411,11 @@ export class UsersService {
       (user.lastDeviceBrand || user.lastDeviceModel || user.lastDeviceOs)
     ) {
       deviceRows = [{
-        brand: user.lastDeviceBrand,
-        model: user.lastDeviceModel,
+        name: user.lastDeviceName ?? null,
+        ...UsersService.sanitizeDeviceLabels(
+          user.lastDeviceBrand,
+          user.lastDeviceModel,
+        ),
         os: user.lastDeviceOs,
         lastLoginAt: (user.lastLoginAt ?? new Date()).toISOString(),
       }];
@@ -440,10 +443,26 @@ export class UsersService {
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,
       isOnline,
+      lastDeviceName: user.lastDeviceName ?? null,
       lastDeviceBrand: user.lastDeviceBrand ?? null,
       lastDeviceModel: user.lastDeviceModel ?? null,
       lastDeviceOs: user.lastDeviceOs ?? null,
       devices: deviceRows,
     };
+  }
+
+  /**
+   * Eski ilova versiyalari qurilma o'rniga ilova nomini ("Lider Manager")
+   * yuborgan — bunday yozuvlarni telefon nomi sifatida ko'rsatmaymiz.
+   */
+  private static sanitizeDeviceLabels(
+    brand: string | null,
+    model: string | null,
+  ): { brand: string | null; model: string | null } {
+    const combined = `${brand ?? ''} ${model ?? ''}`.trim().toLowerCase();
+    if (/^lider\s*(manager|agent|navoiy)?$/.test(combined)) {
+      return { brand: null, model: null };
+    }
+    return { brand, model };
   }
 }

@@ -44,6 +44,7 @@ export interface SystemUserRecord {
 }
 
 export interface AppUserDeviceRecord {
+  name?: string | null;
   brand: string | null;
   model: string | null;
   os: string | null;
@@ -66,6 +67,7 @@ export interface AppUserRecord {
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;
+  lastDeviceName?: string | null;
   lastDeviceBrand?: string | null;
   lastDeviceModel?: string | null;
   lastDeviceOs?: string | null;
@@ -847,6 +849,7 @@ export const api = {
     onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
+    appLoginActive?: boolean;
   }) =>
     request<Client>('/clients', {
       method: 'POST',
@@ -877,6 +880,7 @@ export const api = {
     onTradeId?: string;
     appUsername?: string;
     appPassword?: string;
+    appLoginActive?: boolean;
   }) =>
     request<Client>(`/clients/${id}`, {
       method: 'PATCH',

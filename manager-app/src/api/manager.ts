@@ -122,6 +122,56 @@ export function updateClient(id: string, body: UpdateClientBody) {
   })
 }
 
+export type ClientAppCredentials =
+  | { hasCredentials: false; suggestedUsername?: string }
+  | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
+
+/** Mijoz ilovasi (APK) login holati — admin bilan bir xil endpoint */
+export function getClientAppCredentials(clientId: string) {
+  return api<ClientAppCredentials>(`clients/${encodeURIComponent(clientId)}/app-credentials`)
+}
+
+/** Login/parol yaratish yoki o'zgartirish (admin paneli bilan bir xil endpoint) */
+export function setClientAppCredentials(
+  clientId: string,
+  body: { username: string; password?: string; isActive?: boolean },
+) {
+  return api<{
+    hasCredentials: true
+    userId: string
+    username: string
+    clientId: string
+    created: boolean
+    isActive: boolean
+  }>(`clients/${encodeURIComponent(clientId)}/app-credentials`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+/** Login bo'shligini tekshirish */
+export function checkClientAppUsername(username: string, excludeClientId?: string) {
+  const q = new URLSearchParams({ username })
+  if (excludeClientId) q.set('excludeClientId', excludeClientId)
+  return api<{
+    available: boolean
+    username: string
+    reason?: string
+    takenBy?: { clientName?: string | null; clientCode?: string | null }
+  }>(`clients/app-username-available?${q.toString()}`)
+}
+
+/** Mijozning o'z ilovasiga kirishini yoqish/o'chirish */
+export function setClientAppLoginActive(clientId: string, isActive: boolean) {
+  return api<
+    | { hasCredentials: false; isActive: false }
+    | { hasCredentials: true; userId: string; username: string; clientId: string; isActive: boolean }
+  >(`clients/${encodeURIComponent(clientId)}/app-credentials/active`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  })
+}
+
 export type SalesLine = {
   id: string
   code: string
