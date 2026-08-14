@@ -87,12 +87,14 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     try {
+      // Socket orqali yuborilgan xabar ham push bersin (skipPush=false) —
+      // aks holda qabul qiluvchi ilova yopiq bo‘lsa bildirishnoma kelmaydi.
       const msg = await this.messagesService.sendMessage(
         data.conversationId,
         userId,
         data.text,
         data.attachment,
-        true,
+        false,
       );
       await this.broadcastNewMessage(msg, userId);
       return { status: 'ok', message: msg };

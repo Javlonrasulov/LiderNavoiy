@@ -51,7 +51,7 @@ interface Props {
   openConversationId?: string | null
   onUnreadChange?: (count: number) => void
   onConversationOpened?: () => void
-  onChatOpenChange?: (open: boolean) => void
+  onChatOpenChange?: (open: boolean, conversationId?: string | null) => void
 }
 
 function initials(name: string) {
@@ -176,8 +176,8 @@ export default function MessagesScreen({
     }
   }, [emitUnread, tr.msgError, companyId])
 
-  const setChatOpenFlag = useCallback((open: boolean) => {
-    onChatOpenChange?.(open)
+  const setChatOpenFlag = useCallback((open: boolean, conversationId?: string | null) => {
+    onChatOpenChange?.(open, conversationId ?? null)
     document.documentElement.setAttribute('data-chat-open', open ? '1' : '0')
     document.body.classList.toggle('lm-chat-open', open)
   }, [onChatOpenChange])
@@ -186,7 +186,7 @@ export default function MessagesScreen({
     async (convId: string) => {
       setActiveId(convId)
       activeIdRef.current = convId
-      setChatOpenFlag(true)
+      setChatOpenFlag(true, convId)
       setSelectedIds(new Set())
       setShowDeleteDialog(false)
       setPendingFile(null)

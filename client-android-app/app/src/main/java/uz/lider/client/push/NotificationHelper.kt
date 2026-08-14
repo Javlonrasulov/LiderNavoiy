@@ -6,6 +6,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -15,6 +17,9 @@ import uz.lider.client.presentation.MainActivity
 
 object NotificationHelper {
     const val CHANNEL_ID = "client_push_channel"
+    /** Backend chat pushlarini shu kanal bilan yuboradi (heads-up + ovoz). */
+    const val MESSAGES_CHANNEL_ID = "crm_chat_alert_v2"
+    const val EXTRA_CONVERSATION_ID = "conversationId"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -29,6 +34,61 @@ object NotificationHelper {
             enableVibration(true)
         }
         manager.createNotificationChannel(channel)
+
+        val messageSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val audioAttrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        val messagesChannel = NotificationChannel(
+            MESSAGES_CHANNEL_ID,
+            "Chat xabarlari",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Yangi chat xabarlari — ovoz va tepadan popup"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 280, 120, 280)
+            enableLights(true)
+            setSound(messageSound, audioAttrs)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
+        }
+        manager.createNotificationChannel(messagesChannel)
+    }
+
+    fun showMessageNotification(
+        context: Context,
+        conversationId: String,
+        senderName: String,
+        preview: String,
+    ) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("type", "message")
+            putExtra(EXTRA_CONVERSATION_ID, conversationId)
+            putExtra("title", senderName)
+        }
+        val notificationId = conversationId.hashCode()
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setContentTitle(senderName)
+            .setContentText(preview)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
     fun showNotification(

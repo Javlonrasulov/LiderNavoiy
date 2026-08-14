@@ -3,7 +3,8 @@ import { loadLang, t, type Lang } from './i18n'
 import { getStoredUser, clearSession, resetSessionExpiredGuard } from './api/client'
 import { isManagerRole, logout } from './api/auth'
 import SessionExpiredOverlay from './components/SessionExpiredOverlay'
-import { getConversations } from './api/messages'
+import { connectMessages, getConversations, type MessagesSocket } from './api/messages'
+import IncomingMessageBanner, { type IncomingMessage } from './components/IncomingMessageBanner'
 import type { AuthUser, Distributor, EmployeeLocation } from './api/types'
 import SplashScreen from './screens/SplashScreen'
 import LoginScreen from './screens/LoginScreen'
@@ -60,6 +61,9 @@ export default function App() {
   const [messagesChatOpen, setMessagesChatOpen] = useState(false)
   const [keyboardOpen, setKeyboardOpen] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [incoming, setIncoming] = useState<IncomingMessage | null>(null)
+  const activeChatIdRef = useRef<string | null>(null)
+  const shownMsgIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     const onExpired = () => {
@@ -147,9 +151,101 @@ export default function App() {
     return () => window.clearInterval(id)
   }, [phase, refreshUnread, refreshNotifUnread])
 
+  const openMessagesConversation = useCallback((convId?: string | null) => {
+    setActiveTab('messages')
+    setOverlay(null)
+    setTrackingEmp(null)
+    if (convId) setOpenConversationId(convId)
+  }, [])
+
+  const notifyIncoming = useCallback((msg: {
+    id: string
+    conversationId: string
+    senderName?: string
+    text?: string
+    messageType?: string
+    fileName?: string | null
+  }) => {
+    if (!msg.conversationId || !msg.id) return
+    if (shownMsgIdsRef.current.has(msg.id)) return
+    shownMsgIdsRef.current.add(msg.id)
+    if (shownMsgIdsRef.current.size > 80) {
+      shownMsgIdsRef.current = new Set([...shownMsgIdsRef.current].slice(-40))
+    }
+    // Xuddi shu suhbat ekranda ochiq — banner kerak emas
+    if (activeChatIdRef.current === msg.conversationId) return
+
+    const labels = t[lang]
+    const fileLabel = msg.messageType === 'image'
+      ? labels.msgPreviewImage
+      : msg.messageType === 'document'
+        ? (msg.fileName || labels.msgPreviewFile)
+        : ''
+    setIncoming({
+      id: msg.id,
+      conversationId: msg.conversationId,
+      senderName: msg.senderName || labels.msgNewMessage,
+      preview: msg.text?.trim() || fileLabel || labels.msgNewMessage,
+    })
+  }, [lang])
+
+  // Ilova ochiq bo‘lganda (istalgan tab) yangi xabar → banner + badge
+  useEffect(() => {
+    if (phase !== 'app') return
+    let cancelled = false
+    let sock: MessagesSocket | null = null
+
+    void connectMessages({
+      onMessage: payload => {
+        if (cancelled) return
+        const msg = payload.message
+        if (!msg) return
+        void refreshUnread()
+        if (user?.id && msg.senderId === user.id) return
+        notifyIncoming({
+          id: msg.id,
+          conversationId: msg.conversationId,
+          senderName: payload.conversation?.otherUser?.fullName,
+          text: msg.text,
+          messageType: msg.messageType,
+          fileName: msg.fileName,
+        })
+      },
+    }).then(s => {
+      if (cancelled) {
+        s?.disconnect()
+        return
+      }
+      sock = s
+    })
+
+    return () => {
+      cancelled = true
+      sock?.disconnect()
+    }
+  }, [phase, user?.id, notifyIncoming, refreshUnread])
+
+  const notifyIncomingRef = useRef(notifyIncoming)
+  notifyIncomingRef.current = notifyIncoming
+
   useEffect(() => {
     if (phase !== 'app') return
     void initManagerPush({
+      onForeground: ({ title, body, data }) => {
+        void refreshUnread()
+        void refreshNotifUnread()
+        const type = (data.type || '').toLowerCase()
+        if (type !== 'message') {
+          if (title || body) showToast([title, body].filter(Boolean).join(' — '), 'info')
+          return
+        }
+        notifyIncomingRef.current({
+          id: data.messageId || data.message_id || `${data.conversationId}-${Date.now()}`,
+          conversationId: data.conversationId || data.conversation_id || '',
+          senderName: title,
+          text: body,
+        })
+      },
       onNavigate: (target, data) => {
         if (target === 'clientOrders') {
           setActiveTab('home')
@@ -274,6 +370,17 @@ export default function App() {
   return (
     <div className="app-shell" style={{ background: bg }}>
       <ToastHost />
+      {phase === 'app' && (
+        <IncomingMessageBanner
+          dark={dark}
+          message={incoming}
+          onDismiss={() => setIncoming(null)}
+          onOpen={(convId) => {
+            setIncoming(null)
+            openMessagesConversation(convId)
+          }}
+        />
+      )}
       {phase === 'splash' && (
         <SplashScreen onDone={afterSplash} tr={tr} />
       )}
@@ -362,7 +469,11 @@ export default function App() {
                 openConversationId={openConversationId}
                 onUnreadChange={setMessagesUnread}
                 onConversationOpened={() => setOpenConversationId(null)}
-                onChatOpenChange={setMessagesChatOpen}
+                onChatOpenChange={(open, convId) => {
+                  setMessagesChatOpen(open)
+                  activeChatIdRef.current = open ? (convId ?? null) : null
+                  if (open) setIncoming(null)
+                }}
               />
             )}
           </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Bell, Send, Radio } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, Send, Radio, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { api } from '../../../api/client';
 import { isAdminWebPushConfigured } from '../../../lib/firebaseMessaging';
 
@@ -12,6 +12,30 @@ const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
   { value: 'all', label: 'Hammaga' },
 ];
 
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Adminlar',
+  manager: 'Menejerlar',
+  distributor: 'Agentlar',
+  client: 'Mijozlar',
+};
+
+type Diagnostics = Awaited<ReturnType<typeof api.getPushDiagnostics>>;
+
+function StatusRow({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      {ok ? (
+        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+      ) : (
+        <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+      )}
+      <span className={ok ? 'text-gray-700 dark:text-gray-300' : 'text-amber-600 dark:text-amber-400'}>
+        {children}
+      </span>
+    </div>
+  );
+}
+
 export function AdminPushTab() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -19,6 +43,11 @@ export function AdminPushTab() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diag, setDiag] = useState<Diagnostics | null>(null);
+
+  useEffect(() => {
+    api.getPushDiagnostics().then(setDiag).catch(() => setDiag(null));
+  }, []);
 
   const handleBroadcast = async () => {
     if (!title.trim() || !body.trim()) {
@@ -61,6 +90,35 @@ export function AdminPushTab() {
           </p>
         </div>
       </div>
+
+      {diag && (
+        <div className="mb-4 space-y-2 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+            Push holati
+          </h3>
+          <StatusRow ok={diag.firebaseConfigured}>
+            Server Firebase:{' '}
+            {diag.firebaseConfigured ? 'ulangan' : 'sozlanmagan — backend FIREBASE_* env kerak'}
+          </StatusRow>
+          <StatusRow ok={isAdminWebPushConfigured()}>
+            Brauzer push konfiguratsiyasi:{' '}
+            {isAdminWebPushConfigured() ? 'bor' : 'VITE_FIREBASE_* va VAPID kerak'}
+          </StatusRow>
+          <StatusRow ok={diag.myTokenRegistered}>
+            Mening qurilmalarim:{' '}
+            {diag.myTokenRegistered
+              ? `${diag.myDeviceCount ?? 1} ta ro‘yxatdan o‘tgan`
+              : 'yo‘q — bildirishnoma ruxsatini bering va sahifani yangilang'}
+          </StatusRow>
+          <div className="pt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            {diag.byRole.map((r) => (
+              <span key={r.role}>
+                {ROLE_LABELS[r.role] ?? r.role}: {r.withToken}/{r.total} qurilma
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5">
         <div>

@@ -58,10 +58,13 @@ export class MessagesController {
 
   @Get('client-contacts')
   @ApiOperation({
-    summary: 'List assigned clients with app login (agent ↔ client chat)',
+    summary: 'List clients who logged into the mobile app (chat with clients)',
   })
-  getClientContacts(@Request() req: { user: User }) {
-    return this.service.getClientContacts(req.user.id);
+  getClientContacts(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getClientContacts(req.user.id, companyId);
   }
 
   @Get('conversations')

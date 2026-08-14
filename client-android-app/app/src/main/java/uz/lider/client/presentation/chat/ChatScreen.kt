@@ -89,6 +89,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
+import uz.lider.client.data.local.ChatSessionHolder
 import uz.lider.client.data.remote.dto.ChatMessageDto
 import uz.lider.client.presentation.components.ClientBackButton
 import uz.lider.client.presentation.components.ClientPullToRefresh
@@ -144,6 +145,12 @@ fun ChatScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val openConversationId = state.conversation?.id
+    DisposableEffect(openConversationId) {
+        ChatSessionHolder.openConversationId = openConversationId
+        onDispose { ChatSessionHolder.openConversationId = null }
     }
 
     LaunchedEffect(state.messages.size) {

@@ -55,12 +55,14 @@ function ChatImageBubble({
   isMine,
   dark,
   fallbackLabel,
+  openLabel,
 }: {
   fileUrl?: string | null;
   fileName?: string | null;
   isMine: boolean;
   dark: boolean;
   fallbackLabel: string;
+  openLabel: string;
 }) {
   const [failed, setFailed] = useState(false);
   const src = fileUrl ? resolveFileUrl(fileUrl) : '';
@@ -78,7 +80,7 @@ function ChatImageBubble({
           {fileName && <p className={`text-xs truncate ${isMine ? 'text-white/60' : 'opacity-60'}`}>{fileName}</p>}
           {src && failed && (
             <a href={src} target="_blank" rel="noreferrer" className="text-xs underline opacity-80">
-              Ochish
+              {openLabel}
             </a>
           )}
         </div>
@@ -90,7 +92,7 @@ function ChatImageBubble({
     <a href={src} target="_blank" rel="noreferrer" className="block mb-1">
       <img
         src={src}
-        alt={fileName ?? 'Rasm'}
+        alt={fileName ?? fallbackLabel}
         className="block w-full max-w-[280px] min-h-[120px] max-h-[240px] rounded-lg object-cover bg-black/20"
         loading="lazy"
         onError={() => setFailed(true)}
@@ -104,9 +106,12 @@ function userRoleLabel(role: string, t: Record<string, string>) {
     case 'admin': return t.msgRoleAdmin ?? 'Admin';
     case 'manager': return t.msgRoleManager ?? 'Menejer';
     case 'distributor': return t.msgRoleAgent ?? 'Agent';
+    case 'client': return t.msgRoleClient ?? 'Mijoz';
     default: return role;
   }
 }
+
+type SidebarTab = 'chats' | 'contacts' | 'clients';
 
 export function AdminMessagesTab() {
   const { isDark } = useTheme();
@@ -117,11 +122,12 @@ export function AdminMessagesTab() {
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
+  const [clients, setClients] = useState<ChatContact[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState('');
-  const [sidebarTab, setSidebarTab] = useState<'chats' | 'contacts'>('chats');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('chats');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +143,8 @@ export function AdminMessagesTab() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const attachButtonRef = useRef<HTMLButtonElement>(null);
   const socketRef = useRef<Awaited<ReturnType<typeof connectMessages>>>(null);
 
   const activeConv = conversations.find((c) => c.id === activeId);
@@ -177,15 +185,16 @@ export function AdminMessagesTab() {
     setLoading(true);
     setError(null);
     try {
-      const [convs, staff, clients] = await Promise.all([
+      const [convs, staff, appClients] = await Promise.all([
         api.getConversations(),
         api.getContacts(selectedCompany?.id),
-        api.getClientContacts().catch(() => [] as ChatContact[]),
+        api.getClientContacts(selectedCompany?.id).catch(() => [] as ChatContact[]),
       ]);
       setConversations(convs);
-      const byId = new Map<string, ChatContact>();
-      for (const c of [...staff, ...clients]) byId.set(c.id, c);
-      setContacts([...byId.values()].sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz')));
+      const byName = (a: ChatContact, b: ChatContact) =>
+        a.fullName.localeCompare(b.fullName, 'uz');
+      setContacts([...staff].sort(byName));
+      setClients([...appClients].sort(byName));
       triggerUnreadRefresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.msgError);
@@ -250,9 +259,30 @@ export function AdminMessagesTab() {
   }, [messages, pendingFile]);
 
   useEffect(() => {
-    const close = () => setContextMenu(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
+    const onClick = (e: MouseEvent) => {
+      setContextMenu(null);
+      const target = e.target as Node | null;
+      // Ilashtirish menyusi: tugma yoki menyu ichi bo'lmasa — yopiladi
+      if (
+        target &&
+        !attachMenuRef.current?.contains(target) &&
+        !attachButtonRef.current?.contains(target)
+      ) {
+        setShowAttach(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        setShowAttach(false);
+      }
+    };
+    window.addEventListener('click', onClick);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', onClick);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   const openConversation = useCallback(async (convId: string) => {
@@ -392,11 +422,15 @@ export function AdminMessagesTab() {
     .filter((c) => c.otherUser.fullName.toLowerCase().includes(searchLower))
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  const filteredContacts = contacts.filter((c) =>
+  const matchesSearch = (c: ChatContact) =>
     c.fullName.toLowerCase().includes(searchLower) ||
     c.username.toLowerCase().includes(searchLower) ||
-    c.role.toLowerCase().includes(searchLower),
-  );
+    c.role.toLowerCase().includes(searchLower);
+
+  const filteredContacts = contacts.filter(matchesSearch);
+  const filteredClients = clients.filter(matchesSearch);
+  const sidebarList = sidebarTab === 'clients' ? filteredClients : filteredContacts;
+  const sidebarEmptyLabel = sidebarTab === 'clients' ? t.msgNoClients : t.msgNoContacts;
 
   const renderMessageBody = (msg: ChatMessage, isMine: boolean) => (
     <>
@@ -407,6 +441,7 @@ export function AdminMessagesTab() {
           isMine={isMine}
           dark={D}
           fallbackLabel={t.msgPreviewImage}
+          openLabel={t.msgOpen}
         />
       )}
       {msg.messageType === 'document' && (
@@ -479,16 +514,21 @@ export function AdminMessagesTab() {
                 className={`flex-1 bg-transparent text-sm outline-none ${text} placeholder-[#708499]`}
               />
             </div>
-            <div className="flex gap-2">
-              {(['chats', 'contacts'] as const).map((tab) => {
+            <div className="flex gap-1">
+              {(['chats', 'contacts', 'clients'] as const).map((tab) => {
                 const selected = sidebarTab === tab;
-                const label = tab === 'chats' ? t.msgChatsTab : t.msgContactsTab;
+                const label =
+                  tab === 'chats'
+                    ? t.msgChatsTab
+                    : tab === 'contacts'
+                      ? t.msgContactsTab
+                      : t.msgClientsTab;
                 return (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setSidebarTab(tab)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex-1 px-1 py-2 rounded-lg text-xs sm:text-sm font-medium truncate transition-colors ${
                       selected
                         ? D
                           ? 'bg-[#2b5278]/30 text-[#6ab2f2]'
@@ -564,10 +604,10 @@ export function AdminMessagesTab() {
                   );
                 })
               )
-            ) : filteredContacts.length === 0 ? (
-              <p className={`text-center text-sm ${sub} py-8`}>{t.msgNoContacts}</p>
+            ) : sidebarList.length === 0 ? (
+              <p className={`text-center text-sm ${sub} py-8`}>{sidebarEmptyLabel}</p>
             ) : (
-              filteredContacts.map((contact) => (
+              sidebarList.map((contact) => (
                 <button
                   key={contact.id}
                   type="button"
@@ -644,7 +684,7 @@ export function AdminMessagesTab() {
                   </div>
                   <div>
                     <p className={`font-semibold ${text}`}>{activeConv.otherUser.fullName}</p>
-                    <p className={`text-xs ${sub}`}>{activeConv.otherUser.role}</p>
+                    <p className={`text-xs ${sub}`}>{userRoleLabel(activeConv.otherUser.role, t)}</p>
                   </div>
                 </div>
               )}
@@ -733,7 +773,10 @@ export function AdminMessagesTab() {
 
               <div className={`px-4 py-3 border-t ${border} ${sidebarBg} relative`}>
                 {showAttach && (
-                  <div className={`absolute bottom-full left-4 mb-2 rounded-xl border shadow-xl overflow-hidden ${menuBg}`}>
+                  <div
+                    ref={attachMenuRef}
+                    className={`absolute bottom-full left-4 mb-2 rounded-xl border shadow-xl overflow-hidden ${menuBg}`}
+                  >
                     <button
                       type="button"
                       onClick={() => imageInputRef.current?.click()}
@@ -778,6 +821,7 @@ export function AdminMessagesTab() {
 
                 <div className="flex items-end gap-2 max-w-3xl mx-auto">
                   <button
+                    ref={attachButtonRef}
                     type="button"
                     onClick={() => setShowAttach((v) => !v)}
                     className={`p-3 rounded-full ${hoverBg} ${sub}`}

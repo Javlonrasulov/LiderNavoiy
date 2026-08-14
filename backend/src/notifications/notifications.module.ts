@@ -6,10 +6,16 @@ import { FirebaseAdminService } from './firebase-admin.service';
 import { User } from '../auth/entities/user.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { PushNotification } from './entities/push-notification.entity';
+import { UserPushToken } from './entities/user-push-token.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, DistributorProfile, PushNotification]),
+    TypeOrmModule.forFeature([
+      User,
+      DistributorProfile,
+      PushNotification,
+      UserPushToken,
+    ]),
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, FirebaseAdminService],

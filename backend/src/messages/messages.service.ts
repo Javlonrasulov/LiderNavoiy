@@ -6,14 +6,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, Not, IsNull } from 'typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { ChatMessage } from './entities/chat-message.entity';
 import { MessageDeletion } from './entities/message-deletion.entity';
 import { User } from '../auth/entities/user.entity';
 import { Client } from '../clients/entities/client.entity';
 import { UserRole } from '../common/enums';
-import { allowedCompanyIds, assertManagerCompanyAccess } from '../common/company-scope.util';
+import {
+  allowedCompanyIds,
+  assertManagerCompanyAccess,
+  resolveCompanyIds,
+} from '../common/company-scope.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../notifications/notification.types';
 import { PushI18n, normalizePushLang } from '../notifications/push-i18n';
@@ -96,18 +100,18 @@ export class MessagesService {
     return a < b ? [a, b] : [b, a];
   }
 
-  private formatChatDisplayName(user: User, viewerRole?: UserRole): string {
-    const base = user.fullName?.trim() || user.username || 'Noma\'lum';
-    if (user.role === UserRole.CLIENT && viewerRole && viewerRole !== UserRole.CLIENT) {
-      return `${base} (klient)`;
-    }
-    return base;
+  /**
+   * Faqat ism — rol yorlig‘i (Mijoz / Agent ...) mijoz tomonda
+   * foydalanuvchi tiliga qarab chiqariladi.
+   */
+  private formatChatDisplayName(user: User): string {
+    return user.fullName?.trim() || user.username || 'Noma\'lum';
   }
 
-  private toUserDto(user: User, viewerRole?: UserRole): ChatUserDto {
+  private toUserDto(user: User): ChatUserDto {
     return {
       id: user.id,
-      fullName: this.formatChatDisplayName(user, viewerRole),
+      fullName: this.formatChatDisplayName(user),
       role: user.role,
       username: user.username,
     };
@@ -155,10 +159,14 @@ export class MessagesService {
   }
 
   /**
-   * Agentga biriktirilgan va ilova loginiga ega klientlar.
-   * Admin — barcha; menejer — faqat o‘z org klientlari.
+   * Ilovaga kirgan (kamida bir marta login qilgan) mijozlar.
+   * Agent — faqat o‘ziga biriktirilganlar; menejer — o‘z org lari;
+   * admin — barchasi yoki `companyId` bo‘yicha tanlangan org.
    */
-  async getClientContacts(userId: string): Promise<ChatUserDto[]> {
+  async getClientContacts(
+    userId: string,
+    companyId?: string,
+  ): Promise<ChatUserDto[]> {
     const viewer = await this.userRepo.findOne({
       where: { id: userId },
       relations: ['distributorProfile'],
@@ -181,6 +189,7 @@ export class MessagesService {
           role: UserRole.CLIENT,
           isActive: true,
           clientId: In(clientIds),
+          lastLoginAt: Not(IsNull()),
         },
       });
 
@@ -198,31 +207,52 @@ export class MessagesService {
         .sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
     }
 
-    if (viewer.role === UserRole.ADMIN || viewer.role === UserRole.MANAGER) {
-      const qb = this.userRepo
-        .createQueryBuilder('u')
-        .leftJoinAndSelect('u.client', 'c')
-        .where('u.role = :role', { role: UserRole.CLIENT })
-        .andWhere('u.isActive = :active', { active: true });
-
-      if (viewer.role === UserRole.MANAGER) {
-        const allowed = allowedCompanyIds(viewer);
-        if (!allowed.length) return [];
-        qb.andWhere('c.companyId IN (:...companyIds)', { companyIds: allowed });
-      }
-
-      const users = await qb.getMany();
-      return users
-        .map((u) => ({
-          id: u.id,
-          fullName: (u.client?.name || u.fullName || u.username).trim(),
-          role: u.role,
-          username: u.username,
-        }))
-        .sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
+    if (viewer.role !== UserRole.ADMIN && viewer.role !== UserRole.MANAGER) {
+      return [];
     }
 
-    return [];
+    const companyIds = resolveCompanyIds(viewer, companyId);
+    // Manager uchun bo‘sh ro‘yxat = hech qanday org ruxsati yo‘q
+    if (companyIds && companyIds.length === 0) return [];
+
+    const qb = this.userRepo
+      .createQueryBuilder('u')
+      .innerJoinAndSelect('u.client', 'c')
+      .where('u.role = :role', { role: UserRole.CLIENT })
+      .andWhere('u.isActive = :active', { active: true })
+      .andWhere('u.deletedAt IS NULL')
+      // Faqat ilovaga kirgan mijozlar — hech kirmaganlar ro‘yxatda ko‘rinmaydi
+      .andWhere('u.lastLoginAt IS NOT NULL')
+      .andWhere('c.isActive = :clientActive', { clientActive: true })
+      .andWhere('c.deletedAt IS NULL');
+
+    if (companyIds?.length) {
+      qb.andWhere(
+        `(c.companyId IN (:...companyIds)
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(c."linkedCompanyIds", '[]'::jsonb)) AS x(val)
+            WHERE x.val IN (:...companyIds)
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM user_client_memberships ucm
+            WHERE ucm."userId" = u.id
+              AND ucm."companyId" IN (:...companyIds)
+          ))`,
+        { companyIds },
+      );
+    }
+
+    const users = await qb.getMany();
+    return users
+      .map((u) => ({
+        id: u.id,
+        fullName: (u.client?.name || u.fullName || u.username).trim(),
+        role: u.role,
+        username: u.username,
+      }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));
   }
 
   private async assertCanStartConversation(actorId: string, other: User) {
@@ -284,8 +314,7 @@ export class MessagesService {
       );
     }
 
-    const viewer = await this.userRepo.findOne({ where: { id: userId } });
-    return this.toConversationDto(conv, userId, viewer?.role);
+    return this.toConversationDto(conv, userId);
   }
 
   async getConversations(userId: string): Promise<ConversationDto[]> {
@@ -294,8 +323,7 @@ export class MessagesService {
       order: { updatedAt: 'DESC' },
     });
 
-    const viewer = await this.userRepo.findOne({ where: { id: userId } });
-    return Promise.all(convs.map((c) => this.toConversationDto(c, userId, viewer?.role)));
+    return Promise.all(convs.map((c) => this.toConversationDto(c, userId)));
   }
 
   async getConversationForUser(
@@ -304,8 +332,7 @@ export class MessagesService {
   ): Promise<ConversationDto | null> {
     try {
       const conv = await this.assertParticipant(conversationId, userId);
-      const viewer = await this.userRepo.findOne({ where: { id: userId } });
-      return this.toConversationDto(conv, userId, viewer?.role);
+      return this.toConversationDto(conv, userId);
     } catch {
       return null;
     }
@@ -386,7 +413,7 @@ export class MessagesService {
         this.userRepo.findOne({ where: { id: recipientId } }),
       ]);
       const senderLabel = sender
-        ? this.formatChatDisplayName(sender, recipient?.role)
+        ? this.formatChatDisplayName(sender)
         : PushI18n.newMessageFallback(normalizePushLang(recipient?.preferredLanguage));
       const lang = normalizePushLang(recipient?.preferredLanguage);
       const preview = trimmed
@@ -494,7 +521,6 @@ export class MessagesService {
   private async toConversationDto(
     conv: Conversation,
     viewerId: string,
-    viewerRole?: UserRole,
   ): Promise<ConversationDto> {
     const otherId = conv.userLowId === viewerId ? conv.userHighId : conv.userLowId;
     const other = await this.userRepo.findOne({ where: { id: otherId } });
@@ -512,7 +538,7 @@ export class MessagesService {
     return {
       id: conv.id,
       otherUser: other
-        ? this.toUserDto(other, viewerRole)
+        ? this.toUserDto(other)
         : { id: otherId, fullName: 'Noma\'lum', role: 'unknown', username: '' },
       lastMessage: last ? this.toLastMessageDto(last) : null,
       unreadCount,
@@ -536,17 +562,14 @@ export class MessagesService {
     };
   }
 
-  private previewText(m: ChatMessage): string {
-    if (m.text) return m.text;
-    if (m.messageType === 'image') return '📷 Rasm';
-    if (m.messageType === 'document') return `📎 ${m.fileName ?? 'Fayl'}`;
-    return '';
-  }
-
+  /**
+   * `text` bo‘sh bo‘lsa mijoz ilovasi `messageType`/`fileName` dan
+   * o‘z tilida ko‘rinish yasaydi — shu yerda matn qotib qolmasin.
+   */
   private toLastMessageDto(m: ChatMessage): LastMessageDto {
     return {
       id: m.id,
-      text: this.previewText(m),
+      text: m.text ?? '',
       senderId: m.senderId,
       createdAt: m.createdAt.toISOString(),
       isRead: m.isRead,

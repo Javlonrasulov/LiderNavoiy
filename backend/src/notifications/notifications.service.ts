@@ -4,6 +4,7 @@ import { Repository, In } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { PushNotification } from './entities/push-notification.entity';
+import { UserPushToken } from './entities/user-push-token.entity';
 import { FirebaseAdminService } from './firebase-admin.service';
 import { NotificationType } from './notification.types';
 import {
@@ -34,19 +35,90 @@ export class NotificationsService {
     private readonly profileRepo: Repository<DistributorProfile>,
     @InjectRepository(PushNotification)
     private readonly notifRepo: Repository<PushNotification>,
+    @InjectRepository(UserPushToken)
+    private readonly tokenRepo: Repository<UserPushToken>,
   ) {}
 
-  async registerFcmToken(userId: string, token: string, language?: string) {
+  async registerFcmToken(
+    userId: string,
+    token: string,
+    language?: string,
+    platform?: string,
+  ) {
     const patch: Partial<User> = { fcmToken: token };
     if (language) {
       patch.preferredLanguage = normalizePushLang(language);
     }
     await this.userRepo.update(userId, patch);
+
+    // Qurilma boshqa akkauntdan chiqib yangisiga kirgan bo‘lishi mumkin —
+    // eski egasidagi legacy token tozalanadi.
+    await this.userRepo
+      .createQueryBuilder()
+      .update(User)
+      .set({ fcmToken: null })
+      .where('fcmToken = :token', { token })
+      .andWhere('id != :userId', { userId })
+      .execute();
+
+    // Qurilma tokeni alohida saqlanadi — bir foydalanuvchi bir necha qurilmada
+    // (APK + veb-panel) bo‘lsa ham hammasiga push boradi.
+    const existing = await this.tokenRepo.findOne({ where: { token } });
+    if (existing) {
+      existing.userId = userId;
+      if (platform) existing.platform = platform;
+      await this.tokenRepo.save(existing);
+    } else {
+      await this.tokenRepo.save(
+        this.tokenRepo.create({ userId, token, platform: platform ?? null }),
+      );
+    }
+
     this.logger.log(
       `FCM token registered for user ${userId}` +
-        (language ? ` lang=${normalizePushLang(language)}` : ''),
+        (language ? ` lang=${normalizePushLang(language)}` : '') +
+        (platform ? ` platform=${platform}` : ''),
     );
     return { registered: true, tokenPreview: token.slice(0, 12) + '...' };
+  }
+
+  /** Foydalanuvchining barcha qurilma tokenlari (legacy ustun ham qo‘shiladi) */
+  private async tokensForUser(user: User): Promise<string[]> {
+    const rows = await this.tokenRepo.find({ where: { userId: user.id } });
+    const tokens = new Set(rows.map((r) => r.token).filter(Boolean));
+    if (user.fcmToken) tokens.add(user.fcmToken);
+    return [...tokens];
+  }
+
+  private async tokensByUser(users: User[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (!users.length) return map;
+
+    const rows = await this.tokenRepo.find({
+      where: { userId: In(users.map((u) => u.id)) },
+    });
+    for (const u of users) {
+      const tokens = new Set(
+        rows.filter((r) => r.userId === u.id).map((r) => r.token).filter(Boolean),
+      );
+      if (u.fcmToken) tokens.add(u.fcmToken);
+      if (tokens.size) map.set(u.id, [...tokens]);
+    }
+    return map;
+  }
+
+  /** Yaroqsiz tokenni bazadan olib tashlash */
+  private async dropToken(token: string, userId?: string) {
+    await this.tokenRepo.delete({ token });
+    if (userId) {
+      await this.userRepo
+        .createQueryBuilder()
+        .update(User)
+        .set({ fcmToken: null })
+        .where('id = :userId', { userId })
+        .andWhere('fcmToken = :token', { token })
+        .execute();
+    }
   }
 
   async getUserLang(userId: string): Promise<PushLang> {
@@ -86,6 +158,44 @@ export class NotificationsService {
     return { success: true };
   }
 
+  /**
+   * Push nega kelmayotganini aniqlash uchun: server Firebase ulanganmi,
+   * so‘rovchining qurilmasi ro‘yxatdanmi va rollar bo‘yicha token statistikasi.
+   */
+  async getDiagnostics(userId: string) {
+    const me = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'fcmToken'],
+    });
+
+    const rows = await this.userRepo
+      .createQueryBuilder('u')
+      .leftJoin(UserPushToken, 'pt', 'pt.userId = u.id')
+      .select('u.role', 'role')
+      .addSelect('COUNT(DISTINCT u.id)', 'total')
+      .addSelect(
+        'COUNT(DISTINCT CASE WHEN u.fcmToken IS NULL AND pt.id IS NULL THEN NULL ELSE u.id END)',
+        'withToken',
+      )
+      .where('u.isActive = :active', { active: true })
+      .andWhere('u.deletedAt IS NULL')
+      .groupBy('u.role')
+      .getRawMany<{ role: string; total: string; withToken: string }>();
+
+    const myTokens = await this.tokenRepo.count({ where: { userId } });
+
+    return {
+      firebaseConfigured: this.firebase.isReady(),
+      myTokenRegistered: !!me?.fcmToken || myTokens > 0,
+      myDeviceCount: myTokens,
+      byRole: rows.map((r) => ({
+        role: r.role,
+        total: Number(r.total) || 0,
+        withToken: Number(r.withToken) || 0,
+      })),
+    };
+  }
+
   async getUnreadCount(userId: string) {
     const count = await this.notifRepo.count({
       where: { userId, isRead: false },
@@ -106,12 +216,36 @@ export class NotificationsService {
 
     const record = await this.saveRecord(userId, title, body, type, data);
 
-    if (!user.fcmToken) {
+    const tokens = await this.tokensForUser(user);
+    if (!tokens.length) {
       this.logger.warn(`No FCM token for user ${userId}`);
       return { sent: false, error: 'NO_FCM_TOKEN', notificationId: record.id };
     }
 
-    return this.deliverPush(user.fcmToken, title, body, type, data, record.id, userId);
+    let success: SendResult | null = null;
+    let lastFailure: SendResult | null = null;
+    for (const token of tokens) {
+      const res = await this.deliverPush(
+        token,
+        title,
+        body,
+        type,
+        data,
+        record.id,
+        userId,
+      );
+      if (res.sent) {
+        if (!success) success = res;
+      } else {
+        lastFailure = res;
+      }
+    }
+
+    if (success) {
+      await this.notifRepo.update(record.id, { isSent: true });
+      return success;
+    }
+    return lastFailure ?? { sent: false, error: 'UNKNOWN', notificationId: record.id };
   }
 
   /** Send to distributor by profile id */
@@ -171,7 +305,6 @@ export class NotificationsService {
         .createQueryBuilder('u')
         .innerJoin(DistributorProfile, 'p', 'p.userId = u.id')
         .where('u.role = :role', { role: UserRole.DISTRIBUTOR })
-        .andWhere('u.fcmToken IS NOT NULL')
         .andWhere('u.isActive = true');
       if (dto.companyId) {
         qb.andWhere('p.companyId = :companyId', { companyId: dto.companyId });
@@ -181,7 +314,6 @@ export class NotificationsService {
       users = await this.userRepo.find({
         where: { role: UserRole.CLIENT, isActive: true },
       });
-      users = users.filter((u) => !!u.fcmToken);
     } else if (audience === 'admins') {
       users = await this.userRepo.find({
         where: {
@@ -189,14 +321,14 @@ export class NotificationsService {
           isActive: true,
         },
       });
-      users = users.filter((u) => !!u.fcmToken);
     } else {
       // all
       users = await this.userRepo.find({ where: { isActive: true } });
-      users = users.filter((u) => !!u.fcmToken);
     }
 
-    const tokens = users.map((u) => u.fcmToken!).filter(Boolean);
+    const tokenMap = await this.tokensByUser(users);
+    users = users.filter((u) => tokenMap.has(u.id));
+    const tokens = [...new Set([...tokenMap.values()].flat())];
 
     if (tokens.length === 0) {
       return { sent: 0, message: 'No devices with FCM tokens' };
@@ -468,7 +600,7 @@ export class NotificationsService {
         || error.includes('invalid-registration-token')
         || error.includes('Requested entity was not found')
       ) {
-        await this.userRepo.update(userId, { fcmToken: null });
+        await this.dropToken(token, userId);
       }
 
       await this.notifRepo.update(recordId, { isSent: false });

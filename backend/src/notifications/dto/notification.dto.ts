@@ -24,6 +24,14 @@ export class RegisterFcmTokenDto {
   @IsOptional()
   @IsIn(['uz', 'uz_cyr', 'uz_cyrl', 'uz_kril', 'uz_latn', 'ru', 'en'])
   language?: string;
+
+  @ApiPropertyOptional({
+    description: 'Device platform',
+    enum: ['android', 'ios', 'web'],
+  })
+  @IsOptional()
+  @IsIn(['android', 'ios', 'web'])
+  platform?: string;
 }
 
 export class SendNotificationDto {

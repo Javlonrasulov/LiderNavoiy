@@ -11,6 +11,8 @@ import {
   openConversation,
 } from '../../utils/messageNotificationState';
 import { useTheme } from '../ThemeContext';
+import { useLang } from '../LangContext';
+import { AP, type LangAdmin } from '../../data/adminData';
 
 function getMyUserId(): string | null {
   const stored = localStorage.getItem('api_user_id');
@@ -33,10 +35,10 @@ type ToastItem = {
   time: string;
 };
 
-function previewMsg(msg: ChatMessage) {
+function previewMsg(msg: ChatMessage, t: Record<string, string>) {
   if (msg.text) return msg.text;
-  if (msg.messageType === 'image') return '📷 Rasm';
-  if (msg.messageType === 'document') return `📎 ${msg.fileName ?? 'Fayl'}`;
+  if (msg.messageType === 'image') return `📷 ${t.msgPreviewImage}`;
+  if (msg.messageType === 'document') return `📎 ${msg.fileName ?? t.msgPreviewFile}`;
   return '';
 }
 
@@ -46,6 +48,8 @@ interface Props {
 
 export function MessageNotificationHost({ onGoToMessages }: Props) {
   const { isDark: D } = useTheme();
+  const { lang } = useLang();
+  const t = AP[lang as LangAdmin];
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const myIdRef = useRef<string | null>(getMyUserId());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -73,8 +77,8 @@ export function MessageNotificationHost({ onGoToMessages }: Props) {
       const item: ToastItem = {
         id: message.id,
         conversationId: message.conversationId,
-        senderName: conversation?.otherUser?.fullName ?? 'Yangi xabar',
-        preview: previewMsg(message),
+        senderName: conversation?.otherUser?.fullName ?? t.msgNewMessage,
+        preview: previewMsg(message, t),
         time,
       };
 
@@ -82,7 +86,7 @@ export function MessageNotificationHost({ onGoToMessages }: Props) {
       const timer = setTimeout(() => dismiss(item.id), 5000);
       timersRef.current.set(item.id, timer);
     },
-    [dismiss],
+    [dismiss, t],
   );
 
   useEffect(() => {

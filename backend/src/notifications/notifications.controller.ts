@@ -33,13 +33,25 @@ export class NotificationsController {
     @Request() req: { user: User },
     @Body() dto: RegisterFcmTokenDto,
   ) {
-    return this.service.registerFcmToken(req.user.id, dto.token, dto.language);
+    return this.service.registerFcmToken(
+      req.user.id,
+      dto.token,
+      dto.language,
+      dto.platform,
+    );
   }
 
   @Get()
   @ApiOperation({ summary: 'Get my notification history' })
   getMine(@Request() req: { user: User }) {
     return this.service.getMyNotifications(req.user.id);
+  }
+
+  @Get('diagnostics')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Push holati: Firebase, token statistikasi (admin)' })
+  diagnostics(@Request() req: { user: User }) {
+    return this.service.getDiagnostics(req.user.id);
   }
 
   @Get('unread-count')

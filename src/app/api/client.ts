@@ -1523,10 +1523,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  getPushDiagnostics: () =>
+    request<{
+      firebaseConfigured: boolean;
+      myTokenRegistered: boolean;
+      myDeviceCount?: number;
+      byRole: { role: string; total: number; withToken: number }[];
+    }>('/notifications/diagnostics'),
+
   registerFcmToken: (token: string) =>
     request<{ ok?: boolean }>('/notifications/fcm-token', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, platform: 'web' }),
     }),
 
   // ─── Goods receipts (prixod) / factory reconciliation ───
@@ -1603,7 +1611,10 @@ export const api = {
   getContacts: (companyId?: string) =>
     request<ChatContact[]>(`/messages/contacts${companyId ? `?companyId=${companyId}` : ''}`),
 
-  getClientContacts: () => request<ChatContact[]>('/messages/client-contacts'),
+  getClientContacts: (companyId?: string) =>
+    request<ChatContact[]>(
+      `/messages/client-contacts${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`,
+    ),
 
   getConversations: () => request<ChatConversation[]>('/messages/conversations'),
 

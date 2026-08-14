@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import uz.lider.client.R
+import uz.lider.client.data.local.ChatSessionHolder
 import uz.lider.client.data.repository.PaymentPhotoAlertStore
 import uz.lider.client.data.repository.PushRepository
 import javax.inject.Inject
@@ -45,6 +46,20 @@ class ClientFirebaseMessagingService : FirebaseMessagingService() {
             ?: message.data["title"]
             ?: getString(R.string.app_name)
         val body = message.notification?.body ?: message.data["body"] ?: ""
+
+        val conversationId = message.data["conversationId"]
+        if (type.equals("message", ignoreCase = true) && !conversationId.isNullOrBlank()) {
+            // Chat ochiq bo‘lsa — ekranda ko‘rinib turadi, takror bildirishnoma bermaymiz
+            if (conversationId != ChatSessionHolder.openConversationId) {
+                NotificationHelper.showMessageNotification(
+                    context = this,
+                    conversationId = conversationId,
+                    senderName = title,
+                    preview = body.ifBlank { getString(R.string.app_name) },
+                )
+            }
+            return
+        }
 
         val isPayment = type.equals(PaymentPhotoAlertStore.TYPE_PAYMENT, ignoreCase = true) ||
             title.contains("To'lov qabul", ignoreCase = true) ||

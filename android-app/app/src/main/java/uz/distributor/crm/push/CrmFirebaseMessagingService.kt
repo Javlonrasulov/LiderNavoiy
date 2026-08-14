@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import uz.distributor.crm.R
+import uz.distributor.crm.data.local.ChatSessionHolder
 import uz.distributor.crm.data.repository.AppSettingsRepository
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.localization.AppStrings
@@ -53,12 +54,15 @@ class CrmFirebaseMessagingService : FirebaseMessagingService() {
         val isMessage = type == "message"
         val conversationId = message.data["conversationId"]
         if (isMessage && !conversationId.isNullOrBlank()) {
-            NotificationHelper.showMessageNotification(
-                context = this,
-                conversationId = conversationId,
-                senderName = title,
-                preview = body.ifBlank { AppStrings.pushNewMessageFallback(lang) },
-            )
+            // Chat ochiq bo'lsa — socket banner ko'rsatadi, takror bildirishnoma bermaymiz
+            if (conversationId != ChatSessionHolder.openConversationId) {
+                NotificationHelper.showMessageNotification(
+                    context = this,
+                    conversationId = conversationId,
+                    senderName = title,
+                    preview = body.ifBlank { AppStrings.pushNewMessageFallback(lang) },
+                )
+            }
             return
         }
 
