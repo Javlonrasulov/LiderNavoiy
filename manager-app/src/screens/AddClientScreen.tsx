@@ -1267,6 +1267,22 @@ export default function AddClientScreen({
                 {(hasAppLogin || appCredDraftReady) && (
                   <CheckCircle size={16} color="#10B981" />
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppCredOpen(false)
+                    setAppCredError(null)
+                    setAppCredNote(null)
+                  }}
+                  aria-label={tr.cancel}
+                  style={{
+                    width: 32, height: 32, borderRadius: 10, border: 'none', flexShrink: 0,
+                    background: c.muted, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <X size={16} color={c.mutedText} />
+                </button>
               </div>
 
               <label style={{ fontSize: 12, fontWeight: 700, color: c.mutedText, display: 'block', marginBottom: 6 }}>

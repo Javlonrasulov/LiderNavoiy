@@ -107,6 +107,8 @@ export default function App() {
 
   useEffect(() => {
     const onExpired = () => {
+      // Login ekranida turgan bo‘lsa — ogohlantirish ko‘rsatilmaydi
+      const wasSignedIn = phaseRef.current === 'app' || phaseRef.current === 'pushRequired'
       setUser(null)
       setActiveTab('home')
       setOverlay(null)
@@ -115,7 +117,7 @@ export default function App() {
       setOpenConversationId(null)
       setMessagesChatOpen(false)
       setNotifUnread(0)
-      setSessionExpired(true)
+      setSessionExpired(wasSignedIn)
       setPhase('login')
     }
     window.addEventListener('lider:manager-session-expired', onExpired)

@@ -200,10 +200,16 @@ async function ensureFreshAccessToken(): Promise<string | null> {
   return res.token ?? token
 }
 
-function forceSessionExpired(): never {
+/** Saqlangan sessiya bormi — login qilinmagan holatda "sessiya tugadi" chiqmasin */
+function hasStoredSession(): boolean {
+  return !!localStorage.getItem(TOKEN_KEY) || !!localStorage.getItem(REFRESH_KEY)
+}
+
+function forceSessionExpired(hadSession: boolean): never {
   clearSession()
-  emitSessionExpired()
-  throw new ApiError(401, 'Session expired', 'SESSION_EXPIRED')
+  // Login qilinmagan bo‘lsa bu oddiy 401 — foydalanuvchiga ogohlantirish kerak emas
+  if (hadSession) emitSessionExpired()
+  throw new ApiError(401, 'Unauthorized', hadSession ? 'SESSION_EXPIRED' : undefined)
 }
 
 export async function api<T>(
@@ -213,6 +219,7 @@ export async function api<T>(
   const { auth = true, headers, body, method = 'GET' } = options
   const h = new Headers(headers)
   if (!h.has('Content-Type') && body) h.set('Content-Type', 'application/json')
+  const hadSession = auth && hasStoredSession()
   if (auth) {
     const token = await ensureFreshAccessToken()
     if (token) h.set('Authorization', `Bearer ${token}`)
@@ -229,14 +236,14 @@ export async function api<T>(
       h.set('Authorization', `Bearer ${next.token}`)
       res = await rawRequest(url, String(method).toUpperCase(), h, bodyStr)
     } else if (next.rejected) {
-      forceSessionExpired()
+      forceSessionExpired(hadSession)
     } else {
       throw new ApiError(0, 'network_error')
     }
   }
 
   if (res.status === 401 && auth) {
-    forceSessionExpired()
+    forceSessionExpired(hadSession)
   }
 
   if (res.status < 200 || res.status >= 300) {
