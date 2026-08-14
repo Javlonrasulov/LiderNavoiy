@@ -1,4 +1,4 @@
-import { api, clearSession, saveSession } from './client'
+import { api, clearSession, markIntentionalLogout, saveSession } from './client'
 import { resolveLoginDevice } from '../utils/deviceInfo'
 import type { AuthResponse, AuthUser } from './types'
 
@@ -23,6 +23,7 @@ export async function login(username: string, password: string): Promise<AuthRes
 }
 
 export async function logout() {
+  markIntentionalLogout()
   try {
     await api('auth/logout', { method: 'POST' })
   } catch { /* ignore */ }

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadLang, t, type Lang } from './i18n'
-import { getStoredUser, clearSession, resetSessionExpiredGuard } from './api/client'
+import {
+  getStoredUser,
+  clearSession,
+  resetSessionExpiredGuard,
+  validateStoredSession,
+} from './api/client'
 import { isManagerRole, logout } from './api/auth'
 import SessionExpiredOverlay from './components/SessionExpiredOverlay'
 import { connectMessages, getConversations, type MessagesSocket } from './api/messages'
@@ -357,7 +362,18 @@ export default function App() {
   const afterSplash = () => {
     const u = getStoredUser()
     if (u && isManagerRole(u)) {
-      void enterAfterAuth(u)
+      // Saqlangan token yaroqsiz bo‘lishi mumkin (qayta o‘rnatish, sessiya bekor
+      // qilingan) — avval tekshiramiz, keyin ichkariga kiritamiz
+      void validateStoredSession().then(ok => {
+        if (ok) {
+          void enterAfterAuth(u)
+          return
+        }
+        setUser(null)
+        setSessionExpired(false)
+        resetSessionExpiredGuard()
+        setPhase('login')
+      })
       return
     }
     if (u) clearSession()

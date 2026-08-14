@@ -55,6 +55,11 @@ export function resetSessionExpiredGuard(): void {
   unauthorizedEmitted = false
 }
 
+/** Foydalanuvchi o‘zi chiqmoqda — "sessiya tugadi" oynasi chiqmasin */
+export function markIntentionalLogout(): void {
+  unauthorizedEmitted = true
+}
+
 function emitSessionExpired(): void {
   if (unauthorizedEmitted) return
   unauthorizedEmitted = true
@@ -183,6 +188,29 @@ function accessTokenExpiry(token: string): number | null {
   }
 }
 
+/**
+ * Ilova ochilganda saqlangan sessiya haqiqiyligini jimgina tekshiradi.
+ * Yaroqsiz bo‘lsa — hech qanday ogohlantirishsiz login ekraniga qaytariladi.
+ */
+export async function validateStoredSession(): Promise<boolean> {
+  if (!hasStoredSession()) return false
+  const prev = unauthorizedEmitted
+  unauthorizedEmitted = true
+  try {
+    await api('notifications/unread-count')
+    unauthorizedEmitted = prev
+    return true
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      clearSession()
+      return false
+    }
+    // Tarmoq/server xatosi — sessiyani o‘chirmaymiz
+    unauthorizedEmitted = prev
+    return true
+  }
+}
+
 /** WebSocket ulanishlari uchun: har safar yangi access token */
 export async function getFreshAccessToken(): Promise<string | null> {
   return ensureFreshAccessToken()
@@ -236,7 +264,17 @@ export async function api<T>(
       h.set('Authorization', `Bearer ${next.token}`)
       res = await rawRequest(url, String(method).toUpperCase(), h, bodyStr)
     } else if (next.rejected) {
-      forceSessionExpired(hadSession)
+      // Server/Redis vaqtinchalik nosozligi bo‘lishi mumkin — bir marta qayta urinamiz
+      await new Promise(r => setTimeout(r, 1500))
+      const retry = await refreshTokens()
+      if (retry.token) {
+        h.set('Authorization', `Bearer ${retry.token}`)
+        res = await rawRequest(url, String(method).toUpperCase(), h, bodyStr)
+      } else if (retry.rejected) {
+        forceSessionExpired(hadSession)
+      } else {
+        throw new ApiError(0, 'network_error')
+      }
     } else {
       throw new ApiError(0, 'network_error')
     }
