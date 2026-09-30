@@ -412,13 +412,14 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
     people: PersonOption[],
     lineCode: string,
     assignClients: boolean,
+    companyId: string | null | undefined,
   ) => {
     const person = people.find(p => p.name === personName);
     if (!person) return;
     try {
       await api.updateDistributor(person.id, { lineCode });
       if (assignClients) {
-        await api.assignLineDistributor(lineCode, person.id);
+        await api.assignLineDistributor(lineCode, person.id, companyId);
       }
     } catch {
       /* ignore — name on line is already saved */
@@ -509,8 +510,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
           agentVisitDays: form.agentVisitDays.length ? form.agentVisitDays : null,
           deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : null,
         });
-        if (form.agent) await syncLineCode(form.agent, agents, code, true);
-        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false);
+        const lineCompanyId = updated.companyId ?? editLine.companyId ?? singleCompanyId;
+        if (form.agent) await syncLineCode(form.agent, agents, code, true, lineCompanyId);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false, lineCompanyId);
         setLines(prev => prev.map(l => l.id === editLine.id ? apiLineToRow(updated) : l));
       } catch {
         return;
@@ -548,8 +550,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
           deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : undefined,
           companyId: singleCompanyId,
         });
-        if (form.agent) await syncLineCode(form.agent, agents, code, true);
-        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false);
+        const lineCompanyId = created.companyId ?? singleCompanyId;
+        if (form.agent) await syncLineCode(form.agent, agents, code, true, lineCompanyId);
+        if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false, lineCompanyId);
         setLines(prev => [...prev, apiLineToRow(created)]);
       } catch {
         return;

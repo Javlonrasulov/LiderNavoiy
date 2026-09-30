@@ -12,6 +12,7 @@ import { LinesService } from '../lines/lines.service';
 import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../common/enums';
 import { User } from '../auth/entities/user.entity';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { searchScriptVariants } from '../common/uz-script.util';
 
 function normalizeInn(inn?: string | null): string | null {
@@ -312,14 +313,36 @@ export class ClientsService {
   }
 
   /** Liniya agentiga shu lineCode dagi barcha mijozlarni biriktiradi */
-  async assignDistributorToLine(lineCode: string, distributorId: string | null) {
+  async assignDistributorToLine(
+    lineCode: string,
+    distributorId: string | null,
+    companyId?: string | null,
+  ) {
     const code = lineCode?.trim();
     if (!code) return { updated: 0 };
+
+    // Liniya kodlari tashkilotlar orasida takrorlanadi — faqat bitta tashkilot doirasida yangilash.
+    let companyIds = companyId?.trim() ? [companyId.trim()] : [];
+    if (!companyIds.length && distributorId) {
+      const profile = await this.repo.manager.findOne(DistributorProfile, {
+        where: { id: distributorId },
+      });
+      companyIds = [
+        ...new Set(
+          [profile?.companyId, ...(profile?.companyIds ?? [])]
+            .map((id) => id?.trim())
+            .filter((id): id is string => !!id),
+        ),
+      ];
+    }
+    if (!companyIds.length) return { updated: 0 };
+
     const result = await this.repo
       .createQueryBuilder()
       .update(Client)
       .set({ distributorId: distributorId || null })
       .where('lineCode = :code', { code })
+      .andWhere('companyId IN (:...companyIds)', { companyIds })
       .andWhere('deletedAt IS NULL')
       .execute();
     return { updated: result.affected ?? 0 };

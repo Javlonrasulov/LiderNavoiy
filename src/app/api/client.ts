@@ -804,10 +804,10 @@ export const api = {
 
   searchClients: (q: string) => request<Client[]>(`/clients/search?q=${encodeURIComponent(q)}`),
 
-  assignLineDistributor: (lineCode: string, distributorId: string | null) =>
+  assignLineDistributor: (lineCode: string, distributorId: string | null, companyId?: string | null) =>
     request<{ updated: number }>('/clients/assign-line-distributor', {
       method: 'POST',
-      body: JSON.stringify({ lineCode, distributorId }),
+      body: JSON.stringify({ lineCode, distributorId, companyId }),
     }),
 
   uploadClientPhoto: async (file: File | Blob, filename = 'photo.jpg'): Promise<{ url: string; fullUrl?: string }> => {

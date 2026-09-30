@@ -226,12 +226,13 @@ export class ClientsController {
   @ApiOperation({ summary: 'Assign all clients on a line to a distributor (agent)' })
   assignLineDistributor(
     @Request() req: { user: User },
-    @Body() body: { lineCode: string; distributorId: string | null },
+    @Body() body: { lineCode: string; distributorId: string | null; companyId?: string | null },
   ) {
     this.assertAdminOrManager(req.user);
     return this.service.assignDistributorToLine(
       body.lineCode,
       body.distributorId ?? null,
+      body.companyId ?? null,
     );
   }
 
