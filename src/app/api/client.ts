@@ -73,6 +73,7 @@ export interface AppUserRecord {
   lastDeviceOs?: string | null;
   devices?: AppUserDeviceRecord[];
   canAddClients?: boolean;
+  phone?: string | null;
 }
 
 export type PositionAppAccess = 'agent' | 'delivery' | 'manager';

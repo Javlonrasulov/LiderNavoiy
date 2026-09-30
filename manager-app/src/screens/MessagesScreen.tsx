@@ -330,10 +330,13 @@ export default function MessagesScreen({
     onConversationOpened?.()
   }, [openConversationId, openConversation, onConversationOpened])
 
-  // Unmount: chat flag tozalash
+  // Unmount: chat flag tozalash.
+  // Dep bo'sh — aks holda har renderda cleanup ishlab, flag noto'g'ri o'chadi.
+  const chatFlagRef = useRef(setChatOpenFlag)
+  chatFlagRef.current = setChatOpenFlag
   useEffect(() => {
-    return () => setChatOpenFlag(false)
-  }, [setChatOpenFlag])
+    return () => chatFlagRef.current(false)
+  }, [])
 
   useLayoutEffect(() => {
     if (!activeId || !composerRef.current) return
@@ -475,11 +478,15 @@ export default function MessagesScreen({
       <div
         className="lm-chat-screen"
         style={{
+          position: 'absolute',
+          inset: 0,
           width: '100%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
           background: c.bg,
+          // Pastki navbar (z-index 50) ustidan to'liq yopadi
+          zIndex: 100,
         }}
       >
         {selectionMode ? (

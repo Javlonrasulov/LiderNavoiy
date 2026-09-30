@@ -49,11 +49,14 @@ export function normalizeForSearch(input: string): string {
     out += CYRILLIC_TO_LATIN[ch] ?? ch;
   }
 
+  // O'zbek lotinida х = x, ж = j — kirill/lotin yozuvlari bir xil shaklga keladi
   return out
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
+    .replace(/[^a-z0-9]+/g, '')
+    .replace(/zh/g, 'j')
+    .replace(/x/g, 'h');
 }
 
 /** Matnda qidiruv sozini (lotin yoki kirill) topish */

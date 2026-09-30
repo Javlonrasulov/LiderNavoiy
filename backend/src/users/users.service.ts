@@ -439,6 +439,7 @@ export class UsersService {
       companyId: profile?.companyId ?? companyIds[0] ?? null,
       companyName: profile?.companyName ?? null,
       companyIds,
+      phone: profile?.phone ?? null,
       canAddClients: !!profile?.canAddClients,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,

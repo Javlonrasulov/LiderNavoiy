@@ -198,6 +198,14 @@ export default function App() {
     return () => window.clearInterval(id)
   }, [phase, refreshUnread, refreshNotifUnread])
 
+  const clearOpenConversationId = useCallback(() => setOpenConversationId(null), [])
+
+  const handleChatOpenChange = useCallback((open: boolean, convId?: string | null) => {
+    setMessagesChatOpen(open)
+    activeChatIdRef.current = open ? (convId ?? null) : null
+    if (open) setIncoming(null)
+  }, [])
+
   const openMessagesConversation = useCallback((convId?: string | null) => {
     setActiveTab('messages')
     setOverlay(null)
@@ -551,12 +559,8 @@ export default function App() {
                 user={user}
                 openConversationId={openConversationId}
                 onUnreadChange={setMessagesUnread}
-                onConversationOpened={() => setOpenConversationId(null)}
-                onChatOpenChange={(open, convId) => {
-                  setMessagesChatOpen(open)
-                  activeChatIdRef.current = open ? (convId ?? null) : null
-                  if (open) setIncoming(null)
-                }}
+                onConversationOpened={clearOpenConversationId}
+                onChatOpenChange={handleChatOpenChange}
               />
             )}
           </div>

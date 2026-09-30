@@ -447,7 +447,6 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     clientStatusFilter, sortTop, sortDebt,
   ]);
 
-  const quickLineValue = clientLineFilter.size === 1 ? [...clientLineFilter][0] : '';
   const quickAgentValue =
     clientAgentFilter.size === 1 && !clientAgentFilter.has(NO_AGENT_KEY)
       ? [...clientAgentFilter][0]
@@ -496,9 +495,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     return counts;
   }, [clients]);
 
-  const quickLineLabel = quickLineValue
-    ? (lineSelectOptions.find((o) => o.value === quickLineValue)?.label ?? quickLineValue)
-    : (t.colLine ?? 'Liniya');
+  const quickLineLabel = (() => {
+    if (clientLineFilter.size === 0) return t.colLine ?? 'Liniya';
+    const selected = lineSelectOptions.filter((o) => clientLineFilter.has(o.value));
+    if (selected.length === 1) return selected[0].label;
+    if (selected.length <= 3) return selected.map((o) => o.value).join(', ');
+    return `${t.colLine ?? 'Liniya'} (${selected.length})`;
+  })();
   const quickTtClassValue = clientCatFilter.size === 1 ? [...clientCatFilter][0] : '';
   const quickTtClassLabel = (() => {
     if (clientCatFilter.size === 0) return t.colCategory ?? 'Klass TT';
@@ -1223,7 +1226,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             <button
               type="button"
               onClick={() => setQuickOpen(quickOpen === 'line' ? null : 'line')}
-              className={quickPill(!!quickLineValue)}
+              className={quickPill(clientLineFilter.size > 0)}
               title={t.lineFilterLabel || t.colLine}
             >
               <span className="truncate">{quickLineLabel}</span>
@@ -1233,24 +1236,27 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               <div className={quickMenu}>
                 <button
                   type="button"
-                  className={quickItem(!quickLineValue)}
-                  onClick={() => { setClientLineFilter(new Set()); setQuickOpen(null); setClientPage(1); }}
+                  className={quickItem(clientLineFilter.size === 0)}
+                  onClick={() => { setClientLineFilter(new Set()); setClientPage(1); }}
                 >
                   <span className="flex-1 truncate">{t.quickFilterLineAll ?? `${t.colLine}: ${t.allLabel ?? 'Barchasi'}`}</span>
-                  {!quickLineValue && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                  {clientLineFilter.size === 0 && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
                 </button>
-                {lineSelectOptions.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    className={quickItem(quickLineValue === o.value)}
-                    onClick={() => { setClientLineFilter(new Set([o.value])); setQuickOpen(null); setClientPage(1); }}
-                  >
-                    <span className="flex-1 truncate">{o.label}</span>
-                    {countBadge(lineCounts[o.value] ?? 0)}
-                    {quickLineValue === o.value && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
-                  </button>
-                ))}
+                {lineSelectOptions.map((o) => {
+                  const active = clientLineFilter.has(o.value);
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      className={quickItem(active)}
+                      onClick={() => toggleSet(setClientLineFilter, o.value)}
+                    >
+                      <span className="flex-1 truncate text-left">{o.label}</span>
+                      {countBadge(lineCounts[o.value] ?? 0)}
+                      {active && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

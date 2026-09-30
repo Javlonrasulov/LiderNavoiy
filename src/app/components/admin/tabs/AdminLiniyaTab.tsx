@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRight, X, AlertTriangle, Check, MapPin, ChevronDown } from 'lucide-react';
 import { LINES } from '../../../data/adminData';
 import { api, type Client, type Distributor } from '../../../api/client';
+import { textMatchesSearch } from '../../../utils/clientApi';
 
 interface Props {
   D: boolean;
@@ -131,6 +132,28 @@ const demoLines: Line[] = LINES.map(l => ({
   visits: l.visits,
   sales: l.sales,
 }));
+
+function SearchClearButton({ onClick, D, muted }: { onClick: () => void; D: boolean; muted: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseDown={e => e.preventDefault()}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      aria-label="Tozalash"
+      style={{
+        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+        width: 22, height: 22, borderRadius: 6, border: 'none', padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+        background: hover ? (D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') : 'transparent',
+      }}
+    >
+      <X size={14} color={muted} />
+    </button>
+  );
+}
 
 function DayChips({
   days,
@@ -396,10 +419,10 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   };
 
   const filtered = lines.filter(l =>
-    l.name.toLowerCase().includes(search.toLowerCase()) ||
-    l.code.includes(search) ||
-    l.agent.toLowerCase().includes(search.toLowerCase()) ||
-    l.delivery.toLowerCase().includes(search.toLowerCase())
+    textMatchesSearch(l.name, search) ||
+    textMatchesSearch(l.code, search) ||
+    textMatchesSearch(l.agent, search) ||
+    textMatchesSearch(l.delivery, search)
   );
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
@@ -565,13 +588,12 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
   ];
 
   const filteredTtClients = useMemo(() => {
-    const q = ttSearch.trim().toLowerCase();
-    if (!q) return ttClients;
+    if (!ttSearch.trim()) return ttClients;
     return ttClients.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.code.toLowerCase().includes(q) ||
-      (c.address ?? '').toLowerCase().includes(q) ||
-      (c.phone ?? '').toLowerCase().includes(q),
+      textMatchesSearch(c.name, ttSearch) ||
+      textMatchesSearch(c.code, ttSearch) ||
+      textMatchesSearch(c.address ?? '', ttSearch) ||
+      textMatchesSearch(c.phone ?? '', ttSearch),
     );
   }, [ttClients, ttSearch]);
 
@@ -817,10 +839,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   background: inpBg, border: `1.5px solid ${border}`,
-                  borderRadius: 10, padding: '10px 12px 10px 36px',
+                  borderRadius: 10, padding: '10px 36px 10px 36px',
                   fontSize: 13, color: txt, outline: 'none',
                 }}
               />
+              {ttSearch && (
+                <SearchClearButton onClick={() => setTtSearch('')} D={D} muted={muted} />
+              )}
             </div>
 
             <div style={{
@@ -933,12 +958,19 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           style={{
             width: '100%', boxSizing: 'border-box',
             background: inpBg, border: `1.5px solid ${border}`,
-            borderRadius: 10, padding: '10px 12px 10px 36px',
+            borderRadius: 10, padding: '10px 36px 10px 36px',
             fontSize: 13, color: txt, outline: 'none',
           }}
           onFocus={e => { e.target.style.borderColor = indigo; }}
           onBlur={e => { e.target.style.borderColor = border; }}
         />
+        {search && (
+          <SearchClearButton
+            onClick={() => { setSearch(''); setPage(1); }}
+            D={D}
+            muted={muted}
+          />
+        )}
       </div>
 
       {/* ── Table header ── */}

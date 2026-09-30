@@ -17,6 +17,11 @@ import {
   translateApiError,
 } from '../../../utils/appUserCreds';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
+
+function normalizePhone(raw: string): string {
+  const v = raw.trim();
+  return v.replace(/\D/g, '').length > 3 ? v : '';
+}
 import {
   appAccessToBackendRole,
   appAccessToPosKey,
@@ -395,7 +400,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      const phone = editDraft.phone.trim() || undefined;
+      const phone = normalizePhone(editDraft.phone);
       const meta = resolvePositionMeta(editDraft);
       const dept = resolveDepartmentMeta(editDraft);
       const role = appAccessToBackendRole(meta.appAccess);
@@ -416,7 +421,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         ?? apiDistributors.find(d => d.userId === editDraft.backendUserId)?.id;
       if (distributorId) {
         await api.updateDistributor(distributorId, {
-          phone: phone ?? '',
+          phone,
           position,
         });
       }
@@ -469,7 +474,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         fullName: addDraft.name.trim(),
         role,
         companyId: orgId,
-        phone: addDraft.phone.trim() || undefined,
+        phone: normalizePhone(addDraft.phone) || undefined,
         position,
         positionId: meta.id || undefined,
         department: dept?.name || addDraft.department || undefined,

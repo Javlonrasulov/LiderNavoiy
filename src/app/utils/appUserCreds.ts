@@ -367,7 +367,7 @@ export function appUserToSotrudnikRow(
     position: displayPosition,
     deptKey,
     posKey,
-    phone: distributor?.phone || '',
+    phone: distributor?.phone || app.phone || '',
     orgId:
       distributor?.companyId
       || app.companyId

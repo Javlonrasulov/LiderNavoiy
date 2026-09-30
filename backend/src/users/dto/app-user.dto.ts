@@ -176,6 +176,7 @@ export class AppUserResponseDto {
   companyId?: string | null;
   companyName?: string | null;
   companyIds?: string[];
+  phone?: string | null;
   /** Agent APK: mijoz qo‘shish (default false) */
   canAddClients?: boolean;
   lastLoginAt?: string | null;
