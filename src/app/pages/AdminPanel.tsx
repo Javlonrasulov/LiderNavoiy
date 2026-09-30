@@ -795,7 +795,7 @@ export default function AdminPanel() {
           )}
 
           {tab === 'liniya' && (
-            <AdminLiniyaTab D={D} card={card} divider={divider} sub={sub} t={t} />
+            <AdminLiniyaTab D={D} card={card} divider={divider} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
           )}
 
           {tab === 'xodimlar' && (

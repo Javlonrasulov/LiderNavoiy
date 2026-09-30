@@ -21,6 +21,10 @@ function normalizeVisitDays(days?: number[] | null): number[] | null {
   return cleaned.length ? cleaned : null;
 }
 
+function countKey(companyId: string | null | undefined, code: string): string {
+  return `${companyId ?? ''}|${code.trim()}`;
+}
+
 function asDays(primary?: number[] | null, fallback?: number[] | null): number[] {
   const a = Array.isArray(primary) ? primary : [];
   if (a.length) return a;
@@ -55,7 +59,7 @@ export class LinesService {
       companyIds.length === 1 ? companyIds[0] : companyIds.length > 1 ? companyIds : undefined,
     );
     return lines.map((line) =>
-      this.toListItem(line, counts.get(line.code) ?? 0),
+      this.toListItem(line, counts.get(countKey(line.companyId, line.code)) ?? 0),
     );
   }
 
@@ -125,7 +129,7 @@ export class LinesService {
     if (dto.isActive !== undefined) line.isActive = dto.isActive;
     const saved = await this.lineRepo.save(line);
     const counts = await this.clientCountsByLine(line.companyId ?? undefined);
-    return this.toListItem(saved, counts.get(saved.code) ?? 0);
+    return this.toListItem(saved, counts.get(countKey(saved.companyId, saved.code)) ?? 0);
   }
 
   async remove(id: string) {
@@ -141,23 +145,27 @@ export class LinesService {
       .filter((id): id is string => !!id);
     const qb = this.clientRepo
       .createQueryBuilder('c')
-      .select('c.lineCode', 'code')
+      .select('c.companyId', 'companyId')
+      .addSelect('c.lineCode', 'code')
       .addSelect('COUNT(*)', 'count')
       .where('c.isActive = true')
+      .andWhere('c.deletedAt IS NULL')
       .andWhere('c.lineCode IS NOT NULL')
       .andWhere("TRIM(c.lineCode) <> ''")
-      .groupBy('c.lineCode');
+      .groupBy('c.companyId')
+      .addGroupBy('c.lineCode');
     if (companyIds.length === 1) {
       qb.andWhere('c.companyId = :companyId', { companyId: companyIds[0] });
     } else if (companyIds.length > 1) {
       qb.andWhere('c.companyId IN (:...companyIds)', { companyIds });
     }
-    const rows = await qb.getRawMany<{ code: string; count: string }>();
+    const rows = await qb.getRawMany<{ companyId: string | null; code: string; count: string }>();
     const map = new Map<string, number>();
     for (const row of rows) {
       const code = row.code?.trim();
       if (!code) continue;
-      map.set(code, Number(row.count) || 0);
+      const key = countKey(row.companyId, code);
+      map.set(key, (map.get(key) ?? 0) + (Number(row.count) || 0));
     }
     return map;
   }

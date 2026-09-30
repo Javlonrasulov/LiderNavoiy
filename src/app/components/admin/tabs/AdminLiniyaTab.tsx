@@ -10,12 +10,14 @@ interface Props {
   divider: string;
   sub: string;
   t: Record<string, string>;
+  selectedCompanyIds: Set<string>;
 }
 
 type Line = {
   id: string | number;
   code: string;
   name: string;
+  companyId?: string | null;
   kolTT: number;
   agent: string;
   delivery: string;
@@ -74,6 +76,7 @@ function apiLineToRow(row: {
   deliveryVisitDays?: number[] | null;
   visitDays?: number[] | null;
   clientCount: number;
+  companyId?: string | null;
 }): Line {
   const agentDays = Array.isArray(row.agentVisitDays) && row.agentVisitDays.length
     ? row.agentVisitDays
@@ -82,6 +85,7 @@ function apiLineToRow(row: {
     id: row.id,
     code: row.code,
     name: row.name,
+    companyId: row.companyId ?? null,
     kolTT: row.clientCount,
     agent: row.agentName ?? '',
     delivery: row.deliveryName ?? '',
@@ -336,7 +340,9 @@ function LineSelect({
   );
 }
 
-export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
+export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }: Props) {
+  const companyParam = [...selectedCompanyIds].sort().join(',') || undefined;
+  const singleCompanyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
   const [lines, setLines]       = useState<Line[]>(demoLines);
   const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState('');
@@ -361,14 +367,15 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     }
     setLoading(true);
     try {
-      const rows = await api.getLines();
+      const rows = await api.getLines(companyParam);
       setLines(rows.map(apiLineToRow));
+      setPage(1);
     } catch {
       setLines(demoLines);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyParam]);
 
   const loadPeople = useCallback(async () => {
     if (!hasApiToken()) {
@@ -377,7 +384,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
       return;
     }
     try {
-      const list = await api.getDistributors();
+      const list = await api.getDistributors(singleCompanyId);
       const active = list.filter(d => d.user?.isActive !== false);
       setAgents(
         active
@@ -395,7 +402,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
       setAgents([]);
       setDeliveries([]);
     }
-  }, []);
+  }, [singleCompanyId]);
 
   useEffect(() => { refreshLines(); }, [refreshLines]);
   useEffect(() => { loadPeople(); }, [loadPeople]);
@@ -471,7 +478,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
     if (!hasApiToken()) return;
     setTtLoading(true);
     try {
-      const rows = await api.getClients(undefined, undefined, line.code);
+      const rows = await api.getClients(line.companyId ?? singleCompanyId, undefined, line.code);
       setTtClients(rows);
       setLines(prev => prev.map(l =>
         l.id === line.id ? { ...l, kolTT: rows.length } : l,
@@ -539,6 +546,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t }: Props) {
           deliveryName: form.delivery || undefined,
           agentVisitDays: form.agentVisitDays.length ? form.agentVisitDays : undefined,
           deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : undefined,
+          companyId: singleCompanyId,
         });
         if (form.agent) await syncLineCode(form.agent, agents, code, true);
         if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false);
