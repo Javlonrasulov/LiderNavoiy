@@ -89,6 +89,41 @@ function nextNumericLineCode(existing: { code: string }[]): string {
   return String(max + 1).padStart(2, '0')
 }
 
+const LATIN_TO_CYR: [RegExp, string][] = [
+  [/o['‘’`ʻ]/g, 'ў'], [/g['‘’`ʻ]/g, 'ғ'], [/sh/g, 'ш'], [/ch/g, 'ч'], [/ya/g, 'я'], [/yu/g, 'ю'], [/yo/g, 'ё'],
+  [/a/g, 'а'], [/b/g, 'б'], [/d/g, 'д'], [/e/g, 'е'], [/f/g, 'ф'], [/g/g, 'г'], [/h/g, 'ҳ'], [/i/g, 'и'],
+  [/j/g, 'ж'], [/k/g, 'к'], [/l/g, 'л'], [/m/g, 'м'], [/n/g, 'н'], [/o/g, 'о'], [/p/g, 'п'], [/q/g, 'қ'],
+  [/r/g, 'р'], [/s/g, 'с'], [/t/g, 'т'], [/u/g, 'у'], [/v/g, 'в'], [/x/g, 'х'], [/y/g, 'й'], [/z/g, 'з'],
+]
+
+function lineNameTokens(raw: string): string[] {
+  let s = raw.toLowerCase()
+  for (const [re, to] of LATIN_TO_CYR) s = s.replace(re, to)
+  s = s.replace(/ё/g, 'е').replace(/ҳ/g, 'х').replace(/ў/g, 'у').replace(/қ/g, 'к').replace(/ғ/g, 'г')
+  return s
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map(tok => (/^(микро?р?(айон|н)?|мкрн?)$/.test(tok) ? 'мкр' : tok))
+}
+
+function tokensMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  if (/^\d+$/.test(a) || /^\d+$/.test(b) || a.length < 4 || b.length < 4) return false
+  return a.startsWith(b) || b.startsWith(a)
+}
+
+/** "7 мкр" ≈ "7-микр", "17 18 Умид" ≈ "17-18 Микр;Умид", "Вокзал Мира" ≈ "Вокзал" */
+function findSimilarLines<T extends { name: string }>(name: string, existing: T[]): T[] {
+  const tokens = lineNameTokens(name)
+  if (!tokens.length) return []
+  return existing.filter(line => {
+    const other = lineNameTokens(line.name)
+    if (!other.length) return false
+    const [small, big] = tokens.length <= other.length ? [tokens, other] : [other, tokens]
+    return small.every(tok => big.some(b => tokensMatch(tok, b)))
+  })
+}
+
 /** UI: +998 93 559 96 99 */
 function formatUzPhone(raw: string): string {
   let digits = raw.replace(/\D/g, '')
@@ -138,7 +173,7 @@ export default function AddClientScreen({
   const [category, setCategory] = useState('')
   const [lat, setLat] = useState<number | null>(null)
   const [lng, setLng] = useState<number | null>(null)
-  const [radius, setRadius] = useState(100)
+  const [radius, setRadius] = useState(50)
   const [canSeePromotions, setCanSeePromotions] = useState(false)
   // Mijozning o'z ilovasiga kirish ruxsati (User.isActive) — admin bilan bir xil manba
   const [appAccess, setAppAccess] = useState(false)
@@ -185,6 +220,7 @@ export default function AddClientScreen({
   const [modalName, setModalName] = useState('')
   const [modalEditId, setModalEditId] = useState<string | null>(null)
   const [modalSaving, setModalSaving] = useState(false)
+  const [lineDupConfirmed, setLineDupConfirmed] = useState(false)
   const [picker, setPicker] = useState<PickerKind>(null)
   const modalSheetRef = useRef<HTMLDivElement>(null)
   const modalInputRef = useRef<HTMLInputElement>(null)
@@ -269,7 +305,7 @@ export default function AddClientScreen({
       setRadius(
         cl.orderRadiusMeters != null && Number(cl.orderRadiusMeters) >= 50
           ? Math.round(Number(cl.orderRadiusMeters))
-          : 100,
+          : 50,
       )
       setCanSeePromotions(cl.canSeePromotions === true)
       const mc = cl.markColor?.trim().toLowerCase()
@@ -368,12 +404,26 @@ export default function AddClientScreen({
     setModal(kind)
     setModalEditId(edit?.id ?? null)
     setModalName(edit?.name ?? '')
+    setLineDupConfirmed(false)
+  }
+
+  const similarLines = modal === 'line' && !modalEditId ? findSimilarLines(modalName, lines) : []
+
+  const pickExistingLine = (code: string) => {
+    setLineCode(code)
+    setModal(null)
+    setModalName('')
   }
 
   const saveModal = async () => {
     const value = modalName.trim()
     if (!value) {
       showToast(modal === 'line' ? tr.lineName : tr.categoryName)
+      return
+    }
+    if (similarLines.length && !lineDupConfirmed) {
+      setLineDupConfirmed(true)
+      showToast(tr.lineSimilarWarning)
       return
     }
     setModalSaving(true)
@@ -1920,12 +1970,41 @@ export default function AddClientScreen({
             <input
               ref={modalInputRef}
               value={modalName}
-              onChange={e => setModalName(e.target.value)}
+              onChange={e => { setModalName(e.target.value); setLineDupConfirmed(false) }}
               placeholder={modal === 'line' ? tr.lineName : tr.categoryName}
               enterKeyHint="done"
               autoComplete="off"
               style={{ ...inputStyle, fontSize: 16 }}
             />
+
+            {similarLines.length > 0 && (
+              <div
+                style={{
+                  marginTop: 12, padding: 12, borderRadius: 14,
+                  background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.45)',
+                }}
+              >
+                <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#b45309' }}>
+                  {tr.lineSimilarWarning}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 160, overflowY: 'auto' }}>
+                  {similarLines.map(l => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => pickExistingLine(l.code)}
+                      style={{
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 10,
+                        border: `1px solid ${c.border}`, background: c.card, color: c.text,
+                        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      {l.code} — {l.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
@@ -1933,11 +2012,12 @@ export default function AddClientScreen({
               onClick={() => void saveModal()}
               style={{
                 marginTop: 14, width: '100%', height: 50, border: 'none', borderRadius: 14,
-                background: c.primary, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
+                background: similarLines.length && lineDupConfirmed ? '#d97706' : c.primary,
+                color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer',
                 opacity: modalSaving ? 0.7 : 1,
               }}
             >
-              {modalSaving ? tr.loading : tr.save}
+              {modalSaving ? tr.loading : similarLines.length && lineDupConfirmed ? tr.lineAddAnyway : tr.save}
             </button>
           </div>
         </div>,

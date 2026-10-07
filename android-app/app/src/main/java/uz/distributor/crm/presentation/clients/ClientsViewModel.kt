@@ -52,6 +52,9 @@ class ClientsViewModel @Inject constructor(
             }
         }
         loadClients(force = true)
+        viewModelScope.launch {
+            clientRepository.clientsChanged.collect { loadClients(force = false) }
+        }
     }
 
     fun onSearchChange(q: String) {

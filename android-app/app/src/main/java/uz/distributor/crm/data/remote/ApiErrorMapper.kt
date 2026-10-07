@@ -121,6 +121,9 @@ object ApiErrorMapper {
             "session_active"
         msg.contains("Invalid amount", ignoreCase = true) ->
             "invalid_amount"
+        msg.contains("рухсат берилмаган", ignoreCase = true) ||
+            msg.contains("ruxsat berilmagan", ignoreCase = true) ->
+            "client_edit_denied"
         else -> "save_failed"
     }
 }

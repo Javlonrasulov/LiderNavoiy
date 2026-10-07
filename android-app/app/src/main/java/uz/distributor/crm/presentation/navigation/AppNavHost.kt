@@ -39,8 +39,8 @@ import uz.distributor.crm.presentation.auth.LocationRequiredScreen
 import uz.distributor.crm.presentation.auth.LoginScreen
 import uz.distributor.crm.presentation.auth.NotificationRequiredScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
-import uz.distributor.crm.presentation.clients.AddClientScreen
 import uz.distributor.crm.presentation.clients.ClientsScreen
+import uz.distributor.crm.presentation.clients.CustomerFormScreen
 import uz.distributor.crm.presentation.components.BottomNavBar
 import uz.distributor.crm.presentation.components.NavTab
 import uz.distributor.crm.presentation.components.route
@@ -270,12 +270,21 @@ fun AppNavHost(
             VisitsListScreen(onBack = { navController.popBackStack() })
         }
         composable("add_client") {
-            AddClientScreen(
+            CustomerFormScreen(
                 onBack = { navController.popBackStack() },
                 onSaved = {
                     navController.popBackStack()
                     navController.navigate("clients")
                 },
+            )
+        }
+        composable(
+            route = "edit_client/{clientId}",
+            arguments = listOf(navArgument("clientId") { type = NavType.StringType }),
+        ) {
+            CustomerFormScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
             )
         }
         composable("products") {
@@ -360,6 +369,7 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() },
                 onStartVisit = { id -> navController.navigate("visit/$id") },
                 onReconciliation = { id -> navController.navigate("reconciliation/$id") },
+                onEditClient = { id -> navController.navigate("edit_client/$id") },
             )
         }
         composable(

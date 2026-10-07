@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { SalesLine } from './entities/sales-line.entity';
 import { CreateLineDto, LineListItemDto, UpdateLineDto } from './dto/line.dto';
 import { Client } from '../clients/entities/client.entity';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 
 function normalizeVisitDays(days?: number[] | null): number[] | null {
   if (days == null || !Array.isArray(days) || days.length === 0) return null;
@@ -63,6 +64,24 @@ export class LinesService {
     );
   }
 
+  /** Liniyaga faqat shu tashkilot xodimini (agent/dostavkachi) yozish mumkin */
+  private async assertPersonInCompany(name: string | null, companyId: string | null) {
+    if (!name || !companyId) return;
+    const match = await this.lineRepo.manager
+      .createQueryBuilder(DistributorProfile, 'd')
+      .innerJoin('d.user', 'u')
+      .where('(TRIM(u.fullName) = :name OR u.username = :name)', { name })
+      .andWhere('u.deletedAt IS NULL')
+      .andWhere(
+        '(d.companyId = :companyId OR d.companyIds LIKE :companyLike)',
+        { companyId, companyLike: `%"${companyId}"%` },
+      )
+      .getCount();
+    if (!match) {
+      throw new BadRequestException(`«${name}» ushbu tashkilot xodimi emas`);
+    }
+  }
+
   async findOne(id: string) {
     const line = await this.lineRepo.findOne({ where: { id } });
     if (!line) throw new NotFoundException('Line not found');
@@ -89,6 +108,8 @@ export class LinesService {
       dto.agentVisitDays ?? dto.visitDays ?? null,
     );
     const deliveryDays = normalizeVisitDays(dto.deliveryVisitDays ?? null);
+    await this.assertPersonInCompany(dto.agentName?.trim() || null, companyId);
+    await this.assertPersonInCompany(dto.deliveryName?.trim() || null, companyId);
 
     const saved = await this.lineRepo.save(
       this.lineRepo.create({
@@ -111,10 +132,18 @@ export class LinesService {
     if (dto.code !== undefined) line.code = dto.code.trim();
     if (dto.name !== undefined) line.name = dto.name.trim();
     if (dto.agentName !== undefined) {
-      line.agentName = dto.agentName?.trim() || null;
+      const agentName = dto.agentName?.trim() || null;
+      if (agentName !== line.agentName) {
+        await this.assertPersonInCompany(agentName, line.companyId);
+      }
+      line.agentName = agentName;
     }
     if (dto.deliveryName !== undefined) {
-      line.deliveryName = dto.deliveryName?.trim() || null;
+      const deliveryName = dto.deliveryName?.trim() || null;
+      if (deliveryName !== line.deliveryName) {
+        await this.assertPersonInCompany(deliveryName, line.companyId);
+      }
+      line.deliveryName = deliveryName;
     }
     if (dto.agentVisitDays !== undefined || dto.visitDays !== undefined) {
       const agentDays = normalizeVisitDays(

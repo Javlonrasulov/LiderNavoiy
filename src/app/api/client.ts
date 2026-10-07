@@ -97,6 +97,7 @@ export interface Distributor {
   id: string;
   userId: string;
   companyId: string | null;
+  companyIds?: string[] | null;
   companyName: string | null;
   lineCode: string | null;
   phone: string | null;

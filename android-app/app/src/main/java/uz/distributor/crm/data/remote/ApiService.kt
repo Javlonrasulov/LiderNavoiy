@@ -58,9 +58,57 @@ interface ApiService {
         @Body body: UpdateClientLocationRequest,
     ): ClientDto
 
+    @PATCH("clients/{id}")
+    suspend fun updateClientDetails(
+        @Path("id") id: String,
+        @Body body: UpdateClientRequest,
+    ): ClientDto
+
     @Multipart
     @POST("clients/upload-photo")
     suspend fun uploadClientPhoto(@Part file: MultipartBody.Part): ClientPhotoUploadDto
+
+    @GET("clients/{id}/app-credentials")
+    suspend fun getClientAppCredentials(@Path("id") id: String): ClientAppCredentialsDto
+
+    @POST("clients/{id}/app-credentials")
+    suspend fun setClientAppCredentials(
+        @Path("id") id: String,
+        @Body body: SetClientAppCredentialsRequest,
+    ): ClientAppCredentialsDto
+
+    @PATCH("clients/{id}/app-credentials/active")
+    suspend fun setClientAppLoginActive(
+        @Path("id") id: String,
+        @Body body: SetClientAppLoginActiveRequest,
+    ): ClientAppCredentialsDto
+
+    @GET("clients/app-username-available")
+    suspend fun checkClientAppUsername(
+        @Query("username") username: String,
+        @Query("excludeClientId") excludeClientId: String? = null,
+    ): AppUsernameAvailabilityDto
+
+    @POST("lines")
+    suspend fun createLine(@Body body: CreateLineRequest): LineDto
+
+    @PATCH("lines/{id}")
+    suspend fun updateLine(
+        @Path("id") id: String,
+        @Body body: UpdateLineRequest,
+    ): LineDto
+
+    @GET("client-categories")
+    suspend fun getClientCategories(): List<ClientCategoryDto>
+
+    @POST("client-categories")
+    suspend fun createClientCategory(@Body body: CreateClientCategoryRequest): ClientCategoryDto
+
+    @PATCH("client-categories/{id}")
+    suspend fun updateClientCategory(
+        @Path("id") id: String,
+        @Body body: UpdateClientCategoryRequest,
+    ): ClientCategoryDto
 
     @GET("products")
     suspend fun getProducts(@Query("category") category: String? = null): List<ProductDto>

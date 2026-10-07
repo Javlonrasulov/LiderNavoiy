@@ -94,6 +94,16 @@ data class ClientDto(
     val lineCode: String? = null,
     val priceCategory: String? = null,
     val contactPerson: String? = null,
+    val fullName: String? = null,
+    val extraPhones: List<ClientExtraPhoneDto>? = null,
+    val markColor: String? = null,
+    val orderRadiusMeters: Double? = null,
+    val canSeePromotions: Boolean? = null,
+)
+
+data class ClientExtraPhoneDto(
+    val phone: String,
+    val note: String? = null,
 )
 
 data class ReconciliationLineItemDto(
@@ -141,6 +151,15 @@ data class CreateClientRequest(
     val photoUrl: String? = null,
     val distributorId: String? = null,
     val lineCode: String? = null,
+    val fullName: String? = null,
+    val extraPhones: List<ClientExtraPhoneDto>? = null,
+    val markColor: String? = null,
+    val category: String? = null,
+    val orderRadiusMeters: Int? = null,
+    val canSeePromotions: Boolean? = null,
+    val appUsername: String? = null,
+    val appPassword: String? = null,
+    val appLoginActive: Boolean? = null,
 )
 
 data class UpdateClientLocationRequest(
@@ -148,7 +167,74 @@ data class UpdateClientLocationRequest(
     val longitude: Double,
 )
 
+/** PATCH clients/{id} — null maydonlar yuborilmaydi (backend ularni o‘zgartirmaydi). */
+data class UpdateClientRequest(
+    val name: String? = null,
+    val fullName: String? = null,
+    val inn: String? = null,
+    val phone: String? = null,
+    val extraPhones: List<ClientExtraPhoneDto>? = null,
+    val address: String? = null,
+    val territory: String? = null,
+    val photoUrl: String? = null,
+    val markColor: String? = null,
+    val lineCode: String? = null,
+    val category: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val orderRadiusMeters: Int? = null,
+    val canSeePromotions: Boolean? = null,
+)
+
+data class ClientCategoryDto(
+    val id: String,
+    val name: String,
+    val companyId: String? = null,
+)
+
+data class CreateClientCategoryRequest(val name: String)
+
+data class UpdateClientCategoryRequest(val name: String)
+
+data class CreateLineRequest(
+    val code: String,
+    val name: String,
+)
+
+data class UpdateLineRequest(val name: String)
+
+data class ClientAppCredentialsDto(
+    val hasCredentials: Boolean = false,
+    val userId: String? = null,
+    val username: String? = null,
+    val clientId: String? = null,
+    val isActive: Boolean? = null,
+    val suggestedUsername: String? = null,
+    val created: Boolean? = null,
+)
+
+data class SetClientAppCredentialsRequest(
+    val username: String,
+    val password: String? = null,
+    val isActive: Boolean? = null,
+)
+
+data class SetClientAppLoginActiveRequest(val isActive: Boolean)
+
+data class AppUsernameTakenByDto(
+    val clientName: String? = null,
+    val clientCode: String? = null,
+)
+
+data class AppUsernameAvailabilityDto(
+    val available: Boolean = false,
+    val username: String? = null,
+    val reason: String? = null,
+    val takenBy: AppUsernameTakenByDto? = null,
+)
+
 data class LineDto(
+    val id: String? = null,
     val code: String,
     val name: String,
     val clientCount: Int = 0,

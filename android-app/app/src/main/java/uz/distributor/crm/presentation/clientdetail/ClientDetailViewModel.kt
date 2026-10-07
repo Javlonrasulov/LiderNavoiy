@@ -43,10 +43,17 @@ class ClientDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ClientDetailUiState())
     val uiState = _uiState.asStateFlow()
 
+    private var loadedClientId: String? = null
+
     init {
         viewModelScope.launch {
             authRepository.getUserFlow().collect { user ->
                 _uiState.update { it.copy(canEditClients = user?.canAddClients() == true) }
+            }
+        }
+        viewModelScope.launch {
+            clientRepository.clientsChanged.collect {
+                loadedClientId?.let { id -> load(id, showLoading = false) }
             }
         }
     }
@@ -54,16 +61,27 @@ class ClientDetailViewModel @Inject constructor(
     fun resolvePhotoUrl(path: String?): String =
         clientRepository.resolvePhotoUrl(path)
 
-    fun load(clientId: String) {
+    /** Header'dagi tahrirlash: ruxsat bo‘lmasa glass toast, aks holda true. */
+    fun requestEdit(): Boolean {
+        if (_uiState.value.client == null) return false
+        if (!_uiState.value.canEditClients) {
+            _uiState.update { it.copy(showEditDeniedToast = true) }
+            return false
+        }
+        return true
+    }
+
+    fun load(clientId: String, showLoading: Boolean = true) {
+        loadedClientId = clientId
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            if (showLoading) _uiState.update { it.copy(isLoading = true) }
             val clientDeferred = async { clientRepository.getClientDetail(clientId) }
             val activityDeferred = async { clientRepository.getClientActivity(clientId) }
             val client = clientDeferred.await()
             val activity = activityDeferred.await()
             _uiState.update {
                 it.copy(
-                    client = client,
+                    client = client ?: it.client,
                     isLoading = false,
                     lastVisitAt = activity.lastVisitAt,
                     lastOrderAt = activity.lastOrderAt,

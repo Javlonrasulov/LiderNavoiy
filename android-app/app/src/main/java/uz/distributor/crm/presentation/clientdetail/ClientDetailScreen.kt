@@ -1,7 +1,15 @@
 package uz.distributor.crm.presentation.clientdetail
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -68,6 +76,7 @@ fun ClientDetailScreen(
     onBack: () -> Unit,
     onStartVisit: (String) -> Unit,
     onReconciliation: (String) -> Unit,
+    onEditClient: (String) -> Unit,
     viewModel: ClientDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -161,11 +170,24 @@ fun ClientDetailScreen(
                                     .padding(horizontal = 16.dp)
                                     .padding(top = 8.dp, bottom = 20.dp),
                             ) {
-                                SherinGlassIconButton(
-                                    onClick = onBack,
-                                    icon = Icons.AutoMirrored.Filled.ArrowBack,
-                                    size = 40.dp,
-                                )
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    SherinGlassIconButton(
+                                        onClick = onBack,
+                                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                                        size = 40.dp,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    HeaderEditButton(
+                                        allowed = state.canEditClients,
+                                        description = AppStrings.customerEditTitle(lang),
+                                        onClick = {
+                                            if (viewModel.requestEdit()) onEditClient(clientId)
+                                        },
+                                    )
+                                }
                                 Spacer(Modifier.height(16.dp))
                                 Text(client.code, color = Color.White.copy(0.75f), fontSize = 13.sp)
                                 Text(
@@ -262,10 +284,6 @@ fun ClientDetailScreen(
                                 cardBg = cardBg,
                                 titleColor = titleColor,
                                 subColor = subColor,
-                                showChevron = false,
-                                trailing = {
-                                    ManagerEditIconButton()
-                                },
                                 onClick = viewModel::openLocationEditor,
                                 subtitle = if (hasCoords) {
                                     String.format("%.5f, %.5f", client.latitude, client.longitude)
@@ -683,23 +701,71 @@ private fun EditClientLocationDialog(
 private fun titleColor(isDark: Boolean) =
     if (isDark) Color.White else Color(0xFF111827)
 
-/** Manager APK mijozlar ro‘yxatidagi PenSquare edit tugmasi. */
+/**
+ * Gradient header uchun glass tahrirlash tugmasi.
+ * Ruxsat yo‘q bo‘lsa xira ko‘rinadi va qulf belgisi chiqadi; bosilganda sabab toast'da ko‘rsatiladi.
+ */
 @Composable
-private fun ManagerEditIconButton() {
-    val accent = Color(0xFF6C5CE7)
+private fun HeaderEditButton(
+    allowed: Boolean,
+    description: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.9f else 1f, label = "editScale")
     Box(
         modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(accent.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center,
+            .size(44.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (allowed) 1f else 0.6f
+            },
     ) {
-        Icon(
-            imageVector = PenSquareIcon,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(15.dp),
-        )
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = if (pressed) 0.34f else 0.24f),
+                            Color.White.copy(alpha = if (pressed) 0.16f else 0.08f),
+                        ),
+                    ),
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.32f), CircleShape)
+                .clickable(
+                    interactionSource = interaction,
+                    indication = ripple(color = Color.White),
+                    role = Role.Button,
+                    onClickLabel = description,
+                    onClick = onClick,
+                )
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = PenSquareIcon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(19.dp),
+            )
+        }
+        if (!allowed) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF111827).copy(alpha = 0.85f))
+                    .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(9.dp))
+            }
+        }
     }
 }
 

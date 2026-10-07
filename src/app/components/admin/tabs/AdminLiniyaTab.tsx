@@ -3,6 +3,8 @@ import { GitBranch, Search, Plus, Users, Edit2, Trash2, ChevronLeft, ChevronRigh
 import { LINES } from '../../../data/adminData';
 import { api, type Client, type Distributor } from '../../../api/client';
 import { textMatchesSearch } from '../../../utils/clientApi';
+import { useCompanies } from '../../CompaniesContext';
+import { CompanyAvatar } from '../../CompanyAvatar';
 
 interface Props {
   D: boolean;
@@ -343,6 +345,9 @@ function LineSelect({
 export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }: Props) {
   const companyParam = [...selectedCompanyIds].sort().join(',') || undefined;
   const singleCompanyId = selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined;
+  const showCompany = selectedCompanyIds.size > 1;
+  const { companies } = useCompanies();
+  const companyById = useMemo(() => new Map(companies.map(c => [c.id, c])), [companies]);
   const [lines, setLines]       = useState<Line[]>(demoLines);
   const [loading, setLoading]   = useState(false);
   const [search, setSearch]     = useState('');
@@ -358,6 +363,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
   const [ttClients, setTtClients] = useState<Client[]>([]);
   const [ttLoading, setTtLoading] = useState(false);
   const [ttSearch, setTtSearch] = useState('');
+  const [modalCompanyId, setModalCompanyId] = useState<string | undefined>(undefined);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const peopleRequestRef = useRef(0);
   const PER_PAGE = 12;
 
   const refreshLines = useCallback(async () => {
@@ -377,15 +385,19 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
     }
   }, [companyParam]);
 
-  const loadPeople = useCallback(async () => {
-    if (!hasApiToken()) {
-      setAgents([]);
-      setDeliveries([]);
-      return;
-    }
+  /** Faqat liniya tashkilotining xodimlari — boshqa tashkilot agentini tanlab bo‘lmasin */
+  const loadPeople = useCallback(async (companyId: string | undefined) => {
+    const requestId = ++peopleRequestRef.current;
+    setAgents([]);
+    setDeliveries([]);
+    if (!hasApiToken() || !companyId) return;
     try {
-      const list = await api.getDistributors(singleCompanyId);
-      const active = list.filter(d => d.user?.isActive !== false);
+      const list = await api.getDistributors(companyId);
+      if (requestId !== peopleRequestRef.current) return;
+      const active = list.filter(d =>
+        d.user?.isActive !== false
+        && (d.companyId === companyId || (d.companyIds ?? []).includes(companyId)),
+      );
       setAgents(
         active
           .filter(d => !isDeliveryPerson(d))
@@ -399,13 +411,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
           .sort((a, b) => a.name.localeCompare(b.name)),
       );
     } catch {
+      if (requestId !== peopleRequestRef.current) return;
       setAgents([]);
       setDeliveries([]);
     }
-  }, [singleCompanyId]);
+  }, []);
 
   useEffect(() => { refreshLines(); }, [refreshLines]);
-  useEffect(() => { loadPeople(); }, [loadPeople]);
 
   const syncLineCode = async (
     personName: string,
@@ -463,13 +475,33 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
       plan: line.plan, visits: line.visits, sales: line.sales,
     });
     setEditLine(line);
-    void loadPeople();
+    setSaveError(null);
+    const cid = line.companyId ?? singleCompanyId;
+    setModalCompanyId(cid);
+    void loadPeople(cid);
   };
 
+  const linesOfCompany = (companyId: string | undefined) =>
+    companyId ? lines.filter(l => l.companyId === companyId) : lines;
+
   const openAdd = () => {
-    setForm({ ...emptyForm(), code: nextNumericLineCode(lines) });
+    setForm({ ...emptyForm(), code: nextNumericLineCode(linesOfCompany(singleCompanyId)) });
     setAddMode(true);
-    void loadPeople();
+    setSaveError(null);
+    setModalCompanyId(singleCompanyId);
+    void loadPeople(singleCompanyId);
+  };
+
+  const chooseAddCompany = (companyId: string) => {
+    setModalCompanyId(companyId);
+    setForm(f => ({ ...f, agent: '', delivery: '', code: nextNumericLineCode(linesOfCompany(companyId)) }));
+    void loadPeople(companyId);
+  };
+
+  const closeModal = () => {
+    setEditLine(null);
+    setAddMode(false);
+    setSaveError(null);
   };
 
   const openTradePoints = async (line: Line) => {
@@ -498,8 +530,9 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
   };
 
   const saveEdit = async () => {
-    const others = lines.filter(l => l.id !== editLine?.id);
+    const others = linesOfCompany(modalCompanyId).filter(l => l.id !== editLine?.id);
     const code = resolveLineCode(form.code, others);
+    setSaveError(null);
     if (hasApiToken() && typeof editLine?.id === 'string') {
       try {
         const updated = await api.updateLine(editLine.id, {
@@ -514,7 +547,8 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
         if (form.agent) await syncLineCode(form.agent, agents, code, true, lineCompanyId);
         if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false, lineCompanyId);
         setLines(prev => prev.map(l => l.id === editLine.id ? apiLineToRow(updated) : l));
-      } catch {
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e));
         return;
       }
     } else {
@@ -538,8 +572,13 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
   };
 
   const saveAdd = async () => {
-    const code = form.code || nextNumericLineCode(lines);
+    const code = form.code || nextNumericLineCode(linesOfCompany(modalCompanyId));
+    setSaveError(null);
     if (hasApiToken()) {
+      if (!modalCompanyId) {
+        setSaveError(t.lineSelectCompany ?? 'Tashkilotni tanlang');
+        return;
+      }
       try {
         const created = await api.createLine({
           code,
@@ -548,13 +587,14 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
           deliveryName: form.delivery || undefined,
           agentVisitDays: form.agentVisitDays.length ? form.agentVisitDays : undefined,
           deliveryVisitDays: form.deliveryVisitDays.length ? form.deliveryVisitDays : undefined,
-          companyId: singleCompanyId,
+          companyId: modalCompanyId,
         });
-        const lineCompanyId = created.companyId ?? singleCompanyId;
+        const lineCompanyId = created.companyId ?? modalCompanyId;
         if (form.agent) await syncLineCode(form.agent, agents, code, true, lineCompanyId);
         if (form.delivery) await syncLineCode(form.delivery, deliveries, code, false, lineCompanyId);
         setLines(prev => [...prev, apiLineToRow(created)]);
-      } catch {
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : String(e));
         return;
       }
     } else {
@@ -618,7 +658,7 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
           background: overlayBg,
           backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => { setEditLine(null); setAddMode(false); }}>
+        }} onClick={closeModal}>
           <div style={{
             background: modalBg, borderRadius: 18, padding: 28, width: 460, maxWidth: '92vw',
             maxHeight: '90vh', overflowY: 'auto',
@@ -626,10 +666,26 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
             border: `1px solid ${border}`,
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>
-                {editLine ? (t.lineEditTitle ?? 'Liniyani tahrirlash') : (t.lineNewTitle ?? 'Yangi liniya')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>
+                  {editLine ? (t.lineEditTitle ?? 'Liniyani tahrirlash') : (t.lineNewTitle ?? 'Yangi liniya')}
+                </div>
+                {showCompany && editLine && modalCompanyId && companyById.get(modalCompanyId) && (() => {
+                  const org = companyById.get(modalCompanyId)!;
+                  return (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                      padding: '3px 10px 3px 3px', borderRadius: 999,
+                      background: 'rgba(99,102,241,0.10)', border: '1px solid rgba(99,102,241,0.25)',
+                      fontSize: 11, fontWeight: 700, color: indigo,
+                    }}>
+                      <CompanyAvatar icon={org.icon} imageUrl={org.imageUrl} shortName={org.shortName} size={18} rounded="full" />
+                      {org.shortName}
+                    </span>
+                  );
+                })()}
               </div>
-              <button onClick={() => { setEditLine(null); setAddMode(false); }} style={{
+              <button onClick={closeModal} style={{
                 width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer',
                 background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -639,6 +695,36 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {showCompany && addMode && (
+                <div>
+                  <div style={{ fontSize: 11, color: muted, marginBottom: 6, fontWeight: 600 }}>
+                    {t.lineLabelCompany ?? 'TASHKILOT'} *
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {[...selectedCompanyIds].map(id => companyById.get(id)).filter(Boolean).map(org => {
+                      const active = modalCompanyId === org!.id;
+                      return (
+                        <button
+                          key={org!.id}
+                          type="button"
+                          onClick={() => chooseAddCompany(org!.id)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '5px 12px 5px 5px', borderRadius: 999, cursor: 'pointer',
+                            border: `1.5px solid ${active ? indigo : border}`,
+                            background: active ? 'rgba(99,102,241,0.12)' : inpBg,
+                            color: active ? indigo : txt, fontSize: 12, fontWeight: 700,
+                          }}
+                        >
+                          <CompanyAvatar icon={org!.icon} imageUrl={org!.imageUrl} shortName={org!.shortName} size={20} rounded="full" />
+                          {org!.shortName}
+                          {active && <Check size={13} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 11, color: muted, marginBottom: 5, fontWeight: 600 }}>
@@ -742,8 +828,20 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
               </div>
             </div>
 
+            {saveError && (
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16,
+                padding: '10px 12px', borderRadius: 10,
+                background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.3)',
+                color: '#ef4444', fontSize: 12, fontWeight: 600,
+              }}>
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                {saveError}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-              <button onClick={() => { setEditLine(null); setAddMode(false); }} style={{
+              <button onClick={closeModal} style={{
                 flex: 1, padding: '11px 0', borderRadius: 10, border: `1px solid ${border}`,
                 background: 'transparent', color: txt, fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>
@@ -1026,11 +1124,32 @@ export function AdminLiniyaTab({ D, card, divider, sub, t, selectedCompanyIds }:
               <span style={{ fontSize: 11, fontWeight: 700, color: indigo }}>{line.code}</span>
             </div>
 
-            <div style={{
-              fontSize: 13, fontWeight: 500, color: txt,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {line.name}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <span style={{
+                fontSize: 13, fontWeight: 500, color: txt,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {line.name}
+              </span>
+              {showCompany && (() => {
+                const org = line.companyId ? companyById.get(line.companyId) : undefined;
+                if (!org) return null;
+                return (
+                  <span
+                    title={org.name}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                      padding: '2px 8px 2px 3px', borderRadius: 999,
+                      background: D ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
+                      border: `1px solid ${border}`,
+                      fontSize: 10, fontWeight: 600, color: D ? '#d1d5db' : '#4b5563',
+                    }}
+                  >
+                    <CompanyAvatar icon={org.icon} imageUrl={org.imageUrl} shortName={org.shortName} size={16} rounded="full" />
+                    {org.shortName}
+                  </span>
+                );
+              })()}
             </div>
 
             <button

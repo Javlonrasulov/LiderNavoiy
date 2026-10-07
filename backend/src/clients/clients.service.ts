@@ -323,17 +323,22 @@ export class ClientsService {
 
     // Liniya kodlari tashkilotlar orasida takrorlanadi — faqat bitta tashkilot doirasida yangilash.
     let companyIds = companyId?.trim() ? [companyId.trim()] : [];
-    if (!companyIds.length && distributorId) {
+    if (distributorId) {
       const profile = await this.repo.manager.findOne(DistributorProfile, {
         where: { id: distributorId },
       });
-      companyIds = [
+      const profileCompanyIds = [
         ...new Set(
           [profile?.companyId, ...(profile?.companyIds ?? [])]
             .map((id) => id?.trim())
             .filter((id): id is string => !!id),
         ),
       ];
+      if (!companyIds.length) {
+        companyIds = profileCompanyIds;
+      } else if (!profileCompanyIds.includes(companyIds[0])) {
+        throw new BadRequestException('Bu xodim ushbu tashkilotga tegishli emas');
+      }
     }
     if (!companyIds.length) return { updated: 0 };
 
@@ -586,7 +591,7 @@ export class ClientsService {
       orderRadiusMeters:
         dto.orderRadiusMeters != null && Number(dto.orderRadiusMeters) >= 10
           ? Math.round(Number(dto.orderRadiusMeters))
-          : 100,
+          : 50,
       locationUpdatedAt: hasLocation ? new Date() : null,
       locationUpdatedById: hasLocation ? actor?.id ?? null : null,
       locationUpdatedByName: hasLocation ? actorLabel(actor) : null,

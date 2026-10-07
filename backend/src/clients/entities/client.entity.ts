@@ -61,7 +61,7 @@ export class Client {
    * Agent shu radius (metr) ichida bo‘lsa buyurtma/vizit olishi mumkin.
    * Admin tomonda shu radius bo‘yicha belgilash uchun.
    */
-  @Column({ type: 'int', nullable: true, default: 100 })
+  @Column({ type: 'int', nullable: true, default: 50 })
   orderRadiusMeters: number | null;
 
   /** Oxirgi marta lokatsiya o'zgartirilgan vaqt */

@@ -765,6 +765,7 @@ object AppStrings {
         "inn_client_exists" -> errorInnClientExists(lang)
         "inn_request_exists" -> errorInnRequestExists(lang)
         "lines_load_failed" -> errorLinesLoadFailed(lang)
+        "client_edit_denied" -> addClientDeniedDetail(lang)
         "products_load_failed" -> errorProductsLoadFailed(lang)
         "products_not_found" -> errorProductsNotFound(lang)
         else -> errorSaveFailed(lang)
@@ -1208,6 +1209,209 @@ object AppStrings {
     )
 
     fun addClientError(lang: AppLanguage, key: String): String = apiError(lang, key)
+
+    // ─── Mijoz qo‘shish / tahrirlash formasi (Manager APK i18n bilan bir xil matnlar) ───
+    fun customerAddTitle(lang: AppLanguage) = tr(lang, "Mijoz qo‘shish", "Мижоз қўшиш", "Добавить клиента")
+    fun customerEditTitle(lang: AppLanguage) = tr(lang, "Mijozni tahrirlash", "Мижозни таҳрирлаш", "Редактировать клиента")
+    fun customerAddLine(lang: AppLanguage) = tr(lang, "Liniya qo‘shish", "Линия қўшиш", "Добавить линию")
+    fun customerEditLine(lang: AppLanguage) = tr(lang, "Liniyani tahrirlash", "Линияни таҳрирлаш", "Редактировать линию")
+    fun customerAddCategory(lang: AppLanguage) = tr(lang, "Kategoriya qo‘shish", "Категория қўшиш", "Добавить категорию")
+    fun customerEditCategory(lang: AppLanguage) = tr(lang, "Kategoriyani tahrirlash", "Категорияни таҳрирлаш", "Редактировать категорию")
+    fun customerName(lang: AppLanguage) = tr(lang, "Nomi", "Номи", "Название")
+    fun customerFullName(lang: AppLanguage) = tr(lang, "To‘liq ism", "Тўлиқ исм", "ФИО")
+    fun customerInn(lang: AppLanguage) = tr(lang, "INN", "ИНН", "ИНН")
+    fun customerPhone(lang: AppLanguage) = tr(lang, "Telefon", "Телефон", "Телефон")
+    fun customerExtraPhone(lang: AppLanguage) = tr(lang, "Qo‘shimcha nomer", "Қўшимча номер", "Доп. номер")
+    fun customerExtraPhoneNote(lang: AppLanguage) = tr(lang, "Kimligi (izoh)", "Кимлиги (изоҳ)", "Кто (комментарий)")
+    fun customerAddress(lang: AppLanguage) = tr(lang, "Manzil", "Манзил", "Адрес")
+    fun customerOrientir(lang: AppLanguage) = tr(lang, "Orientr", "Ориентр", "Ориентир")
+    fun customerPhoto(lang: AppLanguage) = tr(lang, "Do‘kon rasmi", "Дўкон расми", "Фото магазина")
+    fun customerPhotoUploading(lang: AppLanguage) = tr(lang, "Rasm yuklanmoqda...", "Расм юкланмоқда...", "Фото загружается...")
+    fun customerPhotoUploadFailed(lang: AppLanguage) = tr(lang, "Rasm yuklanmadi", "Расм юкланмади", "Не удалось загрузить фото")
+    fun customerTakePhoto(lang: AppLanguage) = tr(lang, "Kamera", "Камера", "Камера")
+    fun customerPickGallery(lang: AppLanguage) = tr(lang, "Galereya", "Галерея", "Галерея")
+    fun customerMarkColor(lang: AppLanguage) = tr(lang, "Belgi", "Белги", "Метка")
+    fun customerMarkGreen(lang: AppLanguage) = tr(lang, "Yashil", "Яшил", "Зелёный")
+    fun customerMarkYellow(lang: AppLanguage) = tr(lang, "Sariq", "Сариқ", "Жёлтый")
+    fun customerMarkRed(lang: AppLanguage) = tr(lang, "Qizil", "Қизил", "Красный")
+    fun customerLine(lang: AppLanguage) = tr(lang, "Liniya", "Линия", "Линия")
+    fun customerLineSelect(lang: AppLanguage) = tr(lang, "Liniyani tanlang", "Линияни танланг", "Выберите линию")
+    fun customerLineName(lang: AppLanguage) = tr(lang, "Liniya nomi", "Линия номи", "Название линии")
+    fun customerLineSaved(lang: AppLanguage) = tr(lang, "Liniya qo‘shildi", "Линия қўшилди", "Линия добавлена")
+    fun customerLineUpdated(lang: AppLanguage) = tr(lang, "Liniya yangilandi", "Линия янгиланди", "Линия обновлена")
+    fun customerLineSimilarWarning(lang: AppLanguage) = tr(
+        lang,
+        "Bunday liniya allaqachon bor bo‘lishi mumkin. Mavjudini tanlang:",
+        "Бундай линия аллақачон бор бўлиши мумкин. Мавжудини танланг:",
+        "Похожая линия уже может существовать. Выберите существующую:",
+    )
+    fun customerLineAddAnyway(lang: AppLanguage) = tr(
+        lang,
+        "Baribir yangi liniya qo‘shish",
+        "Барибир янги линия қўшиш",
+        "Всё равно добавить новую линию",
+    )
+    fun customerCategory(lang: AppLanguage) = tr(lang, "Kategoriya", "Категория", "Категория")
+    fun customerCategorySelect(lang: AppLanguage) = tr(lang, "Kategoriyani tanlang", "Категорияни танланг", "Выберите категорию")
+    fun customerCategoryName(lang: AppLanguage) = tr(lang, "Kategoriya nomi", "Категория номи", "Название категории")
+    fun customerCategorySaved(lang: AppLanguage) = tr(lang, "Kategoriya qo‘shildi", "Категория қўшилди", "Категория добавлена")
+    fun customerCategoryUpdated(lang: AppLanguage) = tr(lang, "Kategoriya yangilandi", "Категория янгиланди", "Категория обновлена")
+    fun customerEditItem(lang: AppLanguage) = tr(lang, "Tahrirlash", "Таҳрирлаш", "Изменить")
+    fun customerNoData(lang: AppLanguage) = tr(lang, "Ma’lumot yo‘q", "Маълумот йўқ", "Нет данных")
+    fun customerMapTitle(lang: AppLanguage) = tr(lang, "Magazin joylashuvi", "Магазин жойлашуви", "Расположение магазина")
+    fun customerMapHint(lang: AppLanguage) = tr(
+        lang,
+        "Xaritadan joyni bosib belgilang",
+        "Харитадан жойни босиб белгиланг",
+        "Нажмите на карту, чтобы отметить место",
+    )
+    fun customerMyLocation(lang: AppLanguage) = tr(lang, "Mening joylashuvim", "Менинг жойлашувим", "Моё местоположение")
+    fun customerLocationOff(lang: AppLanguage) = tr(
+        lang,
+        "Lokatsiya o‘chirilgan. Iltimos, lokatsiyani yoqing",
+        "Локация ўчирилган. Илтимос, локацияни ёқинг",
+        "Геолокация выключена. Включите локацию",
+    )
+    fun customerLocationDenied(lang: AppLanguage) = tr(
+        lang,
+        "Lokatsiya ruxsati berilmadi",
+        "Локация рухсати берилмади",
+        "Нет разрешения на геолокацию",
+    )
+    fun customerMapFullscreen(lang: AppLanguage) = tr(lang, "To‘liq ekran", "Тўлиқ экран", "На весь экран")
+    fun customerMapLayerOsm(lang: AppLanguage) = tr(lang, "Xarita", "Харита", "Карта")
+    fun customerMapLayerSat(lang: AppLanguage) = tr(lang, "Sputnik", "Спутник", "Спутник")
+    fun customerOrderRadius(lang: AppLanguage) = tr(lang, "Zakaz radiusi (m)", "Заказ радиуси (м)", "Радиус заказа (м)")
+    fun customerOrderRadiusHint(lang: AppLanguage) = tr(
+        lang,
+        "Agent shu radius ichida zakaz olsa, shu savdo nuqtasiga kelib zakaz olgan hisoblanadi",
+        "Агент шу радиус ичида заказ олса, шу савдо нуқтасига келиб заказ олган ҳисобланади",
+        "Если агент возьмёт заказ в этом радиусе, считается, что он пришёл в эту торговую точку и взял заказ",
+    )
+    fun customerCanSeePromotions(lang: AppLanguage) = tr(lang, "Aksiyalarni ko‘rish", "Акцияларни кўриш", "Показ акций")
+    fun customerCanSeePromotionsOn(lang: AppLanguage) = tr(lang, "Yoqilgan", "Ёқилган", "Включено")
+    fun customerCanSeePromotionsOff(lang: AppLanguage) = tr(lang, "O‘chirilgan", "Ўчирилган", "Выключено")
+    fun customerCanSeePromotionsHint(lang: AppLanguage) = tr(
+        lang,
+        "Yoqilsa, mijoz APK da admin yoqqan aksiyalarni ko‘radi",
+        "Ёқилса, мижоз APK да админ ёққан акцияларни кўради",
+        "Если включено, клиент видит акции, активированные админом",
+    )
+    fun customerAppAccess(lang: AppLanguage) = tr(lang, "Ilovaga kirish", "Иловага кириш", "Вход в приложение")
+    fun customerAppAccessOn(lang: AppLanguage) = tr(lang, "Ruxsat bor", "Рухсат бор", "Разрешён")
+    fun customerAppAccessOff(lang: AppLanguage) = tr(lang, "Ruxsat yo‘q", "Рухсат йўқ", "Запрещён")
+    fun customerAppAccessHint(lang: AppLanguage) = tr(
+        lang,
+        "O‘chirilsa, mijoz o‘z ilovasiga kira olmaydi",
+        "Ўчирилса, мижоз ўз иловасига кира олмайди",
+        "Если выключено, клиент не сможет войти в своё приложение",
+    )
+    fun customerAppCredTitle(lang: AppLanguage) = tr(lang, "Ilova uchun login va parol", "Илова учун логин ва парол", "Логин и пароль для приложения")
+    fun customerAppCredLogin(lang: AppLanguage) = tr(lang, "Login", "Логин", "Логин")
+    fun customerAppCredPassword(lang: AppLanguage) = tr(lang, "Parol", "Парол", "Пароль")
+    fun customerAppCredCreate(lang: AppLanguage) = tr(lang, "Login/parol yaratish", "Логин/парол яратиш", "Создать логин/пароль")
+    fun customerAppCredSave(lang: AppLanguage) = tr(lang, "Login/parolni saqlash", "Логин/паролни сақлаш", "Сохранить логин/пароль")
+    fun customerAppCredCreated(lang: AppLanguage) = tr(
+        lang,
+        "Login/parol yaratildi — endi ruxsat berish mumkin",
+        "Логин/парол яратилди — энди рухсат бериш мумкин",
+        "Логин/пароль создан — теперь можно разрешить вход",
+    )
+    fun customerAppCredSaved(lang: AppLanguage) = tr(lang, "Login/parol saqlandi", "Логин/парол сақланди", "Логин/пароль сохранён")
+    fun customerAppCredNeeded(lang: AppLanguage) = tr(
+        lang,
+        "Ruxsat berish uchun avval login/parol yarating",
+        "Рухсат бериш учун аввал логин/парол яратинг",
+        "Сначала создайте логин/пароль",
+    )
+    fun customerAppCredLoginShort(lang: AppLanguage) = tr(
+        lang,
+        "Login kamida 3 ta belgi bo‘lishi kerak",
+        "Логин камида 3 та белги бўлиши керак",
+        "Логин — минимум 3 символа",
+    )
+    fun customerAppCredPasswordShort(lang: AppLanguage) = tr(
+        lang,
+        "Parol kamida 6 ta belgi bo‘lishi kerak",
+        "Парол камида 6 та белги бўлиши керак",
+        "Пароль — минимум 6 символов",
+    )
+    fun customerAppCredPasswordKeep(lang: AppLanguage) = tr(
+        lang,
+        "O‘zgartirmaslik uchun bo‘sh qoldiring",
+        "Ўзгартирмаслик учун бўш қолдиринг",
+        "Оставьте пустым, если не меняете",
+    )
+    fun customerAppCredTaken(lang: AppLanguage) = tr(
+        lang,
+        "Bu login band — boshqa login yozing",
+        "Бу логин банд — бошқа логин ёзинг",
+        "Этот логин занят — укажите другой",
+    )
+    fun customerAppCredPendingNote(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz saqlangandan keyin login/parol yaratiladi",
+        "Мижоз сақлангандан кейин логин/парол яратилади",
+        "Логин/пароль создадутся после сохранения клиента",
+    )
+    fun customerAppCredReady(lang: AppLanguage) = tr(
+        lang,
+        "Tayyor — mijoz saqlanganda yaratiladi",
+        "Тайёр — мижоз сақланганда яратилади",
+        "Готово — создастся при сохранении клиента",
+    )
+    fun customerSave(lang: AppLanguage) = tr(lang, "Saqlash", "Сақлаш", "Сохранить")
+    fun customerCancel(lang: AppLanguage) = tr(lang, "Bekor", "Бекор", "Отмена")
+    fun customerFieldRequired(lang: AppLanguage, field: String) = when (lang) {
+        AppLanguage.UZ_LATIN -> "$field majburiy"
+        AppLanguage.UZ_CYRILLIC -> "$field мажбурий"
+        AppLanguage.RUS -> "$field обязательно"
+    }
+    fun customerPhoneInvalid(lang: AppLanguage) = tr(
+        lang,
+        "Telefon raqamini to‘liq kiriting",
+        "Телефон рақамини тўлиқ киритинг",
+        "Введите полный номер телефона",
+    )
+    fun customerLocationRequired(lang: AppLanguage) = tr(
+        lang,
+        "Xaritadan joylashuvni belgilang",
+        "Харитадан жойлашувни белгиланг",
+        "Отметьте местоположение на карте",
+    )
+    fun customerCreated(lang: AppLanguage) = tr(lang, "Mijoz qo‘shildi", "Мижоз қўшилди", "Клиент добавлен")
+    fun customerUpdated(lang: AppLanguage) = tr(lang, "Mijoz yangilandi", "Мижоз янгиланди", "Клиент обновлён")
+    fun customerRequestSubmitted(lang: AppLanguage) = tr(
+        lang,
+        "So‘rov yuborildi — admin tasdigi kutilmoqda",
+        "Сўров юборилди — админ тасдиғи кутилмоқда",
+        "Заявка отправлена — ожидается одобрение админа",
+    )
+    fun customerLoadFailed(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz ma’lumotlari yuklanmadi",
+        "Мижоз маълумотлари юкланмади",
+        "Не удалось загрузить данные клиента",
+    )
+    fun customerDupTitle(lang: AppLanguage) = tr(lang, "O‘xshash mijoz topildi", "Ўхшаш мижоз топилди", "Найден похожий клиент")
+    fun customerDupChance(lang: AppLanguage, pct: Int) = when (lang) {
+        AppLanguage.UZ_LATIN -> "Bunday mijoz bo‘lishi mumkin — $pct%"
+        AppLanguage.UZ_CYRILLIC -> "Бундай мижоз бўлиши мумкин — $pct%"
+        AppLanguage.RUS -> "Возможно, такой клиент есть — $pct%"
+    }
+    fun customerDupMatchedClient(lang: AppLanguage) = tr(lang, "Topilgan mijoz", "Топилган мижоз", "Найденный клиент")
+    fun customerDupAddAnyway(lang: AppLanguage) = tr(lang, "Baribir qo‘shish", "Барибир қўшиш", "Всё равно добавить")
+    fun customerDupCancel(lang: AppLanguage) = tr(lang, "Bekor — o‘zgartirish", "Бекор — ўзгартириш", "Отмена — изменить")
+    fun customerDupInnBlocked(lang: AppLanguage) = tr(
+        lang,
+        "Bir xil INN bilan mijoz allaqachon mavjud. «Baribir qo‘shish» mumkin emas — INN ni o‘zgartiring.",
+        "Бир хил ИНН билан мижоз аллақачон мавжуд. «Барибир қўшиш» мумкин эмас — ИНН ни ўзгартиринг.",
+        "Клиент с таким же ИНН уже существует. «Всё равно добавить» недоступно — измените ИНН.",
+    )
+    fun customerDupUnderstood(lang: AppLanguage) = tr(lang, "Tushunarli", "Тушунарли", "Понятно")
+    fun customerDupRiskGreen(lang: AppLanguage) = tr(lang, "Past", "Паст", "Низкий")
+    fun customerDupRiskYellow(lang: AppLanguage) = tr(lang, "O‘rta", "Ўрта", "Средний")
+    fun customerDupRiskRed(lang: AppLanguage) = tr(lang, "Yuqori", "Юқори", "Высокий")
 
     fun dayName(dayOfWeek: Int, lang: AppLanguage): String {
         val names = when (lang) {

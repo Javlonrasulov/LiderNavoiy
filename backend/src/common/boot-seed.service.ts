@@ -145,6 +145,40 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`users.deletedAt migrate: ${(err as Error).message}`);
     }
 
+    // clients.orderRadiusMeters: standart 100 → 50.
+    // Eski 100 lar faqat BIR MARTA 50 ga o‘tkaziladi (marker jadvali orqali),
+    // keyin ataylab 100 tanlangan radiuslar qayta o‘zgartirilmaydi.
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE clients
+        ALTER COLUMN "orderRadiusMeters" SET DEFAULT 50
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS app_data_migrations (
+          key varchar(120) PRIMARY KEY,
+          "appliedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `);
+      const result: unknown = await this.dataSource.query(`
+        WITH marker AS (
+          INSERT INTO app_data_migrations (key)
+          VALUES ('clients_order_radius_default_50')
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
+        UPDATE clients
+        SET "orderRadiusMeters" = 50
+        WHERE "orderRadiusMeters" = 100
+          AND EXISTS (SELECT 1 FROM marker)
+      `);
+      const affected = Array.isArray(result) ? Number(result[1] ?? 0) : 0;
+      if (affected > 0) {
+        this.logger.log(`clients.orderRadiusMeters: ${affected} ta mijoz 100 → 50 m`);
+      }
+    } catch (err) {
+      this.logger.warn(`clients.orderRadiusMeters default 50 migrate: ${(err as Error).message}`);
+    }
+
     if (this.config.get('SEED_ON_BOOT') !== 'true') return;
 
     // Eski postgres enum -> varchar (on_way / packing uchun)

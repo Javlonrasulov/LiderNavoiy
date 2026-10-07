@@ -105,8 +105,13 @@ object MapTileSources {
     private fun hosts(name: String, maxZoom: Int, vararg urls: String): XYTileSource =
         XYTileSource(name, 0, maxZoom, 256, ".png", urls, "© OpenStreetMap contributors")
 
+    /**
+     * `blankTile=false`: surat yo‘q joyda Esri "Map data not yet available" o‘rniga 404 qaytaradi,
+     * osmdroid esa pastroq zoom tile'ini kattalashtirib ko‘rsatadi.
+     * Nom o‘zgargani eski keshlangan placeholder tile'larni chetlab o‘tish uchun.
+     */
     private fun esriSatellite(): OnlineTileSourceBase = object : OnlineTileSourceBase(
-        "EsriWorldImagery",
+        "EsriWorldImageryNoBlank",
         0,
         19,
         256,
@@ -118,7 +123,7 @@ object MapTileSources {
             val z = MapTileIndex.getZoom(pMapTileIndex)
             val x = MapTileIndex.getX(pMapTileIndex)
             val y = MapTileIndex.getY(pMapTileIndex)
-            return "${baseUrl}$z/$y/$x"
+            return "${baseUrl}$z/$y/$x?blankTile=false"
         }
     }
 }

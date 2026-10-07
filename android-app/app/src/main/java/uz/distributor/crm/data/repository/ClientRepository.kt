@@ -6,16 +6,29 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import uz.distributor.crm.BuildConfig
 import uz.distributor.crm.data.local.*
 import uz.distributor.crm.data.remote.ApiService
+import uz.distributor.crm.data.remote.dto.AppUsernameAvailabilityDto
+import uz.distributor.crm.data.remote.dto.ClientAppCredentialsDto
+import uz.distributor.crm.data.remote.dto.ClientCategoryDto
 import uz.distributor.crm.data.remote.dto.ClientDto
+import uz.distributor.crm.data.remote.dto.CreateClientCategoryRequest
 import uz.distributor.crm.data.remote.dto.CreateClientRequest
+import uz.distributor.crm.data.remote.dto.CreateLineRequest
 import uz.distributor.crm.data.remote.dto.LineDto
+import uz.distributor.crm.data.remote.dto.SetClientAppCredentialsRequest
+import uz.distributor.crm.data.remote.dto.SetClientAppLoginActiveRequest
+import uz.distributor.crm.data.remote.dto.UpdateClientCategoryRequest
 import uz.distributor.crm.data.remote.dto.UpdateClientLocationRequest
+import uz.distributor.crm.data.remote.dto.UpdateClientRequest
+import uz.distributor.crm.data.remote.dto.UpdateLineRequest
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.util.UzScript
 import java.io.ByteArrayOutputStream
@@ -33,6 +46,7 @@ data class ClientActivityDates(
 
 data class CreateClientResult(
     val pendingRequest: Boolean,
+    val clientId: String? = null,
 )
 
 data class UpdateClientResult(
@@ -46,6 +60,11 @@ class ClientRepository @Inject constructor(
     private val db: AppDatabase,
     @ApplicationContext private val context: Context,
 ) {
+    private val _clientsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Mijoz yaratilgan/tahrirlanganda ro‘yxat keshdan qayta o‘qilishi uchun. */
+    val clientsChanged: SharedFlow<Unit> = _clientsChanged.asSharedFlow()
+
     suspend fun getClients(forceRefresh: Boolean = false): List<Client> {
         if (forceRefresh) refreshFromApi()
         val cached = db.clientDao().getAll()
@@ -134,40 +153,73 @@ class ClientRepository @Inject constructor(
         }
     }
 
-    suspend fun createClient(
-        name: String,
-        inn: String?,
-        phone: String?,
-        address: String,
-        territory: String?,
-        latitude: Double?,
-        longitude: Double?,
-        photoUri: Uri?,
-        distributorId: String?,
-        lineCode: String,
-    ): CreateClientResult {
-        val photoUrl = photoUri?.let { uploadClientPhoto(it) }
-        val created = api.createClient(
-            CreateClientRequest(
-                name = name.trim(),
-                inn = inn?.trim()?.ifBlank { null },
-                phone = phone?.trim()?.ifBlank { null },
-                address = address.trim(),
-                territory = territory?.trim()?.ifBlank { null },
-                latitude = latitude,
-                longitude = longitude,
-                photoUrl = photoUrl,
-                distributorId = distributorId,
-                lineCode = lineCode,
-            ),
-        )
+    suspend fun createClient(request: CreateClientRequest): CreateClientResult {
+        val created = api.createClient(request)
         val pendingRequest = created.status == "pending" || created.code.isNullOrBlank()
         if (!pendingRequest) {
             val entity = created.toEntity()
             db.clientDao().insertAll(listOf(entity))
         }
-        return CreateClientResult(pendingRequest = pendingRequest)
+        _clientsChanged.tryEmit(Unit)
+        return CreateClientResult(
+            pendingRequest = pendingRequest,
+            clientId = created.id.takeIf { !pendingRequest },
+        )
     }
+
+    suspend fun updateClient(clientId: String, request: UpdateClientRequest): UpdateClientResult {
+        val updated = api.updateClientDetails(clientId, request)
+        val pendingRequest = updated.status == "pending" || updated.code.isNullOrBlank()
+        if (pendingRequest) {
+            return UpdateClientResult(client = null, pendingRequest = true)
+        }
+        val entity = updated.toEntity()
+        db.clientDao().insertAll(listOf(entity))
+        _clientsChanged.tryEmit(Unit)
+        return UpdateClientResult(client = entity.toDomain(), pendingRequest = false)
+    }
+
+    /** Tahrirlash formasi uchun to‘liq ma’lumot (extraPhones, markColor, radius…). */
+    suspend fun getClientForEdit(id: String): ClientDto = api.getClient(id)
+
+    /** Manager kabi o‘xshash mijozni tekshirish uchun yangi ro‘yxat. */
+    suspend fun fetchClientsForSimilarity(): List<ClientDto> =
+        runCatching { api.getClients() }.getOrDefault(emptyList())
+
+    suspend fun uploadPhoto(uri: Uri): String = uploadClientPhoto(uri)
+
+    suspend fun getClientCategories(): List<ClientCategoryDto> = api.getClientCategories()
+
+    suspend fun createClientCategory(name: String): ClientCategoryDto =
+        api.createClientCategory(CreateClientCategoryRequest(name = name))
+
+    suspend fun updateClientCategory(id: String, name: String): ClientCategoryDto =
+        api.updateClientCategory(id, UpdateClientCategoryRequest(name = name))
+
+    suspend fun createLine(code: String, name: String): LineDto =
+        api.createLine(CreateLineRequest(code = code, name = name))
+
+    suspend fun updateLine(id: String, name: String): LineDto =
+        api.updateLine(id, UpdateLineRequest(name = name))
+
+    suspend fun getClientAppCredentials(clientId: String): ClientAppCredentialsDto =
+        api.getClientAppCredentials(clientId)
+
+    suspend fun setClientAppCredentials(
+        clientId: String,
+        username: String,
+        password: String?,
+        isActive: Boolean?,
+    ): ClientAppCredentialsDto = api.setClientAppCredentials(
+        clientId,
+        SetClientAppCredentialsRequest(username = username, password = password, isActive = isActive),
+    )
+
+    suspend fun setClientAppLoginActive(clientId: String, isActive: Boolean): ClientAppCredentialsDto =
+        api.setClientAppLoginActive(clientId, SetClientAppLoginActiveRequest(isActive))
+
+    suspend fun checkClientAppUsername(username: String, excludeClientId: String?): AppUsernameAvailabilityDto =
+        api.checkClientAppUsername(username, excludeClientId)
 
     suspend fun updateClientLocation(
         clientId: String,
@@ -184,6 +236,7 @@ class ClientRepository @Inject constructor(
         }
         val entity = updated.toEntity()
         db.clientDao().insertAll(listOf(entity))
+        _clientsChanged.tryEmit(Unit)
         return UpdateClientResult(client = entity.toDomain(), pendingRequest = false)
     }
 
