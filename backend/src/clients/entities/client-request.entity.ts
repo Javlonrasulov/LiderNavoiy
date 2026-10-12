@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { DistributorProfile } from '../../distributors/entities/distributor-profile.entity';
+import { ClientSubmissionAudit } from '../client-audit';
 
 export enum ClientRequestStatus {
   PENDING = 'pending',
@@ -105,6 +106,10 @@ export class ClientRequest {
   /** So‘rov yuborgan odamning lavozimi (manager, agent, dostavka, …) */
   @Column({ type: 'varchar', nullable: true })
   submitterPosition: string | null;
+
+  /** Auth kontekstidan olingan muallif va oxirgi yuborish vaqti. */
+  @Column({ type: 'jsonb', nullable: true })
+  submissionAudit: ClientSubmissionAudit | null;
 
   @Column({ type: 'varchar', nullable: true })
   note: string | null;

@@ -181,6 +181,22 @@ export interface LocationPoint {
   recordedAt: string;
 }
 
+export interface ClientAuditEntry {
+  userId: string | null;
+  userName: string | null;
+  changedAt: string | null;
+  status: 'direct' | 'pending' | 'approved' | 'rejected';
+  requestId?: string;
+  approvedById?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+}
+
+export interface ClientAudit {
+  change: ClientAuditEntry | null;
+  location: ClientAuditEntry | null;
+}
+
 export interface Client {
   id: string;
   code: string;
@@ -224,6 +240,8 @@ export interface Client {
   createdAt?: string;
   createdById?: string | null;
   createdByName?: string | null;
+  changeAudit?: ClientAudit | null;
+  requestedAudit?: ClientAudit | null;
   deletedAt?: string | null;
   deletedById?: string | null;
   deletedByName?: string | null;

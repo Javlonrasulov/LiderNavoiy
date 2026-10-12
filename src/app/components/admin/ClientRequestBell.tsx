@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bell, Check, X, MapPin, Phone, User, Building2, AlertTriangle,
+  Bell, Check, X, User, AlertTriangle, Maximize2, Minimize2,
+  ChevronDown, Clock3, Loader2, ShieldCheck, Inbox, RefreshCw,
 } from 'lucide-react';
 import { useClientRequests, ClientRequestProvider } from '../ClientRequestContext';
 import { useCompanies } from '../CompaniesContext';
 import { useAdminAuth } from '../AdminAuthContext';
 import { api } from '../../api/client';
 import { getClientRequestCompareRows, resolvePreviousSnapshot, snapshotFromApiClient, type ClientRequestItem, type ClientRequestSnapshot } from '../../data/clientRequests';
+import { formatDisplayDateTime } from '../../utils/dateFormat';
 import type { ClientRow } from '../../data/adminData';
+import './ClientRequestBell.css';
 
 interface Props {
   D: boolean;
@@ -19,348 +22,204 @@ interface Props {
   companyId?: string;
 }
 
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
+const EMPTY_CLIENTS: ClientRow[] = [];
 
-function RequestCard({
-  item, D, sub, text, t, existingClients, companyId, onDone,
-}: {
+function RequestCard({ item, t, existingClients, companyId, onDone }: {
   item: ClientRequestItem;
-  D: boolean;
-  sub: string;
-  text: string;
   t: Record<string, string>;
   existingClients: ClientRow[];
   companyId?: string;
   onDone: () => void;
 }) {
-  const { checkInn, approve, reject } = useClientRequests();
-  const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const { checkInn, approve, reject, processing } = useClientRequests();
+  const busy = processing[item.id];
+  const actionLock = useRef(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [fetchedPrev, setFetchedPrev] = useState<ClientRequestSnapshot | null>(null);
+  const [details, setDetails] = useState(false);
+  const detailsId = useId();
+  const [fetchedPrev, setFetchedPrev] = useState<{ clientId: string; snapshot: ClientRequestSnapshot } | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotError, setSnapshotError] = useState(false);
+  const [snapshotRetry, setSnapshotRetry] = useState(0);
   const isUpdate = item.requestType === 'update';
+  const fallbackSnapshot = fetchedPrev && fetchedPrev.clientId === item.targetClientId ? fetchedPrev.snapshot : null;
 
   useEffect(() => {
-    if (!isUpdate || !item.targetClientId) return;
-    if (item.previousSnapshot) {
-      setFetchedPrev(null);
-      return;
-    }
-    const local = resolvePreviousSnapshot(item, existingClients);
-    if (local) {
-      setFetchedPrev(local);
-      return;
-    }
+    if (!isUpdate || !item.targetClientId || item.previousSnapshot) return;
+    if (resolvePreviousSnapshot(item, existingClients, fallbackSnapshot)) return;
+    const clientId = item.targetClientId;
     let cancelled = false;
-    void api.getClient(item.targetClientId)
-      .then((c) => {
-        if (!cancelled) setFetchedPrev(snapshotFromApiClient(c));
+    setSnapshotLoading(true);
+    setSnapshotError(false);
+    void api.getClient(clientId)
+      .then(c => {
+        if (!cancelled) {
+          setFetchedPrev({ clientId, snapshot: snapshotFromApiClient(c) });
+          setSnapshotLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setFetchedPrev(null);
+        if (!cancelled) {
+          setSnapshotError(true);
+          setSnapshotLoading(false);
+        }
       });
     return () => { cancelled = true; };
-  }, [isUpdate, item.id, item.targetClientId, item.previousSnapshot, existingClients]);
+  }, [isUpdate, item.targetClientId, item.previousSnapshot, existingClients, fallbackSnapshot, snapshotRetry]);
 
-  const prev = resolvePreviousSnapshot(item, existingClients, fetchedPrev);
-  const compareRows = isUpdate
-    ? getClientRequestCompareRows(item, prev, t)
-    : [];
-  const changedCount = compareRows.filter(r => r.changed).length;
+  const prev = resolvePreviousSnapshot(item, existingClients, fallbackSnapshot);
+  const compareRows = getClientRequestCompareRows(item, isUpdate ? prev : {}, t);
+  const changedRows = compareRows.filter(row => row.changed);
+  const mainRows = isUpdate ? changedRows : changedRows.slice(0, 3);
+  const detailRows = compareRows.filter(row => !mainRows.includes(row));
+  const dup = checkInn(item.inn, item.id, existingClients, isUpdate ? item.targetClientId : null);
 
-  const dup = checkInn(
-    item.inn,
-    item.id,
-    existingClients,
-    isUpdate ? item.targetClientId : null,
-  );
-
-  const handleApprove = async () => {
-    if (dup.duplicate) return;
+  const handleAction = async (action: 'approve' | 'reject') => {
+    if (actionLock.current || busy || (action === 'approve' && dup.duplicate)) return;
+    actionLock.current = true;
     setActionError(null);
-    setBusy('approve');
     try {
-      const ok = await approve(item.id, companyId, existingClients);
-      if (ok) {
-        onDone();
+      if (action === 'approve') {
+        if (await approve(item.id, companyId, existingClients)) onDone();
+        else setActionError(t.notifApproveFailed);
       } else {
-        setActionError(t.notifApproveFailed ?? 'Qabul qilib bo\'lmadi. INN takrorlanishi yoki so\'rov topilmadi.');
+        await reject(item.id);
+        onDone();
       }
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : (t.notifApproveFailed ?? 'Qabul qilib bo\'lmadi'));
+      setActionError(e instanceof Error ? e.message : (
+        action === 'approve' ? t.notifApproveFailed : t.notifRejectFailed
+      ));
     } finally {
-      setBusy(null);
+      actionLock.current = false;
     }
   };
 
-  const handleReject = async () => {
-    setBusy('reject');
-    try {
-      await reject(item.id);
-      onDone();
-    } finally {
-      setBusy(null);
+  const renderValue = (key: string, value: string, old = false) => {
+    // Keep the actual photo URL available alongside the comparison helper's label.
+    const photo = key === 'photoUrl' ? (old ? prev?.photoUrl : item.photoUrl) : null;
+    if (photo && /^https?:\/\//i.test(photo)) {
+      return <a href={photo} target="_blank" rel="noopener noreferrer">{photo}</a>;
     }
+    return photo || value;
   };
-
-  const cardBg = D ? '#1a1a1a' : '#fff';
-  const brd = D ? '#2a2a2e' : '#e5e7eb';
 
   return (
-    <div
-      className="rounded-xl border p-3 space-y-2"
-      style={{ background: cardBg, borderColor: brd }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span
-              className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-              style={{
-                background: isUpdate
-                  ? (D ? 'rgba(59,130,246,0.2)' : '#eff6ff')
-                  : (D ? 'rgba(16,185,129,0.2)' : '#ecfdf5'),
-                color: isUpdate
-                  ? (D ? '#93c5fd' : '#1d4ed8')
-                  : (D ? '#6ee7b7' : '#047857'),
-              }}
-            >
-              {isUpdate
-                ? (t.notifTypeEdit ?? 'Tahrirlash')
-                : (t.notifTypeNew ?? 'Yangi')}
-            </span>
-          </div>
-          <p className="font-semibold text-sm truncate" style={{ color: text }}>{item.name}</p>
-          {item.fullName && item.fullName !== item.name && (
-            <p className="text-xs truncate" style={{ color: sub }}>{item.fullName}</p>
-          )}
-        </div>
-        <span className="text-[10px] flex-shrink-0 whitespace-nowrap" style={{ color: sub }}>
-          {formatDate(item.createdAt)}
+    <article className="client-request-card" aria-busy={!!busy}>
+      <div className="client-request-badges">
+        <span className={`client-request-badge ${isUpdate ? 'is-edit' : 'is-new'}`}>
+          {isUpdate ? t.notifTypeEdit : t.notifTypeNew}
         </span>
+        <span className="client-request-pending"><span />{t.notifPending}</span>
       </div>
-
-      <div className="grid grid-cols-1 gap-1 text-xs" style={{ color: sub }}>
-        {item.agentName && (
-          <span className="flex items-center gap-1.5">
-            <User size={11} />{' '}
-            {item.submitterPosition?.trim()
-              || t.notifSubmitter
-              || 'Yuboruvchi'}
-            : <strong style={{ color: text }}>{item.agentName}</strong>
-          </span>
-        )}
-        {!isUpdate && item.inn && (
-          <span className="flex items-center gap-1.5">
-            <Building2 size={11} /> INN: <strong style={{ color: text }}>{item.inn}</strong>
-          </span>
-        )}
-        {!isUpdate && item.phone && (
-          <span className="flex items-center gap-1.5">
-            <Phone size={11} /> {item.phone}
-          </span>
-        )}
-        {!isUpdate && item.address && (
-          <span className="flex items-center gap-1.5">
-            <MapPin size={11} className="flex-shrink-0" />
-            <span className="truncate">{item.address}</span>
-          </span>
-        )}
-        {!isUpdate && item.territory && <span>{t.colTerritory ?? 'Hudud'}: {item.territory}</span>}
-        {!isUpdate && item.lineCode && <span>{t.colLine ?? 'Liniya'}: {item.lineCode}</span>}
-        {!isUpdate && item.contactPerson && <span>{t.colContact ?? 'Kontakt'}: {item.contactPerson}</span>}
-        {!isUpdate && item.category && <span>{t.colCategory ?? 'Kategoriya'}: {item.category}</span>}
-        {!isUpdate && item.note && <span>{t.colNote ?? 'Izoh'}: {item.note}</span>}
+      <h3 className="client-request-name">{item.name}</h3>
+      {item.fullName && item.fullName !== item.name && <p className="client-request-full-name">{item.fullName}</p>}
+      <div className="client-request-meta">
+        <p><User size={13} /><span>{item.submitterPosition?.trim() || t.notifAgent}: <strong>{item.agentName || '—'}</strong></span></p>
+        <p><Clock3 size={13} /><time dateTime={item.createdAt}>{formatDisplayDateTime(item.createdAt) || '—'} <span>(UTC+5)</span></time></p>
       </div>
-
-      {isUpdate && compareRows.length > 0 && (
-        <div
-          className="rounded-lg overflow-hidden"
-          style={{
-            border: `1px solid ${D ? 'rgba(59,130,246,0.25)' : '#bfdbfe'}`,
-          }}
-        >
-          <div
-            className="grid grid-cols-2 text-[10px] font-semibold uppercase tracking-wide"
-            style={{
-              background: D ? 'rgba(59,130,246,0.15)' : '#dbeafe',
-              color: D ? '#93c5fd' : '#1d4ed8',
-            }}
-          >
-            <div className="px-2 py-1.5 border-r" style={{ borderColor: D ? 'rgba(59,130,246,0.25)' : '#bfdbfe' }}>
-              {t.notifOldState ?? 'Eski holat'}
+      <div className="client-request-section-label">
+        <span>{isUpdate ? t.notifChanges : t.notifClientData}</span>
+        <span className="client-request-field-count">{isUpdate && !prev ? '—' : changedRows.length}</span>
+      </div>
+      {isUpdate && !prev ? (
+        <div className="client-request-snapshot" role={snapshotError ? 'alert' : 'status'}>
+          {snapshotLoading ? <Loader2 size={15} className="client-request-spin" /> : <AlertTriangle size={15} />}
+          <span>{snapshotLoading ? t.notifLoading : t.notifComparisonUnavailable}</span>
+          {snapshotError && <button type="button" className="client-request-text-button" onClick={() => setSnapshotRetry(v => v + 1)}>{t.notifRetry}</button>}
+        </div>
+      ) : mainRows.length === 0 ? (
+        <p className="client-request-muted-message">{t.notifNoFieldChanges}</p>
+      ) : (
+        <dl className="client-request-changes">
+          {mainRows.map(row => (
+            <div key={row.key} className="client-request-change">
+              <dt>{row.label}</dt>
+              <dd>
+                {isUpdate && <div className="client-request-old"><span>{t.notifOldValue}</span><div>{renderValue(row.key, row.from, true)}</div></div>}
+                <div className="client-request-new"><span>{t.notifNewValue}</span><div>{renderValue(row.key, row.to)}</div></div>
+              </dd>
             </div>
-            <div className="px-2 py-1.5">
-              {t.notifNewState ?? 'O\'zgargan holat'}
-              {changedCount > 0 && (
-                <span className="ml-1 normal-case font-medium opacity-80">
-                  ({changedCount})
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="divide-y" style={{ borderColor: D ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}>
-            {compareRows.map((row) => (
-              <div
-                key={row.key}
-                className="grid grid-cols-2 text-[11px] leading-snug"
-                style={{
-                  background: row.changed
-                    ? (D ? 'rgba(245,158,11,0.08)' : '#fffbeb')
-                    : undefined,
-                }}
-              >
-                <div
-                  className="px-2 py-1.5 border-r min-w-0"
-                  style={{ borderColor: D ? 'rgba(255,255,255,0.06)' : '#e5e7eb' }}
-                >
-                  <p className="text-[9px] mb-0.5" style={{ color: sub }}>{row.label}</p>
-                  <p
-                    className={`break-words ${row.changed ? 'line-through' : ''}`}
-                    style={{ color: row.changed ? (D ? '#9ca3af' : '#6b7280') : text }}
-                  >
-                    {row.from}
-                  </p>
-                </div>
-                <div className="px-2 py-1.5 min-w-0">
-                  <p className="text-[9px] mb-0.5" style={{ color: sub }}>{row.label}</p>
-                  <p
-                    className="break-words font-medium"
-                    style={{
-                      color: row.changed
-                        ? (D ? '#fbbf24' : '#b45309')
-                        : text,
-                    }}
-                  >
-                    {row.to}
-                  </p>
-                </div>
-              </div>
+          ))}
+        </dl>
+      )}
+      {(detailRows.length > 0 || item.note || (isUpdate && !prev)) && (
+        <div className="client-request-details">
+          <button type="button" className="client-request-details-toggle" aria-expanded={details} aria-controls={detailsId} onClick={() => setDetails(v => !v)}>
+            {t.notifDetails}<ChevronDown size={14} className={details ? 'is-rotated' : ''} />
+          </button>
+          <dl id={detailsId} hidden={!details} className="client-request-detail-list">
+            {(isUpdate && !prev ? getClientRequestCompareRows(item, {}, t) : detailRows).map(row => (
+              <div key={row.key}><dt>{row.label}</dt><dd>{renderValue(row.key, row.to)}</dd></div>
             ))}
-          </div>
+            {item.note && <div><dt>{t.colNote}</dt><dd>{item.note}</dd></div>}
+          </dl>
         </div>
       )}
-
-      {isUpdate && compareRows.length === 0 && (
-        <p className="text-[11px]" style={{ color: sub }}>
-          {t.notifNoFieldChanges ?? 'Maydon o\'zgarishi aniqlanmadi'}
-        </p>
-      )}
-
-      {actionError && (
-        <div
-          className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-xs"
-          style={{
-            background: D ? 'rgba(239,68,68,0.12)' : '#fef2f2',
-            color: D ? '#fca5a5' : '#b91c1c',
-          }}
-        >
-          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-          <span>{actionError}</span>
-        </div>
-      )}
-
+      {actionError && <div className="client-request-warning" role="alert"><AlertTriangle size={15} /><span>{actionError}</span></div>}
       {dup.duplicate && (
-        <div
-          className="flex items-start gap-2 rounded-lg px-2.5 py-2 text-xs"
-          style={{
-            background: D ? 'rgba(239,68,68,0.12)' : '#fef2f2',
-            color: D ? '#fca5a5' : '#b91c1c',
-          }}
-        >
-          <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-          <span>
-            {dup.reason === 'client_exists'
-              ? (t.notifInnExists ?? 'Bunday INN bilan mijoz tizimda mavjud — qabul qilib bo\'lmaydi')
-              : (t.notifInnPending ?? 'Bunday INN bilan boshqa so\'rov mavjud')}
-            {dup.existingClient && (
-              <span className="block mt-0.5 font-medium">{dup.existingClient.name}</span>
-            )}
+        <div className="client-request-warning" role="alert">
+          <AlertTriangle size={15} />
+          <span>{dup.reason === 'client_exists' ? t.notifInnExists : t.notifInnPending}
+            {dup.existingClient && <strong>{dup.existingClient.name}</strong>}
           </span>
         </div>
       )}
-
-      <div className="flex gap-2 pt-1">
-        <button
-          type="button"
-          disabled={!!busy || dup.duplicate}
-          onClick={handleApprove}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-40"
-          style={{ background: '#10b981' }}
-        >
-          <Check size={13} />
-          {busy === 'approve' ? '...' : (t.notifAccept ?? 'Qabul qilish')}
+      <div className="client-request-actions">
+        <button type="button" className="client-request-approve" disabled={!!busy || dup.duplicate} onClick={() => void handleAction('approve')}>
+          {busy === 'approve' ? <Loader2 size={15} className="client-request-spin" /> : <Check size={15} />}{t.notifApprove}
         </button>
-        <button
-          type="button"
-          disabled={!!busy}
-          onClick={handleReject}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-40"
-          style={{ background: '#ef4444' }}
-        >
-          <X size={13} />
-          {busy === 'reject' ? '...' : (t.notifReject ?? 'Bekor qilish')}
+        <button type="button" className="client-request-reject" disabled={!!busy} onClick={() => void handleAction('reject')}>
+          {busy === 'reject' ? <Loader2 size={15} className="client-request-spin" /> : <X size={15} />}{t.notifDecline}
         </button>
       </div>
-    </div>
+    </article>
   );
 }
 
-export function ClientRequestBell({ D, sub, text, t, existingClients = [], companyId }: Props) {
-  return (
-    <ClientRequestProvider companyId={companyId}>
-      <ClientRequestBellInner
-        D={D}
-        sub={sub}
-        text={text}
-        t={t}
-        existingClients={existingClients}
-        companyId={companyId}
-      />
-    </ClientRequestProvider>
-  );
+export function ClientRequestBell(props: Props) {
+  return <ClientRequestProvider companyId={props.companyId}><ClientRequestBellInner {...props} /></ClientRequestProvider>;
 }
 
-function ClientRequestBellInner({ D, sub, text, t, existingClients = [], companyId }: Props) {
-  const { pending, loading, error } = useClientRequests();
+function ClientRequestBellInner({ D, t, existingClients = EMPTY_CLIENTS, companyId }: Props) {
+  const { pending, loading, error, refresh } = useClientRequests();
   const { companies, refresh: refreshCompanies } = useCompanies();
   const { selectedCompany, selectCompany } = useAdminAuth();
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [savingSkip, setSavingSkip] = useState(false);
   const [skipError, setSkipError] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
   const count = pending.length;
+  const closePanel = () => { setOpen(false); setExpanded(false); };
 
-  const effectiveCompanyId =
-    companyId ?? selectedCompany?.id ?? undefined;
+  const effectiveCompanyId = companyId ?? selectedCompany?.id ?? undefined;
   const company = companies.find(c => c.id === effectiveCompanyId)
     ?? (selectedCompany?.id === effectiveCompanyId ? selectedCompany : null);
   const skipApproval = !!company?.clientsAddWithoutApproval;
-  /** UI: «Админ текшируви» — ёқилса сўров келади (foydalanuvchi tili) */
   const adminReviewOn = !skipApproval;
 
   const toggleAdminReview = async () => {
     if (!effectiveCompanyId || savingSkip) return;
     setSavingSkip(true);
     setSkipError(null);
-    // Tekshiruvni O'CHIRISH = withoutApproval true
-    const nextSkipApproval = adminReviewOn; // if currently ON, turning off → skip=true
+    const nextSkipApproval = adminReviewOn;
     try {
-      const updated = await api.updateCompany(effectiveCompanyId, {
-        clientsAddWithoutApproval: nextSkipApproval,
-      });
+      const updated = await api.updateCompany(effectiveCompanyId, { clientsAddWithoutApproval: nextSkipApproval });
       await refreshCompanies();
       if (selectedCompany?.id === effectiveCompanyId) {
-        selectCompany({
-          ...selectedCompany,
-          clientsAddWithoutApproval: !!updated.clientsAddWithoutApproval,
-        });
+        selectCompany({ ...selectedCompany, clientsAddWithoutApproval: !!updated.clientsAddWithoutApproval });
       }
     } catch (e) {
-      setSkipError(e instanceof Error ? e.message : 'Saqlashda xatolik');
+      setSkipError(e instanceof Error ? e.message : t.notifSaveFailed);
     } finally {
       setSavingSkip(false);
     }
@@ -368,165 +227,125 @@ function ClientRequestBellInner({ D, sub, text, t, existingClients = [], company
 
   useEffect(() => {
     if (!open) return;
-    let removeListener: (() => void) | undefined;
-    const timer = window.setTimeout(() => {
-      const close = (e: MouseEvent) => {
-        const target = e.target as Node;
-        if (btnRef.current?.contains(target)) return;
-        if (panelRef.current?.contains(target)) return;
-        setOpen(false);
-      };
-      document.addEventListener('mousedown', close);
-      removeListener = () => document.removeEventListener('mousedown', close);
-    }, 0);
+    expandRef.current?.focus();
+    const reposition = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    reposition();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); setOpen(false); setExpanded(false); }
+    };
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', reposition);
     return () => {
-      clearTimeout(timer);
-      removeListener?.();
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', reposition);
+      // Wait for the modal effect to restore the background's inert state.
+      requestAnimationFrame(() => btnRef.current?.focus());
     };
   }, [open]);
 
-  const panel = open && (() => {
-    const r = btnRef.current?.getBoundingClientRect();
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    const top = r ? r.bottom + 8 : 66;
-    const right = isMobile ? undefined : (r ? window.innerWidth - r.right : 16);
-    const left = isMobile ? '1rem' : undefined;
-    const width = isMobile ? 'calc(100vw - 2rem)' : '380px';
+  useEffect(() => {
+    if (!open || !expanded) return;
+    closeRef.current?.focus();
+    const body = document.body;
+    const previousOverflow = body.style.overflow;
+    const previousPadding = body.style.paddingRight;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${parseFloat(getComputedStyle(body).paddingRight) + scrollbar}px`;
+    const siblings = Array.from(body.children)
+      .filter((el): el is HTMLElement => el instanceof HTMLElement && el !== panelRef.current && el !== overlayRef.current)
+      .map(el => ({ el, inert: el.inert }));
+    siblings.forEach(({ el }) => { el.inert = true; });
+    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], [tabindex="0"]',
+    ) ?? []).filter(el => el.getClientRects().length > 0);
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const elements = focusable();
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    };
+    const keepFocus = (e: FocusEvent) => {
+      if (!panelRef.current?.contains(e.target as Node)) closeRef.current?.focus();
+    };
+    document.addEventListener('keydown', trapFocus);
+    document.addEventListener('focusin', keepFocus);
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPadding;
+      siblings.forEach(({ el, inert }) => { el.inert = inert; });
+      document.removeEventListener('keydown', trapFocus);
+      document.removeEventListener('focusin', keepFocus);
+      expandRef.current?.focus();
+    };
+  }, [open, expanded]);
 
-    return createPortal(
-      <>
-        <div
-          className="fixed inset-0 z-[240]"
-          onClick={() => setOpen(false)}
-          aria-hidden
-        />
-        <div
-          ref={panelRef}
-          className={`fixed z-[241] rounded-2xl border shadow-2xl overflow-hidden flex flex-col ${
-            D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-100'
-          }`}
-          style={{
-            top,
-            right,
-            left,
-            width,
-            maxWidth: '380px',
-            maxHeight: 'min(70vh, 520px)',
-          }}
-        >
-          <div className={`px-4 py-3 border-b flex-shrink-0 ${D ? 'border-gray-700' : 'border-gray-100'}`}>
-            <p className={`text-sm font-semibold ${text}`}>
-              {t.notifTitle ?? 'Bildirishnomalar'}
-            </p>
-            <p className={`text-xs mt-0.5 ${sub}`}>
-              {t.notifSubtitle ?? 'Yangi mijoz yoki tahrirlash so\'rovlari shu yerda ko\'rinadi'}
-            </p>
+  const rect = btnRef.current?.getBoundingClientRect();
+  const width = Math.min(380, viewport.width - 32);
+  const top = Math.min(rect ? rect.bottom + 8 : 66, Math.max(16, viewport.height - 240));
+  const compactStyle: CSSProperties = {
+    top,
+    left: Math.max(16, Math.min((rect?.right ?? viewport.width - 16) - width, viewport.width - width - 16)),
+    width,
+    maxHeight: Math.min(viewport.height * .7, 520, viewport.height - top - 16),
+  };
 
-            {effectiveCompanyId ? (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  disabled={savingSkip}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void toggleAdminReview();
-                  }}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 ${
-                    adminReviewOn
-                      ? D
-                        ? 'border-amber-500/40 bg-amber-500/15 text-amber-200'
-                        : 'border-amber-300 bg-amber-50 text-amber-800'
-                      : D
-                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                        : 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                  }`}
-                >
-                  <span className="text-left leading-snug">
-                    {t.notifAdminReview ?? 'Admin tekshiruvi'}
-                  </span>
-                  <span className={`w-10 h-5 rounded-full p-0.5 flex-shrink-0 transition-colors ${
-                    adminReviewOn ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}>
-                    <span className={`block w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      adminReviewOn ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </span>
-                </button>
-                <p className={`text-[10px] mt-1.5 leading-snug ${sub}`}>
-                  {adminReviewOn
-                    ? (t.notifAdminReviewOnHint ?? 'Yoqilgan: manager so\'rovi shu yerda chiqadi, siz tasdiqlaysiz')
-                    : (t.notifAdminReviewOffHint ?? 'O\'chirilgan: manager mijozni darhol qo\'shadi (tekshiruvsiz)')}
-                </p>
-                {skipError && (
-                  <p className="text-[10px] mt-1 text-red-500">{skipError}</p>
-                )}
-              </div>
-            ) : (
-              <p className={`text-[10px] mt-2 ${sub}`}>
-                {t.notifSelectOneOrg ?? 'Sozlamani o\'zgartirish uchun bitta tashkilot tanlang'}
-              </p>
-            )}
+  // Keep the same portal and keyed cards mounted when toggling size.
+  const panel = open && createPortal(
+    <>
+      <div ref={overlayRef} className={`client-request-overlay ${expanded ? 'is-expanded' : ''}`} onClick={closePanel} aria-hidden="true" />
+      <div ref={panelRef} id={panelId} role="dialog" aria-modal={expanded || undefined}
+        aria-labelledby={`${panelId}-title`} aria-describedby={`${panelId}-description`}
+        className={`client-request-panel ${D ? 'is-dark' : ''} ${expanded ? 'is-expanded' : ''}`}
+        style={expanded ? { top: '3dvh', left: '2vw', width: '96vw', height: '94dvh', maxHeight: '94dvh' } : compactStyle}>
+        <div className="client-request-header">
+          <div className="client-request-heading-row">
+            <div className="client-request-heading">
+              <div className="client-request-heading-icon"><Bell size={20} /></div>
+              <div><h2 id={`${panelId}-title`}>{t.notifTitle}</h2><p className="client-request-count" role="status">{t.notifPending}: <strong>{count}</strong></p></div>
+            </div>
+            <div className="client-request-window-actions">
+              <button ref={expandRef} type="button" onClick={() => setExpanded(v => !v)} className="client-request-icon-button" title={expanded ? t.notifMinimize : t.notifMaximize} aria-label={expanded ? t.notifMinimize : t.notifMaximize}>
+                {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+              </button>
+              <button ref={closeRef} type="button" onClick={closePanel} className="client-request-icon-button" title={t.notifClose} aria-label={t.notifClose}><X size={18} /></button>
+            </div>
           </div>
-
-            <div className="overflow-y-auto p-3 space-y-3 flex-1">
-              {error && (
-                <p className="text-xs text-center py-4 text-red-500">{error}</p>
-              )}
-              {loading && pending.length === 0 && !error && (
-                <p className={`text-xs text-center py-6 ${sub}`}>...</p>
-              )}
-              {!loading && pending.length === 0 && !error && (
-                <p className={`text-xs text-center py-8 ${sub}`}>
-                  {t.notifEmpty ?? 'Yangi so\'rovlar yo\'q'}
-                </p>
-              )}
-            {pending.map(item => (
-              <RequestCard
-                key={item.id}
-                item={item}
-                D={D}
-                sub={sub}
-                text={text}
-                t={t}
-                existingClients={existingClients}
-                companyId={companyId}
-                onDone={() => setOpen(false)}
-              />
-            ))}
+          <p id={`${panelId}-description`} className="client-request-subtitle">{t.notifSubtitle}</p>
+          {effectiveCompanyId ? (
+            <div className="client-request-review-settings">
+              <button type="button" role="switch" aria-checked={adminReviewOn} disabled={savingSkip}
+                onClick={() => void toggleAdminReview()} className={`client-request-review-toggle ${adminReviewOn ? 'is-on' : ''}`}>
+                <ShieldCheck size={17} /><span>{t.notifAdminReview}</span>
+                {savingSkip && <Loader2 size={14} className="client-request-spin" />}
+                <span className="client-request-switch"><span /></span>
+              </button>
+              <p>{adminReviewOn ? t.notifAdminReviewOnHint : t.notifAdminReviewOffHint}</p>
+              {skipError && <p className="client-request-setting-error" role="alert">{skipError}</p>}
+            </div>
+          ) : <p className="client-request-subtitle">{t.notifSelectOneOrg}</p>}
+        </div>
+        <div className="client-request-body show-sb" aria-busy={loading}>
+          {error && <div className="client-request-panel-error" role="alert"><AlertTriangle size={18} /><span>{error}</span><button type="button" disabled={loading} onClick={() => void refresh()}><RefreshCw size={14} />{t.notifRetry}</button></div>}
+          {loading && count === 0 && !error && <div className="client-request-state" role="status"><Loader2 size={30} className="client-request-spin" /><p>{t.notifLoading}</p></div>}
+          {!loading && count === 0 && !error && <div className="client-request-state"><div className="client-request-empty-icon"><Inbox size={30} /></div><h3>{t.notifEmpty}</h3><p>{t.notifEmptyHint}</p></div>}
+          <div className="client-request-grid">
+            {pending.map(item => <RequestCard key={item.id} item={item} t={t} existingClients={existingClients} companyId={companyId} onDone={() => { if (!expandedRef.current) closePanel(); }} />)}
           </div>
         </div>
-      </>,
-      document.body,
-    );
-  })();
-
-  return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(v => !v);
-        }}
-        title={t.notifTitle ?? 'Bildirishnomalar'}
-        className={`relative w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center transition-colors ${
-          open
-            ? 'bg-indigo-600 text-white'
-            : D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'
-        }`}
-      >
-        <Bell size={16} />
-        {count > 0 && (
-          <span
-            className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
-            style={{ background: '#ef4444' }}
-          >
-            {count > 9 ? '9+' : count}
-          </span>
-        )}
-      </button>
-      {panel}
-    </>
+      </div>
+    </>, document.body,
   );
+
+  return <>
+    <button ref={btnRef} type="button" onClick={e => { e.stopPropagation(); if (open) closePanel(); else setOpen(true); }}
+      title={t.notifTitle} aria-label={t.notifTitle} aria-expanded={open} aria-haspopup="dialog" aria-controls={open ? panelId : undefined}
+      className={`relative w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center transition-colors ${open ? 'bg-indigo-600 text-white' : D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
+      <Bell size={16} />
+      {count > 0 && <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white" style={{ background: '#ef4444' }}>{count > 9 ? '9+' : count}</span>}
+    </button>
+    {panel}
+  </>;
 }

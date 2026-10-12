@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { DistributorProfile } from '../../distributors/entities/distributor-profile.entity';
+import { ClientAudit } from '../client-audit';
 
 @Entity('clients')
 @Index(['companyId'])
@@ -124,6 +125,13 @@ export class Client {
 
   @Column({ type: 'varchar', nullable: true })
   createdByName: string | null;
+
+  /** Oxirgi qo‘llangan tahrir va GPS auditi; yaratilish ma’lumotlaridan alohida. */
+  @Column({ type: 'jsonb', nullable: true })
+  changeAudit: ClientAudit | null;
+
+  /** API uchun: asosiy yozuvga hali qo‘llanmagan so‘rov auditi. */
+  requestedAudit?: ClientAudit | null;
 
   /** Korzinka: o'chirilgan vaqt (null = faol) */
   @Column({ type: 'timestamptz', nullable: true })

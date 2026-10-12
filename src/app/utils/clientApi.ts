@@ -205,6 +205,8 @@ export function apiClientToRow(
       : [],
     createdAt: c.createdAt ?? undefined,
     createdBy: c.createdByName?.trim() || undefined,
+    changeAudit: c.changeAudit ?? null,
+    requestedAudit: c.requestedAudit ?? null,
     deletedAt: c.deletedAt ?? undefined,
     deletedBy: c.deletedByName?.trim() || undefined,
   };

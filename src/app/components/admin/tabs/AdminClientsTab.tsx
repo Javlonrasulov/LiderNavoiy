@@ -21,6 +21,17 @@ import { TransferClientsModal } from '../TransferClientsModal';
 import { ClientExcelImportModal } from '../ClientExcelImportModal';
 import { formatDisplayDate } from '../../../utils/dateFormat';
 import { resolveProductImageUrl } from '../../../utils/productImageUrl';
+import { ClientAuditCell } from '../ClientAuditCell';
+import { clientAuditLines } from '../../../utils/clientAudit';
+
+function gpsAudit(c: ClientRow) {
+  if (c.changeAudit?.location) return c.changeAudit.location;
+  if (!c.locationUpdatedAt && !c.locationUpdatedBy) return null;
+  return {
+    userId: null, userName: c.locationUpdatedBy ?? null,
+    changedAt: c.locationUpdatedAt ?? null, status: 'direct' as const,
+  };
+}
 
 function hasApiToken(): boolean {
   return !!localStorage.getItem('api_access_token');
@@ -583,9 +594,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       [t.colContact]:    formatClientContact(c),
       [t.colClass]:      c.isActive === false ? (t.inactiveStatus ?? 'Nofaol') : (t.activeStatus ?? 'Faol'),
       [t.colGPS]:        c.gps,
-      [t.colGpsUpdated]: c.locationUpdatedAt
-        ? `${formatDisplayDate(c.locationUpdatedAt)}${c.locationUpdatedBy ? ` · ${c.locationUpdatedBy}` : ''}`
-        : '',
+      [t.colGpsUpdated]: [gpsAudit(c), c.requestedAudit?.location]
+        .filter(Boolean).flatMap(audit => clientAuditLines(audit, t)).join('\n') || '—',
+      [t.colModified]: [c.changeAudit?.change, c.requestedAudit?.change]
+        .filter(Boolean).flatMap(audit => clientAuditLines(audit, t)).join('\n') || '—',
       [t.colAgent]:      c.agent,
       [t.colBalance]:    c.balance,
       [t.colLastVisit]:  formatDisplayDate(c.lastVisit),
@@ -1650,7 +1662,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                 <th className={thCls}>{t.colGPS}</th>
                 <th className={thCls}>{t.colGpsUpdated}</th>
                 <th className={thCls}>{t.colLastVisit}</th>
-                <th className={thCls}>{t.colCreatedBy ?? "Qo'shgan"}</th>
+                <th className={thCls}>{t.colModified}</th>
                 {listMode === 'trash' && (
                   <th className={thCls}>{t.colDeletedBy ?? "O'chirgan"}</th>
                 )}
@@ -1720,28 +1732,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                       </span>
                     </td>
                     <td className={`${tdCls} font-mono ${rowText}`}>{c.gps}</td>
-                    <td className={`${tdCls} ${rowText} text-[10px] max-w-[160px]`}>
-                      {c.locationUpdatedAt ? (
-                        <div className="leading-tight">
-                          <div className="whitespace-nowrap">{formatDisplayDate(c.locationUpdatedAt)}</div>
-                          {c.locationUpdatedBy && (
-                            <div className={`truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.locationUpdatedBy}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className={D ? 'text-gray-600' : 'text-gray-400'}>—</span>
-                      )}
+                    <td className={`${tdCls} ${rowText} text-[10px] min-w-[230px] max-w-[280px]`}>
+                      <ClientAuditCell audit={gpsAudit(c)} requested={c.requestedAudit?.location} t={t} dark={D} />
                     </td>
                     <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{formatDisplayDate(c.lastVisit)}</td>
-                    <td className={`${tdCls} ${rowText} text-[10px] max-w-[140px]`}>
-                      {c.createdAt ? (
-                        <div className="leading-tight">
-                          <div className="whitespace-nowrap">{formatDisplayDate(c.createdAt)}</div>
-                          <div className={`truncate ${D ? 'text-gray-400' : 'text-gray-500'}`}>{c.createdBy || '—'}</div>
-                        </div>
-                      ) : (
-                        <span className={D ? 'text-gray-600' : 'text-gray-400'}>{c.createdBy || '—'}</span>
-                      )}
+                    <td className={`${tdCls} ${rowText} text-[10px] min-w-[230px] max-w-[280px]`}>
+                      <ClientAuditCell audit={c.changeAudit?.change} requested={c.requestedAudit?.change} t={t} dark={D} />
                     </td>
                     {listMode === 'trash' && (
                       <td className={`${tdCls} ${rowText} text-[10px] max-w-[140px]`}>
@@ -1966,6 +1962,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                       </span>
                     </div>
                   )}
+                  <div className="text-xs pt-1">
+                    <div className="opacity-70 mb-0.5">{t.colModified}</div>
+                    <ClientAuditCell audit={activeClient.changeAudit?.change} requested={activeClient.requestedAudit?.change} t={t} dark={D} />
+                  </div>
                   {listMode === 'trash' && (activeClient.deletedAt || activeClient.deletedBy) && (
                     <div className={`text-xs pt-0.5 ${D ? 'text-rose-400/80' : 'text-rose-600'}`}>
                       <span className="opacity-70">{t.colDeletedBy ?? "O'chirgan"}: </span>
@@ -1976,20 +1976,8 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   )}
                   {activeClient.gps && (
                     <div className={`text-xs pt-1 space-y-0.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
-                      <div>
-                        <span className="opacity-70">{t.gpsUpdatedAt ?? 'Qachon'}: </span>
-                        <span className="font-medium text-inherit">
-                          {activeClient.locationUpdatedAt
-                            ? formatDisplayDate(activeClient.locationUpdatedAt)
-                            : (t.gpsUpdatedNever ?? '—')}
-                        </span>
-                      </div>
-                      {activeClient.locationUpdatedBy && (
-                        <div>
-                          <span className="opacity-70">{t.gpsUpdatedBy ?? 'Kim'}: </span>
-                          <span className="font-medium">{activeClient.locationUpdatedBy}</span>
-                        </div>
-                      )}
+                      <div className="opacity-70">{t.colGpsUpdated}</div>
+                      <ClientAuditCell audit={gpsAudit(activeClient)} requested={activeClient.requestedAudit?.location} t={t} dark={D} />
                     </div>
                   )}
                 </div>

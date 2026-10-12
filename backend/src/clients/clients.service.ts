@@ -14,6 +14,8 @@ import { OrderStatus } from '../common/enums';
 import { User } from '../auth/entities/user.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { searchScriptVariants } from '../common/uz-script.util';
+import { auditActor, ClientAudit, requestAudit } from './client-audit';
+import { ClientRequest, ClientRequestStatus } from './entities/client-request.entity';
 
 function normalizeInn(inn?: string | null): string | null {
   const v = inn?.trim();
@@ -102,6 +104,8 @@ export class ClientsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly linesService: LinesService,
+    @InjectRepository(ClientRequest)
+    private readonly requestRepo: Repository<ClientRequest>,
   ) {}
 
   private baseQuery() {
@@ -251,6 +255,27 @@ export class ClientsService {
       enriched.lastOrderAt = act?.lastOrderAt ?? null;
       enriched.goodsQty = act?.goodsQty ?? 0;
       enriched.goodsWeight = act?.goodsWeight ?? 0;
+    }
+    // Pending/rejected requests remain separate from the applied client data.
+    const requests = await this.requestRepo.find({
+      where: {
+        targetClientId: In(ids),
+        status: In([ClientRequestStatus.PENDING, ClientRequestStatus.REJECTED]),
+      },
+      relations: ['distributor'],
+      order: { updatedAt: 'DESC' },
+    });
+    for (const c of clients) {
+      const latest = requests
+        .filter((r) => r.targetClientId === c.id)
+        .sort((a, b) => {
+          const time = (r: ClientRequest) => new Date(r.submissionAudit?.change.changedAt ?? r.createdAt).getTime();
+          return time(b) - time(a);
+        })[0];
+      const appliedAt = c.changeAudit?.change?.changedAt;
+      const submittedAt = latest?.submissionAudit?.change.changedAt;
+      c.requestedAudit = latest && (!appliedAt || submittedAt && submittedAt >= appliedAt)
+        ? requestAudit(latest) : null;
     }
     return clients;
   }
@@ -562,17 +587,18 @@ export class ClientsService {
     dto: CreateClientDto,
     actor?: User,
     createdByOverride?: { id?: string | null; name?: string | null },
+    approvedAudit?: ClientAudit,
   ) {
     const linkedIds = normalizeCompanyIds(dto.companyIds, dto.companyId);
     const primaryCompanyId = linkedIds[0] ?? dto.companyId ?? null;
     const fromDto = this.normalizeNumericCode(dto.code);
     const code = fromDto || (await this.nextNumericCode(primaryCompanyId));
     const hasLocation = dto.latitude != null || dto.longitude != null;
-    const createdById = createdByOverride?.id ?? actor?.id ?? null;
-    const createdByName =
-      createdByOverride?.name?.trim() ||
-      actorLabel(actor) ||
-      null;
+    const createdById = createdByOverride ? createdByOverride.id ?? null : actor?.id ?? null;
+    const createdByName = createdByOverride
+      ? createdByOverride.name?.trim() || null : actorLabel(actor);
+    const direct = { ...auditActor(actor), status: 'direct' as const };
+    const audit = approvedAudit ?? { change: direct, location: hasLocation ? direct : null };
     const preferredOnTrade = dto.onTradeId?.trim() || code;
     const onTradeId = await this.allocateUniqueOnTradeId(preferredOnTrade);
     const client = this.repo.create({
@@ -592,9 +618,10 @@ export class ClientsService {
         dto.orderRadiusMeters != null && Number(dto.orderRadiusMeters) >= 10
           ? Math.round(Number(dto.orderRadiusMeters))
           : 50,
-      locationUpdatedAt: hasLocation ? new Date() : null,
-      locationUpdatedById: hasLocation ? actor?.id ?? null : null,
-      locationUpdatedByName: hasLocation ? actorLabel(actor) : null,
+      locationUpdatedAt: audit.location?.changedAt ? new Date(audit.location.changedAt) : null,
+      locationUpdatedById: audit.location?.userId ?? null,
+      locationUpdatedByName: audit.location?.userName ?? null,
+      changeAudit: audit,
       category: dto.category ?? 'Standard',
       distributorId: dto.distributorId ?? null,
       inn: normalizeInn(dto.inn),
@@ -626,8 +653,9 @@ export class ClientsService {
     }
   }
 
-  async update(id: string, dto: UpdateClientDto, actor?: User) {
+  async update(id: string, dto: UpdateClientDto, actor?: User, approvedAudit?: ClientAudit) {
     const client = await this.findOne(id);
+    const before = JSON.stringify(client);
     if (dto.code !== undefined) {
       const code = this.normalizeNumericCode(dto.code);
       if (!code) throw new BadRequestException("Mijoz kodi faqat raqam bo'lishi kerak");
@@ -656,11 +684,6 @@ export class ClientsService {
     const locationChanged =
       (dto.latitude !== undefined && !sameCoord(prevLat, dto.latitude)) ||
       (dto.longitude !== undefined && !sameCoord(prevLng, dto.longitude));
-    if (locationChanged) {
-      client.locationUpdatedAt = new Date();
-      client.locationUpdatedById = actor?.id ?? null;
-      client.locationUpdatedByName = actorLabel(actor);
-    }
 
     if (dto.category !== undefined) client.category = dto.category;
     if (dto.distributorId !== undefined) client.distributorId = dto.distributorId;
@@ -691,6 +714,20 @@ export class ClientsService {
       client.companyId = linkedIds[0] ?? null;
     }
 
+    if (before !== JSON.stringify(client)) {
+      const direct = { ...auditActor(actor), status: 'direct' as const };
+      const change = approvedAudit ? approvedAudit.change : direct;
+      const location = approvedAudit ? approvedAudit.location : direct;
+      client.changeAudit = {
+        change,
+        location: locationChanged ? location : client.changeAudit?.location ?? null,
+      };
+      if (locationChanged) {
+        client.locationUpdatedAt = location?.changedAt ? new Date(location.changedAt) : null;
+        client.locationUpdatedById = location?.userId ?? null;
+        client.locationUpdatedByName = location?.userName ?? null;
+      }
+    }
     await this.repo.save(client);
     return this.findOne(id);
   }

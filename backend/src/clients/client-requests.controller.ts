@@ -216,6 +216,7 @@ export class ClientRequestsController {
       distributorId,
       agentName,
       position ?? undefined,
+      req.user,
     );
   }
 
@@ -316,6 +317,7 @@ export class ClientRequestsController {
       distributorId,
       agentName,
       position ?? undefined,
+      req.user,
     );
   }
 

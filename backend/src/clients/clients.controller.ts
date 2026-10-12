@@ -475,6 +475,7 @@ export class ClientsController {
         distributorId,
         agentName,
         position ?? undefined,
+        req.user,
       );
     }
 
@@ -537,6 +538,7 @@ export class ClientsController {
         distributorId,
         agentName,
         position ?? undefined,
+        req.user,
       );
     }
 

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -68,6 +69,7 @@ interface ClientRequestContextValue {
   pending: ClientRequestItem[];
   loading: boolean;
   error: string | null;
+  processing: Record<string, 'approve' | 'reject'>;
   refresh: () => Promise<void>;
   checkInn: (
     inn: string | null | undefined,
@@ -90,38 +92,51 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
   const [pending, setPending] = useState<ClientRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<Record<string, 'approve' | 'reject'>>({});
+  const processingIds = useRef(new Set<string>());
+  // Polling responses started before an action must not restore a reviewed card.
+  const reviewedIds = useRef(new Set<string>());
+  const refreshVersion = useRef(0);
 
   useEffect(() => {
     clearLegacyDemoStorage();
   }, []);
 
   const refresh = useCallback(async () => {
+    const version = ++refreshVersion.current;
     if (!hasApiToken()) {
       setPending([]);
       setError(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const rows = await api.getClientRequests(companyId);
+      if (version !== refreshVersion.current) return;
       setPending(
         rows
-          .filter(r => r.status === 'pending')
+          .filter(r => r.status === 'pending' && !reviewedIds.current.has(r.id))
           .map(r => mapApiRow(r as ClientRequestItem & Record<string, unknown>)),
       );
     } catch (e) {
-      setPending([]);
+      if (version !== refreshVersion.current) return;
       setError(e instanceof Error ? e.message : 'So\'rovlarni yuklab bo\'lmadi');
     } finally {
-      setLoading(false);
+      if (version === refreshVersion.current) setLoading(false);
     }
   }, [companyId]);
 
   useEffect(() => {
+    setPending([]);
+    reviewedIds.current.clear();
     refresh();
     const t = setInterval(refresh, 15_000);
-    return () => clearInterval(t);
+    return () => {
+      clearInterval(t);
+      ++refreshVersion.current;
+    };
   }, [refresh]);
 
   const checkInn = useCallback((
@@ -173,15 +188,29 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
   }, [pending]);
 
   const reject = useCallback(async (id: string) => {
-    await api.rejectClientRequest(id);
-    await refresh();
-  }, [refresh]);
+    if (processingIds.current.has(id)) return;
+    processingIds.current.add(id);
+    setProcessing(p => ({ ...p, [id]: 'reject' }));
+    try {
+      await api.rejectClientRequest(id);
+      reviewedIds.current.add(id);
+      setPending(rows => rows.filter(r => r.id !== id));
+    } finally {
+      processingIds.current.delete(id);
+      setProcessing(p => {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      });
+    }
+  }, []);
 
   const approve = useCallback(async (
     id: string,
     _companyId?: string,
     existingClients: ClientRow[] = [],
   ): Promise<boolean> => {
+    if (processingIds.current.has(id)) return false;
     const item = pending.find(r => r.id === id);
     if (!item) return false;
 
@@ -193,21 +222,34 @@ export function ClientRequestProvider({ children, companyId }: ProviderProps) {
     );
     if (dup.duplicate) return false;
 
-    await api.approveClientRequest(id);
-    window.dispatchEvent(new CustomEvent('lider:client-approved'));
-    await refresh();
-    return true;
-  }, [pending, checkInn, refresh]);
+    processingIds.current.add(id);
+    setProcessing(p => ({ ...p, [id]: 'approve' }));
+    try {
+      await api.approveClientRequest(id);
+      reviewedIds.current.add(id);
+      setPending(rows => rows.filter(r => r.id !== id));
+      window.dispatchEvent(new CustomEvent('lider:client-approved'));
+      return true;
+    } finally {
+      processingIds.current.delete(id);
+      setProcessing(p => {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      });
+    }
+  }, [pending, checkInn]);
 
   const value = useMemo(() => ({
     pending,
     loading,
     error,
+    processing,
     refresh,
     checkInn,
     approve,
     reject,
-  }), [pending, loading, error, refresh, checkInn, approve, reject]);
+  }), [pending, loading, error, processing, refresh, checkInn, approve, reject]);
 
   return (
     <ClientRequestContext.Provider value={value}>

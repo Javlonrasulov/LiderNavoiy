@@ -124,7 +124,7 @@ export function snapshotFromClientRow(row: ClientRow): ClientRequestSnapshot {
     fullName: row.fullName,
     phone: row.phone,
     address: row.legalAddr,
-    lineCode: row.line,
+    lineCode: row.lineCode ?? row.line,
     latitude: gpsParts[0] ? Number(gpsParts[0]) : null,
     longitude: gpsParts[1] ? Number(gpsParts[1]) : null,
     category: row.category,
@@ -133,6 +133,8 @@ export function snapshotFromClientRow(row: ClientRow): ClientRequestSnapshot {
     territory: row.territory,
     clientClass: row.cls,
     priceCategory: row.priceCat,
+    photoUrl: row.photoUrl ?? null,
+    canSeePromotions: row.canSeePromotions === true,
   };
 }
 
@@ -223,7 +225,9 @@ export function getClientRequestCompareRows(
       label: t[field.labelKey] ?? field.labelKey,
       from,
       to,
-      changed: from !== to,
+      changed: field.key === 'photoUrl'
+        ? (fromRaw || null) !== (toRaw || null)
+        : from !== to,
     });
   }
 

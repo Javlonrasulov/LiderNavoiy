@@ -14,6 +14,7 @@ import { CreateClientRequestDto } from './dto/client-request.dto';
 import { ClientsService } from './clients.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 import { User } from '../auth/entities/user.entity';
+import { auditActor, requestAudit, sameLocation } from './client-audit';
 
 function normalizeInn(inn?: string | null): string | null {
   const v = inn?.trim();
@@ -190,7 +191,9 @@ export class ClientRequestsService {
     distributorId?: string,
     agentName?: string,
     submitterPosition?: string,
+    actor?: User,
   ) {
+    const author = auditActor(actor);
     // INN hard-block olib tashlandi — manager UI soft o‘xshashlik ogohlantiradi
     const row = this.repo.create({
       status: ClientRequestStatus.PENDING,
@@ -215,6 +218,10 @@ export class ClientRequestsService {
       canSeePromotions: dto.canSeePromotions === true,
       agentName: agentName ?? null,
       submitterPosition: submitterPosition?.trim() || null,
+      submissionAudit: {
+        change: author,
+        location: dto.latitude != null || dto.longitude != null ? author : null,
+      },
       note: dto.note ?? null,
     });
     const saved = await this.repo.save(row);
@@ -231,6 +238,7 @@ export class ClientRequestsService {
     distributorId?: string,
     agentName?: string,
     submitterPosition?: string,
+    actor?: User,
   ) {
     const existing = await this.clientsService.findOne(targetClientId);
     const companyId = existing.companyId ?? undefined;
@@ -284,7 +292,17 @@ export class ClientRequestsService {
       },
     });
 
+    const author = auditActor(actor);
+    const submissionAudit = {
+      change: author,
+      location: sameLocation(merged, existing) ? null
+        : pendingExisting && sameLocation(merged, pendingExisting)
+          ? requestAudit(pendingExisting).location
+          : author,
+    };
+
     if (pendingExisting) {
+      pendingExisting.submissionAudit = submissionAudit;
       pendingExisting.name = merged.name;
       pendingExisting.fullName = merged.fullName;
       pendingExisting.phone = merged.phone ?? null;
@@ -337,6 +355,7 @@ export class ClientRequestsService {
       photoUrl: merged.photoUrl ?? null,
       canSeePromotions: merged.canSeePromotions === true,
       previousSnapshot,
+      submissionAudit,
       agentName: agentName ?? null,
       submitterPosition: submitterPosition?.trim() || null,
       note: null,
@@ -363,6 +382,9 @@ export class ClientRequestsService {
       );
     }
 
+    const reviewedAt = new Date();
+    const audit = requestAudit(request, 'approved', actor, reviewedAt);
+
     if (isUpdate) {
       if (!request.targetClientId) {
         throw new BadRequestException('Tahrirlash so\'rovida mijoz ID yo\'q');
@@ -388,12 +410,14 @@ export class ClientRequestsService {
         request.targetClientId,
         updateDto,
         actor,
+        audit,
       );
       request.status = ClientRequestStatus.APPROVED;
       request.approvedClientId = client.id;
       request.reviewedBy = reviewerName;
-      request.reviewedAt = new Date();
+      request.reviewedAt = reviewedAt;
       await this.repo.save(request);
+      if (client.requestedAudit?.change?.requestId === id) client.requestedAudit = null;
       return { request: await this.findOne(id), client };
     }
 
@@ -421,13 +445,13 @@ export class ClientRequestsService {
     };
 
     const client = await this.clientsService.create(createDto, actor, {
-      id: request.distributor?.userId ?? actor?.id ?? null,
-      name: request.agentName ?? actor?.fullName ?? actor?.username ?? null,
-    });
+      id: audit.change?.userId ?? null,
+      name: audit.change?.userName ?? null,
+    }, audit);
     request.status = ClientRequestStatus.APPROVED;
     request.approvedClientId = client.id;
     request.reviewedBy = reviewerName;
-    request.reviewedAt = new Date();
+    request.reviewedAt = reviewedAt;
     await this.repo.save(request);
 
     return { request: await this.findOne(id), client };
@@ -462,11 +486,15 @@ export class ClientRequestsService {
     distributorId?: string,
     agentName?: string,
     submitterPosition?: string,
+    actor?: User,
   ) {
     const request = await this.findOne(id);
     if (request.status !== ClientRequestStatus.REJECTED) {
       throw new BadRequestException('Faqat bekor qilingan so‘rovni qayta yuborish mumkin');
     }
+
+    const previousLocation = { latitude: request.latitude, longitude: request.longitude };
+    const previousAudit = requestAudit(request);
 
     // INN hard-block olib tashlandi — manager UI soft o‘xshashlik ogohlantiradi
 
@@ -503,6 +531,13 @@ export class ClientRequestsService {
     }
 
     request.status = ClientRequestStatus.PENDING;
+    const author = auditActor(actor);
+    const baseline = request.previousSnapshot ?? {};
+    request.submissionAudit = {
+      change: author,
+      location: sameLocation(request, baseline) ? null
+        : sameLocation(request, previousLocation) ? previousAudit.location : author,
+    };
     request.reviewedBy = null;
     request.reviewedAt = null;
     request.approvedClientId = null;
