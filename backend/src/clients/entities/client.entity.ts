@@ -133,6 +133,9 @@ export class Client {
   /** API uchun: asosiy yozuvga hali qo‘llanmagan so‘rov auditi. */
   requestedAudit?: ClientAudit | null;
 
+  /** API only: latest GPS radius arrival, derived from location_points.recordedAt. */
+  lastVisitAt?: string | null;
+
   /** Korzinka: o'chirilgan vaqt (null = faol) */
   @Column({ type: 'timestamptz', nullable: true })
   deletedAt: Date | null;

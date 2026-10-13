@@ -166,6 +166,7 @@ export class ClientsController {
     @Query('companyId') companyId?: string,
     @Query('lineCode') lineCode?: string,
     @Query('distributorId') distributorId?: string,
+    @Query('includeGpsVisits') includeGpsVisits?: string,
   ) {
     const scoped = this.scopeDistributorId(req.user);
     const filterDistributorId =
@@ -185,6 +186,7 @@ export class ClientsController {
       lineCode,
       filterDistributorId,
       agentLineCodes,
+      includeGpsVisits === 'true',
     );
   }
 

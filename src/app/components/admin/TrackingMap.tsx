@@ -1,390 +1,259 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
-import {
-  MapLayerSwitcher,
-  switchTileLayer,
-  type LayerId,
-} from '../MapLayerSwitcher';
-
-type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered' | 'client_ordered';
-
-interface MapPoint {
-  idx: number;
-  name: string;
-  address: string;
-  lat: number;
-  lng: number;
-  status: PointStatus;
-  time: string | null;
-}
+import { Maximize2, Minimize2, Pause, Play, RotateCcw, Scan, Navigation, MapPin, Route } from 'lucide-react';
+import { MapLayerSwitcher, switchTileLayer, type LayerId } from '../MapLayerSwitcher';
+import type { GpsTrailPoint, TrackingVisit } from '../../api/agentTrackingTypes';
+import type { TrackingOrder } from '../../api/agentTrackingTypes';
+import type { TrackPoint } from '../../utils/agentTracking';
+import { fmtClock } from '../../utils/agentTracking';
+import { replayPosition, splitGpsTrack, visitMovements } from '../../utils/trackingMapData';
+import './TrackingMap.css';
 
 interface TrackingMapProps {
-  points: MapPoint[];
-  startCity: string;
-  endCity: string;
-  D: boolean;
-  height?: number;
+  points: TrackPoint[]; D: boolean; height?: number; startCity?: string; endCity?: string;
   empLocation?: { lat: number; lng: number; online: boolean; lastSeen?: string };
-  /** Real GPS breadcrumb trail for the day */
-  gpsTrail?: { lat: number; lng: number }[];
-  t?: Record<string, string>;
+  gpsTrail?: GpsTrailPoint[]; visits?: TrackingVisit[]; filter?: string | null;
+  clientOrders?: TrackingOrder[];
+  onFilterChange?: (filter: string | null) => void; t?: Record<string, string>;
+}
+const EMPTY_TRAIL: GpsTrailPoint[] = [];
+const EMPTY_VISITS: TrackingVisit[] = [];
+const COLORS: Record<string, string> = { ordered: '#10b981', visited: '#f59e0b', remote_ordered: '#8b5cf6', missed: '#94a3b8' };
+const LABELS: Record<string, string> = { ordered: 'Borildi, zakaz olindi', visited: 'Borildi, zakaz olinmadi', remote_ordered: 'Bormay, zakaz olindi', missed: 'Borilmadi, zakaz olinmadi' };
+function escape(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+}
+function popup(p: TrackPoint) {
+  return `<div class="tracking-shop-popup"><strong>${escape(p.name)}</strong><p>${escape(p.address || 'Manzil kiritilmagan')} · ${escape(p.lineName)}</p>
+    <div style="color:${COLORS[p.status]}">${escape(LABELS[p.status])}</div>
+    ${p.visits.length ? `<p>Tashriflar: ${p.visits.map(v => `#${v.sequence} · ${escape(fmtClock(v.arrivedAt))}`).join(' / ')}</p>` : '<p>Tasdiqlangan tashrif yo‘q</p>'}
+    ${p.orders.length ? `<div class="tracking-popup-orders">${p.orders.map(o => `<div><b>${o.source === 'client' ? 'Mijoz ilovasi' : o.source === 'agent' ? 'Agent' : 'Avtosavdo'} · #${escape(o.id.slice(0, 8))}</b><br/>${escape(fmtClock(o.createdAt))} · ${escape(o.status)} · ${escape(o.netAmount.toLocaleString())} so‘m${o.returnedAmount > 0 ? `<br/>Qaytarilgan: ${escape(o.returnedAmount.toLocaleString())} so‘m` : ''}</div>`).join('')}</div>` : '<p>Buyurtma yo‘q</p>'}
+    ${p.visitUnverified ? '<small>GPS tashrifni tasdiqlash uchun yetarli emas</small>' : ''}</div>`;
 }
 
-const NAVOIY: [number, number] = [40.0843, 65.3791];
+export function TrackingMap({ points, D, height = 560, empLocation, gpsTrail = EMPTY_TRAIL, visits = EMPTY_VISITS, clientOrders = [], filter, onFilterChange }: TrackingMapProps) {
+  const root = useRef<HTMLDivElement>(null), container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null), tileRef = useRef<L.TileLayer | null>(null);
+  const markers = useRef<L.LayerGroup | null>(null), replayMarker = useRef<L.Marker | null>(null);
+  const [layer, setLayer] = useState<LayerId>('standard');
+  const [fullscreen, setFullscreen] = useState(false), [visitedOnly, setVisitedOnly] = useState(false);
+  const [playing, setPlaying] = useState(false), [progress, setProgress] = useState(0), [speed, setSpeed] = useState(60);
+  const [tilesError, setTilesError] = useState(false);
+  const progressRef = useRef(0);
+  const fitRef = useRef<() => void>(() => {});
+  const visible = useMemo(() => points.filter(p => p.hasCoords && (!visitedOnly || p.visits.length > 0)
+    && (!filter || (filter === 'client_ordered' ? p.orders.some(o => o.source === 'client') : filter === 'no_gps' ? false : p.status === filter))), [points, filter, visitedOnly]);
+  const movements = useMemo(() => visitMovements(visits, points, gpsTrail), [visits, points, gpsTrail]);
+  const position = useMemo(() => replayPosition(gpsTrail, progress), [gpsTrail, progress]);
+  const fit = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const coords: [number, number][] = [...visible.map(p => [p.lat, p.lng] as [number, number]), ...gpsTrail.map(p => [p.lat, p.lng] as [number, number])];
+    if (empLocation) coords.push([empLocation.lat, empLocation.lng]);
+    if (coords.length) map.fitBounds(L.latLngBounds(coords), { padding: [56, 80], maxZoom: 17, animate: false });
+    else map.setView([40.0843, 65.3791], 12);
+  };
+  fitRef.current = fit;
 
-function tr(t: Record<string, string> | undefined, key: string, fallback: string): string {
-  return t?.[key] || fallback;
-}
-
-function isVisitedOnSite(status: PointStatus): boolean {
-  return status === 'ordered' || status === 'visited';
-}
-
-function statusColor(status: PointStatus): string {
-  if (status === 'ordered') return '#10b981';
-  if (status === 'visited') return '#f59e0b';
-  if (status === 'client_ordered') return '#0ea5e9';
-  if (status === 'remote_ordered') return '#6366f1';
-  return '#9ca3af';
-}
-
-function toNumCoord(lat: number, lng: number): [number, number] | null {
-  const la = Number(lat);
-  const ln = Number(lng);
-  if (!Number.isFinite(la) || !Number.isFinite(ln)) return null;
-  if (la === 0 && ln === 0) return null;
-  return [la, ln];
-}
-
-/** Ekranda ko'rinadigan yo'nalish — xarita proyeksiyasiga mos */
-function screenAngle(map: L.Map, lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const p1 = map.latLngToContainerPoint([lat1, lng1]);
-  const p2 = map.latLngToContainerPoint([lat2, lng2]);
-  return (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
-}
-
-function makeVisitedIcon(p: MapPoint, visitOrder: number, D: boolean): L.DivIcon {
-  const markerColor = statusColor(p.status);
-  const borderColor = D ? '#1a1a1a' : '#ffffff';
-  const shortName = p.name.length > 14 ? `${p.name.slice(0, 13)}…` : p.name;
-
-  return L.divIcon({
-    className: '',
-    iconSize: [36, 52],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -20],
-    html: `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;">
-        <div style="width:34px;height:34px;border-radius:50%;background:${markerColor};border:3px solid ${borderColor};
-          box-shadow:0 3px 12px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;">
-          <span style="font-size:13px;font-weight:800;color:#fff;font-family:system-ui,sans-serif;line-height:1;">${visitOrder}</span>
-        </div>
-        <div style="max-width:88px;padding:2px 6px;border-radius:6px;background:${D ? 'rgba(30,30,30,0.92)' : 'rgba(255,255,255,0.95)'};
-          border:1px solid ${markerColor}55;box-shadow:0 1px 4px rgba(0,0,0,0.15);">
-          <span style="font-size:9px;font-weight:600;color:${D ? '#f9fafb' : '#111827'};font-family:system-ui,sans-serif;
-            display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">${shortName}</span>
-        </div>
-      </div>`,
-  });
-}
-
-function makeMissedIcon(D: boolean): L.DivIcon {
-  const borderColor = D ? '#1a1a1a' : '#ffffff';
-  return L.divIcon({
-    className: '',
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-    popupAnchor: [0, -10],
-    html: `
-      <div style="width:14px;height:14px;border-radius:50%;background:#9ca3af;border:2px solid ${borderColor};
-        box-shadow:0 1px 4px rgba(0,0,0,0.25);opacity:0.75;cursor:pointer;"></div>`,
-  });
-}
-
-function makeRemoteIcon(D: boolean): L.DivIcon {
-  const borderColor = D ? '#1a1a1a' : '#ffffff';
-  return L.divIcon({
-    className: '',
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -12],
-    html: `
-      <div style="width:22px;height:22px;border-radius:50%;background:#6366f1;border:2px solid ${borderColor};
-        box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.9;">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-        </svg>
-      </div>`,
-  });
-}
-
-function makeArrowIcon(angle: number, color: string): L.DivIcon {
-  return L.divIcon({
-    className: '',
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    html: `
-      <div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;transform:rotate(${angle}deg);">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8 H13 M10 5 L13 8 L10 11" stroke="${color}" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>`,
-  });
-}
-
-function makeClientIcon(D: boolean): L.DivIcon {
-  const borderColor = D ? '#1a1a1a' : '#ffffff';
-  return L.divIcon({
-    className: '',
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -12],
-    html: `
-      <div style="width:22px;height:22px;border-radius:50%;background:#0ea5e9;border:2px solid ${borderColor};
-        box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0.95;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/>
-        </svg>
-      </div>`,
-  });
-}
-
-function statusBadge(p: MapPoint, t?: Record<string, string>): string {
-  if (p.status === 'ordered') {
-    return `<span style="color:#10b981;font-weight:700">${tr(t, 'trackMapPopupOrdered', '✓ Borildi, zakaz olindi')}</span>`;
-  }
-  if (p.status === 'visited') {
-    return `<span style="color:#f59e0b;font-weight:700">${tr(t, 'trackMapPopupVisited', '✓ Borildi, zakaz olinmadi')}</span>`;
-  }
-  if (p.status === 'client_ordered') {
-    return `<span style="color:#0ea5e9;font-weight:700">${tr(t, 'trackMapPopupClient', '📱 Mijoz ilovadan yubordi')}</span>`;
-  }
-  if (p.status === 'remote_ordered') {
-    return `<span style="color:#6366f1;font-weight:700">${tr(t, 'trackMapPopupRemote', '📞 Bormay, zakaz olindi')}</span>`;
-  }
-  return `<span style="color:#9ca3af">${tr(t, 'trackMapPopupMissed', '✗ Borilmadi, zakaz olinmadi')}</span>`;
-}
-
-function addDirectionArrows(
-  map: L.Map,
-  pathPoints: MapPoint[],
-  color: string,
-  added: L.Layer[],
-) {
-  for (let i = 0; i < pathPoints.length - 1; i++) {
-    const p1 = pathPoints[i];
-    const p2 = pathPoints[i + 1];
-    const midLat = (p1.lat + p2.lat) / 2;
-    const midLng = (p1.lng + p2.lng) / 2;
-    const angle = screenAngle(map, p1.lat, p1.lng, p2.lat, p2.lng);
-    const arrow = L.marker([midLat, midLng], {
-      icon: makeArrowIcon(angle, color),
-      interactive: false,
-      zIndexOffset: 200 + i,
-    });
-    arrow.addTo(map);
-    added.push(arrow);
-  }
-}
-
-export function TrackingMap({ points, D, height = 280, empLocation, gpsTrail = [], t }: TrackingMapProps) {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const mapRef        = useRef<L.Map | null>(null);
-  const tileLayerRef  = useRef<L.TileLayer | null>(null);
-  const overlayRef    = useRef<L.Layer[]>([]);
-
-  const [activeLayer, setActiveLayer] = useState<LayerId>('standard');
-
-  // Map init (once)
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, {
-      center: NAVOIY,
-      zoom: 12,
-      zoomControl: false,
-      attributionControl: false,
-    });
-    switchTileLayer(map, tileLayerRef, activeLayer, D);
+    if (!container.current) return;
+    // Leaflet 1.9 leaves a zoom-transition timer alive after remove(); quick day/agent switches
+    // can then touch a destroyed pane. Keep camera changes synchronous; route playback stays animated.
+    const map = L.map(container.current, { center: [40.0843, 65.3791], zoom: 12, zoomControl: false, zoomAnimation: false, attributionControl: true, preferCanvas: false });
+    L.control.zoom({ position: 'topright' }).addTo(map);
     mapRef.current = map;
-
-    // Leaflet needs invalidate after layout
-    requestAnimationFrame(() => map.invalidateSize());
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      tileLayerRef.current = null;
-      overlayRef.current = [];
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    markers.current = L.layerGroup().addTo(map);
+    let resizeFrame = 0;
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize({ pan: false });
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => fitRef.current());
+    });
+    observer.observe(container.current);
+    return () => { observer.disconnect(); cancelAnimationFrame(resizeFrame); map.remove(); mapRef.current = null; tileRef.current = null; markers.current = null; replayMarker.current = null; };
   }, []);
+  useEffect(() => {
+    if (!mapRef.current) return;
+    setTilesError(false);
+    switchTileLayer(mapRef.current, tileRef, layer, D);
+    const tile = tileRef.current;
+    const onError = () => setTilesError(true);
+    tile?.on('tileerror', onError);
+    return () => { tile?.off('tileerror', onError); };
+  }, [layer, D]);
+  useEffect(() => {
+    const changed = () => setFullscreen(document.fullscreenElement === root.current);
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
+  const toggleFullscreen = async () => {
+    if (fullscreen) {
+      if (document.fullscreenElement === root.current) await document.exitFullscreen();
+      setFullscreen(false);
+    } else {
+      setFullscreen(true);
+      try { await root.current?.requestFullscreen(); } catch { /* CSS fullscreen supports browsers without the native API. */ }
+    }
+  };
+  useEffect(() => {
+    if (!fullscreen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const escapeKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', escapeKey);
+    return () => { document.body.style.overflow = previous; window.removeEventListener('keydown', escapeKey); };
+  }, [fullscreen]);
+  useEffect(() => { const frame = requestAnimationFrame(fit); return () => cancelAnimationFrame(frame); }, [gpsTrail, points]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    switchTileLayer(map, tileLayerRef, activeLayer, D);
-  }, [activeLayer, D]);
-
-  // Redraw markers / trail whenever data changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    for (const layer of overlayRef.current) {
-      map.removeLayer(layer);
+    const group = L.layerGroup().addTo(map);
+    for (const segment of splitGpsTrack(gpsTrail)) {
+      L.polyline(segment.coords, { color: segment.gap ? '#94a3b8' : '#64748b', weight: segment.gap ? 2 : 3, opacity: segment.gap ? .6 : .45,
+        dashArray: segment.gap ? '3 8' : undefined, lineCap: 'round', interactive: false }).addTo(group);
     }
-    overlayRef.current = [];
-
-    const orderedPoints = [...points]
-      .map(p => {
-        const c = toNumCoord(p.lat, p.lng);
-        if (!c) return null;
-        return { ...p, lat: c[0], lng: c[1] };
-      })
-      .filter((p): p is MapPoint => !!p)
-      .sort((a, b) => a.idx - b.idx);
-
-    const visitedPath = orderedPoints.filter(p => isVisitedOnSite(p.status));
-    const visitOrderMap = new Map<number, number>();
-    visitedPath.forEach((p, i) => visitOrderMap.set(p.idx, i + 1));
-
-    const trailCoords: [number, number][] = gpsTrail
-      .map(p => toNumCoord(p.lat, p.lng))
-      .filter((c): c is [number, number] => !!c);
-
-    const empCoord = empLocation ? toNumCoord(empLocation.lat, empLocation.lng) : null;
-
-    const allCoords: [number, number][] = [
-      ...orderedPoints.map(p => [p.lat, p.lng] as [number, number]),
-      ...trailCoords,
-      ...(empCoord ? [empCoord] : []),
-    ];
-
-    const added: L.Layer[] = [];
-    const routeColor = '#6366f1';
-    const trailColor = D ? '#818cf8' : '#4f46e5';
-
-    if (trailCoords.length > 1) {
-      const gpsLine = L.polyline(trailCoords, {
-        color: trailColor,
-        weight: 3,
-        opacity: 0.55,
-        dashArray: '6 8',
-      }).addTo(map);
-      added.push(gpsLine);
+    for (const s of movements) {
+      L.polyline(s.coords, { color: s.gap ? '#a78bfa' : '#7c3aed', weight: s.gap ? 2.5 : 5, opacity: s.gap ? .7 : .85,
+        dashArray: s.gap ? '4 9' : undefined, lineCap: 'round', lineJoin: 'round', smoothFactor: .6, interactive: false,
+        className: s.gap ? '' : 'tracking-route-stroke' }).addTo(group);
     }
-
-    if (visitedPath.length > 1) {
-      const routeCoords = visitedPath.map(p => [p.lat, p.lng] as [number, number]);
-      const visitedRoute = L.polyline(routeCoords, {
-        color: routeColor,
-        weight: 4,
-        opacity: 0.95,
-      }).addTo(map);
-      added.push(visitedRoute);
-      addDirectionArrows(map, visitedPath, routeColor, added);
-    }
-
-    orderedPoints.forEach(p => {
-      const visitOrder = visitOrderMap.get(p.idx);
-      const popupTitle = visitOrder ? `#${visitOrder} · ${p.name}` : p.name;
-      const popupHtml = `
-        <div style="padding:6px 2px;min-width:180px;font-family:system-ui,sans-serif;">
-          <div style="font-weight:700;font-size:13px;margin-bottom:2px;color:#111827">${popupTitle}</div>
-          <div style="font-size:11px;color:#6b7280;margin-bottom:8px">${p.address}</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-            <div style="font-size:11px">${statusBadge(p, t)}</div>
-            ${p.time ? `<div style="font-size:11px;color:#6b7280">🕐 ${p.time}</div>` : ''}
-          </div>
-        </div>`;
-
-      let icon: L.DivIcon;
-      let zIndex = 0;
-      if (visitOrder != null) {
-        icon = makeVisitedIcon(p, visitOrder, D);
-        zIndex = visitOrder;
-      } else if (p.status === 'client_ordered') {
-        icon = makeClientIcon(D);
-        zIndex = -5;
-      } else if (p.status === 'remote_ordered') {
-        icon = makeRemoteIcon(D);
-        zIndex = -10;
-      } else {
-        icon = makeMissedIcon(D);
-        zIndex = -20;
-      }
-
-      const marker = L.marker([p.lat, p.lng], { icon, zIndexOffset: zIndex });
-      marker.bindPopup(popupHtml, { className: 'lider-tracking-popup' });
-      marker.addTo(map);
-      added.push(marker);
-    });
-
-    if (empLocation && empCoord) {
-      const pulseColor = empLocation.online ? '#10b981' : '#9ca3af';
-      const empIcon = L.divIcon({
-        className: '',
-        iconSize: [46, 46],
-        iconAnchor: [23, 23],
-        popupAnchor: [0, -24],
-        html: `
-          <div style="position:relative;width:46px;height:46px;display:flex;align-items:center;justify-content:center;">
-            ${empLocation.online ? `
-              <div style="position:absolute;inset:0;border-radius:50%;background:${pulseColor};opacity:0.15;animation:empPulse 2s ease-in-out infinite;"></div>
-              <div style="position:absolute;inset:6px;border-radius:50%;background:${pulseColor};opacity:0.2;animation:empPulse 2s ease-in-out infinite .4s;"></div>
-            ` : ''}
-            <div style="width:26px;height:26px;border-radius:50%;background:${pulseColor};border:3px solid white;
-              box-shadow:0 4px 14px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;position:relative;z-index:1;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-            </div>
-          </div>`,
+    // Arrow orientation is recalculated in screen space after map zooms.
+    const arrows = L.layerGroup().addTo(group);
+    const redrawArrows = () => {
+      arrows.clearLayers();
+      const candidates = movements.length ? movements : splitGpsTrack(gpsTrail).filter(s => !s.gap);
+      const segments = candidates.filter(s => s.coords.length > 1);
+      const stride = Math.max(1, Math.ceil(segments.length / 24));
+      segments.forEach((s, i) => {
+        if (i % stride) return;
+        const n = Math.max(1, Math.floor(s.coords.length / 2)), a = s.coords[n - 1], b = s.coords[n];
+        const pa = map.latLngToLayerPoint(a), pb = map.latLngToLayerPoint(b);
+        if (pa.distanceTo(pb) < 2) return;
+        const angle = Math.atan2(pb.y - pa.y, pb.x - pa.x) * 180 / Math.PI;
+        L.marker([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], { interactive: false, icon: L.divIcon({ className: 'tracking-arrow', iconSize: [20, 20], iconAnchor: [10, 10],
+          html: `<span style="transform:rotate(${angle}deg);color:${s.gap ? '#a78bfa' : '#7c3aed'}">➜</span>` }) }).addTo(arrows);
       });
-      const empMarker = L.marker(empCoord, { icon: empIcon, zIndexOffset: 1000 });
-      empMarker.bindPopup(`
-        <div style="padding:6px 2px;min-width:160px;font-family:system-ui,sans-serif;">
-          <div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:4px;display:flex;align-items:center;gap:6px">
-            <div style="width:8px;height:8px;border-radius:50%;background:${pulseColor};flex-shrink:0"></div>
-            ${empLocation.online ? tr(t, 'trackOnlineNow', 'Hozir online') : tr(t, 'trackOffline', 'Offline')}
-          </div>
-          <div style="font-size:11px;color:#6b7280">${empLocation.lastSeen ?? ''}</div>
-        </div>`, { className: 'lider-tracking-popup' });
-      empMarker.addTo(map);
-      added.push(empMarker);
-    }
+    };
+    redrawArrows(); map.on('zoomend', redrawArrows);
+    return () => { map.off('zoomend', redrawArrows); group.remove(); };
+  }, [gpsTrail, movements]);
 
-    overlayRef.current = added;
-
-    requestAnimationFrame(() => {
-      map.invalidateSize();
-      if (allCoords.length > 0) {
-        map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40], maxZoom: 15 });
-      } else {
-        map.setView(NAVOIY, 12);
-      }
-    });
-  }, [points, gpsTrail, empLocation, D, t]);
-
-  return (
-    <div style={{ width: '100%', height, position: 'relative', overflow: 'hidden' }}>
-      <style>{`
-        .lider-tracking-popup { font-family: system-ui, sans-serif; }
-        @keyframes empPulse {
-          0%, 100% { transform: scale(1); opacity: 0.15; }
-          50% { transform: scale(1.6); opacity: 0; }
+  useEffect(() => {
+    const map = mapRef.current, group = markers.current;
+    if (!map || !group) return;
+    const draw = () => {
+      group.clearLayers();
+      // Screen-space aggregation also handles identical coordinates at maximum zoom.
+      const clusters: { center: L.Point; shops: TrackPoint[] }[] = [];
+      const buckets = new Map<string, number[]>();
+      for (const p of visible) {
+        const pixel = map.latLngToLayerPoint([p.lat, p.lng]);
+        const x = Math.floor(pixel.x / 54), y = Math.floor(pixel.y / 54);
+        let cluster: number | undefined;
+        for (let dx = -1; dx <= 1 && cluster === undefined; dx++) for (let dy = -1; dy <= 1; dy++) {
+          cluster = buckets.get(`${x + dx}:${y + dy}`)?.find(i => clusters[i].center.distanceTo(pixel) < 54);
+          if (cluster !== undefined) break;
         }
-      `}</style>
-
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-
-      <MapLayerSwitcher
-        activeLayer={activeLayer}
-        onChange={setActiveLayer}
-        bottom={50}
-        left={12}
-      />
+        if (cluster !== undefined) clusters[cluster].shops.push(p);
+        else { const i = clusters.push({ center: pixel, shops: [p] }) - 1; const key = `${x}:${y}`; buckets.set(key, [...(buckets.get(key) ?? []), i]); }
+      }
+      for (const c of clusters) {
+        const p = c.shops[0];
+        if (c.shops.length > 1) {
+          const ordered = c.shops.some(s => s.visits.length > 0);
+          const marker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'tracking-cluster', iconSize: [42, 42], iconAnchor: [21, 21],
+            html: `<span style="--marker-color:${ordered ? '#7c3aed' : '#64748b'}">${c.shops.length}</span>` }) }).addTo(group);
+          marker.bindTooltip(`${c.shops.length} magazin · ochish uchun bosing`);
+          marker.on('click', () => {
+            if (map.getZoom() < 18) map.fitBounds(L.latLngBounds(c.shops.map(s => [s.lat, s.lng])), { maxZoom: Math.min(18, map.getZoom() + 2), padding: [80, 80] });
+            else marker.bindPopup(`<div class="tracking-cluster-list">${c.shops.map(popup).join('')}</div>`, { maxWidth: 330, maxHeight: 360, className: D ? 'tracking-popup dark' : 'tracking-popup' }).openPopup();
+          });
+        } else {
+          const sequence = p.visits.map(v => v.sequence).join(' · ');
+          const color = COLORS[p.status];
+          const icon = L.divIcon({ className: 'tracking-shop-marker', iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -20],
+            html: `<span class="${p.visits.length ? 'is-visited' : 'is-planned'}" style="--marker-color:${color}">${sequence ? escape(sequence.length > 5 ? `${p.visits[0].sequence}+` : sequence) : '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18l-2-6H5l-2 6ZM5 10v10h14V10M9 20v-7h6v7"/></svg>'}</span>` });
+          L.marker([p.lat, p.lng], { icon, zIndexOffset: p.visits.length ? 100 : 0 }).bindTooltip(escape(p.name), { direction: 'top', offset: [0, -20] })
+            .bindPopup(popup(p), { maxWidth: 330, maxHeight: 360, className: D ? 'tracking-popup dark' : 'tracking-popup' }).addTo(group);
+        }
+      }
+    };
+    draw(); map.on('zoomend moveend', draw);
+    return () => { map.off('zoomend moveend', draw); group.clearLayers(); };
+  }, [visible, D]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !empLocation) return;
+    const color = empLocation.online ? '#10b981' : '#64748b';
+    const marker = L.marker([empLocation.lat, empLocation.lng], { zIndexOffset: 500, icon: L.divIcon({ className: 'tracking-agent', iconSize: [34, 34], iconAnchor: [17, 17],
+      html: `<span style="background:${color}"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/></svg></span>` }) }).addTo(map);
+    marker.bindTooltip(empLocation.online ? 'Agent · hozir online' : `Agent · ${empLocation.lastSeen || 'oxirgi GPS'}`);
+    return () => { marker.remove(); };
+  }, [empLocation]);
+  useEffect(() => {
+    setPlaying(false); setProgress(0); progressRef.current = 0;
+  }, [gpsTrail]);
+  useEffect(() => {
+    if (!playing || gpsTrail.length < 2) return;
+    let frame = 0, previous = performance.now(), lastRender = previous;
+    const duration = Math.max(1000, +new Date(gpsTrail[gpsTrail.length - 1].recordedAt) - +new Date(gpsTrail[0].recordedAt));
+    const animate = (now: number) => {
+      progressRef.current = Math.min(1, progressRef.current + (now - previous) * speed / duration);
+      previous = now;
+      const pos = replayPosition(gpsTrail, progressRef.current);
+      if (pos) replayMarker.current?.setLatLng([pos.lat, pos.lng]);
+      if (now - lastRender >= 100 || progressRef.current === 1) { setProgress(progressRef.current); lastRender = now; }
+      if (progressRef.current === 1) { setPlaying(false); return; }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, speed, gpsTrail]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !position) return;
+    if (!replayMarker.current) replayMarker.current = L.marker([position.lat, position.lng], { zIndexOffset: 1000, interactive: false,
+      icon: L.divIcon({ className: 'tracking-replay-marker', iconSize: [22, 22], iconAnchor: [11, 11], html: '<span></span>' }) }).addTo(map);
+    replayMarker.current.setLatLng([position.lat, position.lng]);
+  }, [position]);
+  const seek = (value: number) => { progressRef.current = value; setProgress(value); };
+  return (
+    <div ref={root} className={`tracking-map ${D ? 'dark' : ''} ${fullscreen ? 'is-fullscreen' : ''}`} style={{ height: fullscreen ? '100dvh' : height }}>
+      <div ref={container} className="tracking-map-canvas" />
+      <div className="tracking-map-toolbar">
+        <div className="tracking-segmented">
+          <button type="button" className={!visitedOnly ? 'active' : ''} onClick={() => setVisitedOnly(false)}><MapPin size={13}/> Barcha magazinlar</button>
+          <button type="button" className={visitedOnly ? 'active' : ''} onClick={() => setVisitedOnly(true)}><Route size={13}/> Tashriflar</button>
+        </div>
+        <span className="tracking-map-count">{visible.length} magazin</span>
+      </div>
+      <div className="tracking-map-actions">
+        <button type="button" title="Barcha nuqtalarni ko‘rsatish" aria-label="Barcha nuqtalarni ko‘rsatish" onClick={fit}><Scan size={17}/></button>
+        <button type="button" title={fullscreen ? 'Kichraytirish' : 'To‘liq ekran'} aria-label={fullscreen ? 'Kichraytirish' : 'To‘liq ekran'} aria-pressed={fullscreen} onClick={toggleFullscreen}>{fullscreen ? <Minimize2 size={17}/> : <Maximize2 size={17}/>}</button>
+      </div>
+      {fullscreen && onFilterChange && <div className="tracking-fullscreen-filters">
+        <button type="button" className={!filter ? 'active' : ''} onClick={() => onFilterChange(null)}>Hammasi</button>
+        {Object.entries(LABELS).map(([key, label]) => <button type="button" key={key} className={filter === key ? 'active' : ''} onClick={() => onFilterChange(key)}><i style={{ background: COLORS[key] }}/>{label} · {points.filter(p => p.status === key).length}</button>)}
+        <button type="button" className={filter === 'client_ordered' ? 'active' : ''} onClick={() => onFilterChange('client_ordered')}>Mijoz ilovasi · {clientOrders.length}</button>
+        <button type="button" className={filter === 'no_gps' ? 'active' : ''} onClick={() => onFilterChange('no_gps')}>GPSsiz mijozlar · {points.filter(p => !p.hasCoords).length}</button>
+      </div>}
+      {fullscreen && (filter === 'client_ordered' || filter === 'no_gps') && <div className="tracking-fullscreen-list">
+        <strong>{filter === 'no_gps' ? 'GPSsiz mijozlar' : 'Mijoz ilovasi buyurtmalari'}</strong>
+        {filter === 'no_gps' ? points.filter(p => !p.hasCoords).map(p => <div key={p.clientId}><b>{p.name}</b><span>{p.lineName} · {p.address || 'Manzil kiritilmagan'}</span></div>)
+          : clientOrders.map(o => <div key={o.id}><b>{o.clientName || points.find(p => p.clientId === o.clientId)?.name || `Mijoz #${o.clientId.slice(0, 8)}`}</b><span>#{o.id.slice(0, 8)} · {fmtClock(o.createdAt)} · {o.status} · {o.netAmount.toLocaleString()} so‘m</span></div>)}
+      </div>}
+      {tilesError && <div className="tracking-map-notice" role="alert">Xarita qatlamini yuklab bo‘lmadi. Boshqa qatlamni tanlang.</div>}
+      {!visible.length && !gpsTrail.length && !empLocation && <div className="tracking-map-empty"><MapPin size={28}/><strong>Xarita uchun GPS ma’lumoti yo‘q</strong><span>GPSsiz mijozlar quyidagi ro‘yxatda saqlanadi.</span></div>}
+      <MapLayerSwitcher activeLayer={layer} onChange={setLayer} bottom={118} left={16}/>
+      <div className="tracking-map-legend"><span><i style={{ background: '#7c3aed' }}/>Haqiqiy GPS trek</span><span><i className="dashed"/>GPSsiz oraliq / nuqtalar bog‘lanishi</span></div>
+      <div className="tracking-replay">
+        <button type="button" aria-label={playing ? 'Pauza' : 'Marshrutni ijro etish'} disabled={gpsTrail.length < 2} className="tracking-play" onClick={() => { if (progress >= 1) seek(0); setPlaying(v => !v); }}>{playing ? <Pause size={16}/> : <Play size={16}/>}</button>
+        <button type="button" aria-label="Qayta boshlash" disabled={!gpsTrail.length} onClick={() => { setPlaying(false); seek(0); }}><RotateCcw size={15}/></button>
+        <div className="tracking-replay-range"><div><span><Navigation size={11}/> {position ? fmtClock(position.recordedAt) : 'GPS trek yo‘q'}{position?.gap ? ' · GPS uzilishi' : ''}</span><span>{Math.round(progress * 100)}%</span></div>
+          <input aria-label="Marshrut vaqti" type="range" min="0" max="1" step="0.001" value={progress} disabled={gpsTrail.length < 2} onChange={e => seek(Number(e.target.value))}/></div>
+        <select aria-label="Ijro tezligi" value={speed} onChange={e => setSpeed(Number(e.target.value))}><option value={30}>30×</option><option value={60}>60×</option><option value={120}>120×</option><option value={300}>300×</option></select>
+      </div>
     </div>
   );
 }

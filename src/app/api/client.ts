@@ -215,6 +215,8 @@ export interface Client {
   totalSales?: number;
   /** Oxirgi buyurtma vaqti (ISO) */
   lastOrderAt?: string | null;
+  /** Agent's latest arrival in the client's GPS radius (ISO), independent of edits. */
+  lastVisitAt?: string | null;
   /** Tovar miqdori (qty sum) */
   goodsQty?: number;
   /** Tovar vazni (actualQuantity yoki qty) */
@@ -729,6 +731,9 @@ export const api = {
       `/gps/route/${distributorId}${date ? `?date=${date}` : ''}`,
     ),
 
+  getDailyTracking: (distributorId: string, date: string, companyId?: string) =>
+    request<import('./agentTrackingTypes').DailyTracking>(`/routes/${encodeURIComponent(distributorId)}/tracking?date=${encodeURIComponent(date)}${companyId ? `&companyId=${encodeURIComponent(companyId)}` : ''}`),
+
   getDailyRoute: (distributorId: string, date: string) =>
     request<{
       date: string;
@@ -791,11 +796,12 @@ export const api = {
     request<Client[]>(`/gps/nearby-clients?latitude=${lat}&longitude=${lng}&radiusMeters=${radius}`),
 
   // ─── Clients ───
-  getClients: (companyId?: string, distributorId?: string, lineCode?: string) => {
+  getClients: (companyId?: string, distributorId?: string, lineCode?: string, includeGpsVisits = false) => {
     const q = new URLSearchParams();
     if (companyId) q.set('companyId', companyId);
     if (distributorId) q.set('distributorId', distributorId);
     if (lineCode) q.set('lineCode', lineCode);
+    if (includeGpsVisits) q.set('includeGpsVisits', 'true');
     const qs = q.toString();
     return request<Client[]>(`/clients${qs ? `?${qs}` : ''}`);
   },

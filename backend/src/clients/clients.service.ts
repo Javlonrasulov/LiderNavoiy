@@ -202,7 +202,49 @@ export class ClientsService {
     return map;
   }
 
-  private async withDebts(clients: Client[]): Promise<Client[]> {
+  /** Latest outside → inside transition, using the GiST index added by 20261013-gps-geography-index.sql. */
+  private async lastGpsVisits(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows: Array<{ clientId: string; lastVisitAt: Date | string }> = await this.repo.query(`
+      WITH targets AS (
+        SELECT c.id, c."distributorId", c.latitude, c.longitude,
+          COALESCE(c."orderRadiusMeters", 50) AS radius
+        FROM clients c
+        WHERE c.id = ANY($1::uuid[])
+          AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+      ), candidates AS MATERIALIZED (
+        -- Look up predecessors only for fixes inside a client's radius, not every client × fix pair.
+        SELECT c.id AS "clientId", c.latitude, c.longitude, c.radius, p."recordedAt",
+          (SELECT ST_SetSRID(ST_MakePoint(previous.longitude, previous.latitude), 4326)::geography
+           FROM location_points previous
+           WHERE previous."distributorId" = p."distributorId"
+             AND (previous."recordedAt", previous.id) < (p."recordedAt", p.id)
+           ORDER BY previous."recordedAt" DESC, previous.id DESC
+           LIMIT 1) AS "previousPosition"
+        FROM targets c
+        JOIN location_points p ON p."distributorId" = c."distributorId"
+        -- 110,000m/degree is below WGS84's minimum meridional scale; this band cannot exclude an arrival.
+        WHERE (c.radius < 0 OR c.latitude NOT BETWEEN -90 AND 90 OR p.latitude NOT BETWEEN -90 AND 90
+          OR ABS(p.latitude - c.latitude) <= c.radius / 110000.0)
+        AND ST_DWithin(
+          ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+          ST_SetSRID(ST_MakePoint(c.longitude, c.latitude), 4326)::geography,
+          c.radius
+        )
+      )
+      SELECT "clientId", MAX("recordedAt") AS "lastVisitAt"
+      FROM candidates
+      WHERE ST_DWithin(
+        "previousPosition",
+        ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography,
+        radius
+      ) IS NOT TRUE
+      GROUP BY "clientId"
+    `, [ids]);
+    return new Map(rows.map(row => [row.clientId, new Date(row.lastVisitAt).toISOString()]));
+  }
+
+  private async withDebts(clients: Client[], includeGpsVisits = false): Promise<Client[]> {
     if (!clients.length) return clients;
     const ids = clients.map((c) => c.id);
     let unpaidMap = new Map<string, number>();
@@ -216,20 +258,27 @@ export class ClientsService {
         goodsWeight: number;
       }
     >();
-    try {
-      [unpaidMap, activityMap] = await Promise.all([
-        this.unpaidDebtsByClientIds(ids),
-        this.activityByClientIds(ids),
-      ]);
-    } catch {
-      // Qarz/savdo agregatsiyasi yiqilsa ham mijozlar ro‘yxati ochilsin
+    const loadFinancialActivity = async () => {
       try {
-        unpaidMap = await this.unpaidDebtsByClientIds(ids);
+        [unpaidMap, activityMap] = await Promise.all([
+          this.unpaidDebtsByClientIds(ids),
+          this.activityByClientIds(ids),
+        ]);
       } catch {
-        unpaidMap = new Map();
+        // Qarz/savdo agregatsiyasi yiqilsa ham mijozlar ro‘yxati ochilsin
+        try {
+          unpaidMap = await this.unpaidDebtsByClientIds(ids);
+        } catch {
+          unpaidMap = new Map();
+        }
       }
-    }
+    };
+    const [lastVisits] = await Promise.all([
+      includeGpsVisits ? this.lastGpsVisits(ids) : new Map<string, string>(),
+      loadFinancialActivity(),
+    ]);
     for (const c of clients) {
+      c.lastVisitAt = lastVisits.get(c.id) ?? null;
       const stored = toNum(c.balance);
       const unpaid = unpaidMap.get(c.id) ?? 0;
       const fromBalance = Math.abs(stored);
@@ -316,6 +365,7 @@ export class ClientsService {
     lineCode?: string,
     distributorId?: string,
     agentLineCodes?: string[],
+    includeGpsVisits = false,
   ) {
     const qb = this.notDeleted(this.baseQuery().where('c.isActive = true'));
     this.applyCompanyScope(qb, companyId);
@@ -334,7 +384,7 @@ export class ClientsService {
       }
     }
     const clients = await qb.orderBy('c.name', 'ASC').getMany();
-    return this.withDebts(clients);
+    return this.withDebts(clients, includeGpsVisits);
   }
 
   /** Liniya agentiga shu lineCode dagi barcha mijozlarni biriktiradi */

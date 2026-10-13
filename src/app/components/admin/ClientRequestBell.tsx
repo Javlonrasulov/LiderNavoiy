@@ -7,7 +7,7 @@ import {
 import { useClientRequests, ClientRequestProvider } from '../ClientRequestContext';
 import { useCompanies } from '../CompaniesContext';
 import { useAdminAuth } from '../AdminAuthContext';
-import { api } from '../../api/client';
+import { api, resolveFileUrl } from '../../api/client';
 import { getClientRequestCompareRows, resolvePreviousSnapshot, snapshotFromApiClient, type ClientRequestItem, type ClientRequestSnapshot } from '../../data/clientRequests';
 import { formatDisplayDateTime } from '../../utils/dateFormat';
 import type { ClientRow } from '../../data/adminData';
@@ -24,12 +24,64 @@ interface Props {
 
 const EMPTY_CLIENTS: ClientRow[] = [];
 
-function RequestCard({ item, t, existingClients, companyId, onDone }: {
+type PhotoPreview = { src: string; name: string; label: string };
+
+function RequestPhotoPreview({ photo, t, lockScroll, onClose }: {
+  photo: PhotoPreview;
+  t: Record<string, string>;
+  lockScroll: boolean;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    if (lockScroll) document.body.style.overflow = 'hidden';
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (lockScroll) document.body.style.overflow = previousOverflow;
+    };
+  }, [lockScroll]);
+
+  return (
+    <dialog ref={dialogRef} className="client-request-photo-preview" aria-labelledby={titleId}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          dialogRef.current?.querySelector('button')?.focus();
+        }
+      }}
+      onCancel={e => { e.preventDefault(); onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <figure className="client-request-photo-content">
+        <div className="client-request-photo-header">
+          <div><h3 id={titleId}>{t.colPhoto} · {photo.label}</h3><p>{photo.name}</p></div>
+          <button type="button" autoFocus onClick={onClose} className="client-request-icon-button" aria-label={t.notifClose} title={t.notifClose}><X size={18} /></button>
+        </div>
+        <div className="client-request-photo-stage">
+          {loading && <div className="client-request-photo-status" role="status"><Loader2 size={24} className="client-request-spin" /><span>{t.loading}</span></div>}
+          {failed ? <div className="client-request-photo-status" role="alert"><AlertTriangle size={24} /><span>{t.notifPhotoLoadFailed}</span></div> : (
+            <img src={photo.src} alt={`${photo.name} · ${photo.label}`} onLoad={() => setLoading(false)} onError={() => { setLoading(false); setFailed(true); }} />
+          )}
+        </div>
+      </figure>
+    </dialog>
+  );
+}
+
+function RequestCard({ item, t, existingClients, companyId, onDone, onPreview }: {
   item: ClientRequestItem;
   t: Record<string, string>;
   existingClients: ClientRow[];
   companyId?: string;
   onDone: () => void;
+  onPreview: (photo: PhotoPreview) => void;
 }) {
   const { checkInn, approve, reject, processing } = useClientRequests();
   const busy = processing[item.id];
@@ -98,8 +150,11 @@ function RequestCard({ item, t, existingClients, companyId, onDone }: {
   const renderValue = (key: string, value: string, old = false) => {
     // Keep the actual photo URL available alongside the comparison helper's label.
     const photo = key === 'photoUrl' ? (old ? prev?.photoUrl : item.photoUrl) : null;
-    if (photo && /^https?:\/\//i.test(photo)) {
-      return <a href={photo} target="_blank" rel="noopener noreferrer">{photo}</a>;
+    if (photo) {
+      const label = old ? t.notifOldValue : t.notifNewValue;
+      return <button type="button" className="client-request-photo-link"
+        aria-label={`${t.colPhoto}: ${label} · ${item.name}`}
+        onClick={() => onPreview({ src: resolveFileUrl(photo), name: item.name, label })}>{photo}</button>;
     }
     return photo || value;
   };
@@ -187,6 +242,7 @@ function ClientRequestBellInner({ D, t, existingClients = EMPTY_CLIENTS, company
   const { selectedCompany, selectCompany } = useAdminAuth();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<PhotoPreview | null>(null);
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -199,7 +255,7 @@ function ClientRequestBellInner({ D, t, existingClients = EMPTY_CLIENTS, company
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const count = pending.length;
-  const closePanel = () => { setOpen(false); setExpanded(false); };
+  const closePanel = () => { setOpen(false); setExpanded(false); setPhotoPreview(null); };
 
   const effectiveCompanyId = companyId ?? selectedCompany?.id ?? undefined;
   const company = companies.find(c => c.id === effectiveCompanyId)
@@ -231,7 +287,7 @@ function ClientRequestBellInner({ D, t, existingClients = EMPTY_CLIENTS, company
     const reposition = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
     reposition();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); setOpen(false); setExpanded(false); }
+      if (e.key === 'Escape') { e.preventDefault(); setOpen(false); setExpanded(false); setPhotoPreview(null); }
     };
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', reposition);
@@ -332,9 +388,10 @@ function ClientRequestBellInner({ D, t, existingClients = EMPTY_CLIENTS, company
           {loading && count === 0 && !error && <div className="client-request-state" role="status"><Loader2 size={30} className="client-request-spin" /><p>{t.notifLoading}</p></div>}
           {!loading && count === 0 && !error && <div className="client-request-state"><div className="client-request-empty-icon"><Inbox size={30} /></div><h3>{t.notifEmpty}</h3><p>{t.notifEmptyHint}</p></div>}
           <div className="client-request-grid">
-            {pending.map(item => <RequestCard key={item.id} item={item} t={t} existingClients={existingClients} companyId={companyId} onDone={() => { if (!expandedRef.current) closePanel(); }} />)}
+            {pending.map(item => <RequestCard key={item.id} item={item} t={t} existingClients={existingClients} companyId={companyId} onPreview={setPhotoPreview} onDone={() => { if (!expandedRef.current) closePanel(); }} />)}
           </div>
         </div>
+        {photoPreview && <RequestPhotoPreview photo={photoPreview} t={t} lockScroll={!expanded} onClose={() => setPhotoPreview(null)} />}
       </div>
     </>, document.body,
   );

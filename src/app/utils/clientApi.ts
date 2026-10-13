@@ -180,7 +180,7 @@ export function apiClientToRow(
     goodsQty: Number(c.goodsQty) || 0,
     goodsWeight: Number(c.goodsWeight) || 0,
     category: c.category ?? 'Standard',
-    lastVisit: c.updatedAt?.slice(0, 10) ?? '',
+    lastVisit: c.lastVisitAt ?? '',
     rowType: 'normal',
     photoUrl: c.photoUrl ?? null,
     locationUpdatedAt: c.locationUpdatedAt ?? undefined,

@@ -22,7 +22,7 @@ import { ClientExcelImportModal } from '../ClientExcelImportModal';
 import { formatDisplayDate } from '../../../utils/dateFormat';
 import { resolveProductImageUrl } from '../../../utils/productImageUrl';
 import { ClientAuditCell } from '../ClientAuditCell';
-import { clientAuditLines } from '../../../utils/clientAudit';
+import { clientAuditLines, formatClientAuditDate } from '../../../utils/clientAudit';
 
 function gpsAudit(c: ClientRow) {
   if (c.changeAudit?.location) return c.changeAudit.location;
@@ -181,7 +181,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     setLoadError(null);
     try {
       const [rawClients, distributors, lineList, categoryList] = await Promise.all([
-        listMode === 'trash' ? api.getTrashClients(companyId) : api.getClients(companyId),
+        listMode === 'trash' ? api.getTrashClients(companyId) : api.getClients(companyId, undefined, undefined, true),
         api.getDistributors(companyId),
         api.getLines(companyId).catch(() => []),
         api.getClientCategories(companyId).catch(() => []),
@@ -600,7 +600,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         .filter(Boolean).flatMap(audit => clientAuditLines(audit, t)).join('\n') || '—',
       [t.colAgent]:      c.agent,
       [t.colBalance]:    c.balance,
-      [t.colLastVisit]:  formatDisplayDate(c.lastVisit),
+      [t.colLastVisit]:  formatClientAuditDate(c.lastVisit),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -1735,7 +1735,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     <td className={`${tdCls} ${rowText} text-[10px] min-w-[230px] max-w-[280px]`}>
                       <ClientAuditCell audit={gpsAudit(c)} requested={c.requestedAudit?.location} t={t} dark={D} />
                     </td>
-                    <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{formatDisplayDate(c.lastVisit)}</td>
+                    <td className={`${tdCls} ${rowText} text-[10px] whitespace-nowrap`}>{formatClientAuditDate(c.lastVisit)}</td>
                     <td className={`${tdCls} ${rowText} text-[10px] min-w-[230px] max-w-[280px]`}>
                       <ClientAuditCell audit={c.changeAudit?.change} requested={c.requestedAudit?.change} t={t} dark={D} />
                     </td>
@@ -1952,7 +1952,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   )}
                   <div className={`flex items-center gap-2 text-xs pt-1 ${D ? 'text-gray-500' : 'text-gray-400'}`}>
                     <span>{t.colLastVisit}:</span>
-                    <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{formatDisplayDate(activeClient.lastVisit)}</span>
+                    <span className={activeClient.lastVisit < INACTIVE_CUTOFF ? 'text-amber-400 font-medium' : ''}>{formatClientAuditDate(activeClient.lastVisit)}</span>
                   </div>
                   {(activeClient.createdAt || activeClient.createdBy) && (
                     <div className={`text-xs pt-0.5 ${D ? 'text-gray-500' : 'text-gray-400'}`}>

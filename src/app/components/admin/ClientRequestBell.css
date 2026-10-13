@@ -47,6 +47,19 @@
 .client-request-panel button:disabled { cursor: not-allowed; opacity: .5; }
 .client-request-panel :is(button, a):focus-visible { outline: 2px solid #818cf8; outline-offset: 3px; }
 .client-request-panel a { color: inherit; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.client-request-panel .client-request-photo-link { color: inherit; font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; cursor: zoom-in; }
+.client-request-photo-preview { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 20px; border: 0; color: var(--cr-text); background: transparent; overscroll-behavior: contain; }
+.client-request-photo-preview[open] { display: grid; place-items: center; }
+.client-request-photo-preview::backdrop { background: rgb(2 6 23 / 85%); backdrop-filter: blur(6px); }
+.client-request-photo-content { width: min(100%, 1080px); margin: 0; overflow: hidden; border: 1px solid var(--cr-border); border-radius: 16px; background: var(--cr-card); box-shadow: 0 24px 80px #0006; }
+.client-request-photo-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--cr-border); }
+.client-request-photo-header h3 { font-size: 14px; font-weight: 600; }
+.client-request-photo-header p { margin-top: 3px; font-size: 12px; color: var(--cr-muted); overflow-wrap: anywhere; }
+.client-request-photo-header button { flex: none; }
+.client-request-photo-stage { position: relative; display: grid; place-items: center; min-height: 160px; padding: 12px; }
+.client-request-photo-stage img { display: block; max-width: 100%; max-height: calc(100dvh - 160px); object-fit: contain; }
+.client-request-photo-status { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; color: var(--cr-muted); font-size: 12px; }
+.client-request-photo-status[role="status"] { position: absolute; }
 .client-request-header { flex: none; padding: 18px; border-bottom: 1px solid var(--cr-border); background: var(--cr-card); }
 .client-request-heading-row, .client-request-heading, .client-request-window-actions { display: flex; align-items: center; gap: 10px; }
 .client-request-heading-row { justify-content: space-between; }

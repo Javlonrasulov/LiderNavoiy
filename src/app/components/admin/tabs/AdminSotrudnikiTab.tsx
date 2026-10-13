@@ -4,13 +4,15 @@ import {
   AlertTriangle, Check, ChevronLeft, ChevronRight,
   GitBranch, Route, CalendarDays, ShoppingCart, XCircle,
   Clock, Navigation, ArrowRight, CheckCircle2, Circle,
-  LogIn, Flag, Hourglass, Maximize2, Minimize2,
+  LogIn, Flag, Hourglass,
   PhoneCall, Wifi, WifiOff, BarChart3, Smartphone,
 } from 'lucide-react';
 import { LINES, type AgentRow } from '../../../data/adminData';
 import { useCompanies } from '../../CompaniesContext';
 import { TrackingMap } from '../TrackingMap';
 import { DayHistoryPanel } from '../DayHistoryPanel';
+import { TrackingDetailsPanel } from '../TrackingDetailsPanel';
+import '../TrackingDashboard.css';
 import { SingleDatePicker } from '../SingleDatePicker';
 import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
@@ -18,6 +20,7 @@ import { MiniBarChart } from '../../MiniCharts';
 import { api, type Distributor } from '../../../api/client';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 import { isGpsLiveOnline } from '../../../utils/gpsOnline';
+import { fetchDayTrack, emptyDayTrack, tashkentDate, type DayTrack, type PointStatus } from '../../../utils/agentTracking';
 
 interface Props {
   D: boolean;
@@ -110,271 +113,6 @@ function toEmployee(a: AgentRow, i: number, fromBackend = false, dist?: Distribu
   };
 }
 
-// ── Tracking data generator ────────────────────────────────────────────────
-type PointStatus = 'ordered' | 'visited' | 'missed' | 'remote_ordered' | 'client_ordered';
-
-interface TrackPoint {
-  idx: number;
-  name: string;
-  address: string;
-  lat: number;
-  lng: number;
-  /** False when visit has no real coordinates — keep in table, hide on map */
-  hasCoords: boolean;
-  time: string | null;
-  status: PointStatus;
-  duration: number | null;
-}
-
-interface DayTrack {
-  date: string;
-  label: string;
-  total: number;
-  visited: number;         // borilgan, zakaz olingan (ordered)
-  visitedNoOrder: number;  // borilgan, zakaz olinmagan
-  remoteOrdered: number;   // agent bormay (telefon) zakaz olgan
-  clientOrdered: number;   // mijoz o'zi ilovadan zakaz yuborgan
-  missed: number;          // borilmagan, zakaz ham olinmagan
-  km: number;
-  startCity: string;
-  endCity: string;
-  loginTime: string;
-  firstPointTime: string;
-  lastPointTime: string;
-  onlineHours: string;
-  empLat: number | null;
-  empLng: number | null;
-  empOnline: boolean;
-  empLastSeen: string;
-  points: TrackPoint[];
-  /** Real GPS trail for the day (from getDailyRoute) */
-  gpsTrail: { lat: number; lng: number }[];
-  hasRealLocation: boolean;
-}
-
-function emptyDayTrack(dateStr: string): DayTrack {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const months = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
-  const days = ['Yak', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh'];
-  const dt = new Date(y, m - 1, d);
-  return {
-    date: dateStr,
-    label: `${days[dt.getDay()]}, ${d} ${months[m - 1]}`,
-    total: 0,
-    visited: 0,
-    visitedNoOrder: 0,
-    remoteOrdered: 0,
-    clientOrdered: 0,
-    missed: 0,
-    km: 0,
-    startCity: '—',
-    endCity: '—',
-    loginTime: '—',
-    firstPointTime: '—',
-    lastPointTime: '—',
-    onlineHours: '—',
-    empLat: null,
-    empLng: null,
-    empOnline: false,
-    empLastSeen: '—',
-    points: [],
-    gpsTrail: [],
-    hasRealLocation: false,
-  };
-}
-
-function fmtClock(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function fmtDurationMinutes(mins: number, labels: { min: string; hour: string }): string {
-  if (!mins || mins <= 0) return '—';
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  if (h <= 0) return `${m} ${labels.min}`;
-  return `${h} ${labels.hour} ${m} ${labels.min}`;
-}
-
-function sameLocalDay(iso: string, dateStr: string): boolean {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return false;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}` === dateStr;
-}
-
-function validCoord(lat: number | null | undefined, lng: number | null | undefined): boolean {
-  const la = Number(lat);
-  const ln = Number(lng);
-  if (!Number.isFinite(la) || !Number.isFinite(ln)) return false;
-  if (la === 0 && ln === 0) return false;
-  if (Math.abs(la) > 90 || Math.abs(ln) > 180) return false;
-  // O'zbekiston + buffer — US/emulator nuqtalarini chiqarish
-  if (la < 37 || la > 45.8 || ln < 55 || ln > 73.5) return false;
-  return true;
-}
-
-function asCoord(lat: number | null | undefined, lng: number | null | undefined): { lat: number; lng: number } | null {
-  if (!validCoord(lat, lng)) return null;
-  return { lat: Number(lat), lng: Number(lng) };
-}
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/** Teleport/xato GPS nuqtalarini trail dan olib tashlash */
-function filterGpsTrail(
-  points: { lat: number; lng: number; recordedAt?: string }[],
-): { lat: number; lng: number; recordedAt?: string }[] {
-  const MAX_JUMP_KM = 80;
-  const out: { lat: number; lng: number; recordedAt?: string }[] = [];
-  for (const p of points) {
-    if (!validCoord(p.lat, p.lng)) continue;
-    if (out.length === 0) {
-      out.push(p);
-      continue;
-    }
-    const prev = out[out.length - 1];
-    if (haversineKm(prev.lat, prev.lng, p.lat, p.lng) > MAX_JUMP_KM) continue;
-    out.push(p);
-  }
-  return out;
-}
-
-function trailDistanceKm(points: { lat: number; lng: number }[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
-  }
-  return Math.round(total * 10) / 10;
-}
-
-async function fetchDayTrack(opts: {
-  distributorId: string;
-  dateStr: string;
-  empOnline: boolean;
-  empLat?: number | null;
-  empLng?: number | null;
-  lastLocationAt?: string | null;
-  lastLoginAt?: string | null;
-  labels?: { min: string; hour: string; onlineNow: string; route: string };
-}): Promise<DayTrack> {
-  const labels = opts.labels ?? { min: 'daq', hour: 'soat', onlineNow: 'Hozir online', route: 'Marshrut' };
-  const base = emptyDayTrack(opts.dateStr);
-
-  // Faqat haqiqiy kunlik ma'lumot — barcha mijozlarni "missed" qilib qo'ymaymiz
-  const [routeRes, visitsRes] = await Promise.allSettled([
-    api.getDailyRoute(opts.distributorId, opts.dateStr),
-    api.getVisitsForDistributor(opts.distributorId, opts.dateStr),
-  ]);
-
-  const route = routeRes.status === 'fulfilled' ? routeRes.value : null;
-  const visits = visitsRes.status === 'fulfilled' ? visitsRes.value : [];
-
-  const gpsPoints = filterGpsTrail(
-    (route?.points ?? [])
-      .map(p => {
-        const c = asCoord(p.latitude, p.longitude);
-        if (!c) return null;
-        return { ...c, recordedAt: p.recordedAt };
-      })
-      .filter((p): p is { lat: number; lng: number; recordedAt: string } => !!p),
-  );
-  const firstGps = gpsPoints[0];
-  const lastGps = gpsPoints[gpsPoints.length - 1];
-  const gpsTrail = gpsPoints.map(p => ({ lat: p.lat, lng: p.lng }));
-
-  const visitPoints: TrackPoint[] = visits
-    .slice()
-    .sort((a, b) => new Date(a.visitedAt).getTime() - new Date(b.visitedAt).getTime())
-    .map((v, i) => {
-      const check = asCoord(v.checkInLatitude, v.checkInLongitude);
-      const client = asCoord(v.clientLatitude, v.clientLongitude);
-      const coords = check ?? client;
-      const hasCheckIn = !!check;
-      const hasCoords = !!coords;
-
-      const fromApp = !!v.fromClientOrder || v.orderSource === 'client';
-      const hasOrder = Number(v.orderTotal) > 0;
-      let status: PointStatus = 'visited';
-      if (fromApp && hasOrder) status = 'client_ordered';
-      else if (!hasCheckIn && hasOrder) status = 'remote_ordered';
-      else if (hasOrder) status = 'ordered';
-      else if (hasCheckIn) status = 'visited';
-      else status = 'visited';
-
-      return {
-        idx: i + 1,
-        name: v.clientName || 'Klient',
-        address: v.clientAddress || '—',
-        lat: coords?.lat ?? 0,
-        lng: coords?.lng ?? 0,
-        hasCoords,
-        time: fmtClock(v.visitedAt),
-        status,
-        duration: null,
-      };
-    });
-
-  const points = visitPoints.map((p, i) => ({ ...p, idx: i + 1 }));
-
-  const ordered = points.filter(p => p.status === 'ordered').length;
-  const visitedNoOrder = points.filter(p => p.status === 'visited').length;
-  const remoteOrdered = points.filter(p => p.status === 'remote_ordered').length;
-  const clientOrdered = points.filter(p => p.status === 'client_ordered').length;
-
-  const loginAt = opts.lastLoginAt && sameLocalDay(opts.lastLoginAt, opts.dateStr)
-    ? opts.lastLoginAt
-    : null;
-
-  const liveEmp = asCoord(opts.empLat, opts.empLng);
-  const trailEmp = lastGps ? { lat: lastGps.lat, lng: lastGps.lng } : null;
-  const empPos = liveEmp ?? trailEmp;
-  const empOnline = opts.empOnline;
-  const empLastSeen = empOnline
-    ? labels.onlineNow
-    : (opts.lastLocationAt ? new Date(opts.lastLocationAt).toLocaleString() : '—');
-
-  const durationMins = Number(route?.stats?.durationMinutes) || 0;
-  const apiKm = Number(route?.stats?.totalDistanceKm) || 0;
-  const km = gpsTrail.length >= 2 ? trailDistanceKm(gpsTrail) : apiKm;
-
-  return {
-    ...base,
-    total: points.length,
-    visited: ordered,
-    visitedNoOrder,
-    remoteOrdered,
-    clientOrdered,
-    missed: 0,
-    km: Math.round(km * 10) / 10,
-    startCity: firstGps ? labels.route : '—',
-    endCity: lastGps ? labels.route : '—',
-    loginTime: fmtClock(loginAt),
-    firstPointTime: fmtClock(firstGps?.recordedAt ?? visits[0]?.visitedAt),
-    lastPointTime: fmtClock(lastGps?.recordedAt ?? visits[visits.length - 1]?.visitedAt),
-    onlineHours: fmtDurationMinutes(durationMins, labels),
-    empLat: empPos?.lat ?? null,
-    empLng: empPos?.lng ?? null,
-    empOnline,
-    empLastSeen,
-    points,
-    gpsTrail,
-    hasRealLocation: empPos != null,
-  };
-}
-
 function addDays(dateStr: string, n: number): string {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + n);
@@ -384,13 +122,7 @@ function addDays(dateStr: string, n: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function todayLocal(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+function todayLocal(): string { return tashkentDate(); }
 
 const TODAY = todayLocal();
 const PER_PAGE = 12;
@@ -423,8 +155,8 @@ function trackPointStatusLong(
 
 function trackStatusColor(status: PointStatus, green: string, amber: string, indigo: string, clientColor: string): string {
   if (status === 'ordered') return green;
-  if (status === 'client_ordered') return clientColor;
-  if (status === 'remote_ordered') return indigo;
+  if (status === 'client_ordered') return '#0ea5e9';
+  if (status === 'remote_ordered') return '#8b5cf6';
   if (status === 'visited') return amber;
   return '#9ca3af';
 }
@@ -447,12 +179,14 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   const [trackingEmp, setTrackingEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [dayTrack, setDayTrack] = useState<DayTrack>(() => emptyDayTrack(TODAY));
   const [loadingTrack, setLoadingTrack] = useState(false);
+  const [trackError, setTrackError] = useState<string | null>(null);
+  const [trackRefresh, setTrackRefresh] = useState(0);
+  const [trackingDetail, setTrackingDetail] = useState<'client_orders' | 'no_gps' | null>(null);
   const [saved, setSaved]         = useState(false);
   const [form, setForm]           = useState({ name: '', role: '', phone: UZ_PHONE_DEFAULT, city: '' });
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [mapKey, setMapKey]       = useState(0);
-  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [pointFilter, setPointFilter] = useState<string | null>(null);
   const [historyEmp, setHistoryEmp] = useState<ReturnType<typeof toEmployee> | null>(null);
   const [isMobile, setIsMobile]   = useState(false);
@@ -537,9 +271,13 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
     }
     let cancelled = false;
     setLoadingTrack(true);
+    setTrackError(null);
+    setDayTrack(emptyDayTrack(selectedDate));
+    setTrackingDetail(null);
     fetchDayTrack({
       distributorId: trackingEmp.distributorId,
       dateStr: selectedDate,
+      companyIds: [...selectedCompanyIds],
       empOnline: isGpsLiveOnline(trackingEmp.lastLocationAt),
       empLat: trackingEmp.lastLatitude,
       empLng: trackingEmp.lastLongitude,
@@ -557,14 +295,15 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
         setDayTrack(track);
         setMapKey(k => k + 1);
       })
-      .catch(() => {
+      .catch(error => {
         if (cancelled) return;
+        setTrackError(error instanceof Error ? error.message : 'Tracking ma’lumotlarini yuklab bo‘lmadi');
         setDayTrack(emptyDayTrack(selectedDate));
         setMapKey(k => k + 1);
       })
       .finally(() => { if (!cancelled) setLoadingTrack(false); });
     return () => { cancelled = true; };
-  }, [trackingEmp, selectedDate, t]);
+  }, [trackingEmp, selectedDate, t, trackRefresh, selectedCompanyIds]);
 
   const filtered   = localEmps.filter(e => {
     const matchSearch =
@@ -730,80 +469,21 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
   // ── TRACKING VIEW ─────────────────────────────────────────────────────────
   if (trackingEmp) {
     const filteredPoints = pointFilter
-      ? dayTrack.points.filter(p => p.status === pointFilter)
+      ? dayTrack.points.filter(p => pointFilter === 'no_gps' ? !p.hasCoords : pointFilter === 'client_ordered' ? p.orders.some(o => o.source === 'client') : p.status === pointFilter)
       : dayTrack.points;
-    const mapPoints = filteredPoints.filter(p => p.hasCoords);
+    const mapPoints = dayTrack.points;
     const visitedCount = dayTrack.visited + dayTrack.visitedNoOrder;
     const completionPct = dayTrack.total > 0 ? Math.round((visitedCount / dayTrack.total) * 100) : 0;
     const empLastSeenLabel = dayTrack.empOnline
       ? tr(t, 'trackOnlineNow', 'Hozir online')
       : dayTrack.empLastSeen;
 
-    // Kunlik trekdagi joylashuv, yo'q bo'lsa — jonli distributor GPS (ish stoli bilan bir xil)
-    const liveLat = trackingEmp.lastLatitude;
-    const liveLng = trackingEmp.lastLongitude;
-    const liveOk = liveLat != null && liveLng != null
-      && Number.isFinite(Number(liveLat)) && Number.isFinite(Number(liveLng))
-      && !(Number(liveLat) === 0 && Number(liveLng) === 0);
     const empLocation = dayTrack.hasRealLocation && dayTrack.empLat != null && dayTrack.empLng != null
-      ? { lat: Number(dayTrack.empLat), lng: Number(dayTrack.empLng), online: dayTrack.empOnline, lastSeen: empLastSeenLabel }
-      : liveOk
-        ? {
-            lat: Number(liveLat),
-            lng: Number(liveLng),
-            online: isGpsLiveOnline(trackingEmp.lastLocationAt),
-            lastSeen: isGpsLiveOnline(trackingEmp.lastLocationAt)
-              ? tr(t, 'trackOnlineNow', 'Hozir online')
-              : (trackingEmp.lastLocationAt ? new Date(trackingEmp.lastLocationAt).toLocaleString() : '—'),
-          }
-        : undefined;
+      ? { lat: dayTrack.empLat, lng: dayTrack.empLng, online: dayTrack.empOnline, lastSeen: empLastSeenLabel }
+      : undefined;
 
     return (
-      <div style={{ padding: '0 0 40px' }}>
-
-        {/* Fullscreen map overlay */}
-        {mapFullscreen && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: D ? '#111' : '#fff',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{
-              height: 52, display: 'flex', alignItems: 'center',
-              justifyContent: 'space-between', padding: '0 20px',
-              borderBottom: `1px solid ${border}`,
-              background: cardBg, flexShrink: 0,
-              boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-            }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: txt }}>
-                {trackingEmp.name} — {dayTrack.label}
-              </div>
-              <button
-                onClick={() => { setMapFullscreen(false); setMapKey(k => k + 1); }}
-                style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  border: `1px solid ${border}`, background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Minimize2 size={16} color={txt} />
-              </button>
-            </div>
-            <div style={{ flex: 1, position: 'relative' }}>
-              <TrackingMap
-                key={`${dayTrack.date}-${mapKey}-${pointFilter ?? 'all'}-fs`}
-                points={mapPoints}
-                startCity={dayTrack.startCity}
-                endCity={dayTrack.endCity}
-                D={D}
-                height={typeof window !== 'undefined' ? window.innerHeight - 52 : 600}
-                empLocation={empLocation}
-                gpsTrail={dayTrack.gpsTrail}
-                t={t}
-              />
-            </div>
-          </div>
-        )}
+      <div className={`tracking-dashboard ${D ? 'dark' : ''}`} style={{ padding: '0 0 40px' }}>
 
         {/* Back header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: isSmall ? 8 : 12, marginBottom: 16 }}>
@@ -873,32 +553,36 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
           </button>
         </div>
 
-        {loadingTrack && (
-          <div style={{ marginBottom: 12, fontSize: 12, color: muted }}>
-            {t.loading || 'Yuklanmoqda...'}
-          </div>
-        )}
+        {trackError && <div role="alert" className="tracking-feedback error"><AlertTriangle size={17}/><div><strong>Tracking ma’lumotlarini yuklab bo‘lmadi</strong><span>{trackError}</span></div><button type="button" onClick={() => setTrackRefresh(v => v + 1)}>Qayta urinish</button></div>}
+        {!loadingTrack && !trackError && dayTrack.warnings.map(w => <div key={w} className="tracking-feedback"><AlertTriangle size={16}/><span>{w}</span></div>)}
+        {loadingTrack && <div className="tracking-feedback loading" role="status"><span className="tracking-spinner"/>Reja, buyurtmalar va GPS ma’lumotlari yuklanmoqda…</div>}
+        {trackingDetail && <TrackingDetailsPanel mode={trackingDetail} day={dayTrack} D={D} onClose={() => setTrackingDetail(null)}/>}
 
         {/* ── Summary stats ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(6,1fr)', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(7,minmax(0,1fr))', gap: isSmall ? 8 : 10, marginBottom: 16 }}>
           {[
             { icon: Circle,       label: tr(t, 'trackTotalPoints', 'Jami nuqtalar'),               value: String(dayTrack.total),           color: '#94a3b8', filter: null as string | null },
             { icon: CheckCircle2, label: tr(t, 'trackOrdered', 'Borildi, zakaz olindi'),           value: String(dayTrack.visited),         color: green,     filter: 'ordered' },
             { icon: ShoppingCart, label: tr(t, 'trackVisitedNoOrder', 'Borildi, zakaz olinmadi'),   value: String(dayTrack.visitedNoOrder),  color: amber,     filter: 'visited' },
-            { icon: PhoneCall,    label: tr(t, 'trackRemoteOrdered', 'Bormay, zakaz olindi'),      value: String(dayTrack.remoteOrdered),   color: indigo,    filter: 'remote_ordered' },
-            { icon: Smartphone,   label: tr(t, 'trackClientOrdered', 'Mijoz ilovadan yubordi'),    value: String(dayTrack.clientOrdered),   color: teal,      filter: 'client_ordered' },
+            { icon: PhoneCall,    label: tr(t, 'trackRemoteOrdered', 'Bormay, zakaz olindi'),      value: String(dayTrack.remoteOrdered),   color: '#8b5cf6', filter: 'remote_ordered' },
+            { icon: Smartphone,   label: tr(t, 'trackClientOrdered', 'Mijoz ilovadan yubordi'),    value: String(dayTrack.clientOrdered),   color: '#0ea5e9', filter: 'client_ordered' },
             { icon: XCircle,      label: tr(t, 'trackMissed', 'Borilmadi, zakaz olinmadi'),         value: String(dayTrack.missed),          color: '#9ca3af', filter: 'missed' },
+            { icon: MapPin, label: 'GPSsiz mijozlar', value: String(dayTrack.noGps), color: '#d97706', filter: 'no_gps' },
           ].map((s, idx) => {
             const isActive = pointFilter === s.filter;
             return (
-              <div
+              <button
+                type="button"
+                className="tracking-stat-card"
+                aria-pressed={isActive}
+                disabled={loadingTrack || !!trackError}
                 key={s.label}
-                onClick={() => setPointFilter(isActive ? null : s.filter)}
+                onClick={() => { setPointFilter(isActive ? null : s.filter); if (s.filter === 'client_ordered') setTrackingDetail('client_orders'); else if (s.filter === 'no_gps') setTrackingDetail('no_gps'); }}
                 style={{
                   background: isActive ? `${s.color}18` : cardBg,
                   border: `1.5px solid ${isActive ? s.color : border}`,
                   borderRadius: 12, padding: isSmall ? '10px 12px' : '14px 16px',
-                  gridColumn: isMobile && idx === 5 ? 'span 2' : undefined,
+                  gridColumn: isMobile && idx === 6 ? 'span 2' : undefined,
                   display: 'flex', flexDirection: isSmall ? 'row' : 'column',
                   alignItems: isSmall ? 'center' : 'flex-start', gap: isSmall ? 10 : 0,
                   cursor: 'pointer', transition: 'border-color .15s, background .15s',
@@ -907,19 +591,19 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
               >
                 <s.icon size={isSmall ? 16 : 15} color={s.color} style={{ flexShrink: 0, marginTop: isSmall ? 0 : undefined }} />
                 <div>
-                  <div style={{ fontSize: isSmall ? 20 : (isMobile ? 18 : 22), fontWeight: 700, color: isActive ? s.color : txt, marginTop: isSmall ? 0 : 6 }}>{s.value}</div>
+                  <div style={{ fontSize: isSmall ? 20 : (isMobile ? 18 : 22), fontWeight: 700, color: isActive ? s.color : txt, marginTop: isSmall ? 0 : 6 }}>{loadingTrack || trackError ? '—' : s.value}</div>
                   <div style={{ fontSize: isSmall ? 9 : 10, color: isActive ? s.color : muted, marginTop: 2, lineHeight: 1.3 }}>{s.label}</div>
                 </div>
                 {isActive && (
                   <div style={{ position: 'absolute', top: 6, right: 8, width: 6, height: 6, borderRadius: '50%', background: s.color }} />
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
 
         {/* ── Day card ── */}
-        <div style={{ background: cardBg, border: `1px solid ${indigo}55`, borderRadius: 14, overflow: 'hidden' }}>
+        <div className="tracking-day-card" style={{ background: cardBg, border: `1px solid ${border}`, borderRadius: 18, overflow: 'hidden' }}>
 
           {/* Day header */}
           {isMobile ? (
@@ -943,8 +627,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 {[
                   { v: dayTrack.visited,        c: green,  l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
                   { v: dayTrack.visitedNoOrder, c: amber,  l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
-                  { v: dayTrack.remoteOrdered,  c: indigo, l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
-                  { v: dayTrack.clientOrdered,  c: teal,   l: tr(t, 'trackClientShort', 'Ilovadan') },
+                  { v: dayTrack.remoteOrdered,  c: '#8b5cf6', l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.clientOrdered,  c: '#0ea5e9', l: tr(t, 'trackClientShort', 'Ilovadan') },
                   { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center', padding: '6px 4px', background: D ? 'rgba(255,255,255,0.03)' : '#f8f9fa', borderRadius: 8 }}>
@@ -980,8 +664,8 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 {[
                   { v: dayTrack.visited,        c: green,     l: tr(t, 'trackOrderTaken', 'Zakaz olindi') },
                   { v: dayTrack.visitedNoOrder, c: amber,     l: tr(t, 'trackNoOrder', "Zakaz yo'q") },
-                  { v: dayTrack.remoteOrdered,  c: indigo,    l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
-                  { v: dayTrack.clientOrdered,  c: teal,      l: tr(t, 'trackClientShort', 'Ilovadan') },
+                  { v: dayTrack.remoteOrdered,  c: '#8b5cf6', l: tr(t, 'trackRemoteShort', 'Bormay zakaz') },
+                  { v: dayTrack.clientOrdered,  c: '#0ea5e9', l: tr(t, 'trackClientShort', 'Ilovadan') },
                   { v: dayTrack.missed,         c: '#9ca3af', l: tr(t, 'trackNotVisited', 'Borilmadi') },
                 ].map(s => (
                   <div key={s.l} style={{ textAlign: 'center' }}>
@@ -1002,42 +686,32 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
           )}
 
           {/* ── MAP + TIMING ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 300px', borderTop: `1px solid ${border}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1fr) 270px', borderTop: `1px solid ${border}` }}>
 
             {/* MAP */}
             <div style={{ position: 'relative' }}>
-              <div style={{ isolation: 'isolate' as const, height: isMobile ? 280 : 560 }}>
+              <div style={{ height: isMobile ? 420 : 600 }}>
                 <TrackingMap
-                  key={`${dayTrack.date}-${mapKey}-${pointFilter ?? 'all'}-normal`}
+                  key={`${trackingEmp.distributorId}-${dayTrack.date}-${mapKey}`}
                   points={mapPoints}
                   startCity={dayTrack.startCity}
                   endCity={dayTrack.endCity}
                   D={D}
-                  height={isMobile ? 280 : 560}
+                  height={isMobile ? 420 : 600}
                   empLocation={empLocation}
                   gpsTrail={dayTrack.gpsTrail}
+                  visits={dayTrack.visits}
+                  clientOrders={dayTrack.clientOrders}
+                  filter={pointFilter}
+                  onFilterChange={setPointFilter}
                   t={t}
                 />
               </div>
-              {/* Button is outside isolated context → always renders on top */}
-              <button
-                onClick={() => { setMapFullscreen(true); setMapKey(k => k + 1); }}
-                title={tr(t, 'trackFullscreen', "To'liq ekran")}
-                style={{
-                  position: 'absolute', top: 12, right: 12, zIndex: 2,
-                  width: 38, height: 38, borderRadius: 10,
-                  background: 'rgba(255,255,255,0.97)',
-                  border: '1.5px solid rgba(0,0,0,0.14)',
-                  boxShadow: '0 3px 12px rgba(0,0,0,0.22)',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Maximize2 size={16} color="#374151" />
-              </button>
+              {loadingTrack && <div className="tracking-map-loading" role="status"><span className="tracking-spinner"/><strong>Tracking yuklanmoqda…</strong></div>}
             </div>
 
             {/* TIMING INFO PANEL */}
-            <div style={{ borderLeft: isMobile ? 'none' : `1px solid ${border}`, borderTop: isMobile ? `1px solid ${border}` : 'none', padding: isMobile ? '16px' : '20px', display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'center' }}>
+            <div className="tracking-day-sidebar show-sb" style={{ maxHeight: isMobile ? undefined : 600, overflowY: 'auto', borderLeft: isMobile ? 'none' : `1px solid ${border}`, borderTop: isMobile ? `1px solid ${border}` : 'none', padding: isMobile ? '16px' : '20px', display: 'flex', flexDirection: 'column', gap: 0, justifyContent: 'flex-start' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
                 {tr(t, 'trackDayStats', 'Kun statistikasi')}
               </div>
@@ -1046,7 +720,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 { icon: LogIn,      color: indigo,    label: tr(t, 'trackLoginTime', 'Ilovaga kirgan vaqt'),    value: dayTrack.loginTime,      bg: `${indigo}12` },
                 { icon: Flag,       color: green,     label: tr(t, 'trackFirstPoint', 'Birinchi nuqtaga borgan'), value: dayTrack.firstPointTime, bg: `${green}12` },
                 { icon: MapPin,     color: amber,     label: tr(t, 'trackLastPoint', 'Oxirgi nuqtaga borgan'),   value: dayTrack.lastPointTime,  bg: `${amber}12` },
-                { icon: Hourglass,  color: '#8b5cf6', label: tr(t, 'trackOnlineTime', "Online bo'lgan vaqt"),     value: dayTrack.onlineHours,    bg: 'rgba(139,92,246,0.10)' },
+                { icon: Hourglass,  color: '#8b5cf6', label: 'GPS kuzatilgan vaqt',     value: dayTrack.onlineHours,    bg: 'rgba(139,92,246,0.10)' },
                 { icon: Navigation, color: '#06b6d4', label: tr(t, 'trackDistance', "Bosib o'tilgan yo'l"),     value: `${dayTrack.km} km`,     bg: 'rgba(6,182,212,0.10)' },
               ].map((item, idx) => (
                 <div key={idx} style={{
@@ -1082,6 +756,12 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                 </div>
               </div>
 
+              <div className="tracking-visit-timeline"><div className="tracking-timeline-title">Tashriflar ketma-ketligi <span>{dayTrack.visits.length}</span></div>
+                {dayTrack.visits.length === 0 ? <p>Bu kunda GPS bilan tasdiqlangan tashrif yo‘q.</p> : dayTrack.visits.map(v => {
+                  const shop = dayTrack.points.find(p => p.clientId === v.clientId);
+                  return <div className="tracking-timeline-item" key={`${v.clientId}-${v.sequence}`}><b>{v.sequence}</b><div><strong>{shop?.name}</strong><span>{shop?.time && new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' }).format(new Date(v.arrivedAt))} · {v.durationMinutes > 0 ? `${v.durationMinutes} daq` : 'GPS check-in'}</span></div></div>;
+                })}
+              </div>
               {/* Route summary */}
               <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: D ? 'rgba(255,255,255,0.03)' : '#f8fafc', border: `1px solid ${border}` }}>
                 <div style={{ fontSize: 10, color: muted, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{tr(t, 'trackRoute', 'Marshrut')}</div>
@@ -1100,6 +780,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
 
           {/* ── POINTS LIST ── */}
           <div style={{ padding: isMobile ? '12px' : '12px 18px', borderTop: `1px solid ${border}` }}>
+            {!loadingTrack && !trackError && filteredPoints.length === 0 && <div className="tracking-points-empty"><Route size={24}/><strong>{pointFilter ? 'Filtrga mos rejalashtirilgan nuqta yo‘q' : 'Tanlangan kunda rejalashtirilgan nuqta yo‘q'}</strong><span>{pointFilter ? 'Boshqa holatni tanlang yoki filtrni tozalang.' : 'Liniya biriktirishlari va agentning tashrif kunlarini tekshiring.'}</span></div>}
             {(() => {
               return (
             <>
@@ -1127,7 +808,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                     <div style={{ flexShrink: 0 }}>
                       {p.status === 'ordered' ? <ShoppingCart size={14} color={green} />
                         : p.status === 'client_ordered' ? <Smartphone size={14} color={teal} />
-                        : p.status === 'remote_ordered' ? <PhoneCall size={14} color={blue} />
+                        : p.status === 'remote_ordered' ? <PhoneCall size={14} color="#8b5cf6" />
                         : p.status === 'visited' ? <CheckCircle2 size={14} color={amber} />
                         : <XCircle size={14} color={D ? '#4b5563' : '#d1d5db'} />}
                     </div>
@@ -1175,16 +856,16 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                         : 'transparent',
                     }}>
                       <div style={{ fontSize: 11, color: muted, textAlign: 'right' }}>#{p.idx}</div>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                         {p.status === 'ordered' ? <ShoppingCart size={13} color={green} />
                           : p.status === 'client_ordered' ? <Smartphone size={13} color={teal} />
-                          : p.status === 'remote_ordered' ? <PhoneCall size={13} color={blue} />
+                          : p.status === 'remote_ordered' ? <PhoneCall size={13} color="#8b5cf6" />
                           : p.status === 'visited' ? <CheckCircle2 size={13} color={amber} />
                           : <XCircle size={13} color={D ? '#4b5563' : '#d1d5db'} />}
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: p.status === 'missed' ? 400 : 600, color: p.status === 'missed' ? muted : txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                        <div style={{ fontSize: 10, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.address}</div>
+                        <div style={{ fontSize: 10, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.lineName} · {p.address || 'Manzil kiritilmagan'}{!p.hasCoords ? ' · GPSsiz' : ''}{p.visitUnverified ? ' · Tashrif tasdiqlanmagan' : ''}</div>
                       </div>
                       <span style={{
                         fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, whiteSpace: 'nowrap',
@@ -1235,7 +916,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>{t.addAgent || t.addEmpBtn || "Agent qo'shish"}</div>
-              <button type="button" onClick={() => setShowAdd(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" onClick={() => setShowAdd(false)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
                 <X size={14} color={muted} />
               </button>
             </div>
@@ -1287,7 +968,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
             onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: txt }}>{t.editEmpTitle || 'Xodimni tahrirlash'}</div>
-              <button onClick={() => setEditEmp(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={() => setEditEmp(null)} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', cursor: 'pointer', background: D ? 'rgba(255,255,255,0.08)' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
                 <X size={14} color={muted} />
               </button>
             </div>
@@ -1421,7 +1102,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
                   transform: sel ? 'translateY(-1px)' : 'none',
                 }}
               >
-                <div style={{ fontSize: isSmall ? 18 : 22, fontWeight: 700, color: sel ? s.color : txt }}>{s.value}</div>
+                <div style={{ fontSize: isSmall ? 18 : 22, fontWeight: 700, color: sel ? s.color : txt }}>{loadingTrack || trackError ? '—' : s.value}</div>
                 <div style={{ fontSize: isSmall ? 10 : 11, color: sel ? s.color : muted, marginTop: 2, fontWeight: sel ? 600 : 400 }}>{s.label}</div>
                 <div style={{ height: 3, borderRadius: 2, background: s.color, marginTop: isSmall ? 6 : 8, opacity: sel ? 1 : 0.45 }} />
               </div>

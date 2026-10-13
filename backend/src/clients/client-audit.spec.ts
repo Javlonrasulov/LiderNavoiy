@@ -31,6 +31,7 @@ describe('Client audit across approval', () => {
   let client: Client;
   let request: ClientRequest;
   const clientRepo = {
+    query: jest.fn(async () => []),
     save: jest.fn(async (row: Client) => row),
     create: jest.fn((row: Partial<Client>) => Object.assign(new Client(), row)),
     findOne: jest.fn(async () => null),
