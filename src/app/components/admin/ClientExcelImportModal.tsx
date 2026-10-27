@@ -844,6 +844,10 @@ export function ClientExcelImportModal({
             fullName: row.fullName || row.name,
             territory: row.territory || row.address,
             phone: row.phone || undefined,
+            inn: row.inn || undefined,
+            code: row.code || undefined,
+            line: row.lineRaw || undefined,
+            agent: selectedAgent?.name || row.agentName || row.agentRaw || undefined,
           },
           known,
         );
@@ -1942,7 +1946,9 @@ export function ClientExcelImportModal({
             riskHigh: tr('simRiskHigh', 'Yuqori xavf'),
             riskMedium: tr('simRiskMedium', "O'rtacha xavf"),
             riskLow: tr('simRiskLow', 'Past xavf'),
-            foundClient: tr('simFoundClient', 'Topilgan mijoz'),
+            foundClient: tr('simFoundClient', 'Tizimdagi mijoz'),
+            newClient: tr('simNewClient', "Yangi (qo'shilayotgan)"),
+            same: tr('simSame', 'Bir xil'),
             innBlocked: tr(
               'simInnBlocked',
               "Bir xil INN bilan mijoz allaqachon mavjud. «Baribir qo'shish» mumkin emas — INN ni o'zgartiring yoki mavjud mijozni tahrirlang.",

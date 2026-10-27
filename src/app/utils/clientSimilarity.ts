@@ -11,10 +11,15 @@ export type SimilarityFieldScore = {
   key: SimilarityFieldKey;
   pct: number;
   weight: number;
+  /** Solishtirilgan asl qiymatlar (ko'rsatish uchun) */
+  inputValue: string;
+  existingValue: string;
 };
 
 export type SimilarityMatch = {
   client: BackendClient;
+  /** Tekshirilgan yangi mijoz */
+  input: SimilarityCandidate;
   overallPct: number;
   fields: SimilarityFieldScore[];
 };
@@ -25,6 +30,10 @@ export type SimilarityCandidate = {
   phone?: string;
   inn?: string;
   territory?: string;
+  /** Faqat ko'rsatish uchun — ballga ta'sir qilmaydi */
+  code?: string;
+  line?: string;
+  agent?: string;
 };
 
 const WEIGHTS: Record<SimilarityFieldKey, number> = {
@@ -99,7 +108,13 @@ function scoreAgainst(input: SimilarityCandidate, existing: BackendClient): Simi
     const a = key === 'phone' || key === 'inn' ? digitsOnly(inputVal) : normalizeText(inputVal);
     const b = key === 'phone' || key === 'inn' ? digitsOnly(existingVal) : normalizeText(existingVal);
     if (!a || !b) return;
-    fields.push({ key, pct: scoreFn(a, b), weight: WEIGHTS[key] });
+    fields.push({
+      key,
+      pct: scoreFn(a, b),
+      weight: WEIGHTS[key],
+      inputValue: String(inputVal ?? '').trim(),
+      existingValue: String(existingVal ?? '').trim(),
+    });
   };
 
   add('name', input.name, existing.name ?? undefined, textFieldScore);
@@ -110,11 +125,11 @@ function scoreAgainst(input: SimilarityCandidate, existing: BackendClient): Simi
 
   const totalWeight = fields.reduce((s, f) => s + f.weight, 0);
   if (totalWeight <= 0) {
-    return { client: existing, overallPct: 0, fields: [] };
+    return { client: existing, input, overallPct: 0, fields: [] };
   }
   const weighted = fields.reduce((s, f) => s + (f.pct / 100) * f.weight, 0);
   const overallPct = Math.round((weighted / totalWeight) * 100);
-  return { client: existing, overallPct, fields };
+  return { client: existing, input, overallPct, fields };
 }
 
 export function findBestSimilarityMatch(

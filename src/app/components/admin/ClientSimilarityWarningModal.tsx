@@ -17,6 +17,8 @@ export type SimilarityModalLabels = {
   riskMedium?: string;
   riskLow?: string;
   foundClient?: string;
+  newClient?: string;
+  same?: string;
   innBlocked?: string;
   understand?: string;
   fieldName?: string;
@@ -71,7 +73,9 @@ export function ClientSimilarityWarningModal({
     riskHigh: labels.riskHigh ?? 'Yuqori xavf',
     riskMedium: labels.riskMedium ?? "O'rtacha xavf",
     riskLow: labels.riskLow ?? 'Past xavf',
-    foundClient: labels.foundClient ?? 'Topilgan mijoz',
+    foundClient: labels.foundClient ?? 'Tizimdagi mijoz',
+    newClient: labels.newClient ?? "Yangi (qo'shilayotgan)",
+    same: labels.same ?? 'Bir xil',
     innBlocked:
       labels.innBlocked ??
       "Bir xil INN bilan mijoz allaqachon mavjud. «Baribir qo'shish» mumkin emas — INN ni o'zgartiring yoki mavjud mijozni tahrirlang.",
@@ -142,7 +146,7 @@ export function ClientSimilarityWarningModal({
       }}
     >
       <div
-        className={`relative w-full max-w-md rounded-2xl border shadow-2xl p-5 sm:p-6 ${
+        className={`relative w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border shadow-2xl p-5 sm:p-6 ${
           D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-200'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -210,62 +214,101 @@ export function ClientSimilarityWarningModal({
           </div>
         )}
 
-        <div
-          className={`rounded-xl p-3 mb-4 border ${
-            D ? 'bg-[#121212] border-gray-800' : 'bg-gray-50 border-gray-100'
-          }`}
-          style={{ borderColor: colors.border }}
-        >
-          <p className={`text-[11px] font-semibold ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-            {L.foundClient}
-          </p>
-          <p className={`mt-1 text-sm font-bold ${D ? 'text-white' : 'text-gray-900'}`}>
-            {match.client.name || '—'}
-          </p>
-          {match.client.inn && (
-            <p
-              className={`text-xs mt-0.5 font-mono font-bold ${
-                innBlocked ? 'text-rose-500' : D ? 'text-gray-400' : 'text-gray-500'
+        {(() => {
+          const sub = D ? 'text-gray-400' : 'text-gray-500';
+          const strong = D ? 'text-white' : 'text-gray-900';
+          const existingAgent = match.client.distributor?.user?.fullName || '';
+          const existingLine = match.client.lineCode || '';
+          const meta = (parts: (string | undefined | null)[]) =>
+            parts.filter((p) => p && String(p).trim()).join(' · ');
+          const card = (
+            title: string,
+            code: string | undefined | null,
+            name: string,
+            metaText: string,
+            tone: 'new' | 'existing',
+          ) => (
+            <div
+              className={`min-w-0 rounded-xl border p-3 ${
+                tone === 'new'
+                  ? D ? 'bg-indigo-500/10 border-indigo-500/40' : 'bg-indigo-50 border-indigo-200'
+                  : D ? 'bg-[#121212]' : 'bg-gray-50'
               }`}
+              style={tone === 'existing' ? { borderColor: colors.border } : undefined}
             >
-              INN: {match.client.inn}
-              {innBlocked ? ' · 100%' : ''}
-            </p>
-          )}
-          {match.client.phone && (
-            <p className={`text-xs mt-0.5 ${D ? 'text-gray-400' : 'text-gray-500'}`}>{match.client.phone}</p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-2.5 mb-5">
-          {fieldsOrdered.map((f) => {
-            const pct = f.key === 'inn' && innBlocked ? 100 : f.pct;
-            const barColor =
-              pct <= 0
-                ? D
-                  ? '#6b7280'
-                  : '#9ca3af'
-                : similarityRiskColors(pct >= 70 ? 'red' : pct >= 40 ? 'yellow' : 'green', D).color;
-            return (
-              <div key={f.key}>
-                <div className="flex justify-between gap-2 mb-1">
-                  <span className={`text-xs font-semibold ${D ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {fieldLabel(f.key)}
-                  </span>
-                  <span className="text-xs font-bold" style={{ color: barColor }}>
-                    {pct}%
-                  </span>
-                </div>
-                <div className={`h-1.5 rounded-full overflow-hidden ${D ? 'bg-gray-800' : 'bg-gray-200'}`}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${pct}%`, background: barColor }}
-                  />
-                </div>
+              <p className={`text-[10px] font-bold uppercase tracking-wide ${
+                tone === 'new' ? (D ? 'text-indigo-300' : 'text-indigo-600') : sub
+              }`}>
+                {title}
+              </p>
+              <p className={`mt-1 text-sm font-bold break-words ${strong}`}>
+                {code ? <span className={`font-mono mr-1 ${sub}`}>{code}</span> : null}
+                {name || '—'}
+              </p>
+              {metaText && <p className={`mt-0.5 text-[11px] break-words ${sub}`}>{metaText}</p>}
+            </div>
+          );
+          return (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {card(
+                  L.newClient,
+                  match.input?.code,
+                  match.input?.name ?? '',
+                  meta([match.input?.agent, match.input?.line]),
+                  'new',
+                )}
+                {card(
+                  L.foundClient,
+                  match.client.code,
+                  match.client.name,
+                  meta([existingAgent, existingLine]),
+                  'existing',
+                )}
               </div>
-            );
-          })}
-        </div>
+
+              <div className="flex flex-col gap-2 mb-5 max-h-[40vh] overflow-y-auto pr-0.5">
+                {fieldsOrdered.map((f) => {
+                  const pct = f.key === 'inn' && innBlocked ? 100 : f.pct;
+                  const barColor =
+                    pct <= 0
+                      ? D ? '#6b7280' : '#9ca3af'
+                      : similarityRiskColors(pct >= 70 ? 'red' : pct >= 40 ? 'yellow' : 'green', D).color;
+                  const valueBox = (v: string) => (
+                    <span
+                      className={`min-w-0 rounded-lg px-2 py-1 text-xs break-words ${
+                        f.key === 'phone' || f.key === 'inn' ? 'font-mono' : ''
+                      } ${pct > 0 ? 'font-semibold' : ''} ${D ? 'bg-white/5' : 'bg-gray-50'} ${strong}`}
+                      style={pct > 0 ? { boxShadow: `inset 0 0 0 1px ${barColor}66` } : undefined}
+                    >
+                      {v || '—'}
+                    </span>
+                  );
+                  return (
+                    <div key={f.key}>
+                      <div className="flex justify-between gap-2 mb-1">
+                        <span className={`text-xs font-semibold ${sub}`}>{fieldLabel(f.key)}</span>
+                        <span className="text-xs font-bold" style={{ color: barColor }}>
+                          {pct >= 100 ? `${L.same} · ` : ''}{pct}%
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-1">
+                        {valueBox(f.inputValue)}
+                        {valueBox(f.existingValue)}
+                      </div>
+                      <div className={`h-1 rounded-full overflow-hidden ${D ? 'bg-gray-800' : 'bg-gray-200'}`}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: barColor }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-2.5">
           <button
