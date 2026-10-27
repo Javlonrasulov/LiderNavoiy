@@ -15,6 +15,7 @@ import {
   textMatchesSearch,
 } from '../../../utils/clientApi';
 import AddClient from '../../AddClient';
+import { useCompanies } from '../../CompaniesContext';
 import { ClientStatsPanel } from '../ClientStatsPanel';
 import { ClientMapModal, ClientGpsWarningModal, clientHasGps } from '../ClientMapModal';
 import { TransferClientsModal } from '../TransferClientsModal';
@@ -70,10 +71,20 @@ interface Props {
   t: Record<string, string>;
   showBalances: boolean;
   selectedCompanyIds: Set<string>;
+  /** Bir nechta tashkilot tanlanganda yuqoridagi tab: 'all' yoki tashkilot id */
+  viewOrg?: 'all' | string;
   onClientsChange?: (clients: ClientRow[]) => void;
 }
 
-export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds, onClientsChange }: Props) {
+export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds, viewOrg = 'all', onClientsChange }: Props) {
+  const { companies } = useCompanies();
+  const multiOrg = selectedCompanyIds.size > 1;
+  const companyById = useMemo(() => new Map(companies.map((co) => [co.id, co])), [companies]);
+  /** Mijoz tanlangan tashkilotlardan qaysilariga tegishli */
+  const clientOrgIds = useCallback((c: ClientRow) => {
+    const ids = c.companyIds?.length ? c.companyIds : c.companyId ? [c.companyId] : [];
+    return ids.filter((id) => selectedCompanyIds.has(id));
+  }, [selectedCompanyIds]);
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string; lineCode: string }[]>([]);
   const [lines, setLines] = useState<string[]>([]);
@@ -387,8 +398,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   const priceCatOptions = useMemo(() => uniqueField(clients, c => c.priceCat || 'Standard'), [clients]);
   const hasUnassignedAgents = useMemo(() => clients.some(c => !c.agent), [clients]);
 
+  /** Bir nechta tashkilot rejimida — faqat tanlangan (yoki tabdagi) tashkilot mijozlari */
+  const orgScopedClients = useMemo(() => {
+    if (!multiOrg) return clients;
+    return clients.filter((c) => {
+      const ids = clientOrgIds(c);
+      if (viewOrg !== 'all') return ids.includes(viewOrg);
+      return ids.length > 0 || (!c.companyId && !c.companyIds?.length);
+    });
+  }, [clients, multiOrg, viewOrg, clientOrgIds]);
+
   const filtered = useMemo(() => {
-    const list = clients.filter(c => {
+    const list = orgScopedClients.filter(c => {
       const q = search.trim();
       const displayCode = displayClientCode(c);
       const phoneQ = q.replace(/\s/g, '');
@@ -453,7 +474,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
       return 0;
     });
   }, [
-    clients, search, clientCatFilter, clientMarkFilter, clientAgentFilter, clientLineFilter,
+    orgScopedClients, search, clientCatFilter, clientMarkFilter, clientAgentFilter, clientLineFilter,
     clientTerritoryFilter, clientClsFilter, clientPriceCatFilter, clientGpsFilter,
     clientStatusFilter, sortTop, sortDebt,
   ]);
@@ -467,22 +488,22 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const agentCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const c of clients) {
+    for (const c of orgScopedClients) {
       const key = c.agent || NO_AGENT_KEY;
       counts[key] = (counts[key] ?? 0) + 1;
     }
     return counts;
-  }, [clients]);
+  }, [orgScopedClients]);
 
   const lineCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const c of clients) {
+    for (const c of orgScopedClients) {
       const code = c.lineCode || c.line.split(' - ')[0]?.trim() || c.line;
       if (!code) continue;
       counts[code] = (counts[code] ?? 0) + 1;
     }
     return counts;
-  }, [clients]);
+  }, [orgScopedClients]);
 
   const lineSelectOptions = useMemo(() => {
     return lineOptions
@@ -495,13 +516,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const ttClassCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const c of clients) {
+    for (const c of orgScopedClients) {
       const tt = clientTtClass(c);
       if (!tt) continue;
       counts[tt] = (counts[tt] ?? 0) + 1;
     }
     return counts;
-  }, [clients]);
+  }, [orgScopedClients]);
 
   const ttClassOptions = useMemo(() => {
     return categoryOptions
@@ -511,9 +532,9 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
 
   const markCounts = useMemo(() => {
     const counts: Record<MarkColor, number> = { green: 0, yellow: 0, red: 0 };
-    for (const c of clients) counts[resolveClientMark(c)] += 1;
+    for (const c of orgScopedClients) counts[resolveClientMark(c)] += 1;
     return counts;
-  }, [clients]);
+  }, [orgScopedClients]);
 
   const quickLineLabel = (() => {
     if (clientLineFilter.size === 0) return t.colLine ?? 'Liniya';
@@ -592,6 +613,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     const rows = filtered.map(c => ({
       [t.colCode]:       displayClientCode(c),
       [t.colClientName]: c.name,
+      ...(multiOrg
+        ? {
+            [t.colOrganization ?? 'Tashkilot']: clientOrgIds(c)
+              .map((id) => companyById.get(id)?.shortName ?? id)
+              .join(', '),
+          }
+        : {}),
       [t.colFullName]:   c.fullName,
       [t.colLine]:       c.line,
       [t.colCategory]:   clientTtClass(c) || c.category,
@@ -744,10 +772,10 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
   ];
 
   const summaryCards = [
-    { l: t.allClientsLabel,          v: clients.length,                                        c: '',                 status: 'all'      },
-    { l: t.debtorsLabel,             v: clients.filter(c => c.balance < 0).length,             c: 'text-rose-400',    status: 'debtors'  },
-    { l: t.surplusLabel,             v: clients.filter(c => c.balance > 0).length,             c: 'text-emerald-400', status: 'surplus'  },
-    { l: t.inactiveClientsLabel,     v: clients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
+    { l: t.allClientsLabel,          v: orgScopedClients.length,                                        c: '',                 status: 'all'      },
+    { l: t.debtorsLabel,             v: orgScopedClients.filter(c => c.balance < 0).length,             c: 'text-rose-400',    status: 'debtors'  },
+    { l: t.surplusLabel,             v: orgScopedClients.filter(c => c.balance > 0).length,             c: 'text-emerald-400', status: 'surplus'  },
+    { l: t.inactiveClientsLabel,     v: orgScopedClients.filter(c => c.lastVisit < INACTIVE_CUTOFF).length, c: 'text-amber-400', status: 'inactive' },
   ];
 
   const listEmptyMessage = loading
@@ -774,7 +802,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               : t.allClientsTitle}
           </h2>
           <p className={`text-sm ${sub} mt-0.5`}>
-            {loading ? (t.loading || 'Yuklanmoqda...') : `${filtered.length} / ${clients.length}`}
+            {loading ? (t.loading || 'Yuklanmoqda...') : `${filtered.length} / ${orgScopedClients.length}`}
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <button
@@ -1649,11 +1677,12 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             overflowY: 'auto',
           }}
         >
-          <table style={{ minWidth: showSalesCols ? 2960 : 2260, borderCollapse: 'collapse', width: '100%' }}>
+          <table style={{ minWidth: (showSalesCols ? 2960 : 2260) + (multiOrg ? 140 : 0), borderCollapse: 'collapse', width: '100%' }}>
             <thead className={`sticky top-0 z-10 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>
               <tr className={`border-b ${D ? 'border-gray-700' : 'border-gray-200'}`}>
                 <th className={`${thCls} sticky left-0 z-20 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>{t.colCode}</th>
                 <th className={thCls}>{t.colClientName}</th>
+                {multiOrg && <th className={thCls}>{t.colOrganization ?? 'Tashkilot'}</th>}
                 <th className={thCls}>{t.colFullName}</th>
                 <th className={`${thCls} cursor-pointer`}>{t.colLine} <span className="ml-0.5 opacity-60">↕</span></th>
                 <th className={thCls}>{t.colAgent ?? 'Agent'}</th>
@@ -1721,6 +1750,29 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                         : rowBg + ' ' + (D ? 'hover:bg-white/5' : 'hover:bg-blue-50/60')}`}>
                     <td className={`${tdCls} sticky left-0 z-10 font-mono ${rowBg} ${rowText}`}>{displayClientCode(c)}</td>
                     <td className={`${tdCls} font-semibold ${rowText} max-w-[160px] truncate`}>{c.name}</td>
+                    {multiOrg && (
+                      <td className={`${tdCls} ${rowText}`}>
+                        <div className="flex flex-wrap gap-1">
+                          {clientOrgIds(c).map((id) => {
+                            const co = companyById.get(id);
+                            return (
+                              <span
+                                key={id}
+                                title={co?.name ?? id}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap
+                                  ${D ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-50 text-sky-700 border border-sky-100'}`}
+                              >
+                                <span>{co?.icon ?? '🏢'}</span>
+                                {co?.shortName ?? co?.name ?? id}
+                              </span>
+                            );
+                          })}
+                          {clientOrgIds(c).length === 0 && (
+                            <span className={D ? 'text-gray-600' : 'text-gray-400'}>—</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className={`${tdCls} ${rowText} max-w-[160px] truncate`}>{c.fullName}</td>
                     <td className={`${tdCls} ${rowText} whitespace-nowrap`}>{c.line}</td>
                     <td className={`${tdCls} ${rowText} max-w-[180px]`}>
@@ -1794,7 +1846,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               })}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={18 + (showSalesCols ? 5 : 0) + (listMode === 'trash' ? 1 : 0)} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
+                  <td colSpan={18 + (multiOrg ? 1 : 0) + (showSalesCols ? 5 : 0) + (listMode === 'trash' ? 1 : 0)} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
                 </tr>
               )}
             </tbody>

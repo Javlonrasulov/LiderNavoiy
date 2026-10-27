@@ -815,6 +815,7 @@ export default function AdminPanel() {
               D={D} card={card} divider={divider} text={text} sub={sub} t={t}
               showBalances={showBalances}
               selectedCompanyIds={selectedCompanyIds}
+              viewOrg={viewOrg}
               onClientsChange={setClientsForBell}
             />
           )}
