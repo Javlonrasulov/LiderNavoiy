@@ -42,6 +42,17 @@ export class CreateSystemUserDto {
   @IsString({ each: true })
   permissions?: string[];
 
+  @ApiPropertyOptional({ type: [String], example: ['miller'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  allCompanies?: boolean;
+
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()
@@ -81,6 +92,17 @@ export class UpdateSystemUserDto {
   @IsString({ each: true })
   permissions?: string[];
 
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  companyIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  allCompanies?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -94,6 +116,8 @@ export class SystemUserResponseDto {
   role: UserRole;
   position: string | null;
   permissions: string[];
+  companyIds: string[];
+  allCompanies: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
   isProtected: boolean;

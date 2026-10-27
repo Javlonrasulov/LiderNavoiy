@@ -70,6 +70,14 @@ export class User {
   @Column({ type: 'jsonb', nullable: true })
   permissions: string[] | null;
 
+  /** Admin panel: ruxsat etilgan tashkilotlar (null — profil dagi ro'yxat) */
+  @Column({ type: 'jsonb', nullable: true })
+  companyIds: string[] | null;
+
+  /** Admin panel: barcha tashkilotlarga ruxsat */
+  @Column({ default: false })
+  allCompanies: boolean;
+
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })
   distributorProfile?: DistributorProfile;
 

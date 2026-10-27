@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from './entities/user.entity';
 import { UserLoginDevice } from './entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
+import { Company } from '../companies/entities/company.entity';
 import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 import { isDeliveryPosition } from '../common/staff-role.util';
@@ -48,6 +49,8 @@ export class AuthService {
     private readonly deviceRepo: Repository<UserLoginDevice>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly sessions: SessionStoreService,
@@ -216,10 +219,36 @@ export class AuthService {
     const session = await this.sessions.getSession(payload.sid);
     if (!session || session.userId !== payload.sub) return null;
     await this.sessions.touchSession(payload.sid);
-    return this.userRepo.findOne({
+    const user = await this.userRepo.findOne({
       where: { id: payload.sub, isActive: true },
       relations: ['distributorProfile', 'client'],
     });
+    if (user) await this.applySystemCompanyAccess(user);
+    return user;
+  }
+
+  /**
+   * Admin panel manager: "Tizim foydalanuvchilari" da tanlangan tashkilotlar
+   * profil allow-list iga (faqat xotirada) qo'yiladi — barcha org filtrlari shundan o'qiydi.
+   * Natija bazaga saqlanmasligi kerak.
+   */
+  private async applySystemCompanyAccess(user: User): Promise<void> {
+    if (user.role !== UserRole.MANAGER) return;
+
+    let ids: string[] | null = null;
+    if (user.allCompanies) {
+      const companies = await this.companyRepo.find({ select: { id: true } });
+      ids = companies.map((c) => c.id);
+    } else if (Array.isArray(user.companyIds)) {
+      ids = user.companyIds;
+    }
+    if (ids === null) return;
+
+    if (!user.distributorProfile) {
+      user.distributorProfile = this.profileRepo.create({ userId: user.id });
+    }
+    user.distributorProfile.companyIds = ids;
+    user.distributorProfile.companyId = ids[0] ?? null;
   }
 
   decodeToken(token: string): { sub?: string; sid?: string } | null {
@@ -320,8 +349,12 @@ export class AuthService {
     sessionId: string,
     refreshJti: string,
   ): Promise<AuthResponseDto> {
-    const profile = user.distributorProfile
-      ?? await this.profileRepo.findOne({ where: { userId: user.id } });
+    if (!user.distributorProfile) {
+      user.distributorProfile =
+        (await this.profileRepo.findOne({ where: { userId: user.id } })) ?? undefined;
+    }
+    await this.applySystemCompanyAccess(user);
+    const profile = user.distributorProfile;
     const base: Omit<JwtPayload, 'jti' | 'typ'> = {
       sub: user.id,
       username: user.username,

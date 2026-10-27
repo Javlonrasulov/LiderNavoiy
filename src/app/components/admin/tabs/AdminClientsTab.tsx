@@ -1631,13 +1631,14 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             overflowY: 'auto',
           }}
         >
-          <table style={{ minWidth: showSalesCols ? 2800 : 2100, borderCollapse: 'collapse', width: '100%' }}>
+          <table style={{ minWidth: showSalesCols ? 2960 : 2260, borderCollapse: 'collapse', width: '100%' }}>
             <thead className={`sticky top-0 z-10 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>
               <tr className={`border-b ${D ? 'border-gray-700' : 'border-gray-200'}`}>
                 <th className={`${thCls} sticky left-0 z-20 ${D ? 'bg-gray-900' : 'bg-gray-50'}`}>{t.colCode}</th>
                 <th className={thCls}>{t.colClientName}</th>
                 <th className={thCls}>{t.colFullName}</th>
                 <th className={`${thCls} cursor-pointer`}>{t.colLine} <span className="ml-0.5 opacity-60">↕</span></th>
+                <th className={thCls}>{t.colAgent ?? 'Agent'}</th>
                 <th className={thCls}>{t.colCategory}</th>
                 <th className={thCls}>{t.colPriceCat}</th>
                 <th
@@ -1704,6 +1705,13 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     <td className={`${tdCls} font-semibold ${rowText} max-w-[160px] truncate`}>{c.name}</td>
                     <td className={`${tdCls} ${rowText} max-w-[160px] truncate`}>{c.fullName}</td>
                     <td className={`${tdCls} ${rowText} whitespace-nowrap`}>{c.line}</td>
+                    <td className={`${tdCls} ${rowText} max-w-[180px]`}>
+                      {c.agent ? (
+                        <span className="block truncate font-medium" title={c.agent}>{c.agent}</span>
+                      ) : (
+                        <span className={D ? 'text-gray-600' : 'text-gray-400'}>{t.noAgentLabel || 'Agentsiz'}</span>
+                      )}
+                    </td>
                     <td className={`${tdCls} ${rowText}`}>
                       <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap
                         ${clientTtClass(c) === 'VIP' || c.category === 'VIP' ? 'bg-purple-500/20 text-purple-400' :
@@ -1768,7 +1776,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               })}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={17 + (showSalesCols ? 5 : 0) + (listMode === 'trash' ? 1 : 0)} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
+                  <td colSpan={18 + (showSalesCols ? 5 : 0) + (listMode === 'trash' ? 1 : 0)} className={`text-center py-10 text-sm ${sub}`}>{listEmptyMessage}</td>
                 </tr>
               )}
             </tbody>

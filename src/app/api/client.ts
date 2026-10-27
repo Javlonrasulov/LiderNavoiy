@@ -38,6 +38,8 @@ export interface SystemUserRecord {
   role: string;
   position: string | null;
   permissions: string[];
+  companyIds: string[];
+  allCompanies: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
   isProtected: boolean;
@@ -680,6 +682,8 @@ export const api = {
     position?: string;
     role?: string;
     permissions?: string[];
+    companyIds?: string[];
+    allCompanies?: boolean;
     isActive?: boolean;
   }) =>
     request<SystemUserRecord>('/users/system', {
@@ -694,6 +698,8 @@ export const api = {
     position?: string;
     role?: string;
     permissions?: string[];
+    companyIds?: string[];
+    allCompanies?: boolean;
     isActive?: boolean;
   }) =>
     request<SystemUserRecord>(`/users/system/${id}`, {

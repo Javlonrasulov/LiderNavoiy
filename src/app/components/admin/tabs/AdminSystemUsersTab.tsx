@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { UserCog, Check, Pencil, Trash2, Plus, AlertCircle, Eye, EyeOff, ChevronDown, AlertTriangle } from 'lucide-react';
-import { api, type SystemUserRecord } from '../../../api/client';
+import { UserCog, Check, Pencil, Trash2, Plus, AlertCircle, Eye, EyeOff, ChevronDown, AlertTriangle, Building2 } from 'lucide-react';
+import { api, type BackendCompany, type SystemUserRecord } from '../../../api/client';
 import { ActiveSessionsPanel } from '../ActiveSessionsPanel';
 import {
   PAGE_PERMISSIONS,
@@ -24,6 +24,8 @@ interface FormState {
   password: string;
   position: string;
   permissions: Set<string>;
+  companyIds: Set<string>;
+  allCompanies: boolean;
 }
 
 const EMPTY_FORM: FormState = {
@@ -32,7 +34,15 @@ const EMPTY_FORM: FormState = {
   password: '',
   position: 'Operator',
   permissions: new Set(['dashboard']),
+  companyIds: new Set(),
+  allCompanies: false,
 };
+
+const emptyForm = (): FormState => ({
+  ...EMPTY_FORM,
+  permissions: new Set(EMPTY_FORM.permissions),
+  companyIds: new Set(),
+});
 
 function PositionSelect({
   value, onChange, options, placeholder, D, border, txt, muted, inputBg,
@@ -188,7 +198,8 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, permissions: new Set(EMPTY_FORM.permissions) });
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [companies, setCompanies] = useState<BackendCompany[]>([]);
   const [positions, setPositions] = useState(getAllPositions());
   const [newRole, setNewRole] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -219,9 +230,15 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  useEffect(() => {
+    api.getCompanies()
+      .then(setCompanies)
+      .catch(() => setCompanies([]));
+  }, []);
+
   const resetForm = () => {
     setEditId(null);
-    setForm({ ...EMPTY_FORM, permissions: new Set(EMPTY_FORM.permissions) });
+    setForm(emptyForm());
     setShowPass(false);
     setError('');
   };
@@ -234,6 +251,8 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
       password: '',
       position: u.position || 'Operator',
       permissions: new Set(u.role === 'admin' ? PAGE_PERMISSIONS.map(p => p.id) : u.permissions),
+      companyIds: new Set(u.companyIds ?? []),
+      allCompanies: u.role === 'admin' || !!u.allCompanies,
     });
     setError('');
     setShowPass(false);
@@ -259,6 +278,33 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
         : new Set(allPermIds),
     }));
   };
+
+  const isAdminPosition = form.position.toLowerCase() === 'admin';
+  const allCompaniesSelected = isAdminPosition || form.allCompanies;
+
+  const toggleCompany = (id: string) => {
+    if (isAdminPosition) return;
+    setForm(prev => {
+      const next = prev.allCompanies ? new Set(companies.map(c => c.id)) : new Set(prev.companyIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...prev, allCompanies: false, companyIds: next };
+    });
+  };
+
+  const toggleAllCompanies = () => {
+    if (isAdminPosition) return;
+    setForm(prev => ({ ...prev, allCompanies: !prev.allCompanies, companyIds: new Set() }));
+  };
+
+  const companyLabel = (ids: string[]) =>
+    ids
+      .map(id => {
+        const c = companies.find(x => x.id === id);
+        return c ? (c.shortName || c.name) : null;
+      })
+      .filter(Boolean)
+      .join(', ');
 
   const addCustomRole = () => {
     const name = newRole.trim();
@@ -286,18 +332,23 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
       setError(t.sysUserErrPasswordShort || 'Parol kamida 6 belgi');
       return;
     }
+    if (!allCompaniesSelected && form.companyIds.size === 0) {
+      setError(t.sysUserErrNoCompany || 'Kamida bitta tashkilot tanlang');
+      return;
+    }
 
     setSaving(true);
     setError('');
     try {
       const perms = Array.from(form.permissions);
-      const isAdminPos = form.position.toLowerCase() === 'admin';
       const body = {
         fullName: form.fullName.trim(),
         username: form.username.trim(),
         position: form.position,
         permissions: perms,
-        role: isAdminPos ? 'admin' as const : 'manager' as const,
+        allCompanies: allCompaniesSelected,
+        companyIds: allCompaniesSelected ? [] : Array.from(form.companyIds),
+        role: isAdminPosition ? 'admin' as const : 'manager' as const,
         ...(form.password.trim() ? { password: form.password.trim() } : {}),
       };
 
@@ -482,6 +533,91 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
               </div>
             </div>
 
+            {/* Organizations */}
+            <div>
+              <label style={{ ...labelStyle, marginBottom: 10 }}>
+                {t.sysUserCompaniesTitle || 'Tashkilotlar'}
+              </label>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                gap: 8,
+                maxHeight: 180,
+                overflowY: 'auto',
+                padding: 4,
+                opacity: isAdminPosition ? 0.7 : 1,
+              }}>
+                <button
+                  type="button"
+                  onClick={toggleAllCompanies}
+                  disabled={isAdminPosition}
+                  style={{
+                    gridColumn: '1 / -1',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', borderRadius: 8,
+                    cursor: isAdminPosition ? 'not-allowed' : 'pointer',
+                    border: `1px solid ${allCompaniesSelected ? indigo : border}`,
+                    background: allCompaniesSelected
+                      ? (D ? 'rgba(99,102,241,0.22)' : 'rgba(99,102,241,0.10)')
+                      : (D ? 'rgba(255,255,255,0.04)' : '#f3f4f6'),
+                    color: allCompaniesSelected ? (D ? '#a5b4fc' : indigo) : txt,
+                    fontSize: 12, fontWeight: 700,
+                    textAlign: 'left', transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                    border: `1.5px solid ${allCompaniesSelected ? indigo : border}`,
+                    background: allCompaniesSelected ? indigo : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {allCompaniesSelected && <Check size={10} color="#fff" strokeWidth={3} />}
+                  </span>
+                  {t.sysUserPermAll || 'Barchasi'}
+                </button>
+                {companies.map(c => {
+                  const checked = allCompaniesSelected || form.companyIds.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => toggleCompany(c.id)}
+                      disabled={isAdminPosition}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '8px 10px', borderRadius: 8,
+                        cursor: isAdminPosition ? 'not-allowed' : 'pointer',
+                        border: `1px solid ${checked ? indigo : border}`,
+                        background: checked
+                          ? (D ? 'rgba(99,102,241,0.18)' : 'rgba(99,102,241,0.08)')
+                          : (D ? 'rgba(255,255,255,0.03)' : '#f9fafb'),
+                        color: checked ? (D ? '#a5b4fc' : indigo) : muted,
+                        fontSize: 12, fontWeight: checked ? 600 : 400,
+                        textAlign: 'left', transition: 'all 0.15s', minWidth: 0,
+                      }}
+                    >
+                      <span style={{
+                        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                        border: `1.5px solid ${checked ? indigo : border}`,
+                        background: checked ? indigo : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {checked && <Check size={10} color="#fff" strokeWidth={3} />}
+                      </span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {c.shortName || c.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              {isAdminPosition && (
+                <p style={{ fontSize: 11, color: muted, margin: '6px 0 0', lineHeight: 1.5 }}>
+                  {t.sysUserCompaniesAdminHint || 'Admin barcha tashkilotlarni ko\'radi.'}
+                </p>
+              )}
+            </div>
+
             {/* Permissions grid */}
             <div>
               <label style={{ ...labelStyle, marginBottom: 10 }}>
@@ -618,6 +754,9 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
                 const permsText = u.role === 'admin'
                   ? (t.sysUserAllPerms || 'Barcha sahifalar')
                   : permissionLabels(u.permissions, t);
+                const companiesText = u.role === 'admin' || u.allCompanies
+                  ? (t.sysUserAllCompanies || 'Barcha tashkilotlar')
+                  : (companyLabel(u.companyIds ?? []) || (t.sysUserNoCompanies || 'Tashkilot tanlanmagan'));
                 const isEditing = editId === u.id;
                 return (
                   <div
@@ -638,6 +777,14 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
                         </div>
                         <div style={{ fontSize: 12, color: muted, marginBottom: 6 }}>
                           {u.username} · <span style={{ color: indigo, fontWeight: 600 }}>{u.position || u.role}</span>
+                        </div>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          fontSize: 11, color: txt, fontWeight: 500, marginBottom: 4,
+                          lineHeight: 1.5, wordBreak: 'break-word',
+                        }}>
+                          <Building2 size={12} color={indigo} style={{ flexShrink: 0 }} />
+                          {companiesText}
                         </div>
                         {permsText && (
                           <div style={{ fontSize: 11, color: muted, lineHeight: 1.5, wordBreak: 'break-word' }}>

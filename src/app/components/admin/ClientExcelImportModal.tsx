@@ -50,6 +50,7 @@ type ImportReport = {
   failed: number;
   aborted: boolean;
   files: number;
+  agentName?: string;
 };
 
 type MissingLinePrompt = {
@@ -73,7 +74,13 @@ type Props = {
   t?: Record<string, string>;
 };
 
-function importRowToDraft(row: ImportRow, companyId?: string): ClientRow {
+type ImportMode = 'general' | 'agent';
+
+function importRowToDraft(
+  row: ImportRow,
+  companyId?: string,
+  agent?: { id: string; name: string } | null,
+): ClientRow {
   const gps =
     row.lat != null && row.lng != null ? `${row.lat},${row.lng}` : '';
   const line =
@@ -95,7 +102,8 @@ function importRowToDraft(row: ImportRow, companyId?: string): ClientRow {
     contact: '',
     cls: row.clientClass || '',
     gps,
-    agent: '',
+    agent: agent?.name ?? '',
+    distributorId: agent?.id,
     balance: 0,
     category: row.clientClass || 'Standard',
     lastVisit: '',
@@ -196,6 +204,11 @@ export function ClientExcelImportModal({
   const [skipExactDuplicates, setSkipExactDuplicates] = useState(false);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [parseBusy, setParseBusy] = useState(false);
+  const [importMode, setImportMode] = useState<ImportMode>('general');
+  const [agentId, setAgentId] = useState('');
+  const selectedAgent = importMode === 'agent'
+    ? agents.find((a) => a.id === agentId) ?? null
+    : null;
 
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
 
@@ -493,6 +506,10 @@ export function ClientExcelImportModal({
       setError('Kamida 1 ta mijoz tanlang.');
       return;
     }
+    if (importMode === 'agent' && !selectedAgent) {
+      setError(tr('excelImportAgentRequired', 'Avval agentni tanlang'));
+      return;
+    }
     setBusy(true);
     setError(null);
     setFailedImports([]);
@@ -563,6 +580,7 @@ export function ClientExcelImportModal({
           lineCode,
           latitude: row.lat ?? undefined,
           longitude: row.lng ?? undefined,
+          ...(selectedAgent ? { distributorId: selectedAgent.id } : {}),
           ...(klassTt
             ? { clientClass: klassTt, category: klassTt }
             : { category: 'Standard' }),
@@ -596,6 +614,7 @@ export function ClientExcelImportModal({
         failed: failed.length,
         aborted,
         files: loadedFiles.length,
+        agentName: selectedAgent?.name,
       };
       setImportReport(report);
       if (created > 0) onDone();
@@ -609,7 +628,7 @@ export function ClientExcelImportModal({
 
   const openManualAdd = (item: FailedImport) => {
     setManualFailKey(item.row.key);
-    setManualDraft(importRowToDraft(item.row, companyId));
+    setManualDraft(importRowToDraft(item.row, companyId, selectedAgent));
   };
 
   const handleManualSave = async (
@@ -632,6 +651,7 @@ export function ClientExcelImportModal({
         companyId: rest.companyId || companyId,
         companyIds: rest.companyIds,
         lineCode: rest.line?.split(' - ')[0]?.trim() || rest.lineCode,
+        distributorId: rest.distributorId || selectedAgent?.id,
         clientClass: rest.cls,
         category: rest.category || rest.cls || 'Standard',
         phone: rest.phone,
@@ -713,6 +733,68 @@ export function ClientExcelImportModal({
         </div>
 
         <div className="px-5 py-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+          <div className={`grid grid-cols-2 gap-1 p-1 rounded-xl ${D ? 'bg-white/5' : 'bg-gray-100'}`}>
+            {([
+              { id: 'general' as const, label: tr('excelImportModeGeneral', 'Umumiy import') },
+              { id: 'agent' as const, label: tr('excelImportModeAgent', 'Agent uchun import') },
+            ]).map((m) => {
+              const active = importMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { setImportMode(m.id); setError(null); }}
+                  className={`h-9 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 ${
+                    active
+                      ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/25'
+                      : D ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-white'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className={`rounded-xl border px-3 py-2.5 text-xs leading-relaxed ${
+            D ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-100' : 'border-indigo-200 bg-indigo-50 text-indigo-900'
+          }`}>
+            {importMode === 'general'
+              ? tr(
+                'excelImportModeGeneralHint',
+                "Mijozlar agentsiz qo'shiladi. Liniya, Klass TT, manzil, telefon va GPS Excel'dan olinadi. Agentni keyin mijoz kartasida yoki liniya orqali biriktirasiz.",
+              )
+              : tr(
+                'excelImportModeAgentHint',
+                "Tanlangan agent Excel'dagi barcha yangi mijozlarga yoziladi — Excel'da agent ustuni bo'lmasa ham. Liniya, Klass TT, manzil, telefon va GPS Excel'dan olinadi. O'tkazib yuborilgan yoki mavjud mijozlarning agenti o'zgarmaydi.",
+              )}
+          </div>
+
+          {importMode === 'agent' && (
+            <div>
+              <label className={`block text-xs font-semibold mb-1.5 ${sub}`}>
+                {tr('excelImportAgentLabel', 'Agent')} *
+              </label>
+              <select
+                value={agentId}
+                disabled={busy}
+                onChange={(e) => { setAgentId(e.target.value); setError(null); }}
+                className={`w-full h-10 rounded-xl border px-3 text-sm outline-none focus:border-indigo-500 disabled:opacity-50 ${inp}`}
+              >
+                <option value="">{tr('excelImportAgentPlaceholder', 'Agentni tanlang')}</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.lineCode ? `${a.name} · ${a.lineCode}` : a.name}
+                  </option>
+                ))}
+              </select>
+              {agents.length === 0 && (
+                <p className={`text-xs mt-1.5 ${sub}`}>{tr('excelImportNoAgents', 'Agentlar topilmadi')}</p>
+              )}
+            </div>
+          )}
+
           <input
             ref={fileRef}
             type="file"
@@ -826,6 +908,11 @@ export function ClientExcelImportModal({
                 <li>
                   {tr('excelImportReportFiles', 'Fayllar')}: <b>{importReport.files}</b>
                 </li>
+                {importReport.agentName && (
+                  <li>
+                    {tr('excelImportReportAgent', 'Agent')}: <b>{importReport.agentName}</b>
+                  </li>
+                )}
                 <li>
                   {tr('excelImportReportCreated', "Qo'shildi")}: <b>{importReport.created}</b>
                 </li>
@@ -985,13 +1072,15 @@ export function ClientExcelImportModal({
           </button>
           <button
             type="button"
-            disabled={busy || parseBusy || selectedCount === 0}
+            disabled={busy || parseBusy || selectedCount === 0 || (importMode === 'agent' && !selectedAgent)}
             onClick={() => void runImport()}
             className="h-10 px-4 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
           >
             {busy
               ? tr('excelImportBusy', 'Yuklanmoqda…')
-              : `${tr('excelImportRun', 'Import')} (${selectedCount})`}
+              : selectedAgent
+                ? `${tr('excelImportRun', 'Import')} → ${selectedAgent.name} (${selectedCount})`
+                : `${tr('excelImportRun', 'Import')} (${selectedCount})`}
           </button>
         </div>
       </div>

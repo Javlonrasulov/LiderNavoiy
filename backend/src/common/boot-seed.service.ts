@@ -145,6 +145,16 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`users.deletedAt migrate: ${(err as Error).message}`);
     }
 
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS "companyIds" jsonb NULL,
+        ADD COLUMN IF NOT EXISTS "allCompanies" boolean NOT NULL DEFAULT false
+      `);
+    } catch (err) {
+      this.logger.warn(`users company access migrate: ${(err as Error).message}`);
+    }
+
     // clients.orderRadiusMeters: standart 100 → 50.
     // Eski 100 lar faqat BIR MARTA 50 ga o‘tkaziladi (marker jadvali orqali),
     // keyin ataylab 100 tanlangan radiuslar qayta o‘zgartirilmaydi.

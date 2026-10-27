@@ -253,6 +253,7 @@ export class UsersService {
   async findAllSystem(): Promise<SystemUserResponseDto[]> {
     const users = await this.userRepo.find({
       where: { role: In([UserRole.ADMIN, UserRole.MANAGER]) },
+      relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
     });
     return users.map((u) => this.toSystemDto(u));
@@ -270,6 +271,8 @@ export class UsersService {
           position: dto.position,
           role: dto.role,
           permissions: dto.permissions,
+          companyIds: dto.companyIds,
+          allCompanies: dto.allCompanies,
           isActive: dto.isActive ?? true,
         });
       }
@@ -277,6 +280,7 @@ export class UsersService {
     }
 
     const role = dto.role ?? UserRole.MANAGER;
+    const access = this.normalizeCompanyAccess(role, dto.allCompanies, dto.companyIds);
     const user = this.userRepo.create({
       username,
       passwordHash: await this.authService.hashPassword(dto.password),
@@ -284,6 +288,8 @@ export class UsersService {
       role,
       position: dto.position?.trim() || null,
       permissions: this.normalizePermissions(role, dto.permissions),
+      allCompanies: access.allCompanies,
+      companyIds: access.companyIds,
       isActive: dto.isActive ?? true,
     });
     const saved = await this.userRepo.save(user);
@@ -307,6 +313,19 @@ export class UsersService {
     if (dto.permissions !== undefined) {
       user.permissions = this.normalizePermissions(user.role, dto.permissions);
     }
+    if (
+      dto.role !== undefined ||
+      dto.allCompanies !== undefined ||
+      dto.companyIds !== undefined
+    ) {
+      const access = this.normalizeCompanyAccess(
+        user.role,
+        dto.allCompanies ?? user.allCompanies,
+        dto.companyIds ?? user.companyIds,
+      );
+      user.allCompanies = access.allCompanies;
+      user.companyIds = access.companyIds;
+    }
     if (dto.isActive !== undefined) user.isActive = dto.isActive;
     if (dto.password?.trim()) {
       user.passwordHash = await this.authService.hashPassword(dto.password);
@@ -314,6 +333,21 @@ export class UsersService {
 
     const saved = await this.userRepo.save(user);
     return this.toSystemDto(saved);
+  }
+
+  private normalizeCompanyAccess(
+    role: UserRole,
+    allCompanies?: boolean | null,
+    companyIds?: string[] | null,
+  ): { allCompanies: boolean; companyIds: string[] | null } {
+    if (role === UserRole.ADMIN || allCompanies) {
+      return { allCompanies: true, companyIds: null };
+    }
+    if (companyIds == null) return { allCompanies: false, companyIds: null };
+    return {
+      allCompanies: false,
+      companyIds: [...new Set(companyIds.map((id) => id?.trim()).filter(Boolean))],
+    };
   }
 
   async deactivateSystem(id: string): Promise<void> {
@@ -347,6 +381,13 @@ export class UsersService {
       role: user.role,
       position: user.position,
       permissions: user.permissions ?? [],
+      allCompanies: user.role === UserRole.ADMIN || !!user.allCompanies,
+      companyIds: Array.isArray(user.companyIds)
+        ? user.companyIds
+        : this.normalizeCompanyIds(
+            user.distributorProfile?.companyIds,
+            user.distributorProfile?.companyId,
+          ),
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       isProtected: this.isProtectedSystemUser(user),
