@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MonitorSmartphone, Trash2, RefreshCw } from 'lucide-react';
+import { MonitorSmartphone, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
 import { api } from '../../api/client';
 
 type SessionRow = {
@@ -49,6 +49,7 @@ export function ActiveSessionsPanel({
 }) {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -79,11 +80,22 @@ export function ActiveSessionsPanel({
 
   return (
     <div className={`${card} rounded-xl p-4 mb-4`}>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <MonitorSmartphone size={16} className="text-blue-500" />
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 min-w-0 items-center gap-2 text-left"
+        >
+          <MonitorSmartphone size={16} className="text-blue-500 shrink-0" />
           <h3 className="text-sm font-semibold">Faol qurilmalar / sessiyalar</h3>
-        </div>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-500">
+            {rows.length}
+          </span>
+          <ChevronDown
+            size={15}
+            className={`shrink-0 opacity-60 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
         <button
           type="button"
           onClick={() => void load()}
@@ -93,6 +105,8 @@ export function ActiveSessionsPanel({
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
+      {open && (
+      <div className="mt-3">
       <p className={`text-xs ${sub} mb-3`}>
         Boshqa qurilmadagi sessiyani o‘chirib, chiqarib yuborishingiz mumkin.
       </p>
@@ -155,6 +169,8 @@ export function ActiveSessionsPanel({
           );
         })}
       </ul>
+      </div>
+      )}
     </div>
   );
 }
