@@ -465,6 +465,15 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
         ? NO_AGENT_KEY
         : '';
 
+  const agentCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of clients) {
+      const key = c.agent || NO_AGENT_KEY;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  }, [clients]);
+
   const lineCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const c of clients) {
@@ -823,16 +832,18 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                         <button onClick={() => toggleSet(setClientAgentFilter, NO_AGENT_KEY)}
                           className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
                             ${clientAgentFilter.has(NO_AGENT_KEY) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
-                          <span className={clientAgentFilter.has(NO_AGENT_KEY) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}>{t.noAgentLabel || 'Agentsiz'}</span>
-                          {clientAgentFilter.has(NO_AGENT_KEY) && <Check size={11} className="ml-auto text-indigo-400" />}
+                          <span className={`flex-1 text-left ${clientAgentFilter.has(NO_AGENT_KEY) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{t.noAgentLabel || 'Agentsiz'}</span>
+                          {countBadge(agentCounts[NO_AGENT_KEY] ?? 0, '#6b7280')}
+                          {clientAgentFilter.has(NO_AGENT_KEY) && <Check size={11} className="text-indigo-400" />}
                         </button>
                       )}
                       {agentOptions.map(name => (
                         <button key={name} onClick={() => toggleSet(setClientAgentFilter, name)}
                           className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-colors text-xs
                             ${clientAgentFilter.has(name) ? D ? 'bg-white/10' : 'bg-indigo-50' : D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
-                          <span className={`truncate ${clientAgentFilter.has(name) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{name}</span>
-                          {clientAgentFilter.has(name) && <Check size={11} className="ml-auto text-indigo-400 flex-shrink-0" />}
+                          <span className={`truncate flex-1 text-left ${clientAgentFilter.has(name) ? D ? 'text-white font-medium' : 'text-indigo-700 font-medium' : ''}`}>{name}</span>
+                          {countBadge(agentCounts[name] ?? 0)}
+                          {clientAgentFilter.has(name) && <Check size={11} className="text-indigo-400 flex-shrink-0" />}
                         </button>
                       ))}
                       {agentOptions.length === 0 && !hasUnassignedAgents && (
@@ -1328,6 +1339,11 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
               title={t.agentFilterLabel || t.colAgent}
             >
               <span className="truncate">{quickAgentLabel}</span>
+              {quickAgentValue && (
+                <span className="tabular-nums text-[11px] font-bold px-1.5 py-0.5 rounded-lg bg-white/20 flex-shrink-0">
+                  {agentCounts[quickAgentValue] ?? 0}
+                </span>
+              )}
               <ChevronDown size={13} className={`flex-shrink-0 opacity-70 transition-transform ${quickOpen === 'agent' ? 'rotate-180' : ''}`} />
             </button>
             {quickOpen === 'agent' && (
@@ -1347,6 +1363,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     onClick={() => { setClientAgentFilter(new Set([NO_AGENT_KEY])); setQuickOpen(null); setClientPage(1); }}
                   >
                     <span className="flex-1 truncate">{t.noAgentLabel || 'Agentsiz'}</span>
+                    {countBadge(agentCounts[NO_AGENT_KEY] ?? 0, '#6b7280')}
                     {quickAgentValue === NO_AGENT_KEY && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
                   </button>
                 )}
@@ -1358,6 +1375,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                     onClick={() => { setClientAgentFilter(new Set([name])); setQuickOpen(null); setClientPage(1); }}
                   >
                     <span className="flex-1 truncate">{name}</span>
+                    {countBadge(agentCounts[name] ?? 0)}
                     {quickAgentValue === name && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
                   </button>
                 ))}

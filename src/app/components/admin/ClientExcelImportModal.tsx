@@ -80,6 +80,8 @@ type ImportReport = {
   aborted: boolean;
   files: number;
   agentName?: string;
+  /** Tanlanganlardan qayta ishlanmay qolganlari (to'xtatilganda) */
+  remaining: number;
 };
 
 type MissingLinePrompt = {
@@ -370,6 +372,8 @@ export function ClientExcelImportModal({
   const [mapping, setMapping] = useState<FieldMapping>(EMPTY_MAPPING);
   const [mappingStep, setMappingStep] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  /** Shu oynada import qilingan / o'tkazilgan qatorlar — qayta moslashda qaytib chiqmasin */
+  const [importedKeys, setImportedKeys] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<ColumnDrag | null>(null);
   const [picked, setPicked] = useState<ColumnDrag | null>(null);
   const [dropTarget, setDropTarget] = useState<FieldKey | 'pool' | null>(null);
@@ -706,7 +710,7 @@ export function ClientExcelImportModal({
       setError(tr('excelImportMapNameRequired', '«Nomi» maydoniga Excel ustunini belgilang.'));
       return;
     }
-    const built = buildRowsFromMapping(sheets, mapping, lines);
+    const built = buildRowsFromMapping(sheets, mapping, lines).filter((r) => !importedKeys.has(r.key));
     if (built.length === 0) {
       setError(tr('excelImportNoRows', "Excel'da mijoz qatorlari topilmadi."));
       return;
@@ -721,6 +725,7 @@ export function ClientExcelImportModal({
   const clearLoaded = () => {
     setRows([]);
     setSheets([]);
+    setImportedKeys(new Set());
     setMappingStep(false);
     setPicked(null);
     setLoadedFiles([]);
@@ -824,6 +829,8 @@ export function ClientExcelImportModal({
     let skippedSimilar = 0;
     let aborted = false;
     const failed: FailedImport[] = [];
+    // Qayta ishlangan qatorlar (qo'shilgan / o'tkazilgan / xato) ro'yxatdan olinadi
+    const processed = new Set<string>();
     try {
       const lineMap = await resolveLinesForImport(selected);
       let known = [...existingClients];
@@ -844,6 +851,7 @@ export function ClientExcelImportModal({
           // 100% bir xillik — ixtiyoriy avtomatik o'tkazish
           if (skipExactDuplicates && match.overallPct >= 100) {
             skippedExact += 1;
+            processed.add(row.key);
             continue;
           }
           const decision = await askSimilarity(match, {
@@ -856,6 +864,7 @@ export function ClientExcelImportModal({
             break;
           }
           if (decision === 'skip') {
+            processed.add(row.key);
             if (match.overallPct >= 100) {
               skippedExact += 1;
             } else {
@@ -909,12 +918,14 @@ export function ClientExcelImportModal({
             row,
             error: msg.replace(/^HTTP \d+:\s*/i, '') || 'Xato',
           });
+          processed.add(row.key);
           setProgress(`${i + 1}/${selected.length}: xato — ${row.name}`);
           if (i + 1 < selected.length) await sleep(120);
           continue;
         }
         known = [...known, saved];
         created += 1;
+        processed.add(row.key);
         if (i + 1 < selected.length) await sleep(80);
       }
 
@@ -927,6 +938,7 @@ export function ClientExcelImportModal({
         aborted,
         files: loadedFiles.length,
         agentName: selectedAgent?.name,
+        remaining: selected.length - processed.size,
       };
       setImportReport(report);
       if (created > 0) onDone();
@@ -934,6 +946,10 @@ export function ClientExcelImportModal({
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import xatosi');
     } finally {
+      if (processed.size > 0) {
+        setRows((prev) => prev.filter((r) => !processed.has(r.key)));
+        setImportedKeys((prev) => new Set([...prev, ...processed]));
+      }
       setBusy(false);
     }
   };
@@ -1594,7 +1610,24 @@ export function ClientExcelImportModal({
                 <li>
                   {tr('excelImportReportFailed', "Qo'lda / xato")}: <b>{importReport.failed}</b>
                 </li>
+                {importReport.remaining > 0 && (
+                  <li>
+                    {tr('excelImportReportRemaining', 'Qolgan (import qilinmagan)')}:{' '}
+                    <b>{importReport.remaining}</b>
+                  </li>
+                )}
               </ul>
+              <p className={`text-xs font-medium ${D ? 'text-emerald-200/80' : 'text-emerald-800'}`}>
+                {importReport.remaining > 0
+                  ? tr(
+                      'excelImportReportContinueHint',
+                      "Qo'shilgan va o'tkazilgan qatorlar ro'yxatdan olindi. Pastda qolganlari turibdi — davom ettirish uchun «Davom ettirish» tugmasini bosing.",
+                    )
+                  : tr(
+                      'excelImportReportDoneHint',
+                      "Barcha tanlangan qatorlar qayta ishlandi. Oynani yopishingiz mumkin.",
+                    )}
+              </p>
             </div>
           )}
 
@@ -1763,9 +1796,11 @@ export function ClientExcelImportModal({
           >
             {busy
               ? tr('excelImportBusy', 'Yuklanmoqda…')
-              : selectedAgent
-                ? `${tr('excelImportRun', 'Import')} → ${selectedAgent.name} (${selectedCount})`
-                : `${tr('excelImportRun', 'Import')} (${selectedCount})`}
+              : `${
+                  importReport?.remaining
+                    ? tr('excelImportContinue', 'Davom ettirish')
+                    : tr('excelImportRun', 'Import')
+                }${selectedAgent ? ` → ${selectedAgent.name}` : ''} (${selectedCount})`}
           </button>
         </div>
       </div>
@@ -1898,6 +1933,7 @@ export function ClientExcelImportModal({
           onCancel={() => finishSimilarity('skip')}
           onConfirm={() => finishSimilarity('add')}
           onClose={() => finishSimilarity('abort')}
+          closeOnOverlay={false}
           title={tr('excelImportDupTitle', "O'xshash mijoz topildi")}
           confirmLabel={tr('excelImportDupConfirm', "Baribir qo'shish")}
           cancelLabel={tr('excelImportDupSkip', "O'tkazib yuborish")}

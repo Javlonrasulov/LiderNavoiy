@@ -35,6 +35,8 @@ type Props = {
   onConfirm: () => void;
   /** X / overlay — dialogni yopish (importni to‘xtatish). Berilmasa onCancel */
   onClose?: () => void;
+  /** false — fon bosilganda yopilmaydi (tasodifiy to'xtatishning oldini olish) */
+  closeOnOverlay?: boolean;
   title?: string;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -52,6 +54,7 @@ export function ClientSimilarityWarningModal({
   onCancel,
   onConfirm,
   onClose,
+  closeOnOverlay = true,
   title,
   confirmLabel,
   cancelLabel,
@@ -134,7 +137,9 @@ export function ClientSimilarityWarningModal({
     <div
       className="fixed inset-0 z-[400] flex items-center justify-center p-4"
       style={{ backdropFilter: 'blur(6px)', backgroundColor: 'rgba(0,0,0,0.55)' }}
-      onClick={closeOnly}
+      onClick={() => {
+        if (closeOnOverlay) closeOnly();
+      }}
     >
       <div
         className={`relative w-full max-w-md rounded-2xl border shadow-2xl p-5 sm:p-6 ${
