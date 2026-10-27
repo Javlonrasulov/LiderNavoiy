@@ -382,13 +382,11 @@ export function AdminDostavkaTab({ D, t, selectedCompanyIds, showBalances }: Pro
       if (editEmp.backendUserId && hasApiToken()) {
         await api.updateAppUser(editEmp.backendUserId, {
           fullName: form.name.trim(),
-          position: 'delivery',
         });
       }
       if (editEmp.distributorId && hasApiToken()) {
         await api.updateDistributor(editEmp.distributorId, {
           phone: form.phone.trim() || undefined,
-          position: 'delivery',
         });
       }
       await refresh();

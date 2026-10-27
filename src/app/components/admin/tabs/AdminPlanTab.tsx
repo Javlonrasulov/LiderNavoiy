@@ -32,8 +32,9 @@ function nameInitials(name: string): string {
   return name.split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || 'AG';
 }
 
-function isDeliveryPosition(position?: string | null): boolean {
+function isPureDeliveryPosition(position?: string | null): boolean {
   const p = (position ?? '').toLowerCase();
+  if (p.includes('agent+delivery')) return false;
   return p.includes('delivery') || p.includes('yetkaz') || p.includes('kuryer')
     || p.includes('dostav') || p.includes('haydov');
 }
@@ -2791,7 +2792,7 @@ export function AdminPlanTab({ D, activeAgents, selectedCompanyIds, showBalances
       const filtered = distributors.filter(d => {
         if (!d.user) return false;
         if (d.user.isActive === false) return false;
-        if (isDeliveryPosition(d.position)) return false;
+        if (isPureDeliveryPosition(d.position)) return false;
         if (selectedCompanyIds.size > 0 && d.companyId && !selectedCompanyIds.has(d.companyId)) return false;
         return true;
       });

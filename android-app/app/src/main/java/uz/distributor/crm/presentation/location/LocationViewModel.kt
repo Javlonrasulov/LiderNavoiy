@@ -46,6 +46,7 @@ class LocationViewModel @Inject constructor(
     val uiState: StateFlow<LocationUiState> = _uiState.asStateFlow()
 
     private var isDeliveryUser: Boolean = false
+    private var isAgentToo: Boolean = false
 
     val darkMode: StateFlow<Boolean> = appSettingsRepository.darkMode.stateIn(
         scope = viewModelScope,
@@ -58,6 +59,7 @@ class LocationViewModel @Inject constructor(
         viewModelScope.launch {
             authRepository.getUserFlow().collect { user ->
                 isDeliveryUser = user?.isDeliveryPerson() == true
+                isAgentToo = user?.isAgentAndDelivery() == true
             }
         }
         viewModelScope.launch {
@@ -92,8 +94,7 @@ class LocationViewModel @Inject constructor(
             val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
             val daysByLine = VisitSchedule.buildDaysByLineCode(
                 lines.map { line ->
-                    val days = if (isDeliveryUser) line.daysForDelivery() else line.daysForAgent()
-                    line.code to days
+                    line.code to line.daysFor(isDeliveryUser, isAgentToo)
                 },
             )
             val clients = clientRepository.getClients(forceRefresh = true)

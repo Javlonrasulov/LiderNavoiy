@@ -7,7 +7,14 @@ import {
   Index,
 } from 'typeorm';
 
-export type PositionAppAccess = 'agent' | 'delivery' | 'manager';
+export type PositionAppAccess = 'agent' | 'delivery' | 'agent_delivery' | 'manager';
+
+export const POSITION_APP_ACCESS: PositionAppAccess[] = [
+  'agent',
+  'delivery',
+  'agent_delivery',
+  'manager',
+];
 
 @Entity('staff_positions')
 @Index(['code'], { unique: true })
@@ -21,7 +28,7 @@ export class StaffPosition {
   @Column()
   name: string;
 
-  /** agent | delivery | manager */
+  /** agent | delivery | agent_delivery | manager */
   @Column({ type: 'varchar', length: 32, default: 'agent' })
   appAccess: PositionAppAccess;
 

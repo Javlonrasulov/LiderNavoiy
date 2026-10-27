@@ -51,7 +51,10 @@ fun ProfileScreen(
     val (firstName, lastName) = remember(user?.fullName) {
         splitFullName(user?.fullName ?: "")
     }
-    val position = user?.position?.takeIf { it.isNotBlank() }
+    val position = user?.position
+        ?.replace(Regex("""\s*·\s*(agent\+)?delivery\s*$""", RegexOption.IGNORE_CASE), "")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
         ?: if (user?.isDeliveryPerson() == true) {
             AppStrings.deliveryPosition(lang)
         } else {

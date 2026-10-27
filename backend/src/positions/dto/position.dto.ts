@@ -8,7 +8,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { PositionAppAccess } from '../entities/staff-position.entity';
+import {
+  POSITION_APP_ACCESS,
+  type PositionAppAccess,
+} from '../entities/staff-position.entity';
 
 export class CreatePositionDto {
   @ApiPropertyOptional({ example: 1 })
@@ -23,8 +26,8 @@ export class CreatePositionDto {
   @MinLength(1)
   name: string;
 
-  @ApiProperty({ example: 'agent', enum: ['agent', 'delivery', 'manager'] })
-  @IsIn(['agent', 'delivery', 'manager'])
+  @ApiProperty({ example: 'agent', enum: POSITION_APP_ACCESS })
+  @IsIn(POSITION_APP_ACCESS)
   appAccess: PositionAppAccess;
 }
 
@@ -42,9 +45,9 @@ export class UpdatePositionDto {
   @MinLength(1)
   name?: string;
 
-  @ApiPropertyOptional({ enum: ['agent', 'delivery', 'manager'] })
+  @ApiPropertyOptional({ enum: POSITION_APP_ACCESS })
   @IsOptional()
-  @IsIn(['agent', 'delivery', 'manager'])
+  @IsIn(POSITION_APP_ACCESS)
   appAccess?: PositionAppAccess;
 
   @ApiPropertyOptional()

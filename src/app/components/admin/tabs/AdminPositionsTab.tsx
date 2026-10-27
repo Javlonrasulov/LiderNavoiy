@@ -11,7 +11,25 @@ interface Props {
   t: Record<string, string>;
 }
 
-const ACCESS_OPTIONS: PositionAppAccess[] = ['agent', 'delivery', 'manager'];
+type AccessOption = 'agent' | 'delivery' | 'manager';
+
+const ACCESS_OPTIONS: AccessOption[] = ['agent', 'delivery', 'manager'];
+
+function isOptionActive(value: PositionAppAccess, opt: AccessOption): boolean {
+  if (opt === 'manager') return value === 'manager';
+  return value === opt || value === 'agent_delivery';
+}
+
+/** Agent va dostavchik birga tanlanishi mumkin; manager alohida. */
+function toggleAccess(value: PositionAppAccess, opt: AccessOption): PositionAppAccess {
+  if (opt === 'manager' || value === 'manager') return opt;
+  const agent = isOptionActive(value, 'agent') !== (opt === 'agent');
+  const delivery = isOptionActive(value, 'delivery') !== (opt === 'delivery');
+  if (agent && delivery) return 'agent_delivery';
+  if (agent) return 'agent';
+  if (delivery) return 'delivery';
+  return value;
+}
 
 export function AdminPositionsTab({ D, t }: Props) {
   const [rows, setRows] = useState<BackendStaffPosition[]>([]);
@@ -61,6 +79,7 @@ export function AdminPositionsTab({ D, t }: Props) {
   const red = '#ef4444';
 
   const accessLabel = (a: PositionAppAccess) => {
+    if (a === 'agent_delivery') return t.posAccessAgentDelivery || 'Agent ilova · agent + dostavchik';
     if (a === 'delivery') return t.posAccessDelivery || 'Agent ilova · dostavchik';
     if (a === 'manager') return t.posAccessManager || 'Manager ilova';
     return t.posAccessAgent || 'Agent ilova · agent';
@@ -158,12 +177,13 @@ export function AdminPositionsTab({ D, t }: Props) {
   }: { value: PositionAppAccess; onChange: (v: PositionAppAccess) => void }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {ACCESS_OPTIONS.map(opt => {
-        const active = value === opt;
+        const active = isOptionActive(value, opt);
+        const checkbox = opt !== 'manager';
         return (
           <button
             key={opt}
             type="button"
-            onClick={() => onChange(opt)}
+            onClick={() => onChange(toggleAccess(value, opt))}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 12px', borderRadius: 10, textAlign: 'left',
@@ -176,16 +196,30 @@ export function AdminPositionsTab({ D, t }: Props) {
               cursor: 'pointer',
             }}
           >
-            <span style={{
-              width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
-              border: `2px solid ${active ? indigo : (D ? '#4b5563' : '#d1d5db')}`,
-              background: active ? indigo : 'transparent',
-              boxShadow: active ? 'inset 0 0 0 3px ' + (D ? '#161616' : '#fff') : 'none',
-            }} />
+            {checkbox ? (
+              <span style={{
+                width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                border: `2px solid ${active ? indigo : (D ? '#4b5563' : '#d1d5db')}`,
+                background: active ? indigo : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {active && <Check size={10} color="#fff" strokeWidth={3} />}
+              </span>
+            ) : (
+              <span style={{
+                width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                border: `2px solid ${active ? indigo : (D ? '#4b5563' : '#d1d5db')}`,
+                background: active ? indigo : 'transparent',
+                boxShadow: active ? 'inset 0 0 0 3px ' + (D ? '#161616' : '#fff') : 'none',
+              }} />
+            )}
             {accessLabel(opt)}
           </button>
         );
       })}
+      <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>
+        {t.posAccessBothHint || 'Agent va dostavchik ikkalasi belgilansa — xodim buyurtma ham oladi, yetkazib ham beradi.'}
+      </div>
     </div>
   );
 

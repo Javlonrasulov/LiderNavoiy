@@ -20,6 +20,7 @@ import { MiniBarChart } from '../../MiniCharts';
 import { api, type Distributor } from '../../../api/client';
 import { formatUzPhoneInput, UZ_PHONE_DEFAULT } from '../../../utils/phoneFormat';
 import { isGpsLiveOnline } from '../../../utils/gpsOnline';
+import { isAgentStaff } from '../../../utils/positionsStore';
 import { fetchDayTrack, emptyDayTrack, tashkentDate, type DayTrack, type PointStatus } from '../../../utils/agentTracking';
 
 interface Props {
@@ -219,6 +220,7 @@ export function AdminSotrudnikiTab({ D, card, divider, sub, t, activeAgents, sel
       const filtered = distributors.filter(d => {
         if (!d.user) return false;
         if (d.user.isActive === false) return false;
+        if (!isAgentStaff(d.position, d.user.username)) return false;
         if (selectedCompanyIds.size > 0 && d.companyId && !selectedCompanyIds.has(d.companyId)) return false;
         return true;
       });

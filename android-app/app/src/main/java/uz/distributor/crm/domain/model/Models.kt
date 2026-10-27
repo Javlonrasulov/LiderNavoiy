@@ -10,6 +10,8 @@ data class AuthUser(
     val position: String? = null,
     /** Backend `isDelivery` (login/refresh); null = eski sessiya → position fallback */
     val isDelivery: Boolean? = null,
+    /** Backend `isAgent`: buyurtma oladi (agent yoki agent+dostavchik) */
+    val isAgent: Boolean? = null,
     /** Backend kompaniya flagi; null/false = mijoz qo‘shish taqiqlangan */
     val agentsCanAddClients: Boolean? = null,
 ) {
@@ -17,6 +19,13 @@ data class AuthUser(
     fun isDeliveryPerson(): Boolean {
         isDelivery?.let { return it }
         return isDeliveryPosition(position)
+    }
+
+    /** Lavozimda agent va dostavchik ikkalasi tanlangan. */
+    fun isAgentAndDelivery(): Boolean {
+        if (!isDeliveryPerson()) return false
+        isAgent?.let { return it }
+        return (position ?: "").lowercase().contains("agent+delivery")
     }
 
     fun canAddClients(): Boolean = agentsCanAddClients == true

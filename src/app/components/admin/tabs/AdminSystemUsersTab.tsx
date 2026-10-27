@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { UserCog, Check, Pencil, Trash2, Plus, AlertCircle, Eye, EyeOff, ChevronDown, AlertTriangle, Building2 } from 'lucide-react';
+import { UserCog, Check, Pencil, Trash2, Plus, AlertCircle, Eye, EyeOff, ChevronDown, AlertTriangle, Building2, X } from 'lucide-react';
 import { api, type BackendCompany, type SystemUserRecord } from '../../../api/client';
 import { ActiveSessionsPanel } from '../ActiveSessionsPanel';
 import {
@@ -198,6 +198,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [companies, setCompanies] = useState<BackendCompany[]>([]);
   const [positions, setPositions] = useState(getAllPositions());
@@ -243,8 +244,19 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
     setError('');
   };
 
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openNewForm = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
   const startEdit = (u: SystemUserRecord) => {
     setEditId(u.id);
+    setFormOpen(true);
     setForm({
       fullName: u.fullName,
       username: u.username,
@@ -357,7 +369,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
       } else {
         await api.createSystemUser({ ...body, password: form.password.trim() });
       }
-      resetForm();
+      closeForm();
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.sysUserErrSave || 'Saqlashda xatolik');
@@ -372,7 +384,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
     setError('');
     try {
       await api.deactivateSystemUser(deleteTarget.id);
-      if (editId === deleteTarget.id) resetForm();
+      if (editId === deleteTarget.id) closeForm();
       setDeleteTarget(null);
       await refresh();
     } catch (e) {
@@ -397,7 +409,11 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
     <div style={{ width: '100%', minWidth: 0 }}>
       <ActiveSessionsPanel card={card} sub={sub} />
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{
+        marginBottom: 20, display: 'flex', alignItems: 'flex-start',
+        justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+      }}>
+        <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
@@ -413,22 +429,65 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
         <p style={{ fontSize: 13, color: muted, margin: '0 0 0 46px' }}>
           {t.sysUserSubtitle || 'Login qiladigan xodimlar va ularning huquqlari'}
         </p>
+        </div>
+        {!formOpen && (
+          <button
+            type="button"
+            onClick={openNewForm}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '10px 16px', borderRadius: 12, border: 'none',
+              background: indigo, color: '#fff', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', boxShadow: '0 4px 14px rgba(99,102,241,0.30)',
+            }}
+          >
+            <Plus size={15} /> {t.sysUserNewTitle || 'Yangi foydalanuvchi'}
+          </button>
+        )}
       </div>
+
+      {!formOpen && error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+          borderRadius: 10, marginBottom: 14,
+          background: D ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${D ? 'rgba(239,68,68,0.25)' : 'rgba(239,68,68,0.20)'}`,
+          color: '#ef4444', fontSize: 12,
+        }}>
+          <AlertCircle size={14} style={{ flexShrink: 0 }} />
+          {error}
+        </div>
+      )}
 
       {/* Two columns */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+        gridTemplateColumns: formOpen ? 'minmax(0, 1fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
         gap: 20,
         alignItems: 'start',
       }}
       className="sys-users-grid"
       >
         {/* LEFT — Form */}
+        {formOpen && (
         <div className={`rounded-2xl border p-5 ${card}`} style={{ minWidth: 0 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: txt, margin: '0 0 16px' }}>
-            {editId ? (t.sysUserEditTitle || 'Tahrirlash') : (t.sysUserNewTitle || 'Yangi foydalanuvchi')}
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '0 0 16px' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: txt, margin: 0 }}>
+              {editId ? (t.sysUserEditTitle || 'Tahrirlash') : (t.sysUserNewTitle || 'Yangi foydalanuvchi')}
+            </h3>
+            <button
+              type="button"
+              onClick={closeForm}
+              title={t.cancel || 'Bekor qilish'}
+              style={{
+                width: 30, height: 30, borderRadius: 8, border: `1px solid ${border}`,
+                background: inputBg, color: muted, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
 
           {error && (
             <div style={{
@@ -694,23 +753,20 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
 
             {/* Submit */}
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              {editId && (
-                <button
-                  onClick={resetForm}
-                  style={{
-                    flex: 1, padding: '12px', borderRadius: 12, border: `1px solid ${border}`,
-                    background: 'transparent', color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                  }}
-                >
-                  {t.cancel || 'Bekor qilish'}
-                </button>
-              )}
+              <button
+                onClick={closeForm}
+                style={{
+                  flex: 1, padding: '12px', borderRadius: 12, border: `1px solid ${border}`,
+                  background: 'transparent', color: muted, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                {t.cancel || 'Bekor qilish'}
+              </button>
               <button
                 onClick={handleSubmit}
                 disabled={saving}
                 style={{
-                  flex: editId ? 1 : undefined,
-                  width: editId ? undefined : '100%',
+                  flex: 1,
                   padding: '12px', borderRadius: 12, border: 'none',
                   background: saving ? (D ? '#374151' : '#d1d5db') : indigo,
                   color: '#fff', fontSize: 14, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
@@ -726,6 +782,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
             </div>
           </div>
         </div>
+        )}
 
         {/* RIGHT — User list */}
         <div className={`rounded-2xl border p-5 ${card}`} style={{ minWidth: 0 }}>

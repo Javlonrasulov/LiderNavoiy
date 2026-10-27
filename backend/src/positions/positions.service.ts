@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { positionPayloadForAccess } from '../common/staff-role.util';
+import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import {
   PositionAppAccess,
   StaffPosition,
@@ -32,6 +34,8 @@ export class PositionsService implements OnModuleInit {
   constructor(
     @InjectRepository(StaffPosition)
     private readonly repo: Repository<StaffPosition>,
+    @InjectRepository(DistributorProfile)
+    private readonly profileRepo: Repository<DistributorProfile>,
   ) {}
 
   async onModuleInit() {
@@ -99,10 +103,19 @@ export class PositionsService implements OnModuleInit {
       }
       row.code = dto.code;
     }
+    const prevName = row.name;
+    const prevAccess = row.appAccess;
     if (dto.name !== undefined) row.name = dto.name.trim();
     if (dto.appAccess !== undefined) row.appAccess = dto.appAccess;
     if (dto.isActive !== undefined) row.isActive = dto.isActive;
-    return this.toDto(await this.repo.save(row));
+    const saved = await this.repo.save(row);
+    if (saved.name !== prevName || saved.appAccess !== prevAccess) {
+      await this.profileRepo.update(
+        { positionId: saved.id },
+        { position: positionPayloadForAccess(saved.name, saved.appAccess) },
+      );
+    }
+    return this.toDto(saved);
   }
 
   async remove(id: string) {

@@ -38,13 +38,16 @@ class ClientsViewModel @Inject constructor(
     private var allClients: List<Client> = emptyList()
     private var daysByLineCode: Map<String, List<Int>> = emptyMap()
     private var isDeliveryUser: Boolean = false
+    private var isAgentToo: Boolean = false
 
     init {
         viewModelScope.launch {
             authRepository.getUserFlow().collect { user ->
                 val delivery = user?.isDeliveryPerson() == true
-                val roleChanged = delivery != isDeliveryUser
+                val agentToo = user?.isAgentAndDelivery() == true
+                val roleChanged = delivery != isDeliveryUser || agentToo != isAgentToo
                 isDeliveryUser = delivery
+                isAgentToo = agentToo
                 _uiState.update { it.copy(canAddClients = user?.canAddClients() == true) }
                 if (roleChanged && allClients.isNotEmpty()) {
                     loadClients(force = false)
@@ -88,8 +91,7 @@ class ClientsViewModel @Inject constructor(
                 val lines = runCatching { clientRepository.getLines() }.getOrDefault(emptyList())
                 daysByLineCode = VisitSchedule.buildDaysByLineCode(
                     lines.map { line ->
-                        val days = if (isDeliveryUser) line.daysForDelivery() else line.daysForAgent()
-                        line.code to days
+                        line.code to line.daysFor(isDeliveryUser, isAgentToo)
                     },
                 )
                 allClients = clientRepository.getClients(force)

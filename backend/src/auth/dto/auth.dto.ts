@@ -98,6 +98,8 @@ export class AuthResponseDto {
     position?: string | null;
     /** true = dostavkachi (position bo‘yicha); faqat distributor uchun */
     isDelivery?: boolean;
+    /** true = buyurtma oladi (agent yoki agent+dostavchik) */
+    isAgent?: boolean;
     permissions?: string[] | null;
     distributorId?: string;
     companyId?: string;

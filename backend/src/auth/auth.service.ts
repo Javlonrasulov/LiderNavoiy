@@ -16,7 +16,7 @@ import { DistributorProfile } from '../distributors/entities/distributor-profile
 import { Company } from '../companies/entities/company.entity';
 import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
-import { isDeliveryPosition } from '../common/staff-role.util';
+import { isAgentPosition, isDeliveryPosition } from '../common/staff-role.util';
 import { SessionStoreService } from './session-store.service';
 import { LoginSecurityService } from './login-security.service';
 
@@ -406,6 +406,10 @@ export class AuthService {
         isDelivery:
           user.role === UserRole.DISTRIBUTOR
             ? isDeliveryPosition(effectivePosition)
+            : false,
+        isAgent:
+          user.role === UserRole.DISTRIBUTOR
+            ? isAgentPosition(effectivePosition)
             : false,
         permissions: user.permissions,
         distributorId: profile?.id,

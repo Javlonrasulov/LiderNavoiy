@@ -33,6 +33,7 @@ export function removeStoredAppPassword(username: string) {
 }
 
 import type { AppUserRecord, Distributor } from '../api/client';
+import { stripPositionMarker } from './positionsStore';
 import type { SotrudnikRow } from '../data/adminData';
 import { formatDisplayDateTime } from './dateFormat';
 
@@ -251,9 +252,7 @@ export function appUserToRow(
     ),
   ];
   const orgLabel = app.companyName || (companyIds.length ? companyIds.join(', ') : '');
-  const positionLabel = (app.position || '')
-    .replace(/\s*·\s*delivery\s*$/i, '')
-    .trim();
+  const positionLabel = stripPositionMarker(app.position || '');
   const isManager =
     app.role === 'MANAGER' ||
     /menejer|manager|директор|direktor/i.test(positionLabel);
@@ -358,7 +357,7 @@ export function appUserToSotrudnikRow(
     'office';
 
   const rawPosition = (app.position ?? distributor?.position ?? '').trim();
-  const displayPosition = rawPosition.replace(/\s*·\s*delivery\s*$/i, '').trim();
+  const displayPosition = stripPositionMarker(rawPosition);
 
   return {
     tabel: index,

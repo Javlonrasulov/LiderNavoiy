@@ -78,7 +78,7 @@ export interface AppUserRecord {
   phone?: string | null;
 }
 
-export type PositionAppAccess = 'agent' | 'delivery' | 'manager';
+export type PositionAppAccess = 'agent' | 'delivery' | 'agent_delivery' | 'manager';
 
 export interface BackendDepartment {
   id: string;

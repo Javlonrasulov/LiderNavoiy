@@ -45,6 +45,7 @@ data class UserDto(
     val companyName: String?,
     val position: String? = null,
     val isDelivery: Boolean? = null,
+    val isAgent: Boolean? = null,
     /** Kompaniya sozlamasi — default false / null = ruxsat yo‘q */
     val agentsCanAddClients: Boolean? = null,
 )
@@ -249,6 +250,12 @@ data class LineDto(
 
     fun daysForDelivery(): List<Int> =
         deliveryVisitDays.ifEmpty { visitDays }
+
+    fun daysFor(delivery: Boolean, agentToo: Boolean): List<Int> = when {
+        delivery && agentToo -> (daysForAgent() + daysForDelivery()).distinct().sorted()
+        delivery -> daysForDelivery()
+        else -> daysForAgent()
+    }
 }
 
 data class ClientPhotoUploadDto(

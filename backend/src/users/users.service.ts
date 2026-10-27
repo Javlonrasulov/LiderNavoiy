@@ -9,7 +9,7 @@ import { User } from '../auth/entities/user.entity';
 import { UserLoginDevice } from '../auth/entities/user-login-device.entity';
 import { AuthService } from '../auth/auth.service';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
-import { In, IsNull } from 'typeorm';
+import { In, IsNull, Not } from 'typeorm';
 import { DistributorStatus, UserRole } from '../common/enums';
 import { RedisService } from '../common/redis/redis.service';
 import {
@@ -208,10 +208,10 @@ export class UsersService {
 
   async findAllApp(): Promise<AppUserResponseDto[]> {
     const users = await this.userRepo.find({
-      where: {
-        role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]),
-        deletedAt: IsNull(),
-      },
+      where: [
+        { role: UserRole.DISTRIBUTOR, deletedAt: IsNull() },
+        { role: UserRole.MANAGER, permissions: IsNull(), deletedAt: IsNull() },
+      ],
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
     });
@@ -252,7 +252,11 @@ export class UsersService {
 
   async findAllSystem(): Promise<SystemUserResponseDto[]> {
     const users = await this.userRepo.find({
-      where: { role: In([UserRole.ADMIN, UserRole.MANAGER]) },
+      where: [
+        { role: UserRole.ADMIN, deletedAt: IsNull() },
+        // Web panel manager — permissions bor; mobil ilova menejerlarida null
+        { role: UserRole.MANAGER, permissions: Not(IsNull()), deletedAt: IsNull() },
+      ],
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
     });
