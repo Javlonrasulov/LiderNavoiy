@@ -40,6 +40,6 @@ function jwtSecret(config: ConfigService): string {
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, SessionStoreService, LoginSecurityService],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, JwtModule, SessionStoreService],
 })
 export class AuthModule {}

@@ -43,6 +43,7 @@ export interface SystemUserRecord {
   isActive: boolean;
   lastLoginAt: string | null;
   isProtected: boolean;
+  hasAppAccess: boolean;
 }
 
 export interface AppUserDeviceRecord {
@@ -498,7 +499,7 @@ export const api = {
   login: (username: string, password: string, init?: RequestInit) =>
     request<AuthResponse>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, client: 'web' }),
       ...init,
     }),
 
@@ -684,6 +685,7 @@ export const api = {
     permissions?: string[];
     companyIds?: string[];
     allCompanies?: boolean;
+    linkExisting?: boolean;
     isActive?: boolean;
   }) =>
     request<SystemUserRecord>('/users/system', {
@@ -709,6 +711,30 @@ export const api = {
 
   deactivateSystemUser: (id: string) =>
     request<void>(`/users/system/${id}`, { method: 'DELETE' }),
+
+  listSystemSessions: () =>
+    request<
+      Array<{
+        id: string;
+        userId: string;
+        fullName: string;
+        username: string;
+        position: string | null;
+        client: 'web' | 'app';
+        name: string | null;
+        brand: string | null;
+        model: string | null;
+        os: string | null;
+        ip: string | null;
+        userAgent: string | null;
+        createdAt: string;
+        lastSeenAt: string;
+        current: boolean;
+      }>
+    >('/users/system/sessions'),
+
+  revokeSystemSession: (userId: string, sessionId: string) =>
+    request<void>(`/users/system/${userId}/sessions/${sessionId}`, { method: 'DELETE' }),
 
   // ─── Distributors ───
   getDistributors: (companyId?: string) =>

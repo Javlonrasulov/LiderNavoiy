@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -47,6 +47,23 @@ export class UsersController {
   @ApiOperation({ summary: 'List admin panel users' })
   listSystemUsers() {
     return this.usersService.findAllSystem();
+  }
+
+  @Get('system/sessions')
+  @RequirePage('systemUsers')
+  @ApiOperation({ summary: 'Active sessions of all admin panel users' })
+  listSystemSessions(@Request() req: { user: { sid?: string } }) {
+    return this.usersService.listSystemSessions(req.user.sid);
+  }
+
+  @Delete('system/:userId/sessions/:sessionId')
+  @RequirePage('systemUsers')
+  @ApiOperation({ summary: 'Revoke an admin panel user session' })
+  revokeSystemSession(
+    @Param('userId') userId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    return this.usersService.revokeSystemSession(userId, sessionId);
   }
 
   @Post('system')

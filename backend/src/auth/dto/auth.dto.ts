@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -52,6 +53,12 @@ export class LoginDto {
   @ValidateNested()
   @Type(() => LoginDeviceDto)
   device?: LoginDeviceDto;
+
+  /** web — admin panel; app — mobil ilova (default) */
+  @ApiPropertyOptional({ enum: ['web', 'app'] })
+  @IsOptional()
+  @IsIn(['web', 'app'])
+  client?: 'web' | 'app';
 
   /** Optional when HttpOnly refresh cookie is present (web) — kept for API compat */
   @ApiPropertyOptional({ default: false, deprecated: true })

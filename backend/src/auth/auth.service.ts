@@ -17,7 +17,8 @@ import { Company } from '../companies/entities/company.entity';
 import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 import { isAgentPosition, isDeliveryPosition } from '../common/staff-role.util';
-import { SessionStoreService } from './session-store.service';
+import { SessionClient, SessionStoreService, sessionClientOf } from './session-store.service';
+import { hasAppAccess, hasWebAccess } from '../common/manager-access.util';
 import { LoginSecurityService } from './login-security.service';
 
 export interface JwtPayload {
@@ -104,6 +105,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    const client: SessionClient = dto.client ?? 'app';
+    if (user.role === UserRole.MANAGER) {
+      if (client === 'web' && !hasWebAccess(user)) {
+        throw new ForbiddenException("Admin panelga kirish huquqingiz yo'q");
+      }
+      if (client === 'app' && !hasAppAccess(user)) {
+        throw new ForbiddenException("Ilovaga kirish huquqingiz yo'q");
+      }
+    }
+
     await this.loginSecurity.recordSuccess(username, meta.ip, meta.userAgent);
 
     // Agent / Manager: bir nechta qurilmadan kirish mumkin.
@@ -125,7 +136,7 @@ export class AuthService {
     await this.userRepo.save(user);
     await this.upsertLoginDevice(user.id, dto.device);
 
-    return this.issueTokens(user, dto.device, meta);
+    return this.issueTokens(user, client, dto.device, meta);
   }
 
   async refresh(
@@ -163,6 +174,14 @@ export class AuthService {
       relations: ['distributorProfile', 'client'],
     });
     if (!user) throw new UnauthorizedException();
+    const client = sessionClientOf(session);
+    if (
+      user.role === UserRole.MANAGER &&
+      (client === 'web' ? !hasWebAccess(user) : !hasAppAccess(user))
+    ) {
+      await this.sessions.revokeSession(user.id, payload.sid);
+      throw new UnauthorizedException('Access revoked');
+    }
 
     const newJti = uuidv4();
     const rotated = await this.sessions.rotateRefreshJti(payload.sid, payload.jti, newJti);
@@ -175,7 +194,7 @@ export class AuthService {
     await this.userRepo.save(user);
     await this.upsertLoginDevice(user.id, device);
 
-    return this.buildAuthResponse(user, payload.sid, newJti);
+    return this.buildAuthResponse(user, payload.sid, newJti, client);
   }
 
   async logout(
@@ -223,17 +242,25 @@ export class AuthService {
       where: { id: payload.sub, isActive: true },
       relations: ['distributorProfile', 'client'],
     });
-    if (user) await this.applySystemCompanyAccess(user);
+    if (user) await this.applyClientScope(user, sessionClientOf(session));
     return user;
   }
 
   /**
-   * Admin panel manager: "Tizim foydalanuvchilari" da tanlangan tashkilotlar
-   * profil allow-list iga (faqat xotirada) qo'yiladi — barcha org filtrlari shundan o'qiydi.
-   * Natija bazaga saqlanmasligi kerak.
+   * Manager: web sessiyada — "Tizim foydalanuvchilari" huquqlari va tashkilotlari;
+   * ilova sessiyasida — faqat Xodimlar (profil) sozlamalari, web huquqlari olib tashlanadi.
+   * Faqat xotirada o'zgartiriladi — natija bazaga saqlanmasligi kerak.
    */
-  private async applySystemCompanyAccess(user: User): Promise<void> {
+  private async applyClientScope(user: User, client: SessionClient): Promise<void> {
     if (user.role !== UserRole.MANAGER) return;
+    if (client === 'app') {
+      user.permissions = null;
+      return;
+    }
+
+    if (user.position?.trim() && user.distributorProfile) {
+      user.distributorProfile.position = user.position;
+    }
 
     let ids: string[] | null = null;
     if (user.allCompanies) {
@@ -326,6 +353,7 @@ export class AuthService {
 
   private async issueTokens(
     user: User,
+    client: SessionClient,
     device: LoginDeviceDto | undefined,
     meta: AuthRequestMeta,
   ): Promise<AuthResponseDto> {
@@ -333,6 +361,7 @@ export class AuthService {
     const session = await this.sessions.createSession({
       userId: user.id,
       refreshJti,
+      client,
       deviceKey: this.deviceKeyOf(device),
       deviceName: device?.name?.trim()?.slice(0, 120) || null,
       brand: device?.brand?.trim()?.slice(0, 80) || null,
@@ -341,19 +370,20 @@ export class AuthService {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    return this.buildAuthResponse(user, session.sessionId, refreshJti);
+    return this.buildAuthResponse(user, session.sessionId, refreshJti, client);
   }
 
   private async buildAuthResponse(
     user: User,
     sessionId: string,
     refreshJti: string,
+    client: SessionClient,
   ): Promise<AuthResponseDto> {
     if (!user.distributorProfile) {
       user.distributorProfile =
         (await this.profileRepo.findOne({ where: { userId: user.id } })) ?? undefined;
     }
-    await this.applySystemCompanyAccess(user);
+    await this.applyClientScope(user, client);
     const profile = user.distributorProfile;
     const base: Omit<JwtPayload, 'jti' | 'typ'> = {
       sub: user.id,

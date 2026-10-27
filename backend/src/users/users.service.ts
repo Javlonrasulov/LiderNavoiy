@@ -8,6 +8,8 @@ import { Repository } from 'typeorm';
 import { User } from '../auth/entities/user.entity';
 import { UserLoginDevice } from '../auth/entities/user-login-device.entity';
 import { AuthService } from '../auth/auth.service';
+import { SessionStoreService, sessionClientOf } from '../auth/session-store.service';
+import { hasAppAccess, hasWebAccess } from '../common/manager-access.util';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { In, IsNull, Not } from 'typeorm';
 import { DistributorStatus, UserRole } from '../common/enums';
@@ -36,12 +38,38 @@ export class UsersService {
     private readonly deviceRepo: Repository<UserLoginDevice>,
     private readonly authService: AuthService,
     private readonly redis: RedisService,
+    private readonly sessions: SessionStoreService,
   ) {}
 
   async create(dto: CreateAppUserDto): Promise<AppUserResponseDto> {
     const username = dto.username.trim();
-    const existing = await this.userRepo.findOne({ where: { username } });
+    const existing = await this.userRepo.findOne({
+      where: { username },
+      relations: ['distributorProfile'],
+    });
     if (existing) {
+      // Web foydalanuvchisi — shu akkauntga Manager ilovasi qaytariladi (parol o'zgarmaydi)
+      if (
+        existing.isActive &&
+        existing.role === UserRole.MANAGER &&
+        (dto.role ?? UserRole.DISTRIBUTOR) === UserRole.MANAGER &&
+        !hasAppAccess(existing)
+      ) {
+        existing.appAccess = true;
+        const saved = await this.userRepo.save(existing);
+        await this.upsertDistributorProfile(saved, {
+          companyId: dto.companyId,
+          companyIds: dto.companyIds,
+          companyName: dto.companyName,
+          phone: dto.phone,
+          position: dto.position,
+          positionId: dto.positionId,
+          department: dto.department,
+          departmentId: dto.departmentId,
+          canAddClients: dto.canAddClients ?? false,
+        });
+        return this.toDto(await this.findAppUserOrFail(saved.id));
+      }
       if (!existing.isActive) {
         return this.update(existing.id, {
           username,
@@ -208,13 +236,13 @@ export class UsersService {
 
   async findAllApp(): Promise<AppUserResponseDto[]> {
     const users = await this.userRepo.find({
-      where: [
-        { role: UserRole.DISTRIBUTOR, deletedAt: IsNull() },
-        { role: UserRole.MANAGER, permissions: IsNull(), deletedAt: IsNull() },
-      ],
+      where: {
+        role: In([UserRole.DISTRIBUTOR, UserRole.MANAGER]),
+        deletedAt: IsNull(),
+      },
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
-    });
+    }).then((list) => list.filter((u) => hasAppAccess(u)));
     const onlineIds = await this.getOnlineDistributorIds();
     const devices = users.length
       ? await this.deviceRepo.find({
@@ -240,6 +268,13 @@ export class UsersService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     if (user.deletedAt) return;
+    // Web panelga ham kiradigan manager — faqat ilova huquqi olinadi
+    if (user.role === UserRole.MANAGER && hasWebAccess(user)) {
+      user.appAccess = false;
+      await this.userRepo.save(user);
+      await this.sessions.revokeClientSessions(user.id, 'app');
+      return;
+    }
     user.isActive = false;
     user.deletedAt = new Date();
     // Login nomini bo‘shatish — keyin shu login bilan yangi xodim ochish mumkin
@@ -251,7 +286,46 @@ export class UsersService {
   /* ─── Admin panel (system) users ─── */
 
   async findAllSystem(): Promise<SystemUserResponseDto[]> {
-    const users = await this.userRepo.find({
+    const users = await this.findSystemUsers();
+    return users.map((u) => this.toSystemDto(u));
+  }
+
+  /** Barcha tizim foydalanuvchilarining faol sessiyalari (kim kirgani bilan) */
+  async listSystemSessions(currentSid?: string) {
+    const users = (await this.findSystemUsers()).filter((u) => u.isActive);
+    const rows = [];
+    for (const u of users) {
+      const list = await this.sessions.listUserSessions(u.id);
+      for (const s of list) {
+        rows.push({
+          id: s.sessionId,
+          userId: u.id,
+          fullName: u.fullName,
+          username: u.username,
+          position: u.position ?? (u.role === UserRole.ADMIN ? 'Admin' : null),
+          client: sessionClientOf(s),
+          name: s.deviceName ?? null,
+          brand: s.brand,
+          model: s.model,
+          os: s.os,
+          ip: s.ip,
+          userAgent: s.userAgent,
+          createdAt: s.createdAt,
+          lastSeenAt: s.lastSeenAt,
+          current: currentSid ? s.sessionId === currentSid : false,
+        });
+      }
+    }
+    return rows.sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  async revokeSystemSession(userId: string, sessionId: string): Promise<void> {
+    const ok = await this.sessions.revokeSession(userId, sessionId);
+    if (!ok) throw new NotFoundException('Session not found');
+  }
+
+  private findSystemUsers(): Promise<User[]> {
+    return this.userRepo.find({
       where: [
         { role: UserRole.ADMIN, deletedAt: IsNull() },
         // Web panel manager — permissions bor; mobil ilova menejerlarida null
@@ -260,13 +334,35 @@ export class UsersService {
       relations: ['distributorProfile'],
       order: { createdAt: 'DESC' },
     });
-    return users.map((u) => this.toSystemDto(u));
   }
 
   async createSystem(dto: CreateSystemUserDto): Promise<SystemUserResponseDto> {
     const username = dto.username.trim();
-    const existing = await this.userRepo.findOne({ where: { username } });
+    const existing = await this.userRepo.findOne({
+      where: { username },
+      relations: ['distributorProfile'],
+    });
     if (existing) {
+      const isAppOnlyManager =
+        existing.isActive &&
+        existing.role === UserRole.MANAGER &&
+        !hasWebAccess(existing);
+      if (isAppOnlyManager) {
+        if (!dto.linkExisting) {
+          throw new ConflictException(`APP_USER_EXISTS:${existing.fullName}`);
+        }
+        // Bitta akkaunt: web huquqlari qo'shiladi, parol va ilova sozlamalari o'zgarmaydi
+        const access = this.normalizeCompanyAccess(
+          UserRole.MANAGER,
+          dto.allCompanies,
+          dto.companyIds,
+        );
+        existing.position = dto.position?.trim() || null;
+        existing.permissions = this.normalizePermissions(UserRole.MANAGER, dto.permissions);
+        existing.allCompanies = access.allCompanies;
+        existing.companyIds = access.companyIds;
+        return this.toSystemDto(await this.userRepo.save(existing));
+      }
       if (!existing.isActive && this.isSystemRole(existing.role)) {
         return this.updateSystem(existing.id, {
           username,
@@ -301,7 +397,10 @@ export class UsersService {
   }
 
   async updateSystem(id: string, dto: UpdateSystemUserDto): Promise<SystemUserResponseDto> {
-    const user = await this.userRepo.findOne({ where: { id } });
+    const user = await this.userRepo.findOne({
+      where: { id },
+      relations: ['distributorProfile'],
+    });
     if (!user) throw new NotFoundException('User not found');
     if (!this.isSystemRole(user.role)) {
       throw new NotFoundException('User not found');
@@ -355,13 +454,27 @@ export class UsersService {
   }
 
   async deactivateSystem(id: string): Promise<void> {
-    const user = await this.userRepo.findOne({ where: { id } });
+    const user = await this.userRepo.findOne({
+      where: { id },
+      relations: ['distributorProfile'],
+    });
     if (!user) throw new NotFoundException('User not found');
     if (this.isProtectedSystemUser(user)) {
       throw new ConflictException('Bu foydalanuvchini o\'chirib bo\'lmaydi');
     }
+    // Manager ilovasiga ham kiradigan bo'lsa — faqat web huquqi olinadi
+    if (user.role === UserRole.MANAGER && hasAppAccess(user)) {
+      user.permissions = null;
+      user.position = null;
+      user.companyIds = null;
+      user.allCompanies = false;
+      await this.userRepo.save(user);
+      await this.sessions.revokeClientSessions(user.id, 'web');
+      return;
+    }
     user.isActive = false;
     await this.userRepo.save(user);
+    await this.sessions.revokeAllSessions(user.id);
   }
 
   private isSystemRole(role: UserRole): boolean {
@@ -395,6 +508,7 @@ export class UsersService {
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       isProtected: this.isProtectedSystemUser(user),
+      hasAppAccess: user.role === UserRole.MANAGER && hasAppAccess(user),
     };
   }
 

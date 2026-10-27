@@ -3,10 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis/redis.service';
 import { v4 as uuidv4 } from 'uuid';
 
+export type SessionClient = 'web' | 'app';
+
 export interface AuthSessionRecord {
   sessionId: string;
   userId: string;
   refreshJti: string;
+  /** Eski sessiyalarda yo'q — sessionClientOf() dan foydalaning */
+  client?: SessionClient;
   deviceKey: string | null;
   deviceName?: string | null;
   brand: string | null;
@@ -16,6 +20,11 @@ export interface AuthSessionRecord {
   userAgent: string | null;
   createdAt: string;
   lastSeenAt: string;
+}
+
+/** Web login qurilma ma'lumotini yubormaydi, mobil ilova yuboradi */
+export function sessionClientOf(s: Pick<AuthSessionRecord, 'client' | 'deviceKey'>): SessionClient {
+  return s.client ?? (s.deviceKey ? 'app' : 'web');
 }
 
 @Injectable()
@@ -48,6 +57,7 @@ export class SessionStoreService {
   async createSession(input: {
     userId: string;
     refreshJti: string;
+    client: SessionClient;
     deviceKey?: string | null;
     deviceName?: string | null;
     brand?: string | null;
@@ -62,6 +72,7 @@ export class SessionStoreService {
       sessionId,
       userId: input.userId,
       refreshJti: input.refreshJti,
+      client: input.client,
       deviceKey: input.deviceKey ?? null,
       deviceName: input.deviceName ?? null,
       brand: input.brand ?? null,
@@ -127,6 +138,17 @@ export class SessionStoreService {
     await this.redis.del(this.sessionKey(sessionId));
     await this.redis.getClient().srem(this.userSessionsKey(userId), sessionId);
     return true;
+  }
+
+  async revokeClientSessions(userId: string, client: SessionClient): Promise<number> {
+    const sessions = await this.listUserSessions(userId);
+    let n = 0;
+    for (const s of sessions) {
+      if (sessionClientOf(s) !== client) continue;
+      await this.revokeSession(userId, s.sessionId);
+      n += 1;
+    }
+    return n;
   }
 
   async revokeAllSessions(userId: string, exceptSessionId?: string): Promise<number> {

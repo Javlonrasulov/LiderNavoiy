@@ -53,6 +53,12 @@ export class CreateSystemUserDto {
   @IsBoolean()
   allCompanies?: boolean;
 
+  /** Login Manager ilovasida band bo'lsa — shu akkauntga web huquqi berish */
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  linkExisting?: boolean;
+
   @ApiPropertyOptional({ default: true })
   @IsOptional()
   @IsBoolean()
@@ -121,4 +127,6 @@ export class SystemUserResponseDto {
   isActive: boolean;
   lastLoginAt: string | null;
   isProtected: boolean;
+  /** Manager ilovasiga ham kiradi (Xodimlar sahifasida ham bor) */
+  hasAppAccess: boolean;
 }

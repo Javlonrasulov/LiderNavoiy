@@ -78,6 +78,10 @@ export class User {
   @Column({ default: false })
   allCompanies: boolean;
 
+  /** Manager: mobil ilovaga kirish (Xodimlar sahifasi). Web huquqi — permissions */
+  @Column({ default: true })
+  appAccess: boolean;
+
   @OneToOne(() => DistributorProfile, (profile) => profile.user, { cascade: true, nullable: true })
   distributorProfile?: DistributorProfile;
 

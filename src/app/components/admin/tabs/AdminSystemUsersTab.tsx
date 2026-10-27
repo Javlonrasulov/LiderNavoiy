@@ -206,6 +206,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
   const [showPass, setShowPass] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<SystemUserRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<string | null>(null);
 
   const txt     = D ? '#f9fafb' : '#111827';
   const muted   = D ? '#9ca3af' : '#6b7280';
@@ -331,7 +332,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
     setNewRole('');
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (linkExisting = false) => {
     if (!form.fullName.trim() || !form.username.trim()) {
       setError(t.sysUserErrRequired || "F.I.Sh. va login kiriting");
       return;
@@ -367,12 +368,21 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
       if (editId) {
         await api.updateSystemUser(editId, body);
       } else {
-        await api.createSystemUser({ ...body, password: form.password.trim() });
+        await api.createSystemUser({ ...body, password: form.password.trim(), linkExisting });
       }
+      setLinkTarget(null);
       closeForm();
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t.sysUserErrSave || 'Saqlashda xatolik');
+      const msg = e instanceof Error ? e.message : '';
+      const appUser = /APP_USER_EXISTS:(.*)$/.exec(msg);
+      if (appUser) {
+        setLinkTarget(appUser[1].trim() || form.username.trim());
+      } else if (/already exists/i.test(msg)) {
+        setError(t.sysUserErrLoginTaken || 'Bu login band — boshqa login kiriting');
+      } else {
+        setError(msg || t.sysUserErrSave || 'Saqlashda xatolik');
+      }
     } finally {
       setSaving(false);
     }
@@ -763,7 +773,7 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
                 {t.cancel || 'Bekor qilish'}
               </button>
               <button
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
                 disabled={saving}
                 style={{
                   flex: 1,
@@ -834,6 +844,14 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
                         </div>
                         <div style={{ fontSize: 12, color: muted, marginBottom: 6 }}>
                           {u.username} · <span style={{ color: indigo, fontWeight: 600 }}>{u.position || u.role}</span>
+                          {u.hasAppAccess && (
+                            <span style={{
+                              marginLeft: 6, fontSize: 10, fontWeight: 600, padding: '1px 6px',
+                              borderRadius: 6, background: 'rgba(245,158,11,0.12)', color: '#d97706',
+                            }}>
+                              {t.sysUserAlsoApp || '+ Manager ilovasi'}
+                            </span>
+                          )}
                         </div>
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 5,
@@ -891,6 +909,71 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
         }
       `}</style>
 
+      {linkTarget && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 400,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => !saving && setLinkTarget(null)}
+        >
+          <div
+            style={{
+              background: modalBg, borderRadius: 20, border: `1px solid ${border}`,
+              width: '100%', maxWidth: 380, margin: 16, padding: '28px 24px',
+              boxShadow: D ? '0 24px 64px rgba(0,0,0,0.7)' : '0 24px 64px rgba(0,0,0,0.14)',
+              textAlign: 'center',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px',
+              background: `${indigo}18`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <UserCog size={22} color={indigo} />
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: txt, marginBottom: 8 }}>
+              {t.sysUserLinkTitle || 'Bu login Manager ilovasida bor'}
+            </div>
+            <div style={{ fontSize: 13, color: muted, marginBottom: 22, lineHeight: 1.6 }}>
+              <strong style={{ color: txt }}>{linkTarget}</strong>
+              {' '}
+              {t.sysUserLinkText || "akkauntiga web panel huquqi berilsinmi? Ilovadagi ishi o'zgarmaydi, webga ham shu login va ilovadagi parol bilan kiradi."}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setLinkTarget(null)}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 11,
+                  border: `1px solid ${border}`, background: 'transparent',
+                  color: muted, fontSize: 13, fontWeight: 600,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {t.cancelBtn || t.cancel || 'Bekor qilish'}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleSubmit(true)}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 11, border: 'none',
+                  background: indigo, color: '#fff', fontSize: 13, fontWeight: 700,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                {saving ? (t.loading || 'Yuklanmoqda...') : (t.sysUserLinkConfirm || 'Web huquqini berish')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteTarget && (
         <div
           style={{
@@ -922,7 +1005,9 @@ export function AdminSystemUsersTab({ D, t, card, sub }: Props) {
             <div style={{ fontSize: 13, color: muted, marginBottom: 22, lineHeight: 1.6 }}>
               <strong style={{ color: txt }}>{deleteTarget.fullName}</strong>
               {' '}
-              {t.sysUserDeleteWarn || t.empDeleteWarn || "o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi."}
+              {deleteTarget.hasAppAccess
+                ? (t.sysUserDeleteWebOnly || "faqat web panelga kirish huquqidan mahrum bo'ladi. Manager ilovasida ishlashda davom etadi.")
+                : (t.sysUserDeleteWarn || t.empDeleteWarn || "o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.")}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button

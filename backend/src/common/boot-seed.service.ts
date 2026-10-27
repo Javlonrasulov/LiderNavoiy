@@ -149,7 +149,8 @@ export class BootSeedService implements OnModuleInit {
       await this.dataSource.query(`
         ALTER TABLE users
         ADD COLUMN IF NOT EXISTS "companyIds" jsonb NULL,
-        ADD COLUMN IF NOT EXISTS "allCompanies" boolean NOT NULL DEFAULT false
+        ADD COLUMN IF NOT EXISTS "allCompanies" boolean NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS "appAccess" boolean NOT NULL DEFAULT true
       `);
     } catch (err) {
       this.logger.warn(`users company access migrate: ${(err as Error).message}`);

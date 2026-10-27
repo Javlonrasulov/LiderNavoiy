@@ -136,7 +136,8 @@ export default function AdminLogin() {
       clearTokens();
       const msg = err instanceof Error ? err.message.toLowerCase() : '';
       const isAuth = msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid');
-      setError(isNetworkError(err) ? t.errBackend : isAuth ? t.errWrong : (err instanceof Error ? err.message : t.errWrong));
+      const raw = err instanceof Error ? err.message.replace(/^HTTP \d+:\s*/, '') : '';
+      setError(isNetworkError(err) ? t.errBackend : isAuth ? t.errWrong : (raw || t.errWrong));
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
