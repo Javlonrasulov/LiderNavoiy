@@ -3,11 +3,12 @@ import {
   Activity, Check, ChevronLeft, ChevronRight,
   Edit2, LayoutGrid, List as ListIcon, Package,
   Plus, Search, Tag, Trash2, X, FolderOpen,
-  Pencil, ChevronDown, ChevronUp, FolderPlus,
-  ImagePlus, Smile, Maximize2, Minimize2,
+  Pencil, ChevronDown, FolderPlus,
+  ImagePlus, Smile, Maximize2, Minimize2, Upload,
 } from 'lucide-react';
-import { type AdminProduct } from '../data/adminProducts';
+import { ADMIN_ORGS, type AdminProduct } from '../data/adminProducts';
 import { AddProductDrawer, type AddForm } from './AddProductDrawer';
+import { ProductExcelImportModal } from './admin/ProductExcelImportModal';
 import { brandColor } from '../data/adminData';
 import { api } from '../api/client';
 import {
@@ -104,6 +105,21 @@ interface Category {
   image?: string; // base64 or URL
 }
 
+type BackendBrandMeta = {
+  id: string;
+  name: string;
+  color: string;
+  imageUrl: string | null;
+};
+
+interface BrandInfo {
+  id: string;
+  metaId?: string;
+  name: string;
+  color: string;
+  image?: string;
+}
+
 const PAGE_SIZE = 20;
 
 interface Props {
@@ -131,6 +147,50 @@ function CatIcon({ cat, size = 'sm' }: { cat: Category; size?: 'xs' | 'sm' | 'md
         ? <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
         : cat.emoji
       }
+    </span>
+  );
+}
+
+/** Brend: logo alohida (aniq), nom yonida badge */
+function BrandBadge({
+  brand,
+  D,
+  size = 'md',
+  maxName = 12,
+}: {
+  brand: { name: string; color: string; image?: string };
+  D: boolean;
+  size?: 'sm' | 'md' | 'lg';
+  maxName?: number;
+}) {
+  const logo = size === 'lg' ? 'w-10 h-10' : size === 'sm' ? 'w-7 h-7' : 'w-9 h-9';
+  const name = brand.name.length > maxName ? `${brand.name.slice(0, maxName)}…` : brand.name;
+  return (
+    <span className="inline-flex items-center gap-2 min-w-0">
+      {brand.image ? (
+        <span
+          className={`${logo} rounded-xl flex-shrink-0 overflow-hidden shadow-sm ring-1 ${
+            D ? 'ring-white/20 bg-white' : 'ring-black/10 bg-white'
+          }`}
+          title={brand.name}
+        >
+          <img src={brand.image} alt={brand.name} className="w-full h-full object-contain p-0.5" />
+        </span>
+      ) : (
+        <span
+          className={`${logo} rounded-xl flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white shadow-sm`}
+          style={{ background: brand.color }}
+          title={brand.name}
+        >
+          {brand.name.slice(0, 2).toUpperCase()}
+        </span>
+      )}
+      <span
+        className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap"
+        style={{ background: brand.color }}
+      >
+        {name}
+      </span>
     </span>
   );
 }
@@ -216,6 +276,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   );
   const [page,      setPage]      = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showExcelImport, setShowExcelImport] = useState(false);
   const [addModalKey, setAddModalKey]   = useState(0);
   const [addSaveError, setAddSaveError] = useState<string | null>(null);
   const [addTab, setAddTab] = useState<'asosiy'|'extra'|'balans'>('asosiy');
@@ -229,7 +290,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [categories,       setCategories]       = useState<Category[]>([]);
   const [categoryMetaRows, setCategoryMetaRows] = useState<BackendCategoryMeta[]>([]);
   const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
-  const [catSectionOpen,   setCatSectionOpen]   = useState(true);
+  const [filterMenu,       setFilterMenu]       = useState<null | 'cat' | 'brand'>(null);
   // create/edit form
   const [showCatForm,      setShowCatForm]      = useState(false);
   const [editCatId,        setEditCatId]        = useState<string | null>(null);
@@ -242,8 +303,19 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [openPickerProdId, setOpenPickerProdId] = useState<string | null>(null);
   // delete confirmation modal
   const [deleteCatConfirm, setDeleteCatConfirm] = useState<Category | null>(null);
+  const [deleteBrandConfirm, setDeleteBrandConfirm] = useState<BrandInfo | null>(null);
   const catNameRef  = useRef<HTMLInputElement>(null);
   const catImgRef   = useRef<HTMLInputElement>(null);
+
+  // ── Brand meta / form ───────────────────────────────────────────────────
+  const [brandMetaRows, setBrandMetaRows] = useState<BackendBrandMeta[]>([]);
+  const [showBrandForm, setShowBrandForm] = useState(false);
+  const [editBrandId, setEditBrandId] = useState<string | null>(null);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [newBrandColor, setNewBrandColor] = useState(CAT_PALETTE[0]);
+  const [newBrandImage, setNewBrandImage] = useState<string | null>(null);
+  const brandNameRef = useRef<HTMLInputElement>(null);
+  const brandImgRef = useRef<HTMLInputElement>(null);
 
   const scrollProdTable = (dir: 'left' | 'right') => {
     const ref = isFullscreen ? prodFsTableRef : prodTableRef;
@@ -315,22 +387,37 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     }
   };
 
+  const loadBrandMetaRows = async (): Promise<BackendBrandMeta[]> => {
+    try {
+      return await api.getProductBrandMeta();
+    } catch (error) {
+      console.error('Failed to load brand meta', error);
+      return [];
+    }
+  };
+
   const loadProducts = async () => {
     setProductsLoading(true);
     try {
-      const [data, metaRows] = await Promise.all([
+      const [data, metaRows, brandRows] = await Promise.all([
         api.getProducts(),
         loadCategoryMetaRows(),
+        loadBrandMetaRows(),
       ]);
       const mapped = data.map((item) => backendToAdminProduct(item));
       setProducts(mapped);
       setCategoryMetaRows(metaRows);
+      setBrandMetaRows(brandRows);
       setCategories(buildCategoriesFromProducts(mapped, metaRows));
     } catch (error) {
       console.error('Failed to load products', error);
       setProducts([]);
-      const metaRows = await loadCategoryMetaRows();
+      const [metaRows, brandRows] = await Promise.all([
+        loadCategoryMetaRows(),
+        loadBrandMetaRows(),
+      ]);
       setCategoryMetaRows(metaRows);
+      setBrandMetaRows(brandRows);
       setCategories(buildCategoriesFromProducts([], metaRows));
     } finally {
       setProductsLoading(false);
@@ -381,11 +468,9 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     const selected = form.categoryId
       ? categories.find(c => c.id === form.categoryId)
       : null;
-    const catName = form.gruppa.trim() || form.brend.trim() || selected?.name || '';
-    return {
-      gruppa: catName,
-      brend: form.brend.trim() || catName,
-    };
+    const gruppa = form.gruppa.trim() || selected?.name || '';
+    const brend = form.brend.trim();
+    return { gruppa, brend };
   }
 
   function findDuplicateProduct(
@@ -434,12 +519,29 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       const { gruppa, brend } = resolveCategoryFields(addForm);
       const savedImageUrl = await resolveProductImageForSave(addForm.imageUrl);
 
+      if (!brend.trim() || !gruppa.trim()) {
+        setAddSaveError(formatProductSaveReason(
+          t.prodBrandCatRequired
+          ?? 'Brend va kategoriyani tanlang (Brend → Kategoriya → Mahsulot)',
+          t,
+        ));
+        return;
+      }
+
       if (editingProduct) {
         const editName = (addForm.ismi || editingProduct.ismi).trim();
-        const editArtikul = (addForm.artikul || editingProduct.artikul).trim();
+        const editArtikul = (addForm.artikul || editingProduct.artikul || addForm.kodShort).trim();
+        const editKod = (addForm.kodShort || editArtikul || editingProduct.kod).trim();
+        if (!editArtikul) {
+          setAddSaveError(formatProductSaveReason(
+            t.prodArtikulRequired ?? 'Artikulni kiriting',
+            t,
+          ));
+          return;
+        }
         const duplicate = findDuplicateProduct({
           ismi: editName,
-          kod: editingProduct.kod,
+          kod: editKod,
           artikul: editArtikul,
         }, editingProduct.id);
         if (duplicate) {
@@ -454,9 +556,10 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         const updated: AdminProduct = {
           ...editingProduct,
           ismi: editName || editingProduct.ismi,
+          kod: editKod,
           org: addForm.org || editingProduct.org,
           tipTo: (addForm.tipTo as AdminProduct['tipTo']) || editingProduct.tipTo,
-          artikul: addForm.artikul || editingProduct.artikul,
+          artikul: editArtikul || editKod,
           brend,
           gruppa,
           srok: Number(addForm.srok) || editingProduct.srok,
@@ -480,9 +583,16 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         setEditingProduct(null);
       } else {
         const suffix = String(Date.now()).slice(-5);
-        const newKod = addForm.kodShort?.trim() || addForm.artikul?.trim() || `10${suffix}`;
+        const artikul = addForm.artikul.trim() || addForm.kodShort?.trim();
+        if (!artikul) {
+          setAddSaveError(formatProductSaveReason(
+            t.prodArtikulRequired ?? 'Artikulni kiriting',
+            t,
+          ));
+          return;
+        }
+        const newKod = addForm.kodShort?.trim() || artikul;
         const productName = addForm.ismi.trim() || 'Yangi mahsulot';
-        const artikul = addForm.artikul.trim() || newKod;
 
         const duplicate = findDuplicateProduct({
           ismi: productName,
@@ -563,12 +673,43 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     return products.filter(p => p.org === viewOrg);
   }, [products, viewOrg, activeIds]);
 
-  const brends = useMemo(() =>
-    Array.from(new Set(
-      orgFilteredProducts
-        .map(p => p.brend?.trim())
-        .filter((b): b is string => !!b),
-    )), [orgFilteredProducts]);
+  const brandInfos = useMemo((): BrandInfo[] => {
+    const byName = new Map<string, BrandInfo>();
+    for (const row of brandMetaRows) {
+      byName.set(row.name.toLowerCase(), {
+        id: row.name,
+        metaId: row.id,
+        name: row.name,
+        color: row.color || brandColor(row.name),
+        image: row.imageUrl ?? undefined,
+      });
+    }
+    for (const p of orgFilteredProducts) {
+      const name = p.brend?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, {
+          id: name,
+          name,
+          color: brandColor(name),
+        });
+      }
+    }
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [brandMetaRows, orgFilteredProducts]);
+
+  const brends = useMemo(() => brandInfos.map(b => b.name), [brandInfos]);
+
+  function getBrandInfo(name: string | undefined | null): BrandInfo | null {
+    const n = name?.trim();
+    if (!n) return null;
+    return brandInfos.find(b => b.name.toLowerCase() === n.toLowerCase()) ?? {
+      id: n,
+      name: n,
+      color: brandColor(n),
+    };
+  }
 
   const prevViewOrg = useRef(viewOrg);
   useEffect(() => {
@@ -604,11 +745,20 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     return categories.find(c => c.name === product.gruppa) ?? null;
   }
 
-  // ── Category product counts ───────────────────────────────────────────
+  // ── Category / brand product counts ───────────────────────────────────
   const catCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const p of orgFilteredProducts) {
       if (p.gruppa) counts[p.gruppa] = (counts[p.gruppa] ?? 0) + 1;
+    }
+    return counts;
+  }, [orgFilteredProducts]);
+
+  const brandCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const p of orgFilteredProducts) {
+      const b = p.brend?.trim();
+      if (b) counts[b] = (counts[b] ?? 0) + 1;
     }
     return counts;
   }, [orgFilteredProducts]);
@@ -655,6 +805,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     setNewCatEmoji(CAT_EMOJIS[categories.length % CAT_EMOJIS.length]);
     setNewCatImage(null);
     setIconMode('emoji');
+    setShowBrandForm(false);
+    setFilterMenu(null);
     setShowCatForm(true);
     setTimeout(() => catNameRef.current?.focus(), 50);
   }
@@ -666,6 +818,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     setNewCatEmoji(cat.emoji);
     setNewCatImage(cat.image ?? null);
     setIconMode(cat.image ? 'image' : 'emoji');
+    setShowBrandForm(false);
+    setFilterMenu(null);
     setShowCatForm(true);
     setTimeout(() => catNameRef.current?.focus(), 50);
   }
@@ -751,31 +905,114 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     }
   }
 
+  function openCreateBrandForm() {
+    setEditBrandId(null);
+    setNewBrandName('');
+    setNewBrandColor(CAT_PALETTE[brandInfos.length % CAT_PALETTE.length]);
+    setNewBrandImage(null);
+    setShowCatForm(false);
+    setFilterMenu(null);
+    setShowBrandForm(true);
+    setTimeout(() => brandNameRef.current?.focus(), 50);
+  }
+
+  function openEditBrandForm(brand: BrandInfo) {
+    setEditBrandId(brand.id);
+    setNewBrandName(brand.name);
+    setNewBrandColor(brand.color);
+    setNewBrandImage(brand.image ?? null);
+    setShowCatForm(false);
+    setFilterMenu(null);
+    setShowBrandForm(true);
+    setTimeout(() => brandNameRef.current?.focus(), 50);
+  }
+
+  async function handleBrandImage(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    try {
+      const compressed = await compressCategoryImage(file);
+      setNewBrandImage(compressed);
+    } catch (error) {
+      console.error('Failed to process brand image', error);
+    }
+  }
+
+  async function saveBrandForm() {
+    if (!newBrandName.trim()) return;
+    const payload = {
+      name: newBrandName.trim(),
+      color: newBrandColor,
+      imageUrl: newBrandImage,
+    };
+    try {
+      if (editBrandId) {
+        const oldBrand = brandInfos.find(b => b.id === editBrandId);
+        const saved = oldBrand?.metaId
+          ? await api.updateProductBrandMeta(oldBrand.metaId, payload)
+          : await api.createProductBrandMeta(payload);
+        setBrandMetaRows(prev => (
+          oldBrand?.metaId
+            ? prev.map(r => (r.id === oldBrand.metaId ? saved : r))
+            : [...prev, saved]
+        ));
+        if (oldBrand && oldBrand.name !== saved.name) {
+          setSelectedBrends(prev => {
+            if (!prev.has(oldBrand.name)) return prev;
+            const next = new Set(prev);
+            next.delete(oldBrand.name);
+            next.add(saved.name);
+            return next;
+          });
+          const affected = products.filter(p => p.brend === oldBrand.name);
+          if (affected.length > 0) {
+            Promise.all(
+              affected.map(async (product) => {
+                const updated = { ...product, brend: saved.name };
+                const updatedProduct = await api.updateProduct(product.id, adminToUpdatePayload(updated));
+                return backendToAdminProduct(updatedProduct, product.org);
+              }),
+            ).then((mapped) => {
+              const byId = new Map(mapped.map(item => [item.id, item]));
+              setProducts(prev => prev.map(p => byId.get(p.id) ?? p));
+            }).catch(console.error);
+          }
+        }
+      } else {
+        const saved = await api.createProductBrandMeta(payload);
+        setBrandMetaRows(prev => [...prev, saved]);
+      }
+      setShowBrandForm(false);
+      setEditBrandId(null);
+    } catch (error) {
+      console.error('Failed to save brand', error);
+    }
+  }
+
+  async function deleteBrandMetaIfEmpty(brand: BrandInfo) {
+    const inUse = products.some(p => p.brend?.trim() === brand.name);
+    if (inUse) throw new Error('BRAND_HAS_PRODUCTS');
+    if (brand.metaId) {
+      await api.deleteProductBrandMeta(brand.metaId);
+      setBrandMetaRows(prev => prev.filter(r => r.id !== brand.metaId));
+    }
+    setSelectedBrends(prev => {
+      if (!prev.has(brand.name)) return prev;
+      const next = new Set(prev);
+      next.delete(brand.name);
+      return next;
+    });
+  }
+
   async function deleteCat(id: string) {
     const cat = categories.find(c => c.id === id);
     if (!cat) return;
 
+    const inUse = products.some(p => p.gruppa === cat.name);
+    if (inUse) {
+      throw new Error('CATEGORY_HAS_PRODUCTS');
+    }
+
     try {
-      const affected = products.filter(
-        p => p.gruppa === cat.name || p.brend === cat.name,
-      );
-
-      let nextProducts = products;
-      if (affected.length > 0) {
-        const mapped = await Promise.all(
-          affected.map(async (product) => {
-            const saved = await api.updateProduct(product.id, {
-              category: '',
-              brand: '',
-            });
-            return backendToAdminProduct(saved, product.org);
-          }),
-        );
-        const byId = new Map(mapped.map(item => [item.id, item]));
-        nextProducts = products.map(p => byId.get(p.id) ?? p);
-        setProducts(nextProducts);
-      }
-
       let nextMetaRows = categoryMetaRows;
       if (cat.metaId) {
         await api.deleteProductCategoryMeta(cat.metaId);
@@ -784,7 +1021,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       }
 
       removeCategoryFromLocalMeta(cat.name);
-      const nextCategories = buildCategoriesFromProducts(nextProducts, nextMetaRows);
+      const nextCategories = buildCategoriesFromProducts(products, nextMetaRows);
       setCategories(nextCategories);
       saveCategoryMeta(nextCategories);
 
@@ -921,7 +1158,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <th className={thCls} style={{ position:'sticky', left:0, zIndex:2, background: D?'#111827':'#f9fafb', width:32, minWidth:32 }}>#</th>
                     <th className={thCls} style={{ position:'sticky', left:32, zIndex:2, background: D?'#111827':'#f9fafb', minWidth:60 }}>{t.colKod ?? 'Kod'}</th>
                     <th className={thCls} style={{ minWidth:180 }}>{t.colName ?? 'Mahsulot'}</th>
-                    <th className={thCls} style={{ minWidth:80 }}>Brend</th>
+                    <th className={thCls} style={{ minWidth:140 }}>Brend</th>
                     <th className={thCls} style={{ minWidth:120 }}>{t.colCat ?? 'Kategoriya'}</th>
                     <th className={thCls} style={{ minWidth:36 }}>П1</th>
                     <th className={thCls} style={{ minWidth:72 }}>TipTo</th>
@@ -956,11 +1193,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         <td className={`${tdCls} font-mono font-semibold ${D ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ position:'sticky', left:32, zIndex:1, background: stickyBg }}>{p.kod}</td>
                         <td className={tdCls}><p className={`${text} text-xs leading-snug`} style={{ maxWidth: 200 }}>{p.ismi}</p></td>
                         <td className={tdCls}>
-                          {p.brend?.trim() ? (
-                            <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>{p.brend.slice(0, 10)}</span>
-                          ) : (
-                            <span className={sub}>—</span>
-                          )}
+                          {(() => {
+                            const bi = getBrandInfo(p.brend);
+                            if (!bi) return <span className={sub}>—</span>;
+                            return <BrandBadge brand={bi} D={D} size="md" maxName={10} />;
+                          })()}
                         </td>
                         <td className={tdCls}>
                           <div className="relative">
@@ -1009,7 +1246,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       )}
 
     <div className="space-y-4">
-      {/* Header */}
+      {/* Header + filters (Brend / Kategoriya dropdown) */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold">{t.navProducts ?? 'Mahsulotlar'}</h2>
@@ -1039,6 +1276,191 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${stockOnly ? 'bg-indigo-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-600 bg-gray-100 hover:bg-gray-200`}`}>
             <Activity size={12} /> {t.inStock ?? 'Mavjud'}
           </button>
+
+          {/* Brend dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFilterMenu(v => (v === 'brand' ? null : 'brand'))}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors max-w-[200px] ${
+                selectedBrends.size > 0 || filterMenu === 'brand'
+                  ? 'bg-indigo-600 text-white border-transparent'
+                  : D ? `${sub} bg-gray-800 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
+              }`}
+            >
+              <Tag size={12} />
+              <span className="truncate">
+                {selectedBrends.size === 0
+                  ? (t.brandsSection ?? 'Brendlar')
+                  : selectedBrends.size === 1
+                    ? [...selectedBrends][0]
+                    : `${selectedBrends.size} ${t.brandsSection ?? 'brend'}`}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                selectedBrends.size > 0 || filterMenu === 'brand' ? 'bg-white/20' : D ? 'bg-gray-700' : 'bg-gray-100'
+              }`}>{brandInfos.length}</span>
+              <ChevronDown size={12} className={`transition-transform ${filterMenu === 'brand' ? 'rotate-180' : ''}`} />
+            </button>
+            {filterMenu === 'brand' && (
+              <>
+                <div className="fixed inset-0 z-[60]" onClick={() => setFilterMenu(null)} />
+                <div className={`absolute right-0 top-full mt-1.5 z-[61] w-[min(92vw,340px)] max-h-80 overflow-y-auto rounded-2xl border shadow-2xl py-2 ${
+                  D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-100'
+                }`}>
+                  <div className="px-3 pb-2 flex items-center justify-between gap-2">
+                    <p className={`text-[11px] font-semibold uppercase tracking-wide ${sub}`}>{t.brandsSection ?? 'Brendlar'}</p>
+                    {selectedBrends.size > 0 && (
+                      <button type="button" onClick={() => setSelectedBrends(new Set())}
+                        className={`text-[11px] font-medium ${D ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                        {t.clearFilter ?? 'Tozalash'}
+                      </button>
+                    )}
+                  </div>
+                  {brandInfos.map(b => {
+                    const active = selectedBrends.has(b.name);
+                    const bCnt = brandCounts[b.name] ?? 0;
+                    return (
+                      <div key={b.id} className={`flex items-center gap-1 px-2 ${D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                        <button
+                          type="button"
+                          onClick={() => toggleBrend(b.name)}
+                          className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-2 rounded-xl text-left text-xs ${
+                            active ? 'font-semibold text-indigo-400' : text
+                          }`}
+                        >
+                          {b.image
+                            ? (
+                              <span className={`w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 bg-white shadow-sm ring-1 ${D ? 'ring-white/20' : 'ring-black/10'}`}>
+                                <img src={b.image} alt="" className="w-full h-full object-contain p-0.5" />
+                              </span>
+                            )
+                            : <span className="w-9 h-9 rounded-xl flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0" style={{ background: b.color }}>{b.name.slice(0, 2).toUpperCase()}</span>}
+                          <span className="truncate flex-1">{b.name}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${D ? 'bg-gray-800' : 'bg-gray-100'} ${sub}`}>{bCnt}</span>
+                          {active && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                        </button>
+                        <button type="button" onClick={() => openEditBrandForm(b)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${D ? 'text-gray-400 hover:bg-white/10' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Pencil size={11} />
+                        </button>
+                        <button type="button" onClick={() => setDeleteBrandConfirm(b)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${D ? 'text-rose-400 hover:bg-rose-500/10' : 'text-rose-500 hover:bg-rose-50'}`}>
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div className={`mt-1 pt-1 border-t ${divider} px-2`}>
+                    <button type="button" onClick={openCreateBrandForm}
+                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl text-xs font-medium ${
+                        D ? 'text-indigo-300 hover:bg-indigo-500/10' : 'text-indigo-600 hover:bg-indigo-50'
+                      }`}>
+                      <Plus size={12} /> {t.addBrand ?? "Brend qo'shish"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Kategoriya dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFilterMenu(v => (v === 'cat' ? null : 'cat'))}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors max-w-[200px] ${
+                selectedCatId || filterMenu === 'cat'
+                  ? 'bg-indigo-600 text-white border-transparent'
+                  : D ? `${sub} bg-gray-800 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
+              }`}
+            >
+              <FolderOpen size={12} />
+              <span className="truncate">
+                {selectedCatId
+                  ? (categories.find(c => c.id === selectedCatId)?.name ?? (t.categories ?? 'Kategoriya'))
+                  : (t.categories ?? 'Kategoriyalar')}
+              </span>
+              <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                selectedCatId || filterMenu === 'cat' ? 'bg-white/20' : D ? 'bg-gray-700' : 'bg-gray-100'
+              }`}>{categories.length}</span>
+              <ChevronDown size={12} className={`transition-transform ${filterMenu === 'cat' ? 'rotate-180' : ''}`} />
+            </button>
+            {filterMenu === 'cat' && (
+              <>
+                <div className="fixed inset-0 z-[60]" onClick={() => setFilterMenu(null)} />
+                <div className={`absolute right-0 top-full mt-1.5 z-[61] w-[min(92vw,340px)] max-h-80 overflow-y-auto rounded-2xl border shadow-2xl py-2 ${
+                  D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-100'
+                }`}>
+                  <div className="px-3 pb-2 flex items-center justify-between gap-2">
+                    <p className={`text-[11px] font-semibold uppercase tracking-wide ${sub}`}>{t.categories ?? 'Kategoriyalar'}</p>
+                    {selectedCatId && (
+                      <button type="button" onClick={() => setSelectedCatId(null)}
+                        className={`text-[11px] font-medium ${D ? 'text-indigo-300' : 'text-indigo-600'}`}>
+                        {t.clearFilter ?? 'Tozalash'}
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCatId(null); setFilterMenu(null); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${
+                      !selectedCatId ? 'font-semibold text-indigo-400' : text
+                    } ${D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
+                  >
+                    <Package size={14} />
+                    <span className="flex-1">{t.allProducts ?? 'Barchasi'}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${D ? 'bg-gray-800' : 'bg-gray-100'} ${sub}`}>{orgFilteredProducts.length}</span>
+                    {!selectedCatId && <Check size={12} className="text-indigo-400" />}
+                  </button>
+                  {categories.map(cat => {
+                    const cnt = catCounts[cat.id] ?? 0;
+                    const isActive = selectedCatId === cat.id;
+                    return (
+                      <div key={cat.id} className={`flex items-center gap-1 px-2 ${D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCatId(isActive ? null : cat.id); setFilterMenu(null); }}
+                          className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-2 rounded-xl text-left text-xs ${
+                            isActive ? 'font-semibold text-indigo-400' : text
+                          }`}
+                        >
+                          {cat.image
+                            ? <img src={cat.image} alt="" className="w-6 h-6 rounded object-cover flex-shrink-0" />
+                            : <span className="w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0" style={{ background: cat.color + '33' }}>{cat.emoji}</span>}
+                          <span className="truncate flex-1">{cat.name}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${D ? 'bg-gray-800' : 'bg-gray-100'} ${sub}`}>{cnt}</span>
+                          {isActive && <Check size={12} className="text-indigo-400 flex-shrink-0" />}
+                        </button>
+                        <button type="button" onClick={() => openEditCatForm(cat)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${D ? 'text-gray-400 hover:bg-white/10' : 'text-gray-500 hover:bg-gray-100'}`}>
+                          <Pencil size={11} />
+                        </button>
+                        <button type="button" onClick={() => setDeleteCatConfirm(cat)}
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center ${D ? 'text-rose-400 hover:bg-rose-500/10' : 'text-rose-500 hover:bg-rose-50'}`}>
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div className={`mt-1 pt-1 border-t ${divider} px-2`}>
+                    <button type="button" onClick={openCreateCatForm}
+                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl text-xs font-medium ${
+                        D ? 'text-indigo-300 hover:bg-indigo-500/10' : 'text-indigo-600 hover:bg-indigo-50'
+                      }`}>
+                      <FolderPlus size={12} /> {t.addCat ?? "Kategoriya qo'shish"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button onClick={() => setShowExcelImport(true)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+              D ? 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+            }`}>
+            <Upload size={12} /> {t.importBtn ?? 'Import'}
+          </button>
           <button onClick={() => { setEditingProduct(null); setAddForm(emptyForm); setAddSaveError(null); setAddTab('asosiy'); setAddModalKey(k => k + 1); setShowAddModal(true); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors">
             <Plus size={12} /> {t.addProd ?? "Qo'shish"}
@@ -1053,296 +1475,269 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         </div>
       </div>
 
-      {/* ══ KATEGORIYALAR SECTION ══════════════════════════════════════════ */}
-      <div className={`rounded-2xl border overflow-hidden ${card}`}>
-        {/* Section header */}
-        <button
-          onClick={() => setCatSectionOpen(v => !v)}
-          className={`w-full flex items-center justify-between px-4 py-3 transition-colors ${D ? 'hover:bg-white/[0.03]' : 'hover:bg-gray-50'}`}
-        >
-          <div className="flex items-center gap-2">
-            <FolderOpen size={15} className="text-indigo-400" />
-            <span className={`text-sm font-semibold ${text}`}>{t.categories ?? 'Kategoriyalar'}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded-lg font-medium ${D ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
-              {categories.length}
-            </span>
-            {selectedCatId && (() => {
-              const cat = categories.find(c => c.id === selectedCatId);
-              return cat ? (
-                <span className="text-xs px-2 py-0.5 rounded-lg text-white font-medium ml-1 flex items-center gap-1.5"
-                  style={{ background: cat.color }}>
-                  {cat.image
-                    ? <img src={cat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
-                    : <span>{cat.emoji}</span>
-                  }
-                  {cat.name}
-                </span>
-              ) : null;
-            })()}
-          </div>
-          <div className="flex items-center gap-2">
-            {selectedCatId && (
-              <button onClick={e => { e.stopPropagation(); setSelectedCatId(null); }}
-                className={`text-xs px-2 py-0.5 rounded-lg flex items-center gap-1 ${D ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} transition-colors`}>
-                <X size={10} /> {t.clearFilter ?? 'Tozalash'}
-              </button>
-            )}
-            {catSectionOpen ? <ChevronUp size={14} className={sub} /> : <ChevronDown size={14} className={sub} />}
-          </div>
-        </button>
-
-        {catSectionOpen && (
-          <div className={`border-t ${divider}`}>
-            {/* Category chips */}
-            <div className="px-4 py-3 flex items-center gap-2 flex-wrap">
-              {/* All */}
-              <button onClick={() => setSelectedCatId(null)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all flex-shrink-0 ${
-                  !selectedCatId
-                    ? 'bg-indigo-600 text-white border-transparent shadow-md shadow-indigo-900/30'
-                    : D ? `${sub} bg-gray-800/60 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
-                }`}>
-                <Package size={11} />
-                {t.allProducts}
-                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${!selectedCatId ? 'bg-white/20' : D ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                  {orgFilteredProducts.length}
-                </span>
-              </button>
-
-              {categories.map(cat => {
-                const cnt = catCounts[cat.id] ?? 0;
-                const isActive = selectedCatId === cat.id;
-                return (
-                  <div key={cat.id} className="relative group flex-shrink-0">
-                    <button
-                      onClick={() => setSelectedCatId(isActive ? null : cat.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
-                        isActive
-                          ? 'text-white border-transparent shadow-md'
-                          : D ? `${sub} bg-gray-800/60 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
-                      }`}
-                      style={isActive ? { background: cat.color } : {}}>
-                      {cat.image
-                        ? <img src={cat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
-                        : <span>{cat.emoji}</span>
-                      }
-                      <span className="max-w-[110px] truncate">{cat.name}</span>
-                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
-                        isActive ? 'bg-white/25' : D ? 'bg-gray-700' : 'bg-gray-100'
-                      }`}>{cnt}</span>
-                    </button>
-                    {/* Edit/Delete on hover */}
-                    <div className="absolute -top-1.5 -right-1.5 hidden group-hover:flex items-center gap-0.5 z-10">
-                      <button onClick={e => { e.stopPropagation(); openEditCatForm(cat); }}
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-white shadow-lg"
-                        style={{ background: cat.color }}>
-                        <Pencil size={8} />
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); setDeleteCatConfirm(cat); }}
-                        className="w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg">
-                        <X size={8} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Add button */}
-              <button onClick={openCreateCatForm}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all flex-shrink-0 ${
-                  D ? 'border-dashed border-gray-600 text-gray-400 hover:border-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10'
-                    : 'border-dashed border-gray-300 text-gray-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50'
-                }`}>
-                <FolderPlus size={12} />
-                {t.addCat ?? "Kategoriya qo'shish"}
+      {/* Create/Edit forms — faqat kerak bo'lganda */}
+      {showCatForm && (
+        <div className={`rounded-2xl border overflow-hidden ${card}`}>
+          <div className="px-4 py-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner"
+                style={{ background: newCatColor + '22', border: `2px solid ${newCatColor}` }}
+              >
+                {iconMode === 'image' && newCatImage
+                  ? <img src={newCatImage} alt="cat" className="w-full h-full object-cover" />
+                  : <span className="text-2xl">{newCatEmoji}</span>
+                }
+              </div>
+              <div>
+                <p className={`text-sm font-semibold ${text}`}>
+                  {editCatId ? (t.catEditTitle ?? 'Kategoriyani tahrirlash') : (t.newCategory ?? 'Yangi kategoriya')}
+                </p>
+                <p className={`text-xs ${sub}`}>{newCatName || (t.catNamePlaceholder ?? 'Kategoriya nomi...')}</p>
+              </div>
+              <button onClick={() => { setShowCatForm(false); setEditCatId(null); }} className="ml-auto flex-shrink-0">
+                <X size={14} className={sub} />
               </button>
             </div>
 
-            {/* Create / Edit form */}
-            {showCatForm && (
-              <div className={`border-t ${divider} px-4 py-4`}>
-                {/* Preview + title */}
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner"
-                    style={{ background: newCatColor + '22', border: `2px solid ${newCatColor}` }}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-1.5">
+                <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catNameLabel ?? 'Nom'}</p>
+                <input ref={catNameRef} value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && void saveCatForm()}
+                  placeholder={t.catNamePlaceholder ?? 'Kategoriya nomi...'}
+                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none transition-colors ${
+                    D ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500'
+                      : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400'
+                  }`} />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className={`inline-flex rounded-xl overflow-hidden border ${D ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <button
+                    type="button"
+                    onClick={() => setIconMode('emoji')}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                      iconMode === 'emoji' ? 'text-white' : D ? `${sub} hover:text-gray-200` : `text-gray-500 hover:text-gray-700`
+                    }`}
+                    style={iconMode === 'emoji' ? { background: newCatColor } : {}}
                   >
-                    {iconMode === 'image' && newCatImage
-                      ? <img src={newCatImage} alt="cat" className="w-full h-full object-cover" />
-                      : <span className="text-2xl">{newCatEmoji}</span>
-                    }
-                  </div>
-                  <div>
-                    <p className={`text-sm font-semibold ${text}`}>
-                      {editCatId ? (t.catEditTitle ?? 'Kategoriyani tahrirlash') : (t.newCategory ?? 'Yangi kategoriya')}
-                    </p>
-                    <p className={`text-xs ${sub}`}>{newCatName || (t.catNamePlaceholder ?? 'Kategoriya nomi...')}</p>
-                  </div>
-                  <button onClick={() => { setShowCatForm(false); setEditCatId(null); }} className="ml-auto flex-shrink-0">
-                    <X size={14} className={sub} />
+                    <Smile size={11} /> {t.catEmojiLabel ?? 'Emoji'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIconMode('image')}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold transition-all border-l ${D ? 'border-gray-700' : 'border-gray-200'} ${
+                      iconMode === 'image' ? 'text-white' : D ? `${sub} hover:text-gray-200` : `text-gray-500 hover:text-gray-700`
+                    }`}
+                    style={iconMode === 'image' ? { background: newCatColor } : {}}
+                  >
+                    <ImagePlus size={11} /> {t.catImageLabel ?? 'Rasm'}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {/* Name */}
-                  <div className="space-y-1.5">
-                    <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catNameLabel ?? 'Nom'}</p>
-                    <input ref={catNameRef} value={newCatName} onChange={e => setNewCatName(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && saveCatForm()}
-                      placeholder={t.catNamePlaceholder ?? 'Kategoriya nomi...'}
-                      className={`w-full px-3 py-2 rounded-xl text-xs border outline-none transition-colors ${
-                        D ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500'
-                          : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400'
-                      }`} />
+                {iconMode === 'emoji' ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {CAT_EMOJIS.map(em => (
+                      <button key={em} type="button" onClick={() => setNewCatEmoji(em)}
+                        className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-all ${
+                          newCatEmoji === em ? 'scale-110' : D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'
+                        }`}
+                        style={newCatEmoji === em ? { boxShadow: `0 0 0 2px ${newCatColor}` } : {}}>
+                        {em}
+                      </button>
+                    ))}
                   </div>
-
-                  {/* Icon: Emoji / Rasm tabs */}
-                  <div className="space-y-1.5">
-                    {/* Tab switcher */}
-                    <div className={`inline-flex rounded-xl overflow-hidden border ${D ? 'border-gray-700' : 'border-gray-200'}`}>
-                      <button
-                        onClick={() => setIconMode('emoji')}
-                        className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                          iconMode === 'emoji' ? 'text-white' : D ? `${sub} hover:text-gray-200` : `text-gray-500 hover:text-gray-700`
-                        }`}
-                        style={iconMode === 'emoji' ? { background: newCatColor } : {}}
-                      >
-                        <Smile size={11} /> {t.catEmojiLabel ?? 'Emoji'}
-                      </button>
-                      <button
-                        onClick={() => setIconMode('image')}
-                        className={`flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold transition-all border-l ${D ? 'border-gray-700' : 'border-gray-200'} ${
-                          iconMode === 'image' ? 'text-white' : D ? `${sub} hover:text-gray-200` : `text-gray-500 hover:text-gray-700`
-                        }`}
-                        style={iconMode === 'image' ? { background: newCatColor } : {}}
-                      >
-                        <ImagePlus size={11} /> {t.catImageLabel ?? 'Rasm'}
-                      </button>
-                    </div>
-
-                    {iconMode === 'emoji' ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {CAT_EMOJIS.map(em => (
-                          <button key={em} onClick={() => setNewCatEmoji(em)}
-                            className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition-all ${
-                              newCatEmoji === em ? 'scale-110' : D ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-100 hover:bg-gray-200'
-                            }`}
-                            style={newCatEmoji === em ? { boxShadow: `0 0 0 2px ${newCatColor}` } : {}}>
-                            {em}
+                ) : (
+                  <div>
+                    {newCatImage ? (
+                      <div className="relative rounded-xl overflow-hidden w-full h-20">
+                        <img src={newCatImage} alt="preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center gap-1.5"
+                          style={{ background: 'rgba(0,0,0,0.42)' }}>
+                          <button type="button" onClick={() => catImgRef.current?.click()}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
+                            style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)' }}>
+                            <ImagePlus size={10} /> {t.catReplaceImg ?? 'Almashtirish'}
                           </button>
-                        ))}
+                          <button type="button" onClick={() => { setNewCatImage(null); setIconMode('emoji'); }}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
+                            style={{ background: 'rgba(239,68,68,0.7)' }}>
+                            <X size={10} /> {t.catRemoveImg ?? "O'chirish"}
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <div>
-                        {newCatImage ? (
-                          <div className="relative rounded-xl overflow-hidden w-full h-20">
-                            <img src={newCatImage} alt="preview" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 flex items-center justify-center gap-1.5"
-                              style={{ background: 'rgba(0,0,0,0.42)' }}>
-                              <button
-                                onClick={() => catImgRef.current?.click()}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
-                                style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)' }}
-                              >
-                                <ImagePlus size={10} /> {t.catReplaceImg ?? 'Almashtirish'}
-                              </button>
-                              <button
-                                onClick={() => { setNewCatImage(null); setIconMode('emoji'); }}
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
-                                style={{ background: 'rgba(239,68,68,0.7)' }}
-                              >
-                                <X size={10} /> {t.catRemoveImg ?? "O'chirish"}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => catImgRef.current?.click()}
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleCatImage(f); }}
-                            className={`w-full h-20 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all border-2 border-dashed ${
-                              D ? 'border-gray-600 hover:border-indigo-500 bg-gray-800/50 hover:bg-indigo-500/10'
-                                : 'border-gray-300 hover:border-indigo-400 bg-gray-50 hover:bg-indigo-50'
-                            }`}
-                          >
-                            <ImagePlus size={18} style={{ color: newCatColor }} />
-                            <p className={`text-[10px] ${sub}`}>{t.catUploadImg ?? 'Rasm yuklash yoki suring'}</p>
-                          </button>
-                        )}
-                        <input
-                          ref={catImgRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={e => { const f = e.target.files?.[0]; if (f) handleCatImage(f); }}
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => catImgRef.current?.click()}
+                        onDragOver={e => e.preventDefault()}
+                        onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) void handleCatImage(f); }}
+                        className={`w-full h-20 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all border-2 border-dashed ${
+                          D ? 'border-gray-600 hover:border-indigo-500 bg-gray-800/50 hover:bg-indigo-500/10'
+                            : 'border-gray-300 hover:border-indigo-400 bg-gray-50 hover:bg-indigo-50'
+                        }`}
+                      >
+                        <ImagePlus size={18} style={{ color: newCatColor }} />
+                        <p className={`text-[10px] ${sub}`}>{t.catUploadImg ?? 'Rasm yuklash yoki suring'}</p>
+                      </button>
                     )}
+                    <input ref={catImgRef} type="file" accept="image/*" className="hidden"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) void handleCatImage(f); }} />
                   </div>
+                )}
+              </div>
 
-                  {/* Color */}
-                  <div className="space-y-1.5">
-                    <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catColorLabel ?? 'Rang'}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {CAT_PALETTE.map(clr => (
-                        <button key={clr} onClick={() => setNewCatColor(clr)}
-                          className="w-7 h-7 rounded-lg transition-all hover:scale-110"
-                          style={{
-                            background: clr,
-                            boxShadow: newCatColor === clr ? `0 0 0 2px ${D ? '#1c1c1e' : '#fff'}, 0 0 0 4px ${clr}` : undefined,
-                            transform: newCatColor === clr ? 'scale(1.15)' : undefined,
-                          }} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 mt-4">
-                  <button onClick={saveCatForm} disabled={!newCatName.trim()}
-                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all ${
-                      newCatName.trim() ? 'hover:opacity-90 shadow-md' : 'opacity-40 cursor-not-allowed'
-                    }`}
-                    style={{ background: newCatColor }}>
-                    <Check size={12} />
-                    {editCatId ? (t.catUpdateBtn ?? 'Yangilash') : (t.save ?? 'Saqlash')}
-                  </button>
-                  <button onClick={() => { setShowCatForm(false); setEditCatId(null); }}
-                    className={`px-4 py-2 rounded-xl text-xs font-medium transition-colors ${
-                      D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}>
-                    {t.cancel ?? 'Bekor qilish'}
-                  </button>
+              <div className="space-y-1.5">
+                <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catColorLabel ?? 'Rang'}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {CAT_PALETTE.map(clr => (
+                    <button key={clr} type="button" onClick={() => setNewCatColor(clr)}
+                      className="w-7 h-7 rounded-lg transition-all hover:scale-110"
+                      style={{
+                        background: clr,
+                        boxShadow: newCatColor === clr ? `0 0 0 2px ${D ? '#1c1c1e' : '#fff'}, 0 0 0 4px ${clr}` : undefined,
+                        transform: newCatColor === clr ? 'scale(1.15)' : undefined,
+                      }} />
+                  ))}
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
 
-      {/* Brend filter */}
-      {brends.length > 0 && (
-      <div className="flex items-center gap-2 flex-wrap">
-        {selectedBrends.size > 0 && (
-          <button onClick={() => setSelectedBrends(new Set())}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex-shrink-0 ${D ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-            <X size={11} /> {t.clearFilter ?? 'Tozalash'}
-          </button>
-        )}
-        {brends.map(b => {
-          const active = selectedBrends.has(b);
-          return (
-            <button key={b} onClick={() => toggleBrend(b)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex-shrink-0 border ${
-                active ? 'text-white border-transparent' : D ? `${sub} bg-gray-800/60 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
-              }`}
-              style={active ? { background: brandColor(b) } : {}}>
-              {active && <Check size={10} />}
-              {b}
-            </button>
-          );
-        })}
-      </div>
+            <div className="flex items-center gap-2 mt-4">
+              <button onClick={() => void saveCatForm()} disabled={!newCatName.trim()}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all ${
+                  newCatName.trim() ? 'hover:opacity-90 shadow-md' : 'opacity-40 cursor-not-allowed'
+                }`}
+                style={{ background: newCatColor }}>
+                <Check size={12} />
+                {editCatId ? (t.catUpdateBtn ?? 'Yangilash') : (t.save ?? 'Saqlash')}
+              </button>
+              <button onClick={() => { setShowCatForm(false); setEditCatId(null); }}
+                className={`px-4 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {t.cancel ?? 'Bekor qilish'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBrandForm && (
+        <div className={`rounded-2xl border overflow-hidden ${card}`}>
+          <div className="px-4 py-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner"
+                style={{ background: newBrandColor + '22', border: `2px solid ${newBrandColor}` }}
+              >
+                {newBrandImage
+                  ? <img src={newBrandImage} alt="brand" className="w-full h-full object-cover" />
+                  : <span className="text-xs font-bold" style={{ color: newBrandColor }}>
+                      {(newBrandName || 'BR').slice(0, 2).toUpperCase()}
+                    </span>
+                }
+              </div>
+              <div>
+                <p className={`text-sm font-semibold ${text}`}>
+                  {editBrandId ? (t.brandEditTitle ?? 'Brendni tahrirlash') : (t.newBrand ?? 'Yangi brend')}
+                </p>
+                <p className={`text-xs ${sub}`}>{newBrandName || (t.brandNamePh ?? 'Brend nomi...')}</p>
+              </div>
+              <button onClick={() => { setShowBrandForm(false); setEditBrandId(null); }} className="ml-auto flex-shrink-0">
+                <X size={14} className={sub} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.brandNameLabel ?? 'Nom'}</p>
+                <input
+                  ref={brandNameRef}
+                  value={newBrandName}
+                  onChange={e => setNewBrandName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && void saveBrandForm()}
+                  placeholder={t.brandNamePh ?? 'SHERIN, TIM...'}
+                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none transition-colors ${
+                    D ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-indigo-500'
+                      : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-indigo-400'
+                  }`}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.brandImageLabel ?? 'Brend rasmi / logo'}</p>
+                {newBrandImage ? (
+                  <div className="relative rounded-xl overflow-hidden w-full h-20">
+                    <img src={newBrandImage} alt="preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center gap-1.5"
+                      style={{ background: 'rgba(0,0,0,0.42)' }}>
+                      <button type="button" onClick={() => brandImgRef.current?.click()}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
+                        style={{ background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)' }}>
+                        <ImagePlus size={10} /> {t.catReplaceImg ?? 'Almashtirish'}
+                      </button>
+                      <button type="button" onClick={() => setNewBrandImage(null)}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-white text-[10px] font-medium"
+                        style={{ background: 'rgba(239,68,68,0.7)' }}>
+                        <X size={10} /> {t.catRemoveImg ?? "O'chirish"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => brandImgRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) void handleBrandImage(f); }}
+                    className={`w-full h-20 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all border-2 border-dashed ${
+                      D ? 'border-gray-600 hover:border-indigo-500 bg-gray-800/50 hover:bg-indigo-500/10'
+                        : 'border-gray-300 hover:border-indigo-400 bg-gray-50 hover:bg-indigo-50'
+                    }`}
+                  >
+                    <ImagePlus size={18} style={{ color: newBrandColor }} />
+                    <p className={`text-[10px] ${sub}`}>{t.brandUploadImg ?? 'Logo yuklash yoki suring'}</p>
+                  </button>
+                )}
+                <input ref={brandImgRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) void handleBrandImage(f); }} />
+              </div>
+
+              <div className="space-y-1.5">
+                <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catColorLabel ?? 'Rang'}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {CAT_PALETTE.map(clr => (
+                    <button key={clr} type="button" onClick={() => setNewBrandColor(clr)}
+                      className="w-7 h-7 rounded-lg transition-all hover:scale-110"
+                      style={{
+                        background: clr,
+                        boxShadow: newBrandColor === clr ? `0 0 0 2px ${D ? '#1c1c1e' : '#fff'}, 0 0 0 4px ${clr}` : undefined,
+                        transform: newBrandColor === clr ? 'scale(1.15)' : undefined,
+                      }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-4">
+              <button onClick={() => void saveBrandForm()} disabled={!newBrandName.trim()}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all ${
+                  newBrandName.trim() ? 'hover:opacity-90 shadow-md' : 'opacity-40 cursor-not-allowed'
+                }`}
+                style={{ background: newBrandColor }}>
+                <Check size={12} />
+                {editBrandId ? (t.catUpdateBtn ?? 'Yangilash') : (t.save ?? 'Saqlash')}
+              </button>
+              <button onClick={() => { setShowBrandForm(false); setEditBrandId(null); }}
+                className={`px-4 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {t.cancel ?? 'Bekor qilish'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
@@ -1370,7 +1765,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <th className={thCls} style={{ position:'sticky', left:0, zIndex:2, background: D?'#111827':'#f9fafb', width:32, minWidth:32 }}>#</th>
                     <th className={thCls} style={{ position:'sticky', left:32, zIndex:2, background: D?'#111827':'#f9fafb', minWidth:60 }}>{t.colKod ?? 'Kod'}</th>
                     <th className={thCls} style={{ minWidth:180 }}>{t.colName ?? 'Mahsulot'}</th>
-                    <th className={thCls} style={{ minWidth:80 }}>Brend</th>
+                    <th className={thCls} style={{ minWidth:140 }}>Brend</th>
                     {/* Category column */}
                     <th className={thCls} style={{ minWidth:120 }}>{t.colCat ?? 'Kategoriya'}</th>
                     <th className={thCls} style={{ minWidth:36 }}>П1</th>
@@ -1408,13 +1803,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                           <p className={`${text} text-xs leading-snug`} style={{ maxWidth: 200 }}>{p.ismi}</p>
                         </td>
                         <td className={tdCls}>
-                          {p.brend?.trim() ? (
-                            <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold whitespace-nowrap" style={{ background: bc }}>
-                              {p.brend.slice(0, 10)}
-                            </span>
-                          ) : (
-                            <span className={sub}>—</span>
-                          )}
+                          {(() => {
+                            const bi = getBrandInfo(p.brend);
+                            if (!bi) return <span className={sub}>—</span>;
+                            return <BrandBadge brand={bi} D={D} size="md" maxName={10} />;
+                          })()}
                         </td>
                         {/* Category cell */}
                         <td className={tdCls}>
@@ -1524,9 +1917,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <div className="h-[3px] w-full flex-shrink-0" style={{ background: prodCat ? prodCat.color : bc }} />
                     <div className="p-3 flex flex-col gap-2 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="px-2 py-0.5 rounded-lg text-white text-[10px] font-bold tracking-wide" style={{ background: bc }}>
-                          {p.brend?.trim() || '—'}
-                        </span>
+                        {(() => {
+                          const bi = getBrandInfo(p.brend);
+                          if (!bi) return <span className={`text-[10px] ${sub}`}>—</span>;
+                          return <BrandBadge brand={bi} D={D} size="lg" maxName={14} />;
+                        })()}
                         <div className="flex items-center gap-0.5 flex-shrink-0">
                           <button onClick={() => openEditProduct(p)}
                             className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
@@ -1649,6 +2044,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           D={D} addForm={addForm} setF={setF} patchForm={patchForm} addTab={addTab} setAddTab={setAddTab}
           onClose={() => { setShowAddModal(false); setEditingProduct(null); setAddForm(emptyForm); setAddSaveError(null); }} onSave={saveNewProduct}
           categories={categories}
+          brands={brandInfos}
           isEdit={!!editingProduct}
           editTitle={t.prodEditTitle}
           saveError={addSaveError}
@@ -1656,88 +2052,222 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         />
       )}
 
-      {/* ── Delete category confirmation modal ─────────────────────────── */}
-      {deleteCatConfirm && (
-        <div
-          className="fixed inset-0 z-[200] flex items-center justify-center px-4"
-          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
-          onClick={() => setDeleteCatConfirm(null)}
-        >
+      {showExcelImport && (
+        <ProductExcelImportModal
+          D={D}
+          defaultCompanyId={viewOrg === 'all' ? 'boran' : viewOrg}
+          orgOptions={ADMIN_ORGS.filter((o) => activeIds.includes(o.id)).map((o) => ({
+            id: o.id,
+            label: o.label,
+          }))}
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          brands={brandInfos.map(b => b.name)}
+          t={t}
+          onClose={() => setShowExcelImport(false)}
+          onDone={() => { void loadProducts(); }}
+        />
+      )}
+
+      {/* ── Delete category confirmation / blocked modal ───────────────── */}
+      {deleteCatConfirm && (() => {
+        const cnt = products.filter(p => p.gruppa === deleteCatConfirm.name).length;
+        const blocked = cnt > 0;
+        return (
           <div
-            className={`w-full max-w-sm rounded-3xl border shadow-2xl overflow-hidden ${D ? 'bg-[#1c1c1e] border-gray-700/60' : 'bg-white border-gray-200'}`}
-            style={{ boxShadow: D ? '0 24px 60px rgba(0,0,0,0.7)' : '0 24px 60px rgba(0,0,0,0.18)' }}
-            onClick={e => e.stopPropagation()}
+            className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setDeleteCatConfirm(null)}
           >
-            {/* Colored top stripe */}
-            <div className="h-1 w-full" style={{ background: deleteCatConfirm.color }} />
+            <div
+              className={`w-full max-w-sm rounded-3xl border shadow-2xl overflow-hidden ${D ? 'bg-[#1c1c1e] border-gray-700/60' : 'bg-white border-gray-200'}`}
+              style={{ boxShadow: D ? '0 24px 60px rgba(0,0,0,0.7)' : '0 24px 60px rgba(0,0,0,0.18)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="h-1 w-full" style={{ background: blocked ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : deleteCatConfirm.color }} />
 
-            <div className="p-6">
-              {/* Icon + category badge */}
-              <div className="flex flex-col items-center gap-3 mb-5">
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner"
-                  style={{ background: deleteCatConfirm.color + '22', border: `2px solid ${deleteCatConfirm.color}` }}
-                >
-                  {deleteCatConfirm.image
-                    ? <img src={deleteCatConfirm.image} alt="" className="w-full h-full object-cover" />
-                    : <span className="text-3xl">{deleteCatConfirm.emoji}</span>
-                  }
-                </div>
-                <div className="text-center">
-                  <p className={`text-base font-bold ${text}`}>
-                    {t.catDeleteTitle}
-                  </p>
-                  <p className={`text-sm mt-1`}>
-                    <span
-                      className="px-2 py-0.5 rounded-lg text-white font-semibold inline-block"
-                      style={{ background: deleteCatConfirm.color }}
-                    >
-                      {deleteCatConfirm.name}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Warning message */}
-              <div className={`rounded-2xl px-4 py-3 mb-5 flex items-start gap-2.5 ${D ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-rose-50 border border-rose-100'}`}>
-                <span className="text-rose-400 text-lg leading-none mt-0.5">⚠️</span>
-                <p className={`text-xs leading-relaxed ${D ? 'text-rose-300' : 'text-rose-700'}`}>
-                  {(() => {
-                    const cnt = catCounts[deleteCatConfirm.id] ?? 0;
-                    return cnt > 0
-                      ? `${cnt} ${t.catDeleteWarnProds}`
-                      : t.catDeleteWarning;
-                  })()}
-                </p>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDeleteCatConfirm(null)}
-                  className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-colors ${D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                >
-                  {t.cancel ?? 'Bekor qilish'}
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await deleteCat(deleteCatConfirm.id);
-                      setDeleteCatConfirm(null);
-                    } catch (error) {
-                      console.error('Failed to delete category', error);
+              <div className="p-6">
+                <div className="flex flex-col items-center gap-3 mb-5">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center overflow-hidden shadow-inner"
+                    style={{ background: deleteCatConfirm.color + '22', border: `2px solid ${deleteCatConfirm.color}` }}
+                  >
+                    {deleteCatConfirm.image
+                      ? <img src={deleteCatConfirm.image} alt="" className="w-full h-full object-cover" />
+                      : <span className="text-3xl">{deleteCatConfirm.emoji}</span>
                     }
-                  }}
-                  className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
-                >
-                  {t.deleteBtn ?? "O'chirish"}
-                </button>
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-base font-bold ${text}`}>
+                      {blocked
+                        ? (t.catDeleteBlockedTitle ?? "O'chirib bo'lmaydi")
+                        : t.catDeleteTitle}
+                    </p>
+                    <p className="text-sm mt-1">
+                      <span
+                        className="px-2 py-0.5 rounded-lg text-white font-semibold inline-block"
+                        style={{ background: deleteCatConfirm.color }}
+                      >
+                        {deleteCatConfirm.name}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`rounded-2xl px-4 py-3 mb-5 flex items-start gap-2.5 ${
+                  blocked
+                    ? (D ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-amber-50 border border-amber-100')
+                    : (D ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-rose-50 border border-rose-100')
+                }`}>
+                  <span className="text-lg leading-none mt-0.5">{blocked ? '🔒' : '⚠️'}</span>
+                  <p className={`text-xs leading-relaxed ${
+                    blocked
+                      ? (D ? 'text-amber-200' : 'text-amber-800')
+                      : (D ? 'text-rose-300' : 'text-rose-700')
+                  }`}>
+                    {blocked
+                      ? (t.catDeleteBlocked ?? `${cnt} ta mahsulot bor. Avval mahsulotlarni boshqa kategoriyaga o'tkazing yoki o'chiring — keyin kategoriyani o'chirish mumkin.`)
+                          .replace('{n}', String(cnt))
+                      : t.catDeleteWarning}
+                  </p>
+                </div>
+
+                {blocked ? (
+                  <button
+                    onClick={() => setDeleteCatConfirm(null)}
+                    className="w-full py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                  >
+                    {t.gotIt ?? 'Tushunarli'}
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteCatConfirm(null)}
+                      className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-colors ${D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      {t.cancel ?? 'Bekor qilish'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await deleteCat(deleteCatConfirm.id);
+                          setDeleteCatConfirm(null);
+                        } catch (error) {
+                          console.error('Failed to delete category', error);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
+                      style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
+                    >
+                      {t.deleteBtn ?? "O'chirish"}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* ── Delete brand blocked / confirm modal ───────────────────────── */}
+      {deleteBrandConfirm && (() => {
+        const cnt = products.filter(p => p.brend?.trim() === deleteBrandConfirm.name).length;
+        const blocked = cnt > 0;
+        const bc = deleteBrandConfirm.color;
+        return (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setDeleteBrandConfirm(null)}
+          >
+            <div
+              className={`w-full max-w-sm rounded-3xl border shadow-2xl overflow-hidden ${D ? 'bg-[#1c1c1e] border-gray-700/60' : 'bg-white border-gray-200'}`}
+              style={{ boxShadow: D ? '0 24px 60px rgba(0,0,0,0.7)' : '0 24px 60px rgba(0,0,0,0.18)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="h-1 w-full" style={{ background: blocked ? 'linear-gradient(90deg,#f59e0b,#ef4444)' : bc }} />
+              <div className="p-6">
+                <div className="flex flex-col items-center gap-3 mb-5">
+                  <div
+                    className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-lg font-bold shadow-inner overflow-hidden"
+                    style={{ background: bc }}
+                  >
+                    {deleteBrandConfirm.image
+                      ? <img src={deleteBrandConfirm.image} alt="" className="w-full h-full object-cover" />
+                      : deleteBrandConfirm.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="text-center">
+                    <p className={`text-base font-bold ${text}`}>
+                      {blocked
+                        ? (t.brandDeleteBlockedTitle ?? "O'chirib bo'lmaydi")
+                        : (t.brandDeleteTitle ?? "Brendni o'chirish")}
+                    </p>
+                    <p className="text-sm mt-1">
+                      <span
+                        className="px-2 py-0.5 rounded-lg text-white font-semibold inline-block"
+                        style={{ background: bc }}
+                      >
+                        {deleteBrandConfirm.name}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`rounded-2xl px-4 py-3 mb-5 flex items-start gap-2.5 ${
+                  blocked
+                    ? (D ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-amber-50 border border-amber-100')
+                    : (D ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-rose-50 border border-rose-100')
+                }`}>
+                  <span className="text-lg leading-none mt-0.5">{blocked ? '🔒' : '⚠️'}</span>
+                  <p className={`text-xs leading-relaxed ${
+                    blocked
+                      ? (D ? 'text-amber-200' : 'text-amber-800')
+                      : (D ? 'text-rose-300' : 'text-rose-700')
+                  }`}>
+                    {blocked
+                      ? (t.brandDeleteBlocked ?? `${cnt} ta mahsulot shu brendda. Avval mahsulotlarni boshqa brendga o'tkazing — keyin brendni o'chirish mumkin.`)
+                          .replace('{n}', String(cnt))
+                      : (t.brandDeleteWarning ?? "Bu brend butunlay o'chiriladi.")}
+                  </p>
+                </div>
+
+                {blocked ? (
+                  <button
+                    onClick={() => setDeleteBrandConfirm(null)}
+                    className="w-full py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
+                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                  >
+                    {t.gotIt ?? 'Tushunarli'}
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDeleteBrandConfirm(null)}
+                      className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-colors ${D ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      {t.cancel ?? 'Bekor qilish'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await deleteBrandMetaIfEmpty(deleteBrandConfirm);
+                          setDeleteBrandConfirm(null);
+                        } catch (error) {
+                          console.error('Failed to delete brand', error);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-white transition-all hover:opacity-90 shadow-lg"
+                      style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)' }}
+                    >
+                      {t.deleteBtn ?? "O'chirish"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Delete product confirmation modal ─────────────────────────── */}
       {/* ── Delete product confirmation modal ─────────────────────────── */}

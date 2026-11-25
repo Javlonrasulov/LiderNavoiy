@@ -24,6 +24,8 @@ import {
 import { AdminSidebar } from '../components/admin/AdminSidebar';
 import { AdminNavbar } from '../components/admin/AdminNavbar';
 import { AdminDashboardTab } from '../components/admin/tabs/AdminDashboardTab';
+import { AdminDebtorsTab } from '../components/admin/tabs/AdminDebtorsTab';
+import type { DebtAgePreset } from '../api/client';
 import { AdminClientsTab } from '../components/admin/tabs/AdminClientsTab';
 import { AdminReportsTab } from '../components/admin/tabs/AdminReportsTab';
 import { AdminPostavchikTab } from '../components/admin/tabs/AdminPostavchikTab';
@@ -137,6 +139,7 @@ export default function AdminPanel() {
   const messagesUnread = useMessagesUnreadCount(isLoggedIn && !!selectedCompany);
   const [clientsForBell, setClientsForBell] = useState<ClientRow[]>([]);
   const [dashData, setDashData] = useState<AdminDashboardData | null>(null);
+  const [debtorsAgePreset, setDebtorsAgePreset] = useState<DebtAgePreset>('all');
   const [mapDistributors, setMapDistributors] = useState<Distributor[]>([]);
   const [liveLocations, setLiveLocations] = useState<Record<string, {
     lat: number;
@@ -190,17 +193,31 @@ export default function AdminPanel() {
   const canAccess = (tabId: string) => hasPageAccess(userRole, userPerms, tabId);
 
   const NAV_ITEMS = NAV_ITEMS_BASE
-    .filter(n => !n.hideInSidebar && canAccess(n.id as string))
+    .filter(n => {
+      if (n.hideInSidebar) return false;
+      if (n.children?.length) return n.children.some(c => canAccess(c.id));
+      return canAccess(n.id as string);
+    })
     .map(n => ({
       ...n,
       label: t[n.key] ?? n.key,
-      children: n.children?.map(c => ({ ...c, label: t[c.key] ?? c.key })),
+      children: n.children
+        ?.filter(c => canAccess(c.id))
+        .map(c => ({ ...c, label: t[c.key] ?? c.key })),
     }));
 
   useEffect(() => {
     if (!canAccess(tab)) {
-      const first = NAV_ITEMS_BASE.find(n => !n.hideInSidebar && canAccess(n.id as string));
-      if (first) setTab(first.id as Tab);
+      for (const n of NAV_ITEMS_BASE) {
+        if (n.hideInSidebar) continue;
+        if (n.children?.length) {
+          const child = n.children.find(c => canAccess(c.id));
+          if (child) { setTab(child.id); return; }
+        } else if (canAccess(n.id as string)) {
+          setTab(n.id as Tab);
+          return;
+        }
+      }
     }
   }, [tab, userRole, userPerms]);
 
@@ -698,10 +715,9 @@ export default function AdminPanel() {
         tab={tab} setTab={setTab}
         sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed}
         sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
-        showBalances={showBalances} setShowBalances={setShowBalances}
         t={t} selectedCompany={selectedCompany}
         clearCompany={clearCompany} navigate={navigate} logout={logout}
-        setIsDark={setIsDark} messagesUnread={messagesUnread} navItems={NAV_ITEMS}
+        messagesUnread={messagesUnread} navItems={NAV_ITEMS}
       />
 
       {/* Main content */}
@@ -779,12 +795,18 @@ export default function AdminPanel() {
         )}
 
         {/* PAGE CONTENT */}
-        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor' || tab === 'vanSales') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
+        <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor' || tab === 'vanSales' || tab === 'debtors') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
 
           {tab === 'dashboard' && (
             <AdminDashboardTab
               D={D} card={card} divider={divider} cardHover={cardHover} sub={sub} t={t}
               showBalances={showBalances} activeKpi={activeKpi}
+              debtAlert={dashData?.debtAlert ?? null}
+              debtLoading={!dashData}
+              onOpenDebtors={(overdueFirst) => {
+                setDebtorsAgePreset(overdueFirst ? 'gt30' : 'all');
+                setTab('debtors');
+              }}
               salesPeriod={salesPeriod} setSalesPeriod={setSalesPeriod}
               aggSalesChart={aggSalesChart} aggSalesChartWeek={aggSalesChartWeek} aggSalesChartDay={aggSalesChartDay}
               activeCatPie={activeCatPie} weeklyView={weeklyView} setWeeklyView={setWeeklyView}
@@ -817,6 +839,17 @@ export default function AdminPanel() {
               selectedCompanyIds={selectedCompanyIds}
               viewOrg={viewOrg}
               onClientsChange={setClientsForBell}
+            />
+          )}
+
+          {tab === 'savdoNuqtalari' && (
+            <AdminClientsTab
+              D={D} card={card} divider={divider} text={text} sub={sub} t={t}
+              showBalances={showBalances}
+              selectedCompanyIds={selectedCompanyIds}
+              viewOrg={viewOrg}
+              onClientsChange={setClientsForBell}
+              pageTitle={t.navSavdoNuqtalari ?? 'Savdo nuqtalari'}
             />
           )}
 
@@ -882,6 +915,21 @@ export default function AdminPanel() {
 
           {tab === 'systemUsers' && (
             <AdminSystemUsersTab D={D} card={card} sub={sub} t={t} />
+          )}
+
+          {tab === 'debtors' && (
+            <AdminDebtorsTab
+              onBack={() => setTab('dashboard')}
+              D={D}
+              sub={sub}
+              text={text}
+              card={card}
+              divider={divider}
+              t={t}
+              showBalances={showBalances}
+              companyIds={viewOrg === 'all' ? Array.from(selectedCompanyIds) : [viewOrg]}
+              initialAgePreset={debtorsAgePreset}
+            />
           )}
 
         </main>

@@ -130,7 +130,7 @@ export default function AdminLogin() {
         permissions: res.user.permissions ?? null,
       };
       login(username.trim(), password.trim(), userData);
-      void registerAdminWebPush();
+      void registerAdminWebPush({ requestIfNeeded: true });
       navigate('/admin/select');
     } catch (err) {
       clearTokens();

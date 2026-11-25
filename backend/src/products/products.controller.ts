@@ -19,6 +19,10 @@ import {
   CreateProductCategoryDto,
   UpdateProductCategoryDto,
 } from './dto/product-category.dto';
+import {
+  CreateProductBrandDto,
+  UpdateProductBrandDto,
+} from './dto/product-brand.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { RequirePage } from '../common/guards/permissions.guard';
@@ -109,6 +113,39 @@ export class ProductsController {
   @ApiOperation({ summary: 'Delete product category metadata' })
   removeCategoryMeta(@Param('metaId') metaId: string) {
     return this.service.removeCategoryMeta(metaId);
+  }
+
+  @Get('brand-meta')
+  @ApiOperation({ summary: 'List admin product brand metadata' })
+  brandMeta() {
+    return this.service.findAllBrandMeta();
+  }
+
+  @Post('brand-meta')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Create product brand metadata' })
+  createBrandMeta(@Body() dto: CreateProductBrandDto) {
+    return this.service.createBrandMeta(dto);
+  }
+
+  @Patch('brand-meta/:metaId')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Update product brand metadata' })
+  updateBrandMeta(
+    @Param('metaId') metaId: string,
+    @Body() dto: UpdateProductBrandDto,
+  ) {
+    return this.service.updateBrandMeta(metaId, dto);
+  }
+
+  @Delete('brand-meta/:metaId')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Delete product brand metadata' })
+  removeBrandMeta(@Param('metaId') metaId: string) {
+    return this.service.removeBrandMeta(metaId);
   }
 
   @Get(':id/stats')

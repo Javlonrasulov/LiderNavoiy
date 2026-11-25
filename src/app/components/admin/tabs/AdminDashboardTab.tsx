@@ -1,10 +1,10 @@
-import { AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, ChevronRight, DollarSign, MapPin, Star, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, ChevronRight, DollarSign, MapPin, Star, TrendingUp, TriangleAlert } from 'lucide-react';
 import { MiniLineChart, MiniBarChart, MiniDonutChart } from '../../MiniCharts';
 import { InlineEmployeeMap } from '../../InlineEmployeeMap';
 import { fmt, type AgentRow, type ChartRow } from '../../../data/adminData';
-import { AdminTip } from '../AdminTip';
 import type { EmployeeMarker } from '../../EmployeeMapModal';
 import { useCompanies } from '../../CompaniesContext';
+import type { DebtAlertInfo } from '../../../api/client';
 
 interface Props {
   D: boolean;
@@ -14,6 +14,9 @@ interface Props {
   sub: string;
   t: Record<string, string>;
   showBalances: boolean;
+  debtAlert?: DebtAlertInfo | null;
+  debtLoading?: boolean;
+  onOpenDebtors?: (overdueFirst: boolean) => void;
   activeKpi: {
     sales: number;
     payments: number;
@@ -45,7 +48,7 @@ interface Props {
 
 export function AdminDashboardTab({
   D, card, divider, cardHover, sub, t,
-  showBalances, activeKpi,
+  showBalances, activeKpi, debtAlert, debtLoading, onOpenDebtors,
   salesPeriod, setSalesPeriod,
   aggSalesChart, aggSalesChartWeek, aggSalesChartDay,
   activeCatPie, weeklyView, setWeeklyView,
@@ -58,23 +61,27 @@ export function AdminDashboardTab({
     const v = n ?? 0;
     return `${v > 0 ? '+' : ''}${v}%`;
   };
+  const debtDanger = !!debtAlert?.active;
+  const debtValue = debtLoading ? '—' : (showBalances ? fmt(activeKpi.debt) : '••••');
+
+  const openDebtors = (overdueFirst: boolean) => {
+    onOpenDebtors?.(overdueFirst);
+  };
 
   return (
     <div className="space-y-6">
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: t.totalSales, value: fmt(activeKpi.sales), change: formatTrend(activeKpi.salesTrend), up: (activeKpi.salesTrend ?? 0) >= 0, grad: 'from-indigo-600 to-purple-600', icon: TrendingUp },
-          { label: t.totalPayments, value: fmt(activeKpi.payments), change: formatTrend(activeKpi.paymentsTrend), up: (activeKpi.paymentsTrend ?? 0) >= 0, grad: 'from-emerald-600 to-teal-600', icon: DollarSign },
-          { label: t.totalDebt, value: fmt(activeKpi.debt), change: formatTrend(activeKpi.debtTrend), up: (activeKpi.debtTrend ?? 0) <= 0, grad: 'from-rose-600 to-pink-600', icon: AlertCircle },
-          { label: t.planExec, value: `${activeKpi.planPct}%`, change: formatTrend(activeKpi.planTrend), up: (activeKpi.planTrend ?? 0) >= 0, grad: 'from-orange-500 to-amber-500', icon: Star },
-        ].map((k, i) => {
+          { key: 'sales', label: t.totalSales, value: showBalances ? fmt(activeKpi.sales) : '••••', change: formatTrend(activeKpi.salesTrend), up: (activeKpi.salesTrend ?? 0) >= 0, grad: 'from-indigo-600 to-purple-600', icon: TrendingUp },
+          { key: 'payments', label: t.totalPayments, value: showBalances ? fmt(activeKpi.payments) : '••••', change: formatTrend(activeKpi.paymentsTrend), up: (activeKpi.paymentsTrend ?? 0) >= 0, grad: 'from-emerald-600 to-teal-600', icon: DollarSign },
+        ].map((k) => {
           const Icon = k.icon;
           return (
-            <div key={i} className={`bg-gradient-to-br ${k.grad} rounded-2xl p-5 text-white relative overflow-hidden`}>
+            <div key={k.key} className={`bg-gradient-to-br ${k.grad} rounded-2xl p-5 text-white relative overflow-hidden`}>
               <div className="absolute right-4 top-4 opacity-20"><Icon size={36} /></div>
               <p className="text-xs font-medium opacity-75 mb-2">{k.label}</p>
-              <p className="text-3xl font-bold mb-1">{showBalances ? k.value : '••••'}</p>
+              <p className="text-3xl font-bold mb-1">{k.value}</p>
               <div className="flex items-center gap-1 text-xs opacity-80">
                 {k.up ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
                 {k.change} {t.vsLastMonth}
@@ -82,6 +89,75 @@ export function AdminDashboardTab({
             </div>
           );
         })}
+
+        {/* 3 — Umumiy qarz */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={t.totalDebt}
+          onClick={() => openDebtors(debtDanger)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              openDebtors(debtDanger);
+            }
+          }}
+          className={`debt-kpi-card bg-gradient-to-br from-rose-600 to-pink-600 rounded-2xl p-5 text-white relative overflow-hidden cursor-pointer
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent
+            hover:brightness-[1.03] active:scale-[0.99] transition-[filter,transform]
+            ${debtDanger ? 'debt-kpi-card--danger' : ''}`}
+        >
+          {debtDanger && (
+            <svg aria-hidden="true" className="debt-kpi-ember" fill="none" strokeLinecap="round">
+              <g>
+                <rect pathLength="100" stroke="#ff4025" strokeOpacity=".28" strokeWidth="2.5" strokeDasharray="13 87" />
+                <rect pathLength="100" stroke="#ff4d24" strokeOpacity=".65" strokeWidth="3.5" strokeDasharray="10 90" />
+                <rect pathLength="100" stroke="#ff792b" strokeWidth="4" strokeDasharray="6.5 93.5" />
+                <rect pathLength="100" stroke="#ffb440" strokeWidth="3.5" strokeDasharray="3.8 96.2" />
+                <rect pathLength="100" stroke="#ffe18b" strokeWidth="3" strokeDasharray="1.6 98.4" />
+                <rect pathLength="100" stroke="#fff8dc" strokeWidth="5" strokeDasharray="0.35 99.65" />
+              </g>
+            </svg>
+          )}
+          <div aria-hidden="true" className={debtDanger
+            ? 'absolute right-3 top-3 rounded-xl bg-rose-950 p-1.5 ring-1 ring-orange-400/70'
+            : 'absolute right-4 top-4 opacity-20'}>
+            {debtDanger
+              ? <TriangleAlert size={24} className="debt-kpi-warning-icon fill-amber-300 stroke-rose-950" strokeWidth={2.5} />
+              : <AlertCircle size={36} />}
+          </div>
+          <p className={`text-xs font-medium mb-2 relative z-[1] ${debtDanger ? 'pr-8' : 'opacity-75'}`}>{t.totalDebt}</p>
+          <p className="text-3xl font-bold mb-1 relative z-[1] tabular-nums">{debtValue}</p>
+          {debtDanger ? (
+            <div className="relative z-[1] mt-1 space-y-1">
+              <div className="flex items-start gap-1.5 text-xs font-bold text-amber-100">
+                <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                <span>{t.debtOverdueLabel ?? '30 kundan oshgan'}</span>
+              </div>
+              <p className="text-xs font-medium leading-snug tabular-nums">
+                {(t.debtOverdueMeta ?? '{n} ta mijoz · {sum} so‘m')
+                  .replace('{n}', String(debtAlert?.clientsCount ?? 0))
+                  .replace('{sum}', showBalances ? fmt(debtAlert?.remaining ?? 0) : '••••')}
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-xs opacity-80 relative z-[1]">
+              {(activeKpi.debtTrend ?? 0) <= 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
+              {formatTrend(activeKpi.debtTrend)} {t.vsLastMonth}
+            </div>
+          )}
+        </div>
+
+        {/* 4 — Plan */}
+        <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl p-5 text-white relative overflow-hidden">
+          <div className="absolute right-4 top-4 opacity-20"><Star size={36} /></div>
+          <p className="text-xs font-medium opacity-75 mb-2">{t.planExec}</p>
+          <p className="text-3xl font-bold mb-1">{activeKpi.planPct}%</p>
+          <div className="flex items-center gap-1 text-xs opacity-80">
+            {(activeKpi.planTrend ?? 0) >= 0 ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
+            {formatTrend(activeKpi.planTrend)} {t.vsLastMonth}
+          </div>
+        </div>
       </div>
 
       {/* Charts row */}

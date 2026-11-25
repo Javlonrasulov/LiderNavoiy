@@ -24,3 +24,83 @@
 .dark .show-sb::-webkit-scrollbar-thumb { background: #4b5563 !important; }
 .dark .show-sb::-webkit-scrollbar-thumb:hover { background: #6b7280 !important; }
 .dark .show-sb { scrollbar-color: #4b5563 #1f2937 !important; }
+
+/* Umumiy qarz kartasi — 30+ kun ogohlantirish nuri (faqat chet) */
+.debt-kpi-card {
+  isolation: isolate;
+  z-index: 0;
+}
+.debt-kpi-card--danger {
+  background-image: linear-gradient(115deg, #bb123e 0%, #ae0b38 60%, #760e2c 100%);
+}
+.debt-kpi-card--danger::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgb(255 123 55 / 80%);
+  box-shadow: inset 0 0 9px rgb(255 67 29 / 45%);
+  pointer-events: none;
+}
+.debt-kpi-ember {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px #ffb13b) drop-shadow(0 0 5px #ff391a);
+}
+.debt-kpi-ember rect {
+  width: 100%;
+  height: 100%;
+  rx: calc(var(--radius-2xl) - 3px);
+}
+/* All strokes share a head and a normalized perimeter at every card size. */
+.debt-kpi-ember g {
+  animation: debt-ember-orbit 3s linear infinite;
+}
+@keyframes debt-ember-orbit {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: 100; }
+}
+.debt-kpi-warning-icon {
+  filter: drop-shadow(0 0 3px #ff9d2b);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .debt-kpi-warning-icon {
+    animation: debt-warning-blink 1.5s ease-in-out infinite;
+  }
+}
+@keyframes debt-warning-blink {
+  0%, 35%, 100% { opacity: 1; }
+  65%, 75% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .debt-kpi-ember {
+    display: none;
+  }
+  .debt-kpi-ember g {
+    animation: none;
+  }
+  .debt-kpi-card--danger::before {
+    border-color: #ffb440;
+  }
+}
+
+/* Matn rangi (Standart / Qora) — LiderPlast uslubi */
+html.text-color-override:not(.dark) :is(
+  .text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500, .text-slate-400,
+  .text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700, .text-gray-600, .text-gray-500, .text-gray-400
+) {
+  color: var(--app-text-color, #000000) !important;
+}
+
+html.dark.text-color-override :is(
+  .text-slate-50, .text-slate-100, .text-slate-200, .text-slate-300, .text-slate-400, .text-slate-500,
+  .text-gray-50, .text-gray-100, .text-gray-200, .text-gray-300, .text-gray-400, .text-gray-500,
+  .text-white
+) {
+  color: var(--app-text-color, #ffffff) !important;
+}

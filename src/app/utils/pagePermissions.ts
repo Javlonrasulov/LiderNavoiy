@@ -3,6 +3,7 @@ export const PAGE_PERMISSIONS = [
   { id: 'dashboard',  labelKey: 'permDashboard',  fallback: 'Boshqaruv paneli' },
   { id: 'products',   labelKey: 'permProducts',   fallback: 'Mahsulotlar' },
   { id: 'clients',    labelKey: 'permClients',    fallback: 'Mijozlar' },
+  { id: 'savdoNuqtalari', labelKey: 'permSavdoNuqtalari', fallback: 'Savdo nuqtalari' },
   { id: 'liniya',     labelKey: 'permLiniya',     fallback: 'Liniya' },
   { id: 'xodimlar',   labelKey: 'permXodimlar',   fallback: 'Xodimlar' },
   { id: 'reports',    labelKey: 'permReports',    fallback: 'Hisobotlar' },
@@ -60,6 +61,8 @@ export function hasPageAccess(
   if (permissions.includes(tabId)) return true;
   // dona org: unprepared orders replaces tarozi — same permission gate
   if (tabId === 'unpreparedOrders' && permissions.includes('tarozi')) return true;
+  // qarzdorlar — dashboard KPI dan ochiladi
+  if (tabId === 'debtors' && permissions.includes('dashboard')) return true;
   return false;
 }
 

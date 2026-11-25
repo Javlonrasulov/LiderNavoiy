@@ -135,6 +135,107 @@ export interface BackendCompany {
   clients: number;
 }
 
+export interface DebtAlertInfo {
+  active: boolean;
+  afterDays: number;
+  clientsCount: number;
+  remaining: number;
+  documentsCount: number;
+}
+
+export type DebtAgePreset = 'all' | 'gt10' | 'gt20' | 'gt30' | 'gt60' | 'custom';
+export type DebtSort = 'oldest' | 'largest' | 'name';
+
+export interface DebtorListItem {
+  clientId: string;
+  name: string;
+  fullName: string | null;
+  phone: string | null;
+  address: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  openDocuments: number;
+  totalRemaining: number;
+  overdueRemaining: number;
+  oldestDebtDate: string;
+  oldestAgeDays: number;
+  hasOverdue: boolean;
+  employees: string[];
+  documentNumbers: string[];
+}
+
+export interface DebtorsListResponse {
+  summary: {
+    clientsCount: number;
+    documentsCount: number;
+    totalRemaining: number;
+  };
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  items: DebtorListItem[];
+}
+
+export interface ClientDebtDetail {
+  client: {
+    id: string;
+    name: string;
+    fullName: string | null;
+    phone: string | null;
+    address: string | null;
+    contactPerson: string | null;
+    companyId: string | null;
+    companyName: string | null;
+    notes: string | null;
+    assignedAgent: { distributorId: string | null; name: string; position: string | null } | null;
+  };
+  summary: {
+    openDocuments: number;
+    totalRemaining: number;
+    overdueRemaining: number;
+    emptyHint: boolean;
+  };
+  openDocuments: Array<{
+    orderId: string;
+    orderNumber: string;
+    open: boolean;
+    overdue: boolean;
+    ageDays: number;
+    debtAt: string | null;
+    dueAt: string | null;
+    initialAmount: number;
+    paidAmount: number;
+    returnedAmount: number;
+    remaining: number;
+    paymentStatus: string;
+    companyId: string | null;
+    companyName: string | null;
+    soldBy: { distributorId: string; name: string; position: string | null };
+    items: Array<{
+      productId: string;
+      productCode: string;
+      productName: string;
+      quantity: number;
+      price: number;
+      unit: string;
+      isFree: boolean;
+      lineTotal: number;
+    }>;
+    history: Array<{
+      type: 'sale' | 'payment' | 'return' | 'adjustment';
+      at: string;
+      amount: number;
+      method?: string | null;
+      documentNo?: string | null;
+      actorName?: string | null;
+      note?: string | null;
+      status?: string | null;
+    }>;
+    matchesAgeFilter: boolean;
+  }>;
+  closedDocuments: ClientDebtDetail['openDocuments'];
+}
+
 export interface AdminDashboardData {
   kpi: {
     sales: number;
@@ -147,6 +248,7 @@ export interface AdminDashboardData {
     debtTrend: number;
     planTrend: number;
   };
+  debtAlert?: DebtAlertInfo;
   clientCategories: { name: string; value: number; color: string }[];
   topAgents: {
     distributorId: string;
@@ -1150,6 +1252,47 @@ export const api = {
   deleteProductCategoryMeta: (metaId: string) =>
     request<{ ok: boolean }>(`/products/category-meta/${metaId}`, { method: 'DELETE' }),
 
+  getProductBrandMeta: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      color: string;
+      imageUrl: string | null;
+    }>>('/products/brand-meta'),
+
+  createProductBrandMeta: (body: {
+    name: string;
+    color?: string;
+    imageUrl?: string | null;
+  }) =>
+    request<{
+      id: string;
+      name: string;
+      color: string;
+      imageUrl: string | null;
+    }>('/products/brand-meta', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateProductBrandMeta: (metaId: string, body: {
+    name?: string;
+    color?: string;
+    imageUrl?: string | null;
+  }) =>
+    request<{
+      id: string;
+      name: string;
+      color: string;
+      imageUrl: string | null;
+    }>(`/products/brand-meta/${metaId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteProductBrandMeta: (metaId: string) =>
+    request<{ ok: boolean }>(`/products/brand-meta/${metaId}`, { method: 'DELETE' }),
+
   createProduct: (body: {
     companyId?: string;
     code: string;
@@ -1423,6 +1566,59 @@ export const api = {
       ? `?${companyIds.map(id => `companyId=${encodeURIComponent(id)}`).join('&')}`
       : '';
     return request<AdminDashboardData>(`/dashboard/admin${qs}`);
+  },
+
+  getDebtors: (params: {
+    companyIds?: string[];
+    agePreset?: DebtAgePreset;
+    minAgeDays?: number;
+    maxAgeDays?: number;
+    search?: string;
+    employeeId?: string;
+    branchId?: string;
+    debtDateFrom?: string;
+    debtDateTo?: string;
+    minRemaining?: number;
+    maxRemaining?: number;
+    sort?: DebtSort;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const q = new URLSearchParams();
+    for (const id of params.companyIds ?? []) q.append('companyId', id);
+    if (params.agePreset) q.set('agePreset', params.agePreset);
+    if (params.minAgeDays != null) q.set('minAgeDays', String(params.minAgeDays));
+    if (params.maxAgeDays != null) q.set('maxAgeDays', String(params.maxAgeDays));
+    if (params.search) q.set('search', params.search);
+    if (params.employeeId) q.set('employeeId', params.employeeId);
+    if (params.branchId) q.set('branchId', params.branchId);
+    if (params.debtDateFrom) q.set('debtDateFrom', params.debtDateFrom);
+    if (params.debtDateTo) q.set('debtDateTo', params.debtDateTo);
+    if (params.minRemaining != null) q.set('minRemaining', String(params.minRemaining));
+    if (params.maxRemaining != null) q.set('maxRemaining', String(params.maxRemaining));
+    if (params.sort) q.set('sort', params.sort);
+    if (params.page != null) q.set('page', String(params.page));
+    if (params.pageSize != null) q.set('pageSize', String(params.pageSize));
+    const qs = q.toString();
+    return request<DebtorsListResponse>(`/debts/debtors${qs ? `?${qs}` : ''}`);
+  },
+
+  getDebtFilterOptions: (companyIds?: string[]) => {
+    const qs = companyIds?.length
+      ? `?${companyIds.map(id => `companyId=${encodeURIComponent(id)}`).join('&')}`
+      : '';
+    return request<{
+      companies: { id: string; name: string }[];
+      employees: { id: string; name: string; position: string | null }[];
+    }>(`/debts/filter-options${qs}`);
+  },
+
+  getClientDebtDetail: (clientId: string, companyIds?: string[], agePreset?: DebtAgePreset) => {
+    const q = new URLSearchParams();
+    for (const id of companyIds ?? []) q.append('companyId', id);
+    if (agePreset) q.set('agePreset', agePreset);
+    const qs = q.toString();
+    return request<ClientDebtDetail>(`/debts/clients/${encodeURIComponent(clientId)}${qs ? `?${qs}` : ''}`);
   },
 
   // ─── Client requests (agent → admin approval) ───

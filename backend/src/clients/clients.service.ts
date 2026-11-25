@@ -273,8 +273,17 @@ export class ClientsService {
         }
       }
     };
+    const loadGpsVisits = async (): Promise<Map<string, string>> => {
+      if (!includeGpsVisits) return new Map();
+      try {
+        return await this.lastGpsVisits(ids);
+      } catch {
+        // PostGIS / geography yo‘q bo‘lsa ham mijozlar ro‘yxati ochilsin
+        return new Map();
+      }
+    };
     const [lastVisits] = await Promise.all([
-      includeGpsVisits ? this.lastGpsVisits(ids) : new Map<string, string>(),
+      loadGpsVisits(),
       loadFinancialActivity(),
     ]);
     for (const c of clients) {

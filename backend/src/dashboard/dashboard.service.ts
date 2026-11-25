@@ -16,6 +16,7 @@ import {
   getTashkentYearMonth,
   makeTashkentDate,
 } from '../common/time/tashkent-time';
+import { DebtsService } from '../debts/debts.service';
 
 const CATEGORY_COLORS: Record<string, string> = {
   standard: '#6366f1',
@@ -133,6 +134,7 @@ export class DashboardService {
     @InjectRepository(AgentPlan) private readonly planRepo: Repository<AgentPlan>,
     @InjectRepository(OrderPayment) private readonly paymentRepo: Repository<OrderPayment>,
     private readonly redis: RedisService,
+    private readonly debtsService: DebtsService,
   ) {}
 
   async getAgentStats(distributorId: string) {
@@ -382,6 +384,13 @@ export class DashboardService {
           debtTrend: 0,
           planTrend: 0,
         },
+        debtAlert: {
+          active: false,
+          afterDays: 30,
+          clientsCount: 0,
+          remaining: 0,
+          documentsCount: 0,
+        },
         clientCategories: [],
         topAgents: [],
         employeeLocations: [],
@@ -397,8 +406,9 @@ export class DashboardService {
       prevSales,
       paymentsRaw,
       prevPaymentsRaw,
-      debt,
-      prevDebt,
+      monthDebt,
+      prevMonthDebt,
+      debtSummary,
       planFromDb,
       prevPlanFromDb,
       agentCount,
@@ -410,11 +420,14 @@ export class DashboardService {
       this.sumCollectedPayments(previousMonth, companyIds),
       this.sumMonthDebt(currentMonth, companyIds),
       this.sumMonthDebt(previousMonth, companyIds),
+      this.debtsService.getDebtSummary(companyIds),
       this.sumMonthPlan(currentMonth.year, currentMonth.month, companyIds),
       this.sumMonthPlan(previousMonth.year, previousMonth.month, companyIds),
       this.countAgents(companyIds),
       this.getSalesChart(companyIds),
     ]);
+    // Asosiy KPI = barcha ochiq qarz qoldig‘i; trend — oy ichida yuzaga kelgan qarz qoldig‘i
+    const debt = debtSummary.totalRemaining;
 
     const [paymentsFallback, prevPaymentsFallback] = await Promise.all([
       paymentsRaw > 0
@@ -637,9 +650,10 @@ export class DashboardService {
         planPct,
         salesTrend: pctChange(sales, prevSales),
         paymentsTrend: pctChange(payments, prevPayments),
-        debtTrend: pctChange(debt, prevDebt),
+        debtTrend: pctChange(monthDebt, prevMonthDebt),
         planTrend: pctChange(planPct, prevPlanPct),
       },
+      debtAlert: debtSummary.overdue,
       clientCategories,
       topAgents,
       employeeLocations,

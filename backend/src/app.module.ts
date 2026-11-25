@@ -15,6 +15,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { ProductsModule } from './products/products.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { DebtsModule } from './debts/debts.module';
 import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { UsersModule } from './users/users.module';
@@ -94,6 +95,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     TrackingModule,
     ProductsModule,
     DashboardModule,
+    DebtsModule,
     HealthModule,
     MessagesModule,
     UsersModule,

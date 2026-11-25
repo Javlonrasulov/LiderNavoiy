@@ -76,8 +76,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    // Sahifa qayta ochilganda dialog so‘ramaydi — faqat ruxsat allaqachon berilgan bo‘lsa token yangilanadi
     if (isLoggedIn && localStorage.getItem('api_access_token')) {
-      void registerAdminWebPush();
+      void registerAdminWebPush({ requestIfNeeded: false });
     }
   }, [isLoggedIn]);
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, Eye, EyeOff, LogOut, Moon, Sun, X, ChevronDown } from 'lucide-react';
+import { ChevronLeft, LogOut, X, ChevronDown } from 'lucide-react';
 import { type Tab, type NavEntry } from '../../data/adminData';
 import { CompanyAvatar } from '../CompanyAvatar';
 
@@ -15,14 +15,11 @@ interface AdminSidebarProps {
   setSidebarCollapsed: (v: boolean | ((p: boolean) => boolean)) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
-  showBalances: boolean;
-  setShowBalances: (v: boolean | ((p: boolean) => boolean)) => void;
   t: Record<string, string>;
   selectedCompany: { id: string; icon: string; shortName: string; imageUrl?: string | null };
   clearCompany: () => void;
   navigate: (path: string) => void;
   logout: () => void;
-  setIsDark: (v: boolean) => void;
   messagesUnread?: number;
   navItems: (NavEntry & { label: string; children?: (NavEntry['children'] extends infer C ? C extends any[] ? (C[number] & { label: string })[] : never : never) })[];
 }
@@ -32,8 +29,7 @@ export function AdminSidebar({
   tab, setTab,
   sidebarCollapsed, setSidebarCollapsed,
   sidebarOpen, setSidebarOpen,
-  showBalances, setShowBalances,
-  t, selectedCompany, clearCompany, navigate, logout, setIsDark,
+  t, selectedCompany, clearCompany, navigate, logout,
   messagesUnread = 0,
   navItems,
 }: AdminSidebarProps) {
@@ -194,22 +190,6 @@ export function AdminSidebar({
 
       {/* Bottom actions */}
       <div className={`px-3 py-4 border-t ${divider} space-y-1`}>
-        <button
-          onClick={() => setShowBalances(v => !v)}
-          title={sidebarCollapsed && !mobile ? (showBalances ? t.hideBalance : t.showBalance) : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${sub} ${D ? 'hover:bg-gray-800 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'} transition-all ${sidebarCollapsed && !mobile ? 'justify-center px-2' : ''}`}>
-          {showBalances ? <Eye size={17} /> : <EyeOff size={17} />}
-          {(!sidebarCollapsed || mobile) && <span className="whitespace-nowrap">{showBalances ? t.hideBalance : t.showBalance}</span>}
-        </button>
-
-        <button
-          onClick={() => setIsDark(!D)}
-          title={sidebarCollapsed && !mobile ? (D ? t.lightTheme : t.darkTheme) : undefined}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium ${sub} ${D ? 'hover:bg-gray-800 hover:text-white' : 'hover:bg-gray-100 hover:text-gray-900'} transition-all ${sidebarCollapsed && !mobile ? 'justify-center px-2' : ''}`}>
-          {D ? <Sun size={17} /> : <Moon size={17} />}
-          {(!sidebarCollapsed || mobile) && <span className="whitespace-nowrap">{D ? t.lightTheme : t.darkTheme}</span>}
-        </button>
-
         {!mobile && (
           <button
             onClick={() => setSidebarCollapsed(v => !v)}

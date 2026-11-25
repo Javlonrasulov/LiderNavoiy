@@ -6,8 +6,13 @@ import {
   CreateProductCategoryDto,
   UpdateProductCategoryDto,
 } from './dto/product-category.dto';
+import {
+  CreateProductBrandDto,
+  UpdateProductBrandDto,
+} from './dto/product-brand.dto';
 import { Product } from './entities/product.entity';
 import { ProductCategory } from './entities/product-category.entity';
+import { ProductBrand } from './entities/product-brand.entity';
 import { ProductRating } from './entities/product-rating.entity';
 import { Order } from '../orders/entities/order.entity';
 import { OrderStatus } from '../common/enums';
@@ -30,6 +35,8 @@ export class ProductsService {
     private readonly repo: Repository<Product>,
     @InjectRepository(ProductCategory)
     private readonly categoryRepo: Repository<ProductCategory>,
+    @InjectRepository(ProductBrand)
+    private readonly brandRepo: Repository<ProductBrand>,
     @InjectRepository(ProductRating)
     private readonly ratingRepo: Repository<ProductRating>,
     @InjectRepository(Order)
@@ -399,6 +406,44 @@ export class ProductsService {
     const row = await this.categoryRepo.findOne({ where: { id } });
     if (!row) throw new NotFoundException('Category not found');
     await this.categoryRepo.remove(row);
+    return { ok: true };
+  }
+
+  findAllBrandMeta() {
+    return this.brandRepo.find({ order: { name: 'ASC' } });
+  }
+
+  async createBrandMeta(dto: CreateProductBrandDto) {
+    const exists = await this.brandRepo.findOne({ where: { name: dto.name } });
+    if (exists) throw new ConflictException('Brand already exists');
+    const row = this.brandRepo.create({
+      name: dto.name,
+      color: dto.color ?? '#6366f1',
+      imageUrl: dto.imageUrl ?? null,
+    });
+    return this.brandRepo.save(row);
+  }
+
+  async updateBrandMeta(id: string, dto: UpdateProductBrandDto) {
+    const row = await this.brandRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Brand not found');
+    if (dto.name && dto.name !== row.name) {
+      const exists = await this.brandRepo.findOne({ where: { name: dto.name } });
+      if (exists) throw new ConflictException('Brand name already exists');
+    }
+    Object.assign(row, {
+      ...dto,
+      name: dto.name === undefined ? row.name : dto.name,
+      color: dto.color === undefined ? row.color : dto.color,
+      imageUrl: dto.imageUrl === undefined ? row.imageUrl : dto.imageUrl,
+    });
+    return this.brandRepo.save(row);
+  }
+
+  async removeBrandMeta(id: string) {
+    const row = await this.brandRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Brand not found');
+    await this.brandRepo.remove(row);
     return { ok: true };
   }
 }

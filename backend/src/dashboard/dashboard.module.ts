@@ -8,6 +8,7 @@ import { Order } from '../orders/entities/order.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { AgentPlan } from '../plans/entities/agent-plan.entity';
 import { OrderPayment } from '../payments/entities/order-payment.entity';
+import { DebtsModule } from '../debts/debts.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OrderPayment } from '../payments/entities/order-payment.entity';
       AgentPlan,
       OrderPayment,
     ]),
+    DebtsModule,
   ],
   controllers: [DashboardController],
   providers: [DashboardService],

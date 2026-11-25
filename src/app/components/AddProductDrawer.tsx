@@ -44,6 +44,8 @@ interface Props {
   onClose: () => void;
   onSave: () => void;
   categories?: DrawerCategory[];
+  /** Mavjud brendlar (Brend → Kategoriya → Mahsulot) */
+  brands?: Array<string | { name: string; color?: string; image?: string }>;
   isEdit?: boolean;
   editTitle?: string;
   saveError?: string | null;
@@ -58,12 +60,21 @@ const BRAND_COLORS: Record<string, string> = {
 };
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTab, onClose, onSave, categories = [], isEdit = false, editTitle, saveError = null, t = {} }: Props) {
+export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTab, onClose, onSave, categories = [], brands = [], isEdit = false, editTitle, saveError = null, t = {} }: Props) {
   const applyPatch = patchForm ?? ((patch: Partial<AddForm>) => {
     for (const [key, value] of Object.entries(patch)) {
       setF(key as keyof AddForm, value as string | boolean);
     }
   });
+  const brandOptions = brands.map((b) => (
+    typeof b === 'string'
+      ? { name: b, color: BRAND_COLORS[b.toUpperCase()] ?? BRAND_COLORS.DEFAULT, image: undefined as string | undefined }
+      : {
+          name: b.name,
+          color: b.color ?? BRAND_COLORS[b.name.toUpperCase()] ?? BRAND_COLORS.DEFAULT,
+          image: b.image,
+        }
+  ));
   const imgPreview = resolveProductImageUrl(addForm.imageUrl);
   const [imgDrag, setImgDrag]       = useState(false);
   const [maximized, setMaximized]   = useState(false);
@@ -326,31 +337,98 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <FLabel>{t.drawerArtLabel ?? 'Artikul'}</FLabel>
+                    <FLabel>{t.drawerArtLabel ?? 'Artikul'} *</FLabel>
                     <input className={inpCls} value={addForm.artikul}
-                      onChange={e => setF('artikul', e.target.value)} placeholder="ШПВК0208" />
+                      onChange={e => {
+                        const v = e.target.value;
+                        applyPatch({
+                          artikul: v,
+                          ...(addForm.kodShort.trim() ? {} : { kodShort: v }),
+                        });
+                      }}
+                      placeholder="ШПВК0208 / BR-KOL-101" />
+                    <p className="text-[11px] mt-1" style={{ color: sub }}>
+                      {t.drawerArtHint ?? 'Ro‘yxatdagi «Artikul» ustuni — shu qiymat'}
+                    </p>
                   </div>
                   <div>
                     <FLabel>{t.drawerKodLabel ?? 'Kod'}</FLabel>
                     <input className={inpCls} value={addForm.kodShort}
                       onChange={e => setF('kodShort', e.target.value)} placeholder="10001" />
+                    <p className="text-[11px] mt-1" style={{ color: sub }}>
+                      {t.drawerKodHint ?? 'Bo‘sh qoldirilsa, artikul ishlatiladi'}
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Category */}
+            {/* Brend → Kategoriya */}
             <div>
-              <SectionHead icon={<Tag size={14} />} label={t.drawerCatSec ?? 'Kategoriya'} />
-              <div className="space-y-3">
-                {categories.length > 0 ? (
-                  <div>
-                    <FLabel>{t.drawerCatSelectLbl ?? 'Kategoriyani tanlang'}</FLabel>
+              <SectionHead icon={<Tag size={14} />} label={t.drawerBrandCatSec ?? 'Brend → Kategoriya'} />
+              <div className="space-y-4">
+                {/* Brand */}
+                <div>
+                  <FLabel>{t.drawerBrendLabel ?? 'Brend'} *</FLabel>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => applyPatch({ brend: '' })}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-medium transition-all duration-200"
+                      style={{
+                        background: !addForm.brend.trim() ? (D ? '#1e2132' : '#ededf8') : (D ? '#1a1d27' : '#f1f3f8'),
+                        border: `1.5px solid ${!addForm.brend.trim() ? acc : bdr}`,
+                        color: !addForm.brend.trim() ? acc : sub,
+                      }}
+                    >
+                      — {t.drawerNoBrand ?? 'Brendsiz'}
+                    </button>
+                    {brandOptions.map((b) => {
+                      const isActive = addForm.brend.trim().toLowerCase() === b.name.toLowerCase();
+                      const bc = b.color;
+                      return (
+                        <button
+                          key={b.name}
+                          type="button"
+                          onClick={() => applyPatch({ brend: b.name })}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold transition-all duration-200"
+                          style={{
+                            background: isActive ? bc : (D ? '#1a1d27' : '#f1f3f8'),
+                            border: `1.5px solid ${isActive ? bc : bdr}`,
+                            color: isActive ? '#fff' : txt,
+                            boxShadow: isActive ? `0 4px 14px ${bc}50` : 'none',
+                          }}
+                        >
+                          {b.image ? (
+                            <span className="w-7 h-7 rounded-lg overflow-hidden bg-white flex-shrink-0 ring-1 ring-black/10">
+                              <img src={b.image} alt="" className="w-full h-full object-contain p-0.5" />
+                            </span>
+                          ) : null}
+                          {b.name}
+                          {isActive && <Check size={11} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    className={inpCls}
+                    value={addForm.brend}
+                    onChange={e => setF('brend', e.target.value)}
+                    placeholder={t.drawerBrendPh ?? 'Yangi brend nomi (SHERIN, TIM...)'}
+                  />
+                  <p className="text-[11px] mt-1.5" style={{ color: sub }}>
+                    {t.drawerBrandImgHint ?? "Brend logosini «Brendlar» bo‘limidan qo‘shish / tahrirlash mumkin."}
+                  </p>
+                </div>
+
+                {/* Category */}
+                <div>
+                  <FLabel>{t.drawerCatSelectLbl ?? 'Kategoriyani tanlang'} *</FLabel>
+                  {categories.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                      {/* No category option */}
                       <button
                         type="button"
-                        onClick={() => applyPatch({ categoryId: '', brend: '', gruppa: '' })}
+                        onClick={() => applyPatch({ categoryId: '', gruppa: '' })}
                         className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-medium transition-all duration-200"
                         style={{
                           background: !addForm.categoryId ? (D ? '#1e2132' : '#ededf8') : (D ? '#1a1d27' : '#f1f3f8'),
@@ -370,7 +448,6 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                             type="button"
                             onClick={() => applyPatch({
                               categoryId: cat.id,
-                              brend: cat.name,
                               gruppa: cat.name,
                             })}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold transition-all duration-200"
@@ -391,46 +468,22 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                         );
                       })}
                     </div>
-                    {addForm.categoryId && (
-                      <p className="text-xs mt-2 ml-1" style={{ color: sub }}>
-                        {t.drawerCatAuto ?? "Brend va Guruh avtomatik to'ldirildi"}
+                  ) : (
+                    <div
+                      className="flex flex-col items-center justify-center gap-2 py-5 rounded-2xl"
+                      style={{ border: `1.5px dashed ${bdr}`, background: bg2 }}
+                    >
+                      <span className="text-2xl">📂</span>
+                      <p className="text-xs text-center" style={{ color: sub }}>
+                        {t.drawerNoCatYet ?? "Hali kategoriyalar yo'q. Avval kategoriya yarating."}
                       </p>
-                    )}
-                  </div>
-                ) : (
-                  <div
-                    className="flex flex-col items-center justify-center gap-2 py-5 rounded-2xl"
-                    style={{ border: `1.5px dashed ${bdr}`, background: bg2 }}
-                  >
-                    <span className="text-2xl">📂</span>
-                    <p className="text-xs text-center" style={{ color: sub }}>
-                      {t.drawerNoCatYet ?? "Hali kategoriyalar yo'q. Avval kategoriya yarating."}
-                    </p>
-                  </div>
-                )}
-                {/* Manual brend/gruppa — always visible for advanced override */}
-                <div
-                  className="rounded-2xl overflow-hidden"
-                  style={{ border: `1px solid ${bdr}`, background: bg2 }}
-                >
-                  <div className="px-3 py-2" style={{ borderBottom: `1px solid ${bdr}` }}>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: sub }}>
-                      {t.drawerManual ?? "Qo'lda kiritish (ixtiyoriy)"}
-                    </p>
-                  </div>
-                  <div className="px-3 py-3 space-y-2.5">
-                    <div>
-                      <FLabel>{t.drawerBrendLabel ?? 'Brend'}</FLabel>
-                      <input className={inpCls} value={addForm.brend}
-                        onChange={e => setF('brend', e.target.value)} placeholder="SHERIN, PILLER..." />
                     </div>
-                    <div>
-                      <FLabel>{t.drawerGruppaLabel ?? 'Guruh'}</FLabel>
-                      <input className={inpCls} value={addForm.gruppa}
-                        onChange={e => setF('gruppa', e.target.value)} placeholder="Шерин (Склад)..." />
-                    </div>
-                  </div>
+                  )}
+                  <p className="text-[11px] mt-2" style={{ color: sub }}>
+                    {t.drawerBrandCatHint ?? 'Avval brend, keyin kategoriya tanlang — mahsulot shu tuzilmada saqlanadi.'}
+                  </p>
                 </div>
+
                 <div>
                   <FLabel>{t.drawerPostavLabel ?? 'Postavshik'}</FLabel>
                   <input className={inpCls} value={addForm.postavshik}

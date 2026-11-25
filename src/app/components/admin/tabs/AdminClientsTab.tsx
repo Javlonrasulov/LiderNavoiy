@@ -74,9 +74,13 @@ interface Props {
   /** Bir nechta tashkilot tanlanganda yuqoridagi tab: 'all' yoki tashkilot id */
   viewOrg?: 'all' | string;
   onClientsChange?: (clients: ClientRow[]) => void;
+  /** Sahifa sarlavhasi (masalan Bugalteriya → Savdo nuqtalari). Bo‘sh bo‘lsa mijozlar nomi. */
+  pageTitle?: string;
 }
 
-export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds, viewOrg = 'all', onClientsChange }: Props) {
+export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, selectedCompanyIds, viewOrg = 'all', onClientsChange, pageTitle }: Props) {
+  const listTitle = pageTitle || t.allClientsTitle;
+  const sheetTitle = pageTitle || t.navClients || 'Mijozlar';
   const { companies } = useCompanies();
   const multiOrg = selectedCompanyIds.size > 1;
   const companyById = useMemo(() => new Map(companies.map((co) => [co.id, co])), [companies]);
@@ -641,7 +645,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, t.navClients || 'Mijozlar');
+    XLSX.utils.book_append_sheet(wb, ws, sheetTitle);
     XLSX.writeFile(wb, `mijozlar_${TODAY}.xlsx`);
   };
 
@@ -799,7 +803,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
           <h2 className="text-xl font-bold">
             {listMode === 'trash'
               ? (t.clientTrashTitle ?? 'Korzinka')
-              : t.allClientsTitle}
+              : listTitle}
           </h2>
           <p className={`text-sm ${sub} mt-0.5`}>
             {loading ? (t.loading || 'Yuklanmoqda...') : `${filtered.length} / ${orgScopedClients.length}`}
@@ -814,7 +818,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
                   : D ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {t.allClientsTitle}
+              {listTitle}
             </button>
             <button
               type="button"
@@ -1620,7 +1624,7 @@ export function AdminClientsTab({ D, card, divider, text, sub, t, showBalances, 
             <span className={`text-sm font-semibold ${text}`}>
               {listMode === 'trash'
                 ? (t.clientTrashTitle ?? 'Korzinka')
-                : (t.navClients ?? 'Mijozlar')}
+                : sheetTitle}
               <span className={`font-normal ml-1.5 ${sub}`}>— {filtered.length}</span>
             </span>
           ) : (
