@@ -19,6 +19,17 @@ export interface Company {
   imageUrl?: string | null;
   /** Ombor sahifasida kiritiladigan sklad nomi */
   warehouseName?: string | null;
+  orgCode?: string | null;
+  fullLegalName?: string | null;
+  legalAddress?: string | null;
+  phone?: string | null;
+  callCenterPhone?: string | null;
+  inn?: string | null;
+  vatCode?: string | null;
+  rekvizitNote?: string | null;
+  cashCashboxName?: string | null;
+  clickCashboxName?: string | null;
+  primaryBankAccountId?: string | null;
   /** Agent/dostavkachi mijoz qo‘sha oladimi (default false) */
   agentsCanAddClients?: boolean;
   /** true — manager/agent tasdiqsiz qo‘shadi; false — admin tasdigi kerak */

@@ -6,6 +6,9 @@ interface Terminal {
   id: string;
   name: string;
   code: string | null;
+  externalId?: string | null;
+  account23510?: string | null;
+  bankAccountName?: string | null;
   companyId: string | null;
   assignedDistributorId: string | null;
   assignedName?: string | null;
@@ -218,6 +221,9 @@ export function TerminallarPage({ D, t, selectedCompanyIds }: Props) {
                 {t.termCode ?? 'Kod'}
               </th>
               <th style={{ textAlign: 'left', padding: '10px 12px', color: muted, fontWeight: 600 }}>
+                {t.rekvTermExtId ?? 'Terminal ID'}
+              </th>
+              <th style={{ textAlign: 'left', padding: '10px 12px', color: muted, fontWeight: 600 }}>
                 {t.termEmployee ?? 'Xodim'}
               </th>
               <th style={{ textAlign: 'left', padding: '10px 12px', color: muted, fontWeight: 600 }}>
@@ -229,14 +235,14 @@ export function TerminallarPage({ D, t, selectedCompanyIds }: Props) {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={5} style={{ padding: 24, color: muted, textAlign: 'center' }}>
+                <td colSpan={6} style={{ padding: 24, color: muted, textAlign: 'center' }}>
                   …
                 </td>
               </tr>
             )}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: 24, color: muted, textAlign: 'center' }}>
+                <td colSpan={6} style={{ padding: 24, color: muted, textAlign: 'center' }}>
                   <CreditCard size={28} style={{ opacity: 0.4, marginBottom: 8 }} />
                   <div>{t.termEmpty ?? 'Terminal yo\'q'}</div>
                 </td>
@@ -246,6 +252,7 @@ export function TerminallarPage({ D, t, selectedCompanyIds }: Props) {
               <tr key={r.id} style={{ borderBottom: `1px solid ${brd}` }}>
                 <td style={{ padding: '10px 12px', color: txt, fontWeight: 500 }}>{r.name}</td>
                 <td style={{ padding: '10px 12px', color: muted }}>{r.code || '—'}</td>
+                <td style={{ padding: '10px 12px', color: muted }}>{r.externalId || '—'}</td>
                 <td style={{ padding: '10px 12px' }}>
                   <select
                     value={r.assignedDistributorId ?? ''}

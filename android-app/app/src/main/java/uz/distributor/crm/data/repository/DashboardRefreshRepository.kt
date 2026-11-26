@@ -24,6 +24,7 @@ class DashboardRefreshRepository @Inject constructor(
     private val authRepository: AuthRepository,
     private val dashboardRepository: DashboardRepository,
     private val snapshotRepository: RefreshSnapshotRepository,
+    private val productRepository: ProductRepository,
 ) {
 
     /**
@@ -44,25 +45,47 @@ class DashboardRefreshRepository @Inject constructor(
         val previous = snapshotRepository.load()
         val stats = dashboardRepository.getStats()
         val clients = runCatching { api.getClients() }.getOrDefault(emptyList())
-        val products = runCatching { api.getProducts() }.getOrDefault(emptyList())
+        // API xatosida bo‘sh ro‘yxat bilan keshni o‘chirmaymiz
+        val productsFromApi = runCatching { api.getProducts() }.getOrNull()
+        if (productsFromApi != null) {
+            productRepository.replaceCache(productsFromApi)
+        }
         val conversations = runCatching { api.getConversations() }.getOrDefault(emptyList())
         val notifications = runCatching { api.getMyNotifications() }.getOrDefault(emptyList())
         val unreadNotifs = notifications.count { !it.isRead }.takeIf { it > 0 }
             ?: runCatching { api.getUnreadNotificationCount().count }.getOrDefault(0)
         val userId = authRepository.getUserFlow().first()?.id
 
-        val current = snapshotFrom(
-            products = products,
-            clients = clients,
-            conversations = conversations,
-            stats = stats,
-            unreadNotifs = unreadNotifs,
-            notifications = notifications,
-        )
+        val current = if (productsFromApi != null) {
+            snapshotFrom(
+                products = productsFromApi,
+                clients = clients,
+                conversations = conversations,
+                stats = stats,
+                unreadNotifs = unreadNotifs,
+                notifications = notifications,
+            )
+        } else {
+            // Mahsulot API ishlamasa — productStock ni eski snapshotdan saqlab qolamiz
+            snapshotFrom(
+                products = emptyList(),
+                clients = clients,
+                conversations = conversations,
+                stats = stats,
+                unreadNotifs = unreadNotifs,
+                notifications = notifications,
+            ).copy(
+                productStock = previous?.productStock ?: emptyMap(),
+                productNames = previous?.productNames ?: emptyMap(),
+                productUnits = previous?.productUnits ?: emptyMap(),
+                productCount = previous?.productCount
+                    ?: productRepository.getProductCount(forceRefresh = false),
+            )
+        }
         val updates = buildUpdates(
             before = previous,
             after = current,
-            products = products,
+            products = productsFromApi ?: emptyList(),
             conversations = conversations,
             notifications = notifications,
             userId = userId,
@@ -72,7 +95,7 @@ class DashboardRefreshRepository @Inject constructor(
 
         return RefreshResult(
             stats = stats,
-            productCount = products.size,
+            productCount = productRepository.getProductCount(forceRefresh = false),
             updates = updates,
             snapshot = current,
         )

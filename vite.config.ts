@@ -91,6 +91,13 @@ export default defineConfig(({ mode }) => {
       },
     },
 
+    server: {
+      // Windowsda vaqtinchalik .py skriptlar EBUSY bilan Vite ni yiqitmasin
+      watch: {
+        ignored: ['**/*.py', '**/_*.py', '**/node_modules/**', '**/backend/**', '**/android-app/**'],
+      },
+    },
+
     // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
     assetsInclude: ['**/*.svg', '**/*.csv'],
   }

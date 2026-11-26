@@ -5,8 +5,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,15 +25,19 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.window.DialogWindowProvider
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -80,10 +92,12 @@ import uz.distributor.crm.domain.model.ProductPromotion
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.navigation.BottomNavChrome
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
 import uz.distributor.crm.presentation.theme.sherinPageBackground
+import uz.distributor.crm.util.UzScript
 import java.text.DecimalFormat
 
 @Composable
@@ -136,13 +150,44 @@ fun VisitScreen(
         }
     }
 
+    val categoriesListState = rememberLazyListState()
+    val productsListState = rememberLazyListState()
+    val productsChromeVisible = rememberVisitChromeVisibility(
+        listState = productsListState,
+        enabled = state.viewLevel == VisitViewLevel.PRODUCTS,
+    )
+
+    DisposableEffect(Unit) {
+        onDispose { BottomNavChrome.reset() }
+    }
+    LaunchedEffect(state.viewLevel, productsChromeVisible) {
+        when (state.viewLevel) {
+            VisitViewLevel.PRODUCTS -> BottomNavChrome.setVisible(productsChromeVisible)
+            else -> BottomNavChrome.reset()
+        }
+    }
+
     // Pastki menyu AppNavHost Column ichida joy ajratadi — bu yerda qo'shimcha padding kerak emas.
     Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize().background(pageBg)) {
         when (state.viewLevel) {
-            VisitViewLevel.CATEGORIES, VisitViewLevel.PROMOTIONS -> VisitCategoriesHeader(
+            VisitViewLevel.CATEGORIES -> VisitCategoriesHeader(
                 isDark = isDark,
-                activeTab = if (state.viewLevel == VisitViewLevel.PROMOTIONS) 1 else 0,
+                activeTab = 0,
+                showTabs = true,
+                searchQuery = state.searchQuery,
+                onSearchChange = viewModel::setSearchQuery,
+                onBack = handleBack,
+                onProductTabClick = viewModel::openProductsTab,
+                onPromoTabClick = viewModel::openPromotionsTab,
+                onCartTabClick = viewModel::openCartSheet,
+            )
+            VisitViewLevel.PROMOTIONS -> VisitCategoriesHeader(
+                isDark = isDark,
+                activeTab = 1,
+                showTabs = true,
+                searchQuery = null,
+                onSearchChange = {},
                 onBack = handleBack,
                 onProductTabClick = viewModel::openProductsTab,
                 onPromoTabClick = viewModel::openPromotionsTab,
@@ -175,6 +220,7 @@ fun VisitScreen(
                 searchQuery = state.searchQuery,
                 showAllProducts = state.showAllProducts,
                 cartTotal = state.cartTotal,
+                chromeVisible = productsChromeVisible,
                 isDark = isDark,
                 onBack = handleBack,
                 onSearchChange = viewModel::setSearchQuery,
@@ -204,11 +250,9 @@ fun VisitScreen(
         }
 
         if (state.viewLevel == VisitViewLevel.CATEGORIES) {
-            VisitSearchSection(
-                searchQuery = state.searchQuery,
+            VisitAllGoodsToggle(
                 showAllProducts = state.showAllProducts,
                 isDark = isDark,
-                onSearchChange = viewModel::setSearchQuery,
                 onToggleAll = viewModel::toggleShowAllProducts,
             )
         }
@@ -250,8 +294,8 @@ fun VisitScreen(
                 val filteredCategories = state.categoryCounts.filter { category ->
                     val hasStock = stockByCategory[category.name] == true
                     val matchesStock = state.showAllProducts || hasStock
-                    val q = state.searchQuery.trim().lowercase()
-                    val matchesQuery = q.isEmpty() || category.name.lowercase().contains(q)
+                    val matchesQuery = state.searchQuery.isBlank() ||
+                        UzScript.matches(category.name, state.searchQuery)
                     matchesStock && matchesQuery
                 }
                 if (filteredCategories.isEmpty()) {
@@ -263,6 +307,7 @@ fun VisitScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = categoriesListState,
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -379,8 +424,8 @@ fun VisitScreen(
                         lang = lang,
                         onDecrement = { viewModel.decrementDetailQty() },
                         onIncrement = { viewModel.incrementDetailQty() },
-                        onPresetQty = viewModel::setDetailQuantity,
-                        onQuantityChange = viewModel::setDetailQuantity,
+                        onPresetQty = { qty -> viewModel.setDetailQuantityForProduct(product.id, qty) },
+                        onQuantityChange = { qty -> viewModel.setDetailQuantityForProduct(product.id, qty) },
                         onPromoDecrement = { viewModel.decrementDetailPromoQty() },
                         onPromoIncrement = { viewModel.incrementDetailPromoQty() },
                         onPromoPresetQty = viewModel::setDetailPromoQuantity,
@@ -427,6 +472,7 @@ fun VisitScreen(
                     subColor = subColor,
                     lang = lang,
                     promotionsByProductId = state.promotionsByProductId,
+                    listState = productsListState,
                     onToggleSelected = viewModel::toggleSelectedSection,
                     onToggleAll = viewModel::toggleAllSection,
                     onProductClick = viewModel::openProduct,
@@ -855,6 +901,10 @@ private fun VisitProductDetailContent(
     } else {
         stockFmt.format(promoMax)
     }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(product.id) {
+        focusManager.clearFocus(force = true)
+    }
 
     Column(
         modifier = modifier
@@ -930,6 +980,7 @@ private fun VisitProductDetailContent(
                 borderColor = borderColor,
                 isDark = isDark,
                 focusQuantity = focusQuantity,
+                resetKey = product.id,
                 onFocusHandled = onFocusQuantityHandled,
                 onDecrement = onDecrement,
                 onIncrement = onIncrement,
@@ -951,6 +1002,7 @@ private fun VisitProductDetailContent(
                 borderColor = borderColor,
                 isDark = isDark,
                 focusQuantity = false,
+                resetKey = product.id,
                 onFocusHandled = {},
                 onDecrement = onPromoDecrement,
                 onIncrement = onPromoIncrement,
@@ -982,26 +1034,30 @@ private fun VisitProductDetailContent(
                     Spacer(Modifier.height(16.dp))
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         VisitQtyButton(
                             icon = Icons.Default.Remove,
-                            enabled = quantity > qtyStepForProduct(product.unit),
-                            tint = if (quantity > qtyStepForProduct(product.unit)) titleColor else subColor,
+                            enabled = quantity > 0,
+                            tint = if (quantity > 0) titleColor else subColor,
                             bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
                             onClick = onDecrement,
                         )
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            VisitEditableQuantity(
-                                quantity = quantity,
-                                unit = product.unit,
-                                stockFmt = stockFmt,
-                                titleColor = titleColor,
-                                requestFocus = focusQuantity,
-                                onFocusHandled = onFocusQuantityHandled,
-                                onQuantityChange = onQuantityChange,
-                            )
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            key(product.id) {
+                                VisitEditableQuantity(
+                                    quantity = quantity,
+                                    unit = product.unit,
+                                    stockFmt = stockFmt,
+                                    titleColor = titleColor,
+                                    requestFocus = focusQuantity,
+                                    onFocusHandled = onFocusQuantityHandled,
+                                    onQuantityChange = onQuantityChange,
+                                )
+                            }
                         }
                         VisitQtyButton(
                             icon = Icons.Default.Add,
@@ -1577,6 +1633,7 @@ private fun VisitQuantityCard(
     borderColor: Color,
     isDark: Boolean,
     focusQuantity: Boolean,
+    resetKey: Any = Unit,
     onFocusHandled: () -> Unit,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
@@ -1603,7 +1660,6 @@ private fun VisitQuantityCard(
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 VisitQtyButton(
@@ -1613,16 +1669,23 @@ private fun VisitQuantityCard(
                     bg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6),
                     onClick = onDecrement,
                 )
-                VisitEditableQuantity(
-                    quantity = quantity,
-                    unit = unit,
-                    stockFmt = stockFmt,
-                    titleColor = mutedTitle,
-                    requestFocus = focusQuantity && enabled,
-                    enabled = enabled,
-                    onFocusHandled = onFocusHandled,
-                    onQuantityChange = onQuantityChange,
-                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    key(resetKey) {
+                        VisitEditableQuantity(
+                            quantity = quantity,
+                            unit = unit,
+                            stockFmt = stockFmt,
+                            titleColor = mutedTitle,
+                            requestFocus = focusQuantity && enabled,
+                            enabled = enabled,
+                            onFocusHandled = onFocusHandled,
+                            onQuantityChange = onQuantityChange,
+                        )
+                    }
+                }
                 VisitQtyButton(
                     icon = Icons.Default.Add,
                     enabled = enabled,
@@ -1684,105 +1747,165 @@ private fun VisitEditableQuantity(
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
-    var isEditing by remember { mutableStateOf(false) }
-    var inputText by remember { mutableStateOf("") }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    var isFocused by remember { mutableStateOf(false) }
+    val commitGate = remember { java.util.concurrent.atomic.AtomicBoolean(true) }
+
+    fun displayQty(v: Double): String = formatQuantityDisplay(v, stockFmt)
+
+    var fieldValue by remember {
+        val text = displayQty(quantity)
+        mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+    }
 
     LaunchedEffect(quantity) {
-        val parsed = parseQuantityInput(inputText)
-        // Tugmalar orqali o'zgarganda matn ham yangilansin (isEditing bo'lsa ham)
-        if (parsed == null || kotlin.math.abs(parsed - quantity) > 0.0001) {
-            inputText = formatQuantityInput(quantity, stockFmt)
+        if (!isFocused) {
+            val text = displayQty(quantity)
+            fieldValue = TextFieldValue(text, TextRange(text.length))
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            // Mahsulot almasganda blur orqali eski qty yangi mahsulotga yozilmasin
+            commitGate.set(false)
+        }
+    }
+
+    fun showKeyboard() {
+        if (!enabled) return
+        keyboardController?.show()
+        val imm = view.context.getSystemService<InputMethodManager>()
+        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    fun openEditor() {
+        if (!enabled) return
+        scope.launch {
+            val text = if (quantity <= 0.0) "" else displayQty(quantity)
+            fieldValue = TextFieldValue(text, TextRange(text.length))
+            try {
+                focusRequester.requestFocus()
+            } catch (_: IllegalStateException) {
+            }
+            delay(80)
+            showKeyboard()
         }
     }
 
     LaunchedEffect(requestFocus) {
-        if (requestFocus) {
-            isEditing = true
-            inputText = if (quantity > 0.0) formatQuantityInput(quantity, stockFmt) else ""
+        if (requestFocus && enabled) {
             onFocusHandled()
+            openEditor()
         }
     }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clickable(enabled = enabled) {
-                if (!isEditing) {
-                    isEditing = true
-                    inputText = if (quantity > 0.0) formatQuantityInput(quantity, stockFmt) else ""
+            .widthIn(min = 72.dp, max = 120.dp)
+            .clickable(
+                enabled = enabled,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = { openEditor() },
+            ),
+    ) {
+        BasicTextField(
+            value = fieldValue,
+            onValueChange = { next ->
+                if (!enabled) return@BasicTextField
+                val sanitized = sanitizeQuantityTyping(next.text) ?: return@BasicTextField
+                fieldValue = next.copy(text = sanitized)
+                val parsed = parseQuantityInput(sanitized)
+                if (parsed != null && !sanitized.endsWith('.') && !sanitized.endsWith(',')) {
+                    onQuantityChange(parsed.coerceAtLeast(0.0))
+                } else if (sanitized.isEmpty()) {
+                    onQuantityChange(0.0)
                 }
             },
-    ) {
-        if (isEditing) {
-            LaunchedEffect(isEditing) {
-                kotlinx.coroutines.delay(50)
-                try {
-                    focusRequester.requestFocus()
-                } catch (_: IllegalStateException) {
-                    // TextField hali layoutga ulanmagan — keyingi urinish
-                }
-            }
-            BasicTextField(
-                value = inputText,
-                onValueChange = { raw ->
-                    val normalized = raw.replace(',', '.')
-                    if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
-                        inputText = normalized
-                        val parsed = parseQuantityInput(normalized)
-                        if (parsed != null) {
-                            onQuantityChange(parsed)
-                        }
-                    }
-                },
-                singleLine = true,
-                textStyle = TextStyle(
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = titleColor,
-                    textAlign = TextAlign.Center,
-                ),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { focusManager.clearFocus() },
-                ),
-                modifier = Modifier
-                    .widthIn(min = 72.dp)
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            isEditing = true
-                        } else {
-                            isEditing = false
-                            val finalQty = parseQuantityInput(inputText) ?: 0.0
-                            onQuantityChange(finalQty)
-                            inputText = formatQuantityInput(finalQty, stockFmt)
-                        }
-                    },
-            )
-        } else {
-            Text(
-                formatQuantityDisplay(quantity, stockFmt),
+            enabled = enabled,
+            singleLine = true,
+            textStyle = TextStyle(
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (quantity > 0.0) titleColor else subColor,
+                color = if (quantity > 0.0 || isFocused) titleColor else subColor,
                 textAlign = TextAlign.Center,
-            )
-        }
+            ),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Decimal,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = {
+                    if (commitGate.get()) {
+                        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceAtLeast(0.0)
+                        onQuantityChange(finalQty)
+                        val text = displayQty(finalQty)
+                        fieldValue = TextFieldValue(text, TextRange(text.length))
+                    }
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                },
+            ),
+            modifier = Modifier
+                .widthIn(min = 56.dp, max = 110.dp)
+                .padding(vertical = 4.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState ->
+                    val wasFocused = isFocused
+                    isFocused = focusState.isFocused
+                    if (focusState.isFocused) {
+                        showKeyboard()
+                    } else if (wasFocused && commitGate.get()) {
+                        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceAtLeast(0.0)
+                        onQuantityChange(finalQty)
+                        val text = displayQty(finalQty)
+                        fieldValue = TextFieldValue(text, TextRange(text.length))
+                    }
+                }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures(onTap = { openEditor() })
+                },
+            decorationBox = { inner ->
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .widthIn(min = 56.dp, max = 110.dp)
+                        .defaultMinSize(minHeight = 44.dp)
+                        .clickable(
+                            enabled = enabled,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = { openEditor() },
+                        ),
+                ) {
+                    inner()
+                }
+            },
+        )
         Text(unit, color = subColor, fontSize = 13.sp)
     }
 }
 
 private fun formatQuantityDisplay(quantity: Double, stockFmt: DecimalFormat): String =
-    if (quantity % 1.0 == 0.0) quantity.toInt().toString() else stockFmt.format(quantity)
-
-private fun formatQuantityInput(quantity: Double, stockFmt: DecimalFormat): String =
-    if (quantity <= 0.0) "" else formatQuantityDisplay(quantity, stockFmt)
+    if (quantity % 1.0 == 0.0) quantity.toInt().toString() else stockFmt.format(quantity).replace(',', '.')
 
 private fun qtyStepForProduct(unit: String): Double =
     if (unit.equals("kg", ignoreCase = true) || unit.equals("кг", ignoreCase = true)) 0.1 else 1.0
+
+/** 1.5 va 1,5 ni qabul qiladi; yozish paytida bitta vergul/nuqta ruxsat */
+private fun sanitizeQuantityTyping(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return ""
+    val normalized = trimmed.replace(',', '.')
+    if (!normalized.matches(Regex("^\\d*\\.?\\d*$"))) return null
+    if (normalized.count { it == '.' } > 1) return null
+    return normalized
+}
 
 private fun parseQuantityInput(input: String): Double? {
     val normalized = input.trim().replace(',', '.')
@@ -1829,22 +1952,28 @@ private fun VisitCompactEditableQty(
     fun displayQty(v: Double): String =
         if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
 
-    var inputText by remember { mutableStateOf(displayQty(quantity)) }
+    var fieldValue by remember {
+        val text = displayQty(quantity)
+        mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+    }
 
     LaunchedEffect(quantity) {
         if (!isFocused) {
-            inputText = displayQty(quantity)
+            val text = displayQty(quantity)
+            fieldValue = TextFieldValue(text, TextRange(text.length))
         }
     }
 
     fun showKeyboard() {
         keyboardController?.show()
         val imm = view.context.getSystemService<InputMethodManager>()
-        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        imm?.showSoftInput(view, InputMethodManager.SHOW_FORCED)
     }
 
     fun openEditor() {
         scope.launch {
+            val text = if (quantity <= 0.0) "" else displayQty(quantity)
+            fieldValue = TextFieldValue(text, TextRange(text.length))
             try {
                 focusRequester.requestFocus()
             } catch (_: IllegalStateException) {
@@ -1855,15 +1984,15 @@ private fun VisitCompactEditableQty(
     }
 
     BasicTextField(
-        value = inputText,
-        onValueChange = { raw ->
-            val normalized = raw.replace(',', '.')
-            if (normalized.isEmpty() || normalized.matches(Regex("^\\d*\\.?\\d*$"))) {
-                inputText = normalized
-                val parsed = parseQuantityInput(normalized)
-                if (parsed != null) {
-                    onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
-                }
+        value = fieldValue,
+        onValueChange = { next ->
+            val sanitized = sanitizeQuantityTyping(next.text) ?: return@BasicTextField
+            fieldValue = next.copy(text = sanitized)
+            val parsed = parseQuantityInput(sanitized)
+            if (parsed != null && !sanitized.endsWith('.') && !sanitized.endsWith(',')) {
+                onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
+            } else if (sanitized.isEmpty()) {
+                onQuantityChange(0.0)
             }
         },
         singleLine = true,
@@ -1874,14 +2003,15 @@ private fun VisitCompactEditableQty(
             textAlign = TextAlign.Center,
         ),
         keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
+            keyboardType = KeyboardType.Decimal,
             imeAction = ImeAction.Done,
         ),
         keyboardActions = KeyboardActions(
             onDone = {
-                val finalQty = (parseQuantityInput(inputText) ?: 0.0).coerceIn(0.0, maxQuantity)
+                val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceIn(0.0, maxQuantity)
                 onQuantityChange(finalQty)
-                inputText = displayQty(finalQty)
+                val text = displayQty(finalQty)
+                fieldValue = TextFieldValue(text, TextRange(text.length))
                 focusManager.clearFocus()
                 keyboardController?.hide()
             },
@@ -1895,16 +2025,15 @@ private fun VisitCompactEditableQty(
                 if (focusState.isFocused) {
                     showKeyboard()
                 } else {
-                    val finalQty = (parseQuantityInput(inputText) ?: 0.0)
+                    val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0)
                         .coerceIn(0.0, maxQuantity)
                     onQuantityChange(finalQty)
-                    inputText = displayQty(finalQty)
+                    val text = displayQty(finalQty)
+                    fieldValue = TextFieldValue(text, TextRange(text.length))
                 }
             }
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { openEditor() },
-                )
+                detectTapGestures(onTap = { openEditor() })
             },
         decorationBox = { inner ->
             Box(
@@ -2000,6 +2129,7 @@ private fun VisitProductsListContent(
     subColor: Color,
     lang: AppLanguage,
     promotionsByProductId: Map<String, ProductPromotion> = emptyMap(),
+    listState: LazyListState,
     onToggleSelected: () -> Unit,
     onToggleAll: () -> Unit,
     onProductClick: (Product) -> Unit,
@@ -2007,6 +2137,7 @@ private fun VisitProductsListContent(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
+        state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2210,6 +2341,9 @@ private fun VisitSelectedProductCard(
 private fun VisitCategoriesHeader(
     isDark: Boolean,
     activeTab: Int,
+    showTabs: Boolean,
+    searchQuery: String?,
+    onSearchChange: (String) -> Unit,
     onBack: () -> Unit,
     onProductTabClick: () -> Unit,
     onPromoTabClick: () -> Unit,
@@ -2232,21 +2366,56 @@ private fun VisitCategoriesHeader(
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     size = 40.dp,
                 )
-                Text(
-                    AppStrings.visitShort(lang),
-                    modifier = Modifier.padding(start = 12.dp),
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                if (searchQuery != null) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 10.dp),
+                        placeholder = {
+                            Text(AppStrings.search(lang), color = Color.White.copy(0.65f))
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, null, tint = Color.White.copy(0.85f))
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White.copy(0.16f),
+                            unfocusedContainerColor = Color.White.copy(0.12f),
+                            focusedBorderColor = Color.White.copy(0.35f),
+                            unfocusedBorderColor = Color.White.copy(0.2f),
+                            cursorColor = Color.White,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                        ),
+                    )
+                } else {
+                    Text(
+                        AppStrings.visitShort(lang),
+                        modifier = Modifier.padding(start = 12.dp),
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            VisitTabRow(
-                activeTab = activeTab,
-                onProductTabClick = onProductTabClick,
-                onPromoTabClick = onPromoTabClick,
-                onCartTabClick = onCartTabClick,
-            )
+            AnimatedVisibility(
+                visible = showTabs,
+                enter = expandVertically(tween(220)) + fadeIn(tween(180)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
+            ) {
+                Column {
+                    Spacer(Modifier.height(16.dp))
+                    VisitTabRow(
+                        activeTab = activeTab,
+                        onProductTabClick = onProductTabClick,
+                        onPromoTabClick = onPromoTabClick,
+                        onCartTabClick = onCartTabClick,
+                    )
+                }
+            }
         }
     }
 }
@@ -2258,6 +2427,7 @@ private fun VisitProductsHeader(
     searchQuery: String,
     showAllProducts: Boolean,
     cartTotal: Double,
+    chromeVisible: Boolean,
     isDark: Boolean,
     onBack: () -> Unit,
     onSearchChange: (String) -> Unit,
@@ -2270,7 +2440,7 @@ private fun VisitProductsHeader(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(top = 36.dp, bottom = 16.dp),
+                .padding(top = 36.dp, bottom = 12.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -2281,16 +2451,43 @@ private fun VisitProductsHeader(
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     size = 40.dp,
                 )
-                Column(
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchChange,
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
+                        .padding(start = 10.dp),
+                    placeholder = {
+                        Text(AppStrings.search(lang), color = Color.White.copy(0.65f))
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, null, tint = Color.White.copy(0.85f))
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White.copy(0.16f),
+                        unfocusedContainerColor = Color.White.copy(0.12f),
+                        focusedBorderColor = Color.White.copy(0.35f),
+                        unfocusedBorderColor = Color.White.copy(0.2f),
+                        cursorColor = Color.White,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                    ),
+                )
+            }
+
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = expandVertically(tween(220)) + fadeIn(tween(180)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
+            ) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
                     Text(
                         categoryName.uppercase(),
                         color = Color.White,
-                        fontSize = 18.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -2300,67 +2497,43 @@ private fun VisitProductsHeader(
                         color = Color.White.copy(0.85f),
                         fontSize = 13.sp,
                     )
-                }
-                Spacer(Modifier.width(40.dp))
-            }
-            Spacer(Modifier.height(14.dp))
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = {
-                    Text(AppStrings.search(lang), color = Color.White.copy(0.6f))
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, null, tint = Color.White.copy(0.8f))
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.White.copy(0.15f),
-                    unfocusedContainerColor = Color.White.copy(0.12f),
-                    focusedBorderColor = Color.White.copy(0.3f),
-                    unfocusedBorderColor = Color.White.copy(0.2f),
-                    cursorColor = Color.White,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                ),
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        AppStrings.allGoods(lang),
-                        color = Color.White.copy(0.9f),
-                        fontSize = 13.sp,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Switch(
-                        checked = showAllProducts,
-                        onCheckedChange = { onToggleAll() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF3B82F6),
-                            uncheckedThumbColor = Color.White,
-                            uncheckedTrackColor = Color.White.copy(0.3f),
-                        ),
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.White.copy(0.15f),
-                ) {
-                    Text(
-                        "${priceFmt.format(cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                AppStrings.allGoods(lang),
+                                color = Color.White.copy(0.9f),
+                                fontSize = 13.sp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Switch(
+                                checked = showAllProducts,
+                                onCheckedChange = { onToggleAll() },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF3B82F6),
+                                    uncheckedThumbColor = Color.White,
+                                    uncheckedTrackColor = Color.White.copy(0.3f),
+                                ),
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White.copy(0.15f),
+                        ) {
+                            Text(
+                                "${priceFmt.format(cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2582,11 +2755,9 @@ private fun VisitSummaryIcon(
 }
 
 @Composable
-private fun VisitSearchSection(
-    searchQuery: String,
+private fun VisitAllGoodsToggle(
     showAllProducts: Boolean,
     isDark: Boolean,
-    onSearchChange: (String) -> Unit,
     onToggleAll: () -> Unit,
 ) {
     val lang = LocalAppLanguage.current
@@ -2594,61 +2765,83 @@ private fun VisitSearchSection(
     val borderColor = if (isDark) Color(0xFF374151) else Color(0xFFE5E7EB)
     val titleColor = if (isDark) Color.White else Color(0xFF111827)
 
-    Column(
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = cardBg,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
     ) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(AppStrings.search(lang), color = subColor) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = subColor) },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = cardBg,
-                unfocusedContainerColor = cardBg,
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                cursorColor = SherinColors.Primary,
-                focusedTextColor = titleColor,
-                unfocusedTextColor = titleColor,
-            ),
-        )
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = cardBg,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    AppStrings.allGoods(lang),
-                    color = titleColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Switch(
-                    checked = showAllProducts,
-                    onCheckedChange = { onToggleAll() },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFF3B82F6),
-                    ),
-                )
-            }
+            Text(
+                AppStrings.allGoods(lang),
+                color = titleColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Switch(
+                checked = showAllProducts,
+                onCheckedChange = { onToggleAll() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF3B82F6),
+                ),
+            )
         }
     }
+}
+
+@Composable
+private fun rememberVisitChromeVisibility(
+    listState: LazyListState,
+    enabled: Boolean,
+): Boolean {
+    var chromeVisible by remember { mutableStateOf(true) }
+    var lastIndex by remember { mutableIntStateOf(0) }
+    var lastOffset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(enabled) {
+        if (!enabled) {
+            chromeVisible = true
+            lastIndex = 0
+            lastOffset = 0
+        }
+    }
+
+    LaunchedEffect(listState, enabled) {
+        if (!enabled) return@LaunchedEffect
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                val scrollingDown = when {
+                    index > lastIndex -> true
+                    index < lastIndex -> false
+                    else -> offset > lastOffset
+                }
+                val delta = when {
+                    index != lastIndex -> 24
+                    else -> kotlin.math.abs(offset - lastOffset)
+                }
+                when {
+                    index == 0 && offset < 24 -> chromeVisible = true
+                    delta < 10 -> Unit
+                    scrollingDown -> chromeVisible = false
+                    else -> chromeVisible = true
+                }
+                lastIndex = index
+                lastOffset = offset
+            }
+    }
+    return chromeVisible
 }
 
 @Composable

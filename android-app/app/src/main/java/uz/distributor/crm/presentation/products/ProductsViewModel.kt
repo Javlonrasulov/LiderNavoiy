@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.repository.ProductRepository
 import uz.distributor.crm.domain.model.Product
+import uz.distributor.crm.util.UzScript
 import javax.inject.Inject
 
 enum class ProductsViewMode { CARD, TABLE }
@@ -24,16 +25,16 @@ data class ProductsUiState(
 ) {
     val filteredProducts: List<Product>
         get() {
-            val q = searchQuery.trim().lowercase()
+            val q = searchQuery.trim()
             return products.filter { product ->
                 val cat = product.categoryFilterKey()
                 if (selectedCategory != null && cat != selectedCategory) return@filter false
                 if (stockOnly && product.stockBalance <= 0) return@filter false
                 if (q.isEmpty()) return@filter true
-                product.name.lowercase().contains(q) ||
-                    product.code.lowercase().contains(q) ||
-                    product.category.lowercase().contains(q) ||
-                    (product.brand?.lowercase()?.contains(q) == true)
+                UzScript.matches(product.name, q) ||
+                    UzScript.matches(product.code, q) ||
+                    UzScript.matches(product.category, q) ||
+                    UzScript.matches(product.brand, q)
             }
         }
 

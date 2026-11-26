@@ -1,6 +1,11 @@
 package uz.distributor.crm.presentation.navigation
 
 import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -113,8 +118,17 @@ fun AppNavHost(
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val showBottomNav = showsBottomNav(currentRoute)
     val selectedTab = bottomNavSelectedTab(currentRoute)
+    val chromeVisible by BottomNavChrome.visible.collectAsState()
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val currentUser by navViewModel.currentUser.collectAsState(initial = null)
+
+    LaunchedEffect(currentRoute) {
+        val keepChromeState =
+            currentRoute == "products" ||
+                currentRoute == "clients" ||
+                currentRoute?.startsWith("visit/") == true
+        if (!keepChromeState) BottomNavChrome.reset()
+    }
     val isDeliveryPerson = currentUser?.isDeliveryPerson() == true
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -460,7 +474,11 @@ fun AppNavHost(
                     .zIndex(1000f),
             )
         }
-        if (showBottomNav && !imeVisible) {
+        AnimatedVisibility(
+            visible = showBottomNav && !imeVisible && chromeVisible,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+        ) {
             BottomNavBar(
                 selected = selectedTab,
                 onTabSelected = { tab ->

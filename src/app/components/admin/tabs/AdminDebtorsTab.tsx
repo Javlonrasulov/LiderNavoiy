@@ -47,6 +47,24 @@ function na(t: Record<string, string>, v?: string | null) {
   return v && String(v).trim() ? v : (t.debtDataUnavailable ?? 'Maʼlumot mavjud emas');
 }
 
+function translatePaymentStatus(t: Record<string, string>, status?: string | null) {
+  const s = (status ?? '').toLowerCase().trim();
+  if (s === 'unpaid') return t.debtPayUnpaid ?? 'To‘lanmagan';
+  if (s === 'partial') return t.debtPayPartial ?? 'Qisman to‘langan';
+  if (s === 'paid') return t.debtPayPaid ?? 'To‘langan';
+  if (s === 'pending') return t.debtPayPending ?? 'Kutilmoqda';
+  if (s === 'cancelled' || s === 'canceled') return t.debtPayCancelled ?? 'Bekor qilingan';
+  return status && status.trim() ? status : na(t, null);
+}
+
+function translatePayMethod(t: Record<string, string>, method?: string | null) {
+  const m = (method ?? '').toLowerCase().trim();
+  if (m === 'cash') return t.debtMethodCash ?? 'Naqd';
+  if (m === 'terminal') return t.debtMethodTerminal ?? 'Terminal';
+  if (m === 'deferred') return t.debtMethodDeferred ?? 'Muddatli';
+  return method && method.trim() ? method : '';
+}
+
 /** Tizim uslubidagi custom dropdown (native <select> o‘rniga) */
 function DebtFilterSelect({
   value, options, onChange, D, className = '',
@@ -478,20 +496,26 @@ export function AdminDebtorsTab({
                   onChange={(v) => { setEmployeeId(v); setPage(1); }}
                   D={D}
                 />
-                <SingleDatePicker
-                  value={debtDateFrom}
-                  onChange={(v) => { setDebtDateFrom(v); setPage(1); }}
-                  onClear={() => { setDebtDateFrom(''); setPage(1); }}
-                  D={D}
-                />
-                <SingleDatePicker
-                  value={debtDateTo}
-                  onChange={(v) => { setDebtDateTo(v); setPage(1); }}
-                  onClear={() => { setDebtDateTo(''); setPage(1); }}
-                  D={D}
-                />
-                <input type="number" value={minRemaining} onChange={(e) => { setMinRemaining(e.target.value); setPage(1); }} placeholder={t.debtMinSum ?? 'Min qoldiq'} className={inputCls} />
-                <input type="number" value={maxRemaining} onChange={(e) => { setMaxRemaining(e.target.value); setPage(1); }} placeholder={t.debtMaxSum ?? 'Max qoldiq'} className={inputCls} />
+                <div className="space-y-1">
+                  <p className={`text-[11px] font-medium px-0.5 ${sub}`}>{t.debtDateFrom ?? 'Sana (dan)'}</p>
+                  <SingleDatePicker
+                    value={debtDateFrom}
+                    onChange={(v) => { setDebtDateFrom(v); setPage(1); }}
+                    onClear={() => { setDebtDateFrom(''); setPage(1); }}
+                    D={D}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className={`text-[11px] font-medium px-0.5 ${sub}`}>{t.debtDateTo ?? 'Sana (gacha)'}</p>
+                  <SingleDatePicker
+                    value={debtDateTo}
+                    onChange={(v) => { setDebtDateTo(v); setPage(1); }}
+                    onClear={() => { setDebtDateTo(''); setPage(1); }}
+                    D={D}
+                  />
+                </div>
+                <input type="number" value={minRemaining} onChange={(e) => { setMinRemaining(e.target.value); setPage(1); }} placeholder={t.debtMinSum ?? 'Eng kam qoldiq'} className={inputCls} />
+                <input type="number" value={maxRemaining} onChange={(e) => { setMaxRemaining(e.target.value); setPage(1); }} placeholder={t.debtMaxSum ?? 'Eng ko‘p qoldiq'} className={inputCls} />
               </div>
             )}
 
@@ -697,7 +721,7 @@ function DebtDetailBody({
           <div className={`px-4 py-3 border-b ${divider} flex flex-wrap items-center justify-between gap-2`}>
             <div>
               <p className={`font-semibold ${text}`}>#{doc.orderNumber}</p>
-              <p className={`text-xs ${sub}`}>{doc.companyName ?? '—'} · {doc.paymentStatus}</p>
+              <p className={`text-xs ${sub}`}>{doc.companyName ?? '—'} · {translatePaymentStatus(t, doc.paymentStatus)}</p>
             </div>
             <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
               doc.overdue ? 'bg-rose-500/15 text-rose-500' : D ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'
@@ -763,7 +787,7 @@ function DebtDetailBody({
                     <p className={`text-xs ${sub}`}>
                       {formatDisplayDateTime(h.at)}
                       {h.actorName ? ` · ${h.actorName}` : ''}
-                      {h.method ? ` · ${h.method}` : ''}
+                      {h.method ? ` · ${translatePayMethod(t, h.method)}` : ''}
                       {h.documentNo ? ` · #${h.documentNo}` : ''}
                     </p>
                     {h.note ? <p className={`text-xs mt-0.5 ${sub}`}>{h.note}</p> : null}

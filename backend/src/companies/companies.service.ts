@@ -1,7 +1,13 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
+import { CompanyBankAccount } from './entities/company-bank-account.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Client } from '../clients/entities/client.entity';
 import { User } from '../auth/entities/user.entity';
@@ -19,6 +25,17 @@ export interface CompanyListItem {
   description: string | null;
   productType: string;
   warehouseName: string | null;
+  orgCode: string | null;
+  fullLegalName: string | null;
+  legalAddress: string | null;
+  phone: string | null;
+  callCenterPhone: string | null;
+  inn: string | null;
+  vatCode: string | null;
+  rekvizitNote: string | null;
+  cashCashboxName: string | null;
+  clickCashboxName: string | null;
+  primaryBankAccountId: string | null;
   agentsCanAddClients: boolean;
   clientsAddWithoutApproval: boolean;
   agents: number;
@@ -30,6 +47,8 @@ export class CompaniesService {
   constructor(
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(CompanyBankAccount)
+    private readonly bankAccountRepo: Repository<CompanyBankAccount>,
     @InjectRepository(DistributorProfile)
     private readonly profileRepo: Repository<DistributorProfile>,
     @InjectRepository(Client)
@@ -51,6 +70,17 @@ export class CompaniesService {
       description: company.description,
       productType: company.productType || 'kg_dona',
       warehouseName: company.warehouseName ?? null,
+      orgCode: company.orgCode ?? null,
+      fullLegalName: company.fullLegalName ?? null,
+      legalAddress: company.legalAddress ?? null,
+      phone: company.phone ?? null,
+      callCenterPhone: company.callCenterPhone ?? null,
+      inn: company.inn ?? null,
+      vatCode: company.vatCode ?? null,
+      rekvizitNote: company.rekvizitNote ?? null,
+      cashCashboxName: company.cashCashboxName ?? null,
+      clickCashboxName: company.clickCashboxName ?? null,
+      primaryBankAccountId: company.primaryBankAccountId ?? null,
       agentsCanAddClients: !!company.agentsCanAddClients,
       clientsAddWithoutApproval: !!company.clientsAddWithoutApproval,
       agents,
@@ -151,6 +181,58 @@ export class CompaniesService {
     if (dto.description !== undefined) company.description = dto.description.trim() || null;
     if (dto.productType !== undefined) company.productType = dto.productType;
     if (dto.warehouseName !== undefined) company.warehouseName = dto.warehouseName.trim() || null;
+    if (dto.orgCode !== undefined) company.orgCode = dto.orgCode?.trim() || null;
+    if (dto.fullLegalName !== undefined) {
+      company.fullLegalName = dto.fullLegalName?.trim() || null;
+    }
+    if (dto.legalAddress !== undefined) {
+      company.legalAddress = dto.legalAddress?.trim() || null;
+    }
+    if (dto.phone !== undefined) company.phone = dto.phone?.trim() || null;
+    if (dto.callCenterPhone !== undefined) {
+      company.callCenterPhone = dto.callCenterPhone?.trim() || null;
+    }
+    if (dto.inn !== undefined) company.inn = dto.inn?.trim() || null;
+    if (dto.vatCode !== undefined) company.vatCode = dto.vatCode?.trim() || null;
+    if (dto.rekvizitNote !== undefined) {
+      company.rekvizitNote = dto.rekvizitNote?.trim() || null;
+    }
+    if (dto.cashCashboxName !== undefined) {
+      company.cashCashboxName = dto.cashCashboxName?.trim() || null;
+    }
+    if (dto.clickCashboxName !== undefined) {
+      company.clickCashboxName = dto.clickCashboxName?.trim() || null;
+    }
+    if (dto.primaryBankAccountId !== undefined) {
+      const accId = dto.primaryBankAccountId?.trim() || null;
+      if (accId) {
+        const acc = await this.bankAccountRepo.findOne({
+          where: { id: accId, companyId: id, isActive: true },
+        });
+        if (!acc) {
+          throw new BadRequestException(
+            'Asosiy hisob faqat shu tashkilotning hisoblaridan tanlanadi',
+          );
+        }
+        await this.bankAccountRepo
+          .createQueryBuilder()
+          .update(CompanyBankAccount)
+          .set({ isPrimary: false })
+          .where('"companyId" = :companyId', { companyId: id })
+          .execute();
+        acc.isPrimary = true;
+        await this.bankAccountRepo.save(acc);
+        company.primaryBankAccountId = acc.id;
+      } else {
+        company.primaryBankAccountId = null;
+        await this.bankAccountRepo
+          .createQueryBuilder()
+          .update(CompanyBankAccount)
+          .set({ isPrimary: false })
+          .where('"companyId" = :companyId', { companyId: id })
+          .execute();
+      }
+    }
     if (dto.agentsCanAddClients !== undefined) {
       company.agentsCanAddClients = dto.agentsCanAddClients;
     }

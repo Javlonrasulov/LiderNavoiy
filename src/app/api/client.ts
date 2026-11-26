@@ -129,10 +129,61 @@ export interface BackendCompany {
   description: string | null;
   productType?: 'kg_dona' | 'dona' | 'kg' | null;
   warehouseName?: string | null;
+  orgCode?: string | null;
+  fullLegalName?: string | null;
+  legalAddress?: string | null;
+  phone?: string | null;
+  callCenterPhone?: string | null;
+  inn?: string | null;
+  vatCode?: string | null;
+  rekvizitNote?: string | null;
+  cashCashboxName?: string | null;
+  clickCashboxName?: string | null;
+  primaryBankAccountId?: string | null;
   agentsCanAddClients?: boolean;
   clientsAddWithoutApproval?: boolean;
   agents: number;
   clients: number;
+}
+
+export interface CompanyBankAccount {
+  id: string;
+  companyId: string;
+  code: string | null;
+  name: string;
+  accountNumber: string;
+  bankName: string | null;
+  mfo: string | null;
+  isPrimary: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CompanySocialLink {
+  id: string;
+  companyId: string;
+  name: string;
+  url: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaymentTerminalRow {
+  id: string;
+  name: string;
+  code: string | null;
+  externalId?: string | null;
+  account23510?: string | null;
+  bankAccountId?: string | null;
+  bankAccountName?: string | null;
+  bankAccountNumber?: string | null;
+  bankName?: string | null;
+  bankMfo?: string | null;
+  companyId: string | null;
+  assignedDistributorId: string | null;
+  assignedName?: string | null;
+  isActive: boolean;
 }
 
 export interface DebtAlertInfo {
@@ -712,6 +763,17 @@ export const api = {
       description?: string;
       productType?: 'kg_dona' | 'dona' | 'kg';
       warehouseName?: string | null;
+      orgCode?: string | null;
+      fullLegalName?: string | null;
+      legalAddress?: string | null;
+      phone?: string | null;
+      callCenterPhone?: string | null;
+      inn?: string | null;
+      vatCode?: string | null;
+      rekvizitNote?: string | null;
+      cashCashboxName?: string | null;
+      clickCashboxName?: string | null;
+      primaryBankAccountId?: string | null;
       agentsCanAddClients?: boolean;
       clientsAddWithoutApproval?: boolean;
     },
@@ -725,6 +787,81 @@ export const api = {
     request<{ url: string; fullUrl: string; mimeType: string; fileSize: number }>(
       '/companies/upload-image',
       { method: 'POST', body: JSON.stringify({ dataUrl }) },
+    ),
+
+  getCompanyBankAccounts: (companyId: string) =>
+    request<CompanyBankAccount[]>(
+      `/companies/${encodeURIComponent(companyId)}/bank-accounts`,
+    ),
+
+  createCompanyBankAccount: (
+    companyId: string,
+    body: {
+      code?: string | null;
+      name: string;
+      accountNumber: string;
+      bankName?: string | null;
+      mfo?: string | null;
+      isPrimary?: boolean;
+    },
+  ) =>
+    request<CompanyBankAccount>(
+      `/companies/${encodeURIComponent(companyId)}/bank-accounts`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  updateCompanyBankAccount: (
+    companyId: string,
+    id: string,
+    body: {
+      code?: string | null;
+      name?: string;
+      accountNumber?: string;
+      bankName?: string | null;
+      mfo?: string | null;
+      isPrimary?: boolean;
+      isActive?: boolean;
+    },
+  ) =>
+    request<CompanyBankAccount>(
+      `/companies/${encodeURIComponent(companyId)}/bank-accounts/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+
+  deleteCompanyBankAccount: (companyId: string, id: string) =>
+    request<CompanyBankAccount>(
+      `/companies/${encodeURIComponent(companyId)}/bank-accounts/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
+
+  getCompanySocialLinks: (companyId: string) =>
+    request<CompanySocialLink[]>(
+      `/companies/${encodeURIComponent(companyId)}/social-links`,
+    ),
+
+  createCompanySocialLink: (
+    companyId: string,
+    body: { name: string; url: string },
+  ) =>
+    request<CompanySocialLink>(
+      `/companies/${encodeURIComponent(companyId)}/social-links`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  updateCompanySocialLink: (
+    companyId: string,
+    id: string,
+    body: { name?: string; url?: string },
+  ) =>
+    request<CompanySocialLink>(
+      `/companies/${encodeURIComponent(companyId)}/social-links/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+
+  deleteCompanySocialLink: (companyId: string, id: string) =>
+    request<{ ok: boolean }>(
+      `/companies/${encodeURIComponent(companyId)}/social-links/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
     ),
 
   // ─── App users (APK login) ───
@@ -1351,6 +1488,73 @@ export const api = {
   deleteProduct: (id: string) =>
     request<void>(`/products/${id}`, { method: 'DELETE' }),
 
+  getProductAudit: (id: string, limit = 100) =>
+    request<Array<{
+      id: string;
+      productId: string;
+      actorUserId: string | null;
+      actorName: string;
+      actorRole: string;
+      action: 'created' | 'updated' | 'deactivated';
+      summary: string | null;
+      changes: Array<{ field: string; before: string | null; after: string | null }>;
+      meta: Record<string, unknown> | null;
+      createdAt: string;
+    }>>(`/products/${encodeURIComponent(id)}/audit?limit=${limit}`),
+
+  getProductUndoPreview: (companyId?: string) => {
+    const qs = companyId && companyId !== 'all'
+      ? `?companyId=${encodeURIComponent(companyId)}`
+      : '';
+    return request<{
+      available: boolean;
+      reason?: 'no_recent_change';
+      windowMinutes: number;
+      remainingMs?: number;
+      message?: string;
+      event?: {
+        id: string;
+        productId: string;
+        action: 'created' | 'updated' | 'deactivated';
+        summary: string | null;
+        changes: Array<{ field: string; before: string | null; after: string | null }>;
+        actorName: string;
+        actorRole: string;
+        createdAt: string;
+      };
+      product?: {
+        id: string;
+        code: string;
+        name: string;
+        brand: string | null;
+        category: string | null;
+      };
+    }>(`/products/undo-preview${qs}`);
+  },
+
+  undoLastProductChange: (companyId?: string) => {
+    const qs = companyId && companyId !== 'all'
+      ? `?companyId=${encodeURIComponent(companyId)}`
+      : '';
+    return request<{
+      ok: boolean;
+      product: {
+        id: string;
+        code: string;
+        name: string;
+        companyId?: string | null;
+        category: string | null;
+        brand: string | null;
+        price: number | string;
+        unit: string;
+        stockBalance: number | string;
+        imageUrl?: string | null;
+      };
+      undoneEventId: string;
+      changes: Array<{ field: string; before: string | null; after: string | null }>;
+    }>(`/products/undo-last${qs}`, { method: 'POST' });
+  },
+
   uploadProductImage: (dataUrl: string) =>
     request<{ url: string; fullUrl: string; mimeType: string; fileSize: number }>(
       '/products/upload-image',
@@ -1707,41 +1911,45 @@ export const api = {
 
   // ─── Payment terminals ───
   getTerminals: (companyId?: string) =>
-    request<
-      Array<{
-        id: string;
-        name: string;
-        code: string | null;
-        companyId: string | null;
-        assignedDistributorId: string | null;
-        assignedName?: string | null;
-        isActive: boolean;
-      }>
-    >(`/terminals${companyId ? `?companyId=${companyId}` : ''}`),
+    request<PaymentTerminalRow[]>(
+      `/terminals${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`,
+    ),
 
   createTerminal: (body: {
     name: string;
     code?: string | null;
+    externalId?: string | null;
+    account23510?: string | null;
+    bankAccountId?: string | null;
     companyId?: string | null;
     assignedDistributorId?: string | null;
     isActive?: boolean;
   }) =>
-    request('/terminals', { method: 'POST', body: JSON.stringify(body) }),
+    request<PaymentTerminalRow>('/terminals', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   updateTerminal: (
     id: string,
     body: {
       name?: string;
       code?: string | null;
+      externalId?: string | null;
+      account23510?: string | null;
+      bankAccountId?: string | null;
       companyId?: string | null;
       assignedDistributorId?: string | null;
       isActive?: boolean;
     },
   ) =>
-    request(`/terminals/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<PaymentTerminalRow>(`/terminals/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   deleteTerminal: (id: string) =>
-    request(`/terminals/${id}`, { method: 'DELETE' }),
+    request<PaymentTerminalRow>(`/terminals/${id}`, { method: 'DELETE' }),
 
   getReturns: (status?: string) =>
     request<

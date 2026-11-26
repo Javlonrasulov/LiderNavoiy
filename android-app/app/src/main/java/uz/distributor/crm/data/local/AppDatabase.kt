@@ -113,6 +113,7 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertAll(products: List<ProductEntity>)
     @Query("DELETE FROM products_cache") suspend fun clearAll()
     @Query("SELECT * FROM products_cache ORDER BY category, name") suspend fun getAll(): List<ProductEntity>
+    @Query("SELECT COUNT(*) FROM products_cache") suspend fun count(): Int
     @Query("SELECT DISTINCT category FROM products_cache WHERE category IS NOT NULL") suspend fun getCategories(): List<String>
     @Query("SELECT * FROM products_cache WHERE category = :cat") suspend fun getByCategory(cat: String): List<ProductEntity>
     @Query("SELECT * FROM products_cache WHERE id = :id") suspend fun getById(id: String): ProductEntity?

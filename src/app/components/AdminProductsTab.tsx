@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Activity, Check, ChevronLeft, ChevronRight,
-  Edit2, LayoutGrid, List as ListIcon, Package,
-  Plus, Search, Tag, Trash2, X, FolderOpen,
+  Edit2, FileSpreadsheet, History, LayoutGrid, List as ListIcon, Package,
+  Plus, Search, Tag, Trash2, Undo2, X, FolderOpen,
   Pencil, ChevronDown, FolderPlus,
-  ImagePlus, Smile, Maximize2, Minimize2, Upload,
+  ImagePlus, Smile, Maximize2, Minimize2, Upload, Sparkles, Clock3,
 } from 'lucide-react';
-import { ADMIN_ORGS, type AdminProduct } from '../data/adminProducts';
+import { type AdminProduct } from '../data/adminProducts';
 import { AddProductDrawer, type AddForm } from './AddProductDrawer';
 import { ProductExcelImportModal } from './admin/ProductExcelImportModal';
 import { brandColor } from '../data/adminData';
 import { api } from '../api/client';
+import { useCompanies } from './CompaniesContext';
 import {
   adminToCreatePayload,
   adminToUpdatePayload,
@@ -31,7 +32,7 @@ const CAT_PALETTE = [
   '#10b981','#06b6d4','#3b82f6','#84cc16','#f97316',
   '#64748b','#a16207',
 ];
-const CAT_EMOJIS = ['📦','🧀','🥩','🥛','🧈','🍖','🥓','🌮','🛒','🏪','⭐','🔥'];
+const CAT_EMOJIS = ['📦','🧀','🥩','🥛','🧈','🍖','🥓','🌭','🌮','🛒','🏪','⭐','🔥'];
 const CAT_META_KEY = 'admin_product_categories_meta';
 
 type CategoryMeta = Record<string, { color?: string; emoji?: string; image?: string }>;
@@ -195,83 +196,27 @@ function BrandBadge({
   );
 }
 
-// ── Inline category picker popover ────────────────────────────────────────
-function CategoryPicker({
-  D, sub, categories, currentCatId, onSelect, onClose, t = {},
-}: {
-  D: boolean; sub: string;
-  categories: Category[];
-  currentCatId: string | null;
-  onSelect: (catId: string | null) => void;
-  onClose: () => void;
-  t?: Record<string, string>;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className={`absolute z-50 top-full mt-1 right-0 min-w-[180px] rounded-2xl border shadow-2xl overflow-hidden ${
-        D ? 'bg-[#1c1c1e] border-gray-700' : 'bg-white border-gray-200'
-      }`}
-      style={{ boxShadow: D ? '0 8px 32px rgba(0,0,0,0.6)' : '0 8px 32px rgba(0,0,0,0.12)' }}
-    >
-      <div className={`px-3 py-2 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
-        <p className={`text-[11px] font-semibold ${sub} uppercase tracking-wide`}>{t.catPickerTitle ?? 'Kategoriya tanlash'}</p>
-      </div>
-      <div className="py-1 max-h-52 overflow-y-auto">
-        {/* No category option */}
-        <button
-          onClick={() => { onSelect(null); onClose(); }}
-          className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
-            !currentCatId
-              ? D ? 'bg-indigo-600/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'
-              : D ? 'text-gray-400 hover:bg-gray-800' : 'text-gray-500 hover:bg-gray-50'
-          }`}
-        >
-          <span className="w-5 h-5 rounded-md flex items-center justify-center text-xs bg-gray-400/20">—</span>
-          <span>{t.drawerNoCat ?? 'Kategoriyasiz'}</span>
-          {!currentCatId && <Check size={10} className="ml-auto" />}
-        </button>
-        {categories.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => { onSelect(cat.id); onClose(); }}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
-              currentCatId === cat.id
-                ? D ? 'bg-white/10' : 'bg-gray-100'
-                : D ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
-            }`}
-          >
-            <CatIcon cat={cat} size="sm" />
-            <span className={`truncate ${D ? 'text-gray-200' : 'text-gray-700'}`}>{cat.name}</span>
-            {currentCatId === cat.id && (
-              <Check size={10} className="ml-auto flex-shrink-0" style={{ color: cat.color }} />
-            )}
-          </button>
-        ))}
-        {categories.length === 0 && (
-          <p className={`px-3 py-3 text-[11px] ${sub} text-center`}>{t.catPickerEmpty ?? "Hali kategoriya yo'q"}</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input, t, viewOrg, activeIds }: Props) {
+  const { companies } = useCompanies();
+  const orgOptions = useMemo(() => {
+    const active = companies.filter((c) => activeIds.includes(c.id));
+    const list = active.length > 0 ? active : companies;
+    return list.map((c) => ({
+      id: c.id,
+      label: c.shortName || c.name,
+    }));
+  }, [companies, activeIds]);
+  const defaultImportCompanyId = useMemo(() => {
+    if (viewOrg !== 'all' && orgOptions.some((o) => o.id === viewOrg)) return viewOrg;
+    return orgOptions[0]?.id ?? '';
+  }, [viewOrg, orgOptions]);
+
   const [search,          setSearch]          = useState('');
   const [selectedBrends,  setSelectedBrends]  = useState<Set<string>>(new Set());
   const [stockOnly,       setStockOnly]       = useState(false);
   const [products,        setProducts]        = useState<AdminProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
-  const [viewMode,        setViewMode]        = useState<'list' | 'card'>(() =>
+  const [viewMode,        setViewMode]        = useState<'list' | 'card' | 'excel'>(() =>
     typeof window !== 'undefined' ? (window.innerWidth < 768 ? 'card' : 'list') : 'list'
   );
   const [page,      setPage]      = useState(1);
@@ -281,7 +226,48 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [addSaveError, setAddSaveError] = useState<string | null>(null);
   const [addTab, setAddTab] = useState<'asosiy'|'extra'|'balans'>('asosiy');
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
+  const [activeProduct, setActiveProduct] = useState<AdminProduct | null>(null);
   const [deleteProductConfirm, setDeleteProductConfirm] = useState<AdminProduct | null>(null);
+  const [showProductHistory, setShowProductHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<Array<{
+    id: string;
+    actorName: string;
+    actorRole: string;
+    action: 'created' | 'updated' | 'deactivated';
+    summary: string | null;
+    changes: Array<{ field: string; before: string | null; after: string | null }>;
+    createdAt: string;
+  }>>([]);
+  const [showUndoModal, setShowUndoModal] = useState(false);
+  const [undoLoading, setUndoLoading] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const [undoPreview, setUndoPreview] = useState<{
+    available: boolean;
+    reason?: 'no_recent_change';
+    windowMinutes: number;
+    remainingMs?: number;
+    message?: string;
+    event?: {
+      id: string;
+      productId: string;
+      action: 'created' | 'updated' | 'deactivated';
+      summary: string | null;
+      changes: Array<{ field: string; before: string | null; after: string | null }>;
+      actorName: string;
+      actorRole: string;
+      createdAt: string;
+    };
+    product?: {
+      id: string;
+      code: string;
+      name: string;
+      brand: string | null;
+      category: string | null;
+    };
+  } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const prodTableRef   = useRef<HTMLDivElement>(null);
   const prodFsTableRef = useRef<HTMLDivElement>(null);
@@ -289,7 +275,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   // ── Category state ──────────────────────────────────────────────────────
   const [categories,       setCategories]       = useState<Category[]>([]);
   const [categoryMetaRows, setCategoryMetaRows] = useState<BackendCategoryMeta[]>([]);
-  const [selectedCatId,    setSelectedCatId]    = useState<string | null>(null);
+  const [selectedCats,     setSelectedCats]     = useState<Set<string>>(new Set());
   const [filterMenu,       setFilterMenu]       = useState<null | 'cat' | 'brand'>(null);
   // create/edit form
   const [showCatForm,      setShowCatForm]      = useState(false);
@@ -300,7 +286,6 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   const [newCatImage,      setNewCatImage]      = useState<string | null>(null);
   const [iconMode,         setIconMode]         = useState<'emoji' | 'image'>('emoji');
   // per-product picker open state
-  const [openPickerProdId, setOpenPickerProdId] = useState<string | null>(null);
   // delete confirmation modal
   const [deleteCatConfirm, setDeleteCatConfirm] = useState<Category | null>(null);
   const [deleteBrandConfirm, setDeleteBrandConfirm] = useState<BrandInfo | null>(null);
@@ -442,7 +427,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
 
   const emptyForm: AddForm = {
     ismi:'', kodShort:'', artikul:'', brend:'', gruppa:'',
-    postavshik:'', org: viewOrg === 'all' ? 'boran' : viewOrg,
+    postavshik:'', org: defaultImportCompanyId,
     tipTo:'Штучн.', shtUpakovka:'1', netto:'0.000', brutto:'0.000',
     srok:'12', rtl:'0', balance:'0', shtrixKod:'', ikpu:'',
     hajmM3:'0.000', format:'', edIzmUpak:'шт', edIzmSht:'шт',
@@ -592,7 +577,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           return;
         }
         const newKod = addForm.kodShort?.trim() || artikul;
-        const productName = addForm.ismi.trim() || 'Yangi mahsulot';
+        const productName = addForm.ismi.trim() || (t.newProduct ?? 'Yangi mahsulot');
 
         const duplicate = findDuplicateProduct({
           ismi: productName,
@@ -611,7 +596,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
         const np: AdminProduct = {
           id: `temp-${suffix}`,
           kod: newKod,
-          org: addForm.org || (viewOrg === 'all' ? 'boran' : viewOrg),
+          org: addForm.org || defaultImportCompanyId,
           ismi: productName,
           p1: 9,
           tipTo: (addForm.tipTo as AdminProduct['tipTo']) || 'Штучн.',
@@ -645,7 +630,107 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     }
   }
 
+  function selectProduct(p: AdminProduct) {
+    setActiveProduct(p);
+  }
+
+  async function openUndoModal() {
+    setShowUndoModal(true);
+    setUndoLoading(true);
+    setUndoError(null);
+    setUndoPreview(null);
+    try {
+      const companyId = viewOrg !== 'all' ? viewOrg : undefined;
+      const preview = await api.getProductUndoPreview(companyId);
+      setUndoPreview(preview);
+    } catch (error) {
+      console.error('Failed to load undo preview', error);
+      setUndoError(formatProductSaveError(error, t));
+    } finally {
+      setUndoLoading(false);
+    }
+  }
+
+  async function confirmUndoLast() {
+    if (!undoPreview?.available || undoBusy) return;
+    setUndoBusy(true);
+    setUndoError(null);
+    try {
+      const companyId = viewOrg !== 'all' ? viewOrg : undefined;
+      await api.undoLastProductChange(companyId);
+      setShowUndoModal(false);
+      setUndoPreview(null);
+      await loadProducts();
+      setActiveProduct(null);
+    } catch (error) {
+      console.error('Failed to undo product change', error);
+      setUndoError(formatProductSaveError(error, t));
+    } finally {
+      setUndoBusy(false);
+    }
+  }
+
+  function formatRemain(ms?: number): string {
+    const total = Math.max(0, Math.floor((ms ?? 0) / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m} ${t.prodUndoMin ?? 'daq'} ${String(s).padStart(2, '0')} ${t.prodUndoSec ?? 'son'}`;
+  }
+
+  async function openProductHistory(p: AdminProduct) {
+    setActiveProduct(p);
+    setShowProductHistory(true);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setHistoryEvents([]);
+    try {
+      const rows = await api.getProductAudit(p.id, 200);
+      setHistoryEvents(rows);
+    } catch (error) {
+      console.error('Failed to load product audit', error);
+      setHistoryError(formatProductSaveError(error, t));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function auditFieldLabel(field: string): string {
+    const map: Record<string, string | undefined> = {
+      code: t.prodHistoryFieldCode,
+      name: t.prodHistoryFieldName,
+      category: t.prodHistoryFieldCategory,
+      brand: t.prodHistoryFieldBrand,
+      price: t.prodHistoryFieldPrice,
+      unit: t.prodHistoryFieldUnit,
+      stockBalance: t.prodHistoryFieldStock,
+      imageUrl: t.prodHistoryFieldImage,
+      companyId: t.prodHistoryFieldCompany,
+      isActive: t.prodHistoryFieldActive,
+    };
+    return map[field] ?? field;
+  }
+
+  function auditActionLabel(action: string): string {
+    if (action === 'created') return t.prodHistoryActionCreated ?? 'Yaratildi';
+    if (action === 'deactivated') return t.prodHistoryActionDeleted ?? "O'chirildi";
+    return t.prodHistoryActionUpdated ?? "O'zgartirildi";
+  }
+
+  function formatAuditWhen(iso: string): string {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return iso;
+      return d.toLocaleString('uz-UZ', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  }
+
   function openEditProduct(p: AdminProduct) {
+    setActiveProduct(p);
     setAddSaveError(null);
     setEditingProduct(p);
     const cat = categories.find(c => c.name === p.gruppa);
@@ -715,7 +800,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
   useEffect(() => {
     if (prevViewOrg.current !== viewOrg) {
       setSelectedBrends(new Set());
-      setSelectedCatId(null);
+      setSelectedCats(new Set());
       prevViewOrg.current = viewOrg;
     }
     setPage(1);
@@ -728,12 +813,28 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     });
   }, [brends]);
 
-  useEffect(() => { setPage(1); }, [search, stockOnly, selectedBrends, selectedCatId]);
+  const catNames = useMemo(() => categories.map(c => c.id), [categories]);
+  useEffect(() => {
+    setSelectedCats(prev => {
+      const next = new Set([...prev].filter(id => catNames.includes(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [catNames]);
+
+  useEffect(() => { setPage(1); }, [search, stockOnly, selectedBrends, selectedCats]);
 
   function toggleBrend(b: string) {
     setSelectedBrends(prev => {
       const next = new Set(prev);
       if (next.has(b)) next.delete(b); else next.add(b);
+      return next;
+    });
+  }
+
+  function toggleCat(id: string) {
+    setSelectedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }
@@ -763,11 +864,11 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
     return counts;
   }, [orgFilteredProducts]);
 
-  // ── Filter by selected category ───────────────────────────────────────
+  // ── Filter by selected categories (multi) ─────────────────────────────
   const catFilteredProducts = useMemo(() => {
-    if (!selectedCatId) return orgFilteredProducts;
-    return orgFilteredProducts.filter(p => p.gruppa === selectedCatId);
-  }, [orgFilteredProducts, selectedCatId]);
+    if (selectedCats.size === 0) return orgFilteredProducts;
+    return orgFilteredProducts.filter(p => p.gruppa && selectedCats.has(p.gruppa));
+  }, [orgFilteredProducts, selectedCats]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -857,7 +958,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           return next;
         });
         if (oldCat && oldCat.name !== saved.name) {
-          if (selectedCatId === oldCat.id) setSelectedCatId(saved.name);
+          setSelectedCats(prev => {
+            if (!prev.has(oldCat.id)) return prev;
+            const next = new Set(prev);
+            next.delete(oldCat.id);
+            next.add(saved.name);
+            return next;
+          });
           const affected = products.filter(p => p.gruppa === oldCat.name);
           Promise.all(
             affected.map(async (product) => {
@@ -1025,27 +1132,15 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       setCategories(nextCategories);
       saveCategoryMeta(nextCategories);
 
-      if (selectedCatId === id) setSelectedCatId(null);
+      setSelectedCats(prev => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     } catch (error) {
       console.error('Failed to delete category', error);
       throw error;
-    }
-  }
-
-  // ── Assign product to category ─────────────────────────────────────────
-  async function assignProductCat(productId: string, catId: string | null) {
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
-    const categoryName = catId ? categories.find(c => c.id === catId)?.name ?? '' : '';
-    const updated: AdminProduct = { ...product, gruppa: categoryName };
-    try {
-      const saved = await api.updateProduct(productId, adminToUpdatePayload(updated));
-      const mapped = backendToAdminProduct(saved, product.org);
-      const nextProducts = products.map(p => (p.id === productId ? mapped : p));
-      setProducts(nextProducts);
-      setCategories(buildCategoriesFromProducts(nextProducts, categoryMetaRows));
-    } catch (error) {
-      console.error('Failed to assign category', error);
     }
   }
 
@@ -1158,37 +1253,38 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <th className={thCls} style={{ position:'sticky', left:0, zIndex:2, background: D?'#111827':'#f9fafb', width:32, minWidth:32 }}>#</th>
                     <th className={thCls} style={{ position:'sticky', left:32, zIndex:2, background: D?'#111827':'#f9fafb', minWidth:60 }}>{t.colKod ?? 'Kod'}</th>
                     <th className={thCls} style={{ minWidth:180 }}>{t.colName ?? 'Mahsulot'}</th>
-                    <th className={thCls} style={{ minWidth:140 }}>Brend</th>
+                    <th className={thCls} style={{ minWidth:140 }}>{t.colBrand ?? 'Brend'}</th>
                     <th className={thCls} style={{ minWidth:120 }}>{t.colCat ?? 'Kategoriya'}</th>
-                    <th className={thCls} style={{ minWidth:36 }}>П1</th>
-                    <th className={thCls} style={{ minWidth:72 }}>TipTo</th>
-                    <th className={thCls} style={{ minWidth:72 }}>Artikul</th>
-                    <th className={thCls} style={{ minWidth:100 }}>Gruppa</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>шт.упак</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>Netto</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>Brutto</th>
+                    <th className={thCls} style={{ minWidth:36 }}>{t.colP1 ?? 'П1'}</th>
+                    <th className={thCls} style={{ minWidth:72 }}>{t.colTipTo ?? 'TipTo'}</th>
+                    <th className={thCls} style={{ minWidth:72 }}>{t.colArtikul ?? 'Artikul'}</th>
+                    <th className={thCls} style={{ minWidth:100 }}>{t.colGruppa ?? 'Guruh'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colShtUpak ?? 'dona upak'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colNetto ?? 'Netto'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colBrutto ?? 'Brutto'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:48 }}>{t.colSrok ?? 'Srok'}</th>
                     <th className={thCls} style={{ minWidth:120 }}>{t.colPostavshik ?? 'Postavshik'}</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:52 }}>ExID</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:52 }}>{t.colExId ?? 'ExtID'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:110 }}>{t.colShtrixKod ?? 'Shtrix kod'}</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:80 }}>IKPU</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:72 }}>RTL</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:80 }}>{t.colIkpu ?? 'IKPU'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:72 }}>{t.colRtl ?? 'RTL'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:64 }}>{t.prodBalanceLabel ?? 'Qoldiq'}</th>
-                    <th className={thCls} style={{ minWidth:64 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.map((p, idx) => {
                     const inStock = p.balance > 0;
-                    const bc = brandColor(p.brend);
+                    const isActive = activeProduct?.id === p.id;
                     const isEditing = editingProduct?.id === p.id;
                     const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
-                    const stickyBg = D ? (isEditing ? '#1e1b4b' : '#0d1117') : (isEditing ? '#eef2ff' : '#ffffff');
+                    const stickyBg = D
+                      ? (isEditing || isActive ? '#1e1b4b' : '#0d1117')
+                      : (isEditing || isActive ? '#eef2ff' : '#ffffff');
                     const prodCat = getProductCat(p.id);
-                    const isPickerOpen = openPickerProdId === p.id;
                     return (
                       <tr key={p.id}
-                        className={`${cardHover} transition-colors ${idx < paginated.length - 1 ? `border-b ${divider}` : ''} ${isEditing ? D ? 'bg-indigo-950/30' : 'bg-indigo-50' : ''}`}>
+                        onClick={() => { if (isFullscreen) setIsFullscreen(false); selectProduct(p); }}
+                        className={`${cardHover} transition-colors cursor-pointer ${idx < paginated.length - 1 ? `border-b ${divider}` : ''} ${isActive || isEditing ? D ? 'bg-indigo-950/30' : 'bg-indigo-50' : ''}`}>
                         <td className={`${tdCls} ${sub}`} style={{ position:'sticky', left:0, zIndex:1, background: stickyBg }}>{globalIdx}</td>
                         <td className={`${tdCls} font-mono font-semibold ${D ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ position:'sticky', left:32, zIndex:1, background: stickyBg }}>{p.kod}</td>
                         <td className={tdCls}><p className={`${text} text-xs leading-snug`} style={{ maxWidth: 200 }}>{p.ismi}</p></td>
@@ -1200,14 +1296,19 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                           })()}
                         </td>
                         <td className={tdCls}>
-                          <div className="relative">
-                            <button onClick={() => setOpenPickerProdId(isPickerOpen ? null : p.id)}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-medium border transition-all w-full max-w-[110px] ${prodCat ? 'text-white border-transparent' : D ? `${sub} border-dashed border-gray-600 hover:border-indigo-500 hover:text-indigo-400` : `text-gray-400 border-dashed border-gray-300 hover:border-indigo-400 hover:text-indigo-500`}`}
-                              style={prodCat ? { background: prodCat.color } : {}}>
-                              {prodCat ? (<>{prodCat.image ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" /> : <span>{prodCat.emoji}</span>}<span className="truncate">{prodCat.name}</span></>) : (<><Plus size={9} /><span>{t.catAssign ?? 'Belgilash'}</span></>)}
-                            </button>
-                            {isPickerOpen && (<CategoryPicker D={D} sub={sub} categories={categories} currentCatId={prodCat?.id ?? null} onSelect={catId => assignProductCat(p.id, catId)} onClose={() => setOpenPickerProdId(null)} t={t} />)}
-                          </div>
+                          {prodCat ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-medium text-white max-w-[110px]"
+                              style={{ background: prodCat.color }}
+                            >
+                              {prodCat.image
+                                ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                                : <span>{prodCat.emoji}</span>}
+                              <span className="truncate">{prodCat.name}</span>
+                            </span>
+                          ) : (
+                            <span className={sub}>—</span>
+                          )}
                         </td>
                         <td className={`${tdCls} ${sub} font-mono text-center`}>{p.p1}</td>
                         <td className={tdCls}>
@@ -1226,12 +1327,6 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         <td className={`${tdCls} font-semibold text-right ${text} whitespace-nowrap`}>{fmtR(p.rtl)}</td>
                         <td className={`${tdCls} text-right`}>
                           <span className={`text-xs font-semibold ${inStock ? 'text-emerald-400' : 'text-rose-400'}`}>{inStock ? p.balance.toFixed(3) : '—'}</span>
-                        </td>
-                        <td className={tdCls}>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => openEditProduct(p)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${isEditing ? 'bg-indigo-600 text-white' : D ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:text-gray-900'}`}><Edit2 size={11} /></button>
-                            <button onClick={() => setDeleteProductConfirm(p)} className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${D ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}><Trash2 size={11} /></button>
-                          </div>
                         </td>
                       </tr>
                     );
@@ -1258,20 +1353,89 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className={`hidden md:flex items-center rounded-xl overflow-hidden border ${D ? 'border-gray-700' : 'border-gray-200'}`}>
-            <button onClick={() => setViewMode('list')}
+          <div className={`flex items-center rounded-xl overflow-hidden border ${D ? 'border-gray-700' : 'border-gray-200'}`}>
+            <button type="button" onClick={() => setViewMode('list')}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${
                 viewMode === 'list' ? 'bg-indigo-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-500 bg-white hover:bg-gray-50`
               }`}>
               <ListIcon size={13} /><span className="hidden sm:inline">{t.viewList ?? 'Jadval'}</span>
             </button>
-            <button onClick={() => setViewMode('card')}
+            <button type="button" onClick={() => setViewMode('card')}
               className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-l ${D ? 'border-gray-700' : 'border-gray-200'} ${
                 viewMode === 'card' ? 'bg-indigo-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-500 bg-white hover:bg-gray-50`
               }`}>
               <LayoutGrid size={13} /><span className="hidden sm:inline">{t.viewCard ?? 'Kartochka'}</span>
             </button>
+            <button type="button" onClick={() => setViewMode('excel')}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-l ${D ? 'border-gray-700' : 'border-gray-200'} ${
+                viewMode === 'excel' ? 'bg-emerald-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-500 bg-white hover:bg-gray-50`
+              }`}>
+              <FileSpreadsheet size={13} /><span className="hidden sm:inline">{t.viewExcel ?? 'Excel'}</span>
+            </button>
           </div>
+          <button
+            type="button"
+            onClick={() => { void openUndoModal(); }}
+            className="group relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all overflow-hidden"
+            style={{
+              background: D
+                ? 'linear-gradient(135deg, rgba(244,63,94,0.22), rgba(249,115,22,0.18))'
+                : 'linear-gradient(135deg, #fff1f2, #fff7ed)',
+              color: D ? '#fda4af' : '#be123c',
+              border: D ? '1px solid rgba(251,113,133,0.35)' : '1px solid rgba(251,113,133,0.45)',
+              boxShadow: D
+                ? '0 0 0 1px rgba(255,255,255,0.03), 0 8px 24px rgba(244,63,94,0.12)'
+                : '0 8px 22px rgba(244,63,94,0.12)',
+            }}
+          >
+            <span
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{
+                background: D
+                  ? 'linear-gradient(120deg, transparent, rgba(255,255,255,0.08), transparent)'
+                  : 'linear-gradient(120deg, transparent, rgba(255,255,255,0.7), transparent)',
+              }}
+            />
+            <Undo2 size={13} className="relative" />
+            <span className="relative">{t.prodUndoBtn ?? 'Orqaga qaytarish'}</span>
+          </button>
+          <button
+            type="button"
+            disabled={!activeProduct}
+            onClick={() => { if (activeProduct) openEditProduct(activeProduct); }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+              activeProduct
+                ? D ? 'bg-amber-900/60 hover:bg-amber-800/60 text-amber-300' : 'bg-amber-50 hover:bg-amber-100 text-amber-700'
+                : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')
+            }`}
+            title={activeProduct ? undefined : (t.prodSelectHint ?? 'Tahrirlash uchun mahsulotni tanlang')}
+          >
+            <Edit2 size={12} /> {t.prodEditBtn ?? t.editClientBtn ?? 'Tahrirlash'}
+          </button>
+          <button
+            type="button"
+            disabled={!activeProduct}
+            onClick={() => { if (activeProduct) setDeleteProductConfirm(activeProduct); }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+              activeProduct
+                ? D ? 'bg-rose-900/60 hover:bg-rose-800/60 text-rose-300' : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
+                : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')
+            }`}
+          >
+            <Trash2 size={12} /> {t.prodDeleteBtn ?? t.clientDeleteBtn ?? "O'chirish"}
+          </button>
+          <button
+            type="button"
+            disabled={!activeProduct}
+            onClick={() => { if (activeProduct) void openProductHistory(activeProduct); }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+              activeProduct
+                ? D ? 'bg-sky-900/60 hover:bg-sky-800/60 text-sky-300' : 'bg-sky-50 hover:bg-sky-100 text-sky-700'
+                : 'opacity-40 cursor-not-allowed ' + (D ? 'bg-gray-800 text-gray-500' : 'bg-gray-100 text-gray-400')
+            }`}
+          >
+            <History size={12} /> {t.prodHistoryBtn ?? 'Tarix'}
+          </button>
           <button onClick={() => setStockOnly(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${stockOnly ? 'bg-indigo-600 text-white' : D ? `${sub} bg-gray-800 hover:bg-gray-700` : `text-gray-600 bg-gray-100 hover:bg-gray-200`}`}>
             <Activity size={12} /> {t.inStock ?? 'Mavjud'}
@@ -1363,25 +1527,27 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
             )}
           </div>
 
-          {/* Kategoriya dropdown */}
+          {/* Kategoriya dropdown (multi-select) */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setFilterMenu(v => (v === 'cat' ? null : 'cat'))}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors max-w-[200px] ${
-                selectedCatId || filterMenu === 'cat'
+                selectedCats.size > 0 || filterMenu === 'cat'
                   ? 'bg-indigo-600 text-white border-transparent'
                   : D ? `${sub} bg-gray-800 border-gray-700 hover:bg-gray-700` : `text-gray-600 bg-white border-gray-200 hover:bg-gray-50`
               }`}
             >
               <FolderOpen size={12} />
               <span className="truncate">
-                {selectedCatId
-                  ? (categories.find(c => c.id === selectedCatId)?.name ?? (t.categories ?? 'Kategoriya'))
-                  : (t.categories ?? 'Kategoriyalar')}
+                {selectedCats.size === 0
+                  ? (t.categories ?? 'Kategoriyalar')
+                  : selectedCats.size === 1
+                    ? (categories.find(c => c.id === [...selectedCats][0])?.name ?? [...selectedCats][0])
+                    : `${selectedCats.size} ${t.categories ?? 'kategoriya'}`}
               </span>
               <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
-                selectedCatId || filterMenu === 'cat' ? 'bg-white/20' : D ? 'bg-gray-700' : 'bg-gray-100'
+                selectedCats.size > 0 || filterMenu === 'cat' ? 'bg-white/20' : D ? 'bg-gray-700' : 'bg-gray-100'
               }`}>{categories.length}</span>
               <ChevronDown size={12} className={`transition-transform ${filterMenu === 'cat' ? 'rotate-180' : ''}`} />
             </button>
@@ -1393,8 +1559,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                 }`}>
                   <div className="px-3 pb-2 flex items-center justify-between gap-2">
                     <p className={`text-[11px] font-semibold uppercase tracking-wide ${sub}`}>{t.categories ?? 'Kategoriyalar'}</p>
-                    {selectedCatId && (
-                      <button type="button" onClick={() => setSelectedCatId(null)}
+                    {selectedCats.size > 0 && (
+                      <button type="button" onClick={() => setSelectedCats(new Set())}
                         className={`text-[11px] font-medium ${D ? 'text-indigo-300' : 'text-indigo-600'}`}>
                         {t.clearFilter ?? 'Tozalash'}
                       </button>
@@ -1402,24 +1568,24 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setSelectedCatId(null); setFilterMenu(null); }}
+                    onClick={() => setSelectedCats(new Set())}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${
-                      !selectedCatId ? 'font-semibold text-indigo-400' : text
+                      selectedCats.size === 0 ? 'font-semibold text-indigo-400' : text
                     } ${D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
                   >
                     <Package size={14} />
                     <span className="flex-1">{t.allProducts ?? 'Barchasi'}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-md ${D ? 'bg-gray-800' : 'bg-gray-100'} ${sub}`}>{orgFilteredProducts.length}</span>
-                    {!selectedCatId && <Check size={12} className="text-indigo-400" />}
+                    {selectedCats.size === 0 && <Check size={12} className="text-indigo-400" />}
                   </button>
                   {categories.map(cat => {
                     const cnt = catCounts[cat.id] ?? 0;
-                    const isActive = selectedCatId === cat.id;
+                    const isActive = selectedCats.has(cat.id);
                     return (
                       <div key={cat.id} className={`flex items-center gap-1 px-2 ${D ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
                         <button
                           type="button"
-                          onClick={() => { setSelectedCatId(isActive ? null : cat.id); setFilterMenu(null); }}
+                          onClick={() => toggleCat(cat.id)}
                           className={`flex-1 min-w-0 flex items-center gap-2 px-2 py-2 rounded-xl text-left text-xs ${
                             isActive ? 'font-semibold text-indigo-400' : text
                           }`}
@@ -1765,38 +1931,39 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                     <th className={thCls} style={{ position:'sticky', left:0, zIndex:2, background: D?'#111827':'#f9fafb', width:32, minWidth:32 }}>#</th>
                     <th className={thCls} style={{ position:'sticky', left:32, zIndex:2, background: D?'#111827':'#f9fafb', minWidth:60 }}>{t.colKod ?? 'Kod'}</th>
                     <th className={thCls} style={{ minWidth:180 }}>{t.colName ?? 'Mahsulot'}</th>
-                    <th className={thCls} style={{ minWidth:140 }}>Brend</th>
+                    <th className={thCls} style={{ minWidth:140 }}>{t.colBrand ?? 'Brend'}</th>
                     {/* Category column */}
                     <th className={thCls} style={{ minWidth:120 }}>{t.colCat ?? 'Kategoriya'}</th>
-                    <th className={thCls} style={{ minWidth:36 }}>П1</th>
-                    <th className={thCls} style={{ minWidth:72 }}>TipTo</th>
-                    <th className={thCls} style={{ minWidth:72 }}>Artikul</th>
-                    <th className={thCls} style={{ minWidth:100 }}>Gruppa</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>шт.упак</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>Netto</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>Brutto</th>
+                    <th className={thCls} style={{ minWidth:36 }}>{t.colP1 ?? 'П1'}</th>
+                    <th className={thCls} style={{ minWidth:72 }}>{t.colTipTo ?? 'TipTo'}</th>
+                    <th className={thCls} style={{ minWidth:72 }}>{t.colArtikul ?? 'Artikul'}</th>
+                    <th className={thCls} style={{ minWidth:100 }}>{t.colGruppa ?? 'Guruh'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colShtUpak ?? 'dona upak'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colNetto ?? 'Netto'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:56 }}>{t.colBrutto ?? 'Brutto'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:48 }}>{t.colSrok ?? 'Srok'}</th>
                     <th className={thCls} style={{ minWidth:120 }}>{t.colPostavshik ?? 'Postavshik'}</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:52 }}>ExID</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:52 }}>{t.colExId ?? 'ExtID'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:110 }}>{t.colShtrixKod ?? 'Shtrix kod'}</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:80 }}>IKPU</th>
-                    <th className={`${thCls} text-right`} style={{ minWidth:72 }}>RTL</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:80 }}>{t.colIkpu ?? 'IKPU'}</th>
+                    <th className={`${thCls} text-right`} style={{ minWidth:72 }}>{t.colRtl ?? 'RTL'}</th>
                     <th className={`${thCls} text-right`} style={{ minWidth:64 }}>{t.prodBalanceLabel ?? 'Qoldiq'}</th>
-                    <th className={thCls} style={{ minWidth:64 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.map((p, idx) => {
                     const inStock = p.balance > 0;
-                    const bc = brandColor(p.brend);
+                    const isActive = activeProduct?.id === p.id;
                     const isEditing = editingProduct?.id === p.id;
                     const globalIdx = (page - 1) * PAGE_SIZE + idx + 1;
-                    const stickyBg = D ? (isEditing ? '#1e1b4b' : '#0d1117') : (isEditing ? '#eef2ff' : '#ffffff');
+                    const stickyBg = D
+                      ? (isEditing || isActive ? '#1e1b4b' : '#0d1117')
+                      : (isEditing || isActive ? '#eef2ff' : '#ffffff');
                     const prodCat = getProductCat(p.id);
-                    const isPickerOpen = openPickerProdId === p.id;
                     return (
                       <tr key={p.id}
-                        className={`${cardHover} transition-colors ${idx < paginated.length - 1 ? `border-b ${divider}` : ''} ${isEditing ? D ? 'bg-indigo-950/30' : 'bg-indigo-50' : ''}`}>
+                        onClick={() => selectProduct(p)}
+                        className={`${cardHover} transition-colors cursor-pointer ${idx < paginated.length - 1 ? `border-b ${divider}` : ''} ${isActive || isEditing ? D ? 'bg-indigo-950/30' : 'bg-indigo-50' : ''}`}>
                         <td className={`${tdCls} ${sub}`} style={{ position:'sticky', left:0, zIndex:1, background: stickyBg }}>{globalIdx}</td>
                         <td className={`${tdCls} font-mono font-semibold ${D ? 'text-indigo-400' : 'text-indigo-600'}`} style={{ position:'sticky', left:32, zIndex:1, background: stickyBg }}>{p.kod}</td>
                         <td className={tdCls}>
@@ -1809,45 +1976,21 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                             return <BrandBadge brand={bi} D={D} size="md" maxName={10} />;
                           })()}
                         </td>
-                        {/* Category cell */}
+                        {/* Category cell (read-only) */}
                         <td className={tdCls}>
-                          <div className="relative">
-                            <button
-                              onClick={() => setOpenPickerProdId(isPickerOpen ? null : p.id)}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-medium border transition-all w-full max-w-[110px] ${
-                                prodCat
-                                  ? 'text-white border-transparent'
-                                  : D ? `${sub} border-dashed border-gray-600 hover:border-indigo-500 hover:text-indigo-400`
-                                      : `text-gray-400 border-dashed border-gray-300 hover:border-indigo-400 hover:text-indigo-500`
-                              }`}
-                              style={prodCat ? { background: prodCat.color } : {}}
+                          {prodCat ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-medium text-white max-w-[110px]"
+                              style={{ background: prodCat.color }}
                             >
-                              {prodCat ? (
-                                <>
-                                  {prodCat.image
-                                    ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
-                                    : <span>{prodCat.emoji}</span>
-                                  }
-                                  <span className="truncate">{prodCat.name}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Plus size={9} />
-                                  <span>{t.catAssign ?? 'Belgilash'}</span>
-                                </>
-                              )}
-                            </button>
-                            {isPickerOpen && (
-                              <CategoryPicker
-                                D={D} sub={sub}
-                                categories={categories}
-                                currentCatId={prodCat?.id ?? null}
-                                onSelect={catId => assignProductCat(p.id, catId)}
-                                onClose={() => setOpenPickerProdId(null)}
-                                t={t}
-                              />
-                            )}
-                          </div>
+                              {prodCat.image
+                                ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                                : <span>{prodCat.emoji}</span>}
+                              <span className="truncate">{prodCat.name}</span>
+                            </span>
+                          ) : (
+                            <span className={sub}>—</span>
+                          )}
                         </td>
                         <td className={`${tdCls} ${sub} font-mono text-center`}>{p.p1}</td>
                         <td className={tdCls}>
@@ -1877,20 +2020,6 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                             {inStock ? p.balance.toFixed(3) : '—'}
                           </span>
                         </td>
-                        <td className={tdCls}>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => openEditProduct(p)}
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                                isEditing ? 'bg-indigo-600 text-white' : D ? 'bg-gray-800 text-gray-400 hover:text-white' : 'bg-gray-100 text-gray-500 hover:text-gray-900'
-                              }`}>
-                              <Edit2 size={11} />
-                            </button>
-                            <button onClick={() => setDeleteProductConfirm(p)}
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${D ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}>
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     );
                   })}
@@ -1900,6 +2029,192 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
               <FooterStats />
             </div>
           </div>
+        ) : viewMode === 'excel' ? (
+          /* ── EXCEL VIEW ── */
+          (() => {
+            const excelCols: { key: string; letter: string; label: string; align?: 'left' | 'right'; width: number; value: (p: AdminProduct) => string }[] = [
+              { key: 'kod', letter: 'A', label: t.colKod ?? 'Kod', width: 100, value: p => p.kod || '' },
+              { key: 'artikul', letter: 'B', label: t.colArtikul ?? 'Artikul', width: 100, value: p => p.artikul || '' },
+              { key: 'name', letter: 'C', label: t.colName ?? 'Mahsulot', width: 220, value: p => p.ismi || '' },
+              { key: 'brand', letter: 'D', label: t.colBrand ?? 'Brend', width: 110, value: p => p.brend || '' },
+              { key: 'cat', letter: 'E', label: t.colCat ?? 'Kategoriya', width: 140, value: p => p.gruppa || '' },
+              { key: 'unit', letter: 'F', label: t.colTipTo ?? 'Birlik', width: 70, value: p => p.tipTo || '' },
+              { key: 'price', letter: 'G', label: t.colRtl ?? 'Narx', align: 'right', width: 90, value: p => p.rtl ? p.rtl.toLocaleString('uz-UZ') : '0' },
+              { key: 'stock', letter: 'H', label: t.prodBalanceLabel ?? 'Qoldiq', align: 'right', width: 80, value: p => p.balance % 1 === 0 ? String(p.balance) : p.balance.toFixed(3) },
+              { key: 'netto', letter: 'I', label: t.colNetto ?? 'Sof vazn', align: 'right', width: 80, value: p => p.netto.toFixed(3) },
+              { key: 'brutto', letter: 'J', label: t.colBrutto ?? 'Yalpi vazn', align: 'right', width: 80, value: p => p.brutto.toFixed(3) },
+              { key: 'srok', letter: 'K', label: t.colSrok ?? 'Muddati', align: 'right', width: 70, value: p => `${p.srok} ${t.monthShort ?? 'oy'}` },
+              { key: 'barcode', letter: 'L', label: t.colShtrixKod ?? 'Shtrix kod', width: 120, value: p => p.shtrixKod || '' },
+              { key: 'ikpu', letter: 'M', label: t.colIkpu ?? 'IKPU', width: 100, value: p => p.ikpu || '' },
+            ];
+            const grid = D ? '#3f3f46' : '#c6c6c6';
+            const headBg = D ? '#1b4332' : '#217346';
+            const letterBg = D ? '#27272a' : '#e6e6e6';
+            const rowHeadBg = D ? '#27272a' : '#f3f3f3';
+            const cellBg = D ? '#18181b' : '#ffffff';
+            const altBg = D ? '#1f1f23' : '#f8faf8';
+            const selBg = D ? '#1e3a5f' : '#cce8ff';
+            const nameBg = D ? '#14532d' : '#e2efda';
+            const cellTxt = D ? '#f4f4f5' : '#111827';
+            const mutedTxt = D ? '#a1a1aa' : '#52525b';
+            return (
+              <div className="rounded-xl overflow-hidden border shadow-sm" style={{ borderColor: grid }}>
+                {/* Excel title bar */}
+                <div className="flex items-center gap-2 px-3 py-2 text-white" style={{ background: headBg }}>
+                  <FileSpreadsheet size={15} />
+                  <span className="text-xs font-semibold tracking-wide">
+                    {t.navProducts ?? 'Mahsulotlar'}.xlsx
+                  </span>
+                  <span className="text-[10px] opacity-80 ml-auto">
+                    {filtered.length} {t.productCount ?? 'ta mahsulot'}
+                    {activeProduct ? `  ·  ${activeProduct.kod}` : ''}
+                  </span>
+                </div>
+                {/* Formula bar */}
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 border-b text-[11px]"
+                  style={{ background: D ? '#09090b' : '#fafafa', borderColor: grid, color: mutedTxt }}
+                >
+                  <span className="font-mono font-semibold w-10 text-center rounded px-1" style={{ background: letterBg, color: cellTxt }}>
+                    {activeProduct ? 'C' : 'fx'}
+                  </span>
+                  <span className="truncate font-medium" style={{ color: cellTxt }}>
+                    {activeProduct
+                      ? activeProduct.ismi
+                      : (t.prodSelectHint ?? 'Tahrirlash uchun mahsulotni tanlang')}
+                  </span>
+                </div>
+                <div className="overflow-auto max-h-[min(70vh,720px)]">
+                  <table
+                    style={{
+                      borderCollapse: 'collapse',
+                      minWidth: excelCols.reduce((s, c) => s + c.width, 48),
+                      width: '100%',
+                      fontFamily: 'Calibri, Segoe UI, Arial, sans-serif',
+                      fontSize: 12,
+                    }}
+                  >
+                    <thead>
+                      {/* Column letters */}
+                      <tr>
+                        <th
+                          style={{
+                            position: 'sticky', top: 0, left: 0, zIndex: 4,
+                            width: 40, minWidth: 40, height: 22,
+                            background: letterBg, border: `1px solid ${grid}`,
+                            color: mutedTxt, fontWeight: 600, fontSize: 10,
+                          }}
+                        />
+                        {excelCols.map(c => (
+                          <th
+                            key={`L-${c.key}`}
+                            style={{
+                              position: 'sticky', top: 0, zIndex: 3,
+                              width: c.width, minWidth: c.width, height: 22,
+                              background: letterBg, border: `1px solid ${grid}`,
+                              color: mutedTxt, fontWeight: 600, fontSize: 10,
+                              textAlign: 'center',
+                            }}
+                          >
+                            {c.letter}
+                          </th>
+                        ))}
+                      </tr>
+                      {/* Field names */}
+                      <tr>
+                        <th
+                          style={{
+                            position: 'sticky', top: 22, left: 0, zIndex: 4,
+                            width: 40, minWidth: 40, height: 28,
+                            background: nameBg, border: `1px solid ${grid}`,
+                            color: mutedTxt, fontWeight: 700, fontSize: 10,
+                          }}
+                        >
+                          1
+                        </th>
+                        {excelCols.map(c => (
+                          <th
+                            key={`H-${c.key}`}
+                            style={{
+                              position: 'sticky', top: 22, zIndex: 3,
+                              width: c.width, minWidth: c.width, height: 28,
+                              background: nameBg, border: `1px solid ${grid}`,
+                              color: cellTxt, fontWeight: 700, fontSize: 11,
+                              textAlign: c.align === 'right' ? 'right' : 'left',
+                              padding: '0 8px', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {c.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginated.map((p, idx) => {
+                        const rowNo = (page - 1) * PAGE_SIZE + idx + 2; // +2: header is row 1
+                        const isActive = activeProduct?.id === p.id;
+                        const bg = isActive ? selBg : idx % 2 === 0 ? cellBg : altBg;
+                        return (
+                          <tr
+                            key={p.id}
+                            onClick={() => selectProduct(p)}
+                            style={{ cursor: 'pointer', background: bg }}
+                          >
+                            <td
+                              style={{
+                                position: 'sticky', left: 0, zIndex: 2,
+                                width: 40, minWidth: 40, height: 26,
+                                background: isActive ? selBg : rowHeadBg,
+                                border: `1px solid ${grid}`,
+                                color: mutedTxt, fontWeight: 600, fontSize: 10,
+                                textAlign: 'center',
+                              }}
+                            >
+                              {rowNo}
+                            </td>
+                            {excelCols.map(c => (
+                              <td
+                                key={`${p.id}-${c.key}`}
+                                title={c.value(p)}
+                                style={{
+                                  width: c.width, minWidth: c.width, height: 26,
+                                  border: `1px solid ${grid}`,
+                                  color: cellTxt,
+                                  textAlign: c.align === 'right' ? 'right' : 'left',
+                                  padding: '0 8px',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: c.width,
+                                  fontVariantNumeric: c.align === 'right' ? 'tabular-nums' : undefined,
+                                  fontWeight: c.key === 'name' || c.key === 'kod' ? 600 : 400,
+                                }}
+                              >
+                                {c.value(p) || '—'}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div
+                  className="flex items-center justify-between px-3 py-1.5 border-t text-[10px]"
+                  style={{ background: rowHeadBg, borderColor: grid, color: mutedTxt }}
+                >
+                  <span>Sheet1</span>
+                  <span>
+                    {page}/{totalPages} · {paginated.length}/{filtered.length}
+                  </span>
+                </div>
+                <div className={`border-t ${D ? 'border-gray-800' : 'border-gray-200'}`}>
+                  <PaginationBar />
+                  <FooterStats />
+                </div>
+              </div>
+            );
+          })()
         ) : (
           /* ── CARD VIEW ── */
           <div className="space-y-4">
@@ -1907,12 +2222,13 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
               {paginated.map(p => {
                 const inStock = p.balance > 0;
                 const bc = brandColor(p.brend);
+                const isActive = activeProduct?.id === p.id;
                 const isEditing = editingProduct?.id === p.id;
                 const prodCat = getProductCat(p.id);
-                const isPickerOpen = openPickerProdId === p.id;
                 return (
                   <div key={p.id}
-                    className={`rounded-2xl border overflow-hidden flex flex-col transition-all ${card} ${cardHover} ${isEditing ? D ? 'ring-2 ring-indigo-500/60' : 'ring-2 ring-indigo-400/50' : ''}`}>
+                    onClick={() => selectProduct(p)}
+                    className={`rounded-2xl border overflow-hidden flex flex-col transition-all cursor-pointer ${card} ${cardHover} ${isActive || isEditing ? D ? 'ring-2 ring-indigo-500/60' : 'ring-2 ring-indigo-400/50' : ''}`}>
                     {/* Top color bar — category color if assigned, else brand color */}
                     <div className="h-[3px] w-full flex-shrink-0" style={{ background: prodCat ? prodCat.color : bc }} />
                     <div className="p-3 flex flex-col gap-2 flex-1">
@@ -1922,18 +2238,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                           if (!bi) return <span className={`text-[10px] ${sub}`}>—</span>;
                           return <BrandBadge brand={bi} D={D} size="lg" maxName={14} />;
                         })()}
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                          <button onClick={() => openEditProduct(p)}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                              isEditing ? 'bg-indigo-600 text-white' : D ? 'bg-gray-800 text-gray-500 hover:text-white' : 'bg-gray-100 text-gray-400 hover:text-gray-700'
-                            }`}>
-                            <Edit2 size={10} />
-                          </button>
-                          <button onClick={() => setDeleteProductConfirm(p)}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${D ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20' : 'bg-rose-50 text-rose-500 hover:bg-rose-100'}`}>
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
+                        {isActive && <Check size={14} className="text-indigo-400 flex-shrink-0" />}
                       </div>
 
                       <p className={`text-[12px] font-semibold ${text} leading-snug line-clamp-2 min-h-[2.6em]`}>{p.ismi}</p>
@@ -1945,47 +2250,18 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         )}
                       </div>
 
-                      {/* ── Category assign button ── */}
-                      <div className="relative">
-                        <button
-                          onClick={() => setOpenPickerProdId(isPickerOpen ? null : p.id)}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium border w-full transition-all ${
-                            prodCat
-                              ? 'text-white border-transparent'
-                              : D ? `${sub} border-dashed border-gray-600 hover:border-indigo-500 hover:text-indigo-400 hover:bg-indigo-500/10`
-                                  : `text-gray-400 border-dashed border-gray-300 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50`
-                          }`}
-                          style={prodCat ? { background: prodCat.color } : {}}
+                      {/* Category (read-only) */}
+                      {prodCat ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-medium text-white max-w-full"
+                          style={{ background: prodCat.color }}
                         >
-                          {prodCat ? (
-                            <>
-                              {prodCat.image
-                                ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
-                                : <span className="text-sm">{prodCat.emoji}</span>
-                              }
-                              <span className="truncate">{prodCat.name}</span>
-                              <X size={9} className="ml-auto flex-shrink-0 opacity-70"
-                                onClick={e => { e.stopPropagation(); assignProductCat(p.id, null); }} />
-                            </>
-                          ) : (
-                            <>
-                              <FolderOpen size={11} />
-                              <span>{t.catAssignLabel ?? 'Kategoriya belgilash'}</span>
-                              <ChevronDown size={9} className="ml-auto flex-shrink-0" />
-                            </>
-                          )}
-                        </button>
-                        {isPickerOpen && (
-                          <CategoryPicker
-                            D={D} sub={sub}
-                            categories={categories}
-                            currentCatId={prodCat?.id ?? null}
-                            onSelect={catId => assignProductCat(p.id, catId)}
-                            onClose={() => setOpenPickerProdId(null)}
-                            t={t}
-                          />
-                        )}
-                      </div>
+                          {prodCat.image
+                            ? <img src={prodCat.image} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                            : <span className="text-sm">{prodCat.emoji}</span>}
+                          <span className="truncate">{prodCat.name}</span>
+                        </span>
+                      ) : null}
 
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium flex-shrink-0 ${
@@ -2008,7 +2284,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className={`text-[9px] ${sub} mb-0.5 leading-none`}>шт.упак</p>
+                          <p className={`text-[9px] ${sub} mb-0.5 leading-none`}>{t.colShtUpak ?? 'dona upak'}</p>
                           <p className={`text-[11px] font-semibold ${text}`}>{p.shtUpakovka}</p>
                         </div>
                       </div>
@@ -2045,6 +2321,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           onClose={() => { setShowAddModal(false); setEditingProduct(null); setAddForm(emptyForm); setAddSaveError(null); }} onSave={saveNewProduct}
           categories={categories}
           brands={brandInfos}
+          orgOptions={orgOptions}
           isEdit={!!editingProduct}
           editTitle={t.prodEditTitle}
           saveError={addSaveError}
@@ -2055,11 +2332,8 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
       {showExcelImport && (
         <ProductExcelImportModal
           D={D}
-          defaultCompanyId={viewOrg === 'all' ? 'boran' : viewOrg}
-          orgOptions={ADMIN_ORGS.filter((o) => activeIds.includes(o.id)).map((o) => ({
-            id: o.id,
-            label: o.label,
-          }))}
+          defaultCompanyId={defaultImportCompanyId}
+          orgOptions={orgOptions}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           brands={brandInfos.map(b => b.name)}
           t={t}
@@ -2334,6 +2608,7 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
                         const nextProducts = products.filter(x => x.id !== p.id);
                         setProducts(nextProducts);
                         setCategories(buildCategoriesFromProducts(nextProducts, categoryMetaRows));
+                        if (activeProduct?.id === p.id) setActiveProduct(null);
                       } catch (error) {
                         console.error('Failed to delete product', error);
                       } finally {
@@ -2351,7 +2626,334 @@ export function AdminProductsTab({ D, card, divider, cardHover, text, sub, input
           </div>
         );
       })()}
+
+      {/* ── Undo last change (premium) ────────────────────────────────── */}
+      {showUndoModal && (
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center px-4"
+          style={{ background: 'rgba(8,10,18,0.72)', backdropFilter: 'blur(10px)' }}
+          onClick={() => { if (!undoBusy) setShowUndoModal(false); }}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-[28px] relative"
+            style={{
+              background: D
+                ? 'linear-gradient(165deg, #1a1b22 0%, #12131a 55%, #0d0e14 100%)'
+                : 'linear-gradient(165deg, #ffffff 0%, #fff8f8 45%, #fff5f0 100%)',
+              border: D ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(244,63,94,0.14)',
+              boxShadow: D
+                ? '0 30px 80px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.06)'
+                : '0 30px 80px rgba(190,18,60,0.18), 0 2px 0 rgba(255,255,255,0.8) inset',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div
+              className="absolute -top-24 -right-16 w-56 h-56 rounded-full pointer-events-none"
+              style={{
+                background: 'radial-gradient(circle, rgba(244,63,94,0.35), transparent 70%)',
+                filter: 'blur(8px)',
+              }}
+            />
+            <div
+              className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full pointer-events-none"
+              style={{
+                background: 'radial-gradient(circle, rgba(249,115,22,0.28), transparent 70%)',
+                filter: 'blur(10px)',
+              }}
+            />
+
+            <div className="relative px-6 pt-6 pb-5">
+              <div className="flex items-start gap-3 mb-5">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: 'linear-gradient(145deg, #fb7185, #f97316)',
+                    boxShadow: '0 10px 28px rgba(244,63,94,0.45)',
+                  }}
+                >
+                  <Undo2 size={20} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Sparkles size={12} style={{ color: D ? '#fda4af' : '#e11d48' }} />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: D ? '#fda4af' : '#be123c' }}>
+                      Undo
+                    </span>
+                  </div>
+                  <h3 className={`text-lg font-bold leading-tight ${text}`}>
+                    {t.prodUndoTitle ?? "Oxirgi o'zgarishni bekor qilish"}
+                  </h3>
+                  <p className={`text-xs mt-1 leading-relaxed ${sub}`}>
+                    {t.prodUndoSubtitle ?? "Quyidagi o'zgarish bekor qilinadi — aniq tekshirib tasdiqlang"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={undoBusy}
+                  onClick={() => setShowUndoModal(false)}
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${D ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-black/5 text-gray-500'}`}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {undoLoading && (
+                <div className={`rounded-2xl px-4 py-8 text-center text-sm ${sub}`}>
+                  {t.loading ?? 'Yuklanmoqda...'}
+                </div>
+              )}
+
+              {!undoLoading && undoError && (
+                <div className="rounded-2xl px-4 py-3 mb-3 text-sm text-rose-300 border border-rose-500/30 bg-rose-500/10">
+                  {undoError}
+                </div>
+              )}
+
+              {!undoLoading && undoPreview && !undoPreview.available && (
+                <div
+                  className="rounded-2xl px-4 py-5 mb-1 border"
+                  style={{
+                    background: D ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+                    borderColor: D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock3 size={16} style={{ color: D ? '#fbbf24' : '#d97706' }} />
+                    <p className={`text-sm font-bold ${text}`}>
+                      {t.prodUndoEmptyTitle ?? "15 daqiqada o'zgarish yo'q"}
+                    </p>
+                  </div>
+                  <p className={`text-xs leading-relaxed ${sub}`}>
+                    {undoPreview.message
+                      ?? t.prodUndoEmptyHint
+                      ?? "Oxirgi 15 daqiqada hech qanday mahsulot o'zgartirilmagan. Orqaga qaytarish faqat shu muddat ichida ishlaydi."}
+                  </p>
+                </div>
+              )}
+
+              {!undoLoading && undoPreview?.available && undoPreview.event && undoPreview.product && (
+                <div className="space-y-3">
+                  <div
+                    className="rounded-2xl px-4 py-3 border"
+                    style={{
+                      background: D ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.85)',
+                      borderColor: D ? 'rgba(255,255,255,0.08)' : 'rgba(244,63,94,0.12)',
+                    }}
+                  >
+                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${sub}`}>
+                      {t.prodUndoProduct ?? 'Mahsulot'}
+                    </p>
+                    <p className={`text-sm font-bold ${text}`}>{undoPreview.product.name}</p>
+                    <p className={`text-[11px] font-mono mt-0.5 ${sub}`}>
+                      {undoPreview.product.code}
+                      {undoPreview.product.brand ? ` · ${undoPreview.product.brand}` : ''}
+                      {undoPreview.product.category ? ` · ${undoPreview.product.category}` : ''}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div
+                      className="rounded-2xl px-3 py-2.5 border"
+                      style={{
+                        background: D ? 'rgba(255,255,255,0.03)' : '#fff',
+                        borderColor: D ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+                      }}
+                    >
+                      <p className={`text-[10px] font-semibold uppercase tracking-wide ${sub}`}>{t.prodUndoBy ?? 'Kim qilgan'}</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${text}`}>{undoPreview.event.actorName}</p>
+                      <p className={`text-[10px] ${sub}`}>{undoPreview.event.actorRole}</p>
+                    </div>
+                    <div
+                      className="rounded-2xl px-3 py-2.5 border"
+                      style={{
+                        background: D ? 'rgba(255,255,255,0.03)' : '#fff',
+                        borderColor: D ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
+                      }}
+                    >
+                      <p className={`text-[10px] font-semibold uppercase tracking-wide ${sub}`}>{t.prodUndoAt ?? 'Qachon'}</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${text}`}>{formatAuditWhen(undoPreview.event.createdAt)}</p>
+                      <p className={`text-[10px] ${sub}`}>
+                        {t.prodUndoRemain ?? 'Qolgan vaqt'}: {formatRemain(undoPreview.remainingMs)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    className="rounded-2xl px-4 py-3 border"
+                    style={{
+                      background: D
+                        ? 'linear-gradient(160deg, rgba(244,63,94,0.12), rgba(249,115,22,0.08))'
+                        : 'linear-gradient(160deg, #fff1f2, #fff7ed)',
+                      borderColor: D ? 'rgba(251,113,133,0.25)' : 'rgba(251,113,133,0.35)',
+                    }}
+                  >
+                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${D ? 'text-rose-300' : 'text-rose-700'}`}>
+                      {t.prodUndoWillRevert ?? "Bekor bo'ladiganlar"}
+                    </p>
+                    <p className={`text-xs font-semibold mb-2 ${text}`}>
+                      {auditActionLabel(undoPreview.event.action)}
+                      {undoPreview.event.summary ? ` — ${undoPreview.event.summary}` : ''}
+                    </p>
+                    {undoPreview.event.action === 'created' && (
+                      <p className={`text-[11px] leading-relaxed ${sub}`}>
+                        {t.prodUndoRestoreCreate ?? "Yangi yaratilgan mahsulot o'chiriladi (nofaol)"}
+                      </p>
+                    )}
+                    {undoPreview.event.action === 'deactivated' && (
+                      <p className={`text-[11px] leading-relaxed ${sub}`}>
+                        {t.prodUndoRestoreDelete ?? "O'chirilgan mahsulot qayta faollashtiriladi"}
+                      </p>
+                    )}
+                    {(undoPreview.event.changes?.length ?? 0) > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {undoPreview.event.changes.map((ch, i) => (
+                          <div
+                            key={`${ch.field}-${i}`}
+                            className="rounded-xl px-2.5 py-2 text-[11px]"
+                            style={{
+                              background: D ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.8)',
+                            }}
+                          >
+                            <span className={`font-bold ${text}`}>{auditFieldLabel(ch.field)}</span>
+                            <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span className={D ? 'text-emerald-300' : 'text-emerald-700'}>
+                                {ch.after ?? (t.prodHistoryEmptyVal ?? "bo'sh")}
+                              </span>
+                              <span className={sub}>→</span>
+                              <span className={D ? 'text-rose-300' : 'text-rose-600'}>
+                                {ch.before ?? (t.prodHistoryEmptyVal ?? "bo'sh")}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-5">
+                <button
+                  type="button"
+                  disabled={undoBusy}
+                  onClick={() => setShowUndoModal(false)}
+                  className={`flex-1 py-2.5 rounded-2xl text-sm font-semibold transition-colors ${
+                    D ? 'bg-white/5 text-gray-300 hover:bg-white/10' : 'bg-black/[0.04] text-gray-700 hover:bg-black/[0.07]'
+                  }`}
+                >
+                  {t.prodUndoCancel ?? 'Yopish'}
+                </button>
+                {undoPreview?.available && (
+                  <button
+                    type="button"
+                    disabled={undoBusy || undoLoading}
+                    onClick={() => { void confirmUndoLast(); }}
+                    className="flex-1 py-2.5 rounded-2xl text-sm font-bold text-white transition-all disabled:opacity-60"
+                    style={{
+                      background: 'linear-gradient(135deg, #f43f5e, #ea580c)',
+                      boxShadow: '0 12px 28px rgba(244,63,94,0.35)',
+                    }}
+                  >
+                    {undoBusy
+                      ? (t.prodUndoWorking ?? 'Bekor qilinmoqda…')
+                      : (t.prodUndoConfirm ?? 'Ha, bekor qilish')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Product change history ─────────────────────────────────────── */}
+      {showProductHistory && activeProduct && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowProductHistory(false)}
+        >
+          <div
+            className={`w-full max-w-lg max-h-[min(80dvh,640px)] rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${
+              D ? 'bg-[#1c1c1e] border-gray-700/60' : 'bg-white border-gray-200'
+            }`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className={`flex items-start gap-3 px-5 py-4 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${D ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-50 text-sky-700'}`}>
+                <History size={18} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-base font-bold ${text}`}>{t.prodHistoryTitle ?? "O'zgarishlar tarixi"}</p>
+                <p className={`text-xs mt-0.5 truncate ${sub}`}>
+                  {activeProduct.ismi}
+                  <span className="mx-1 opacity-50">·</span>
+                  <span className="font-mono">{activeProduct.kod}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProductHistory(false)}
+                className={`w-8 h-8 rounded-xl flex items-center justify-center ${D ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {historyLoading && (
+                <p className={`text-sm ${sub}`}>{t.prodHistoryLoading ?? 'Tarix yuklanmoqda…'}</p>
+              )}
+              {!historyLoading && historyError && (
+                <p className="text-sm text-rose-400">{historyError}</p>
+              )}
+              {!historyLoading && !historyError && historyEvents.length === 0 && (
+                <p className={`text-sm ${sub}`}>{t.prodHistoryEmpty ?? "Hali o'zgarish yo'q"}</p>
+              )}
+              {!historyLoading && historyEvents.map(ev => (
+                <div
+                  key={ev.id}
+                  className={`rounded-2xl border px-3.5 py-3 ${D ? 'border-gray-700 bg-[#121212]' : 'border-gray-100 bg-gray-50'}`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold ${text}`}>
+                        {auditActionLabel(ev.action)}
+                        {ev.summary ? <span className={`font-normal ${sub}`}> — {ev.summary}</span> : null}
+                      </p>
+                      <p className={`text-[11px] mt-0.5 ${sub}`}>
+                        <span className="font-medium">{t.prodHistoryWho ?? 'Kim'}:</span>{' '}
+                        {ev.actorName || '—'}
+                        {ev.actorRole ? ` (${ev.actorRole})` : ''}
+                      </p>
+                    </div>
+                    <p className={`text-[10px] whitespace-nowrap ${sub}`}>
+                      {formatAuditWhen(ev.createdAt)}
+                    </p>
+                  </div>
+                  {ev.changes?.length > 0 && (
+                    <div className={`mt-2 space-y-1 border-t pt-2 ${D ? 'border-gray-800' : 'border-gray-200'}`}>
+                      {ev.changes.map((ch, i) => (
+                        <div key={`${ev.id}-${ch.field}-${i}`} className="text-[11px] leading-snug">
+                          <span className={`font-semibold ${text}`}>{auditFieldLabel(ch.field)}</span>
+                          <span className={sub}>: </span>
+                          <span className={D ? 'text-rose-300' : 'text-rose-600'}>
+                            {ch.before ?? (t.prodHistoryEmptyVal ?? "bo'sh")}
+                          </span>
+                          <span className={`mx-1 ${sub}`}>→</span>
+                          <span className={D ? 'text-emerald-300' : 'text-emerald-700'}>
+                            {ch.after ?? (t.prodHistoryEmptyVal ?? "bo'sh")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-    </>
+  </>
   );
 }

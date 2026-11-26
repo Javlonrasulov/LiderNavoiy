@@ -4,6 +4,7 @@ export const PAGE_PERMISSIONS = [
   { id: 'products',   labelKey: 'permProducts',   fallback: 'Mahsulotlar' },
   { id: 'clients',    labelKey: 'permClients',    fallback: 'Mijozlar' },
   { id: 'savdoNuqtalari', labelKey: 'permSavdoNuqtalari', fallback: 'Savdo nuqtalari' },
+  { id: 'tashkilotRekvizitlari', labelKey: 'permTashkilotRekvizitlari', fallback: 'Tashkilot rekvizitlari' },
   { id: 'liniya',     labelKey: 'permLiniya',     fallback: 'Liniya' },
   { id: 'xodimlar',   labelKey: 'permXodimlar',   fallback: 'Xodimlar' },
   { id: 'reports',    labelKey: 'permReports',    fallback: 'Hisobotlar' },

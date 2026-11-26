@@ -40,6 +40,7 @@ import { AdminUnpreparedOrdersTab } from '../components/admin/tabs/AdminUnprepar
 import { AdminProdajiTab } from '../components/admin/tabs/AdminProdajiTab';
 import { AdminMessagesTab } from '../components/admin/tabs/AdminMessagesTab';
 import { AdminSystemUsersTab } from '../components/admin/tabs/AdminSystemUsersTab';
+import { AdminTashkilotRekvizitlariTab } from '../components/admin/tabs/AdminTashkilotRekvizitlariTab';
 import { MessageNotificationHost } from '../components/admin/MessageNotificationHost';
 import { useMessagesUnreadCount } from '../hooks/useMessagesUnread';
 import { api, connectTracking, type AdminDashboardData, type Distributor } from '../api/client';
@@ -850,6 +851,13 @@ export default function AdminPanel() {
               viewOrg={viewOrg}
               onClientsChange={setClientsForBell}
               pageTitle={t.navSavdoNuqtalari ?? 'Savdo nuqtalari'}
+            />
+          )}
+
+          {tab === 'tashkilotRekvizitlari' && (
+            <AdminTashkilotRekvizitlariTab
+              D={D} card={card} divider={divider} text={text} sub={sub} input={input} t={t}
+              viewOrg={viewOrg} activeIds={activeIds}
             />
           )}
 

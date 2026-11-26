@@ -18,6 +18,7 @@ import uz.distributor.crm.domain.model.ProductPromotion
 import uz.distributor.crm.domain.model.PromotionReward
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
+import uz.distributor.crm.util.UzScript
 import javax.inject.Inject
 
 enum class VisitViewLevel { CATEGORIES, PRODUCTS, PRODUCT_DETAIL, PROMOTIONS }
@@ -322,10 +323,19 @@ class VisitViewModel @Inject constructor(
         if (index < 0) return
         val nextIndex = index + delta
         if (nextIndex !in state.filteredProducts.indices) return
+        // Fokus/blur eski miqdorni yangi mahsulotga yozib yubormasin
+        _uiState.update { it.copy(focusDetailQuantity = false) }
         openProduct(state.filteredProducts[nextIndex])
     }
 
     fun setDetailQuantity(qty: Double) {
+        setDetailQuantityForProduct(_uiState.value.selectedProductId, qty)
+    }
+
+    /** Faqat hozir ochiq mahsulot uchun — navigatsiya race holatida eski qiymat yozilmasin */
+    fun setDetailQuantityForProduct(productId: String?, qty: Double) {
+        if (productId.isNullOrBlank()) return
+        if (_uiState.value.selectedProductId != productId) return
         val clamped = qty.coerceAtLeast(0.0)
         _uiState.update { it.copy(detailQuantity = clamped) }
         viewModelScope.launch {
@@ -339,8 +349,8 @@ class VisitViewModel @Inject constructor(
     }
 
     fun decrementDetailQty(step: Double = detailQtyStep()) {
-        val minQty = step
-        setDetailQuantity((_uiState.value.detailQuantity - step).coerceAtLeast(minQty))
+        val next = (_uiState.value.detailQuantity - step).coerceAtLeast(0.0)
+        setDetailQuantity(next)
     }
 
     fun setDetailPromoQuantity(qty: Double) {
@@ -363,10 +373,8 @@ class VisitViewModel @Inject constructor(
         setDetailPromoQuantity((_uiState.value.detailPromoQuantity - step).coerceAtLeast(0.0))
     }
 
-    private fun detailQtyStep(): Double {
-        val unit = _uiState.value.selectedProduct?.unit.orEmpty()
-        return if (unit.equals("kg", ignoreCase = true) || unit.equals("кг", ignoreCase = true)) 0.1 else 1.0
-    }
+    /** +/- tugmalari: 1 kg yoki 1 dona */
+    private fun detailQtyStep(): Double = 1.0
 
     fun setDetailNote(note: String) {
         _uiState.update { it.copy(detailNote = note) }
@@ -848,11 +856,13 @@ class VisitViewModel @Inject constructor(
             query: String,
             showAll: Boolean,
         ): List<Product> {
-            val q = query.trim().lowercase()
+            val q = query.trim()
             return products.filter { product ->
                 val matchesQuery = q.isEmpty() ||
-                    product.name.lowercase().contains(q) ||
-                    product.code.lowercase().contains(q)
+                    UzScript.matches(product.name, q) ||
+                    UzScript.matches(product.code, q) ||
+                    UzScript.matches(product.category, q) ||
+                    UzScript.matches(product.brand, q)
                 val matchesStock = showAll || product.stockBalance > 0
                 matchesQuery && matchesStock
             }

@@ -41,6 +41,18 @@ class ProductRepository @Inject constructor(
         return db.productDao().getAll().map { it.toDomain() }
     }
 
+    /** Dashboard uchun: keshdagi haqiqiy son (snapshot emas). */
+    suspend fun getProductCount(forceRefresh: Boolean = false): Int {
+        if (forceRefresh) {
+            refreshFromApi()
+            return db.productDao().count()
+        }
+        val cached = db.productDao().count()
+        if (cached > 0) return cached
+        refreshFromApi()
+        return db.productDao().count()
+    }
+
     suspend fun getCategories(): List<String> {
         if (db.productDao().getAll().isEmpty()) refreshFromApi()
         val fromDb = db.productDao().getCategories()

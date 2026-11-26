@@ -38,6 +38,47 @@ export class Company {
   @Column({ type: 'varchar', nullable: true })
   warehouseName: string | null;
 
+  /** Tashkilot kodi (1C «Код») — bazadagi texnik `id` dan alohida */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  orgCode: string | null;
+
+  /** To‘liq yuridik nomi */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  fullLegalName: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  legalAddress: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  phone: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  callCenterPhone: string | null;
+
+  /** STIR / INN */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  inn: string | null;
+
+  /** QQS / НДС kodi */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  vatCode: string | null;
+
+  /** Rekvizit izohi (description — umumiy tavsif, alohida) */
+  @Column({ type: 'text', nullable: true })
+  rekvizitNote: string | null;
+
+  /** Naqd pul kassasi nomi */
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  cashCashboxName: string | null;
+
+  /** Click kassasi nomi */
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  clickCashboxName: string | null;
+
+  /** Asosiy hisob raqami (company_bank_accounts.id) */
+  @Column({ type: 'uuid', nullable: true })
+  primaryBankAccountId: string | null;
+
   /** Agent/dostavkachi mijoz qo‘shishi mumkinmi — default o‘chirilgan */
   @Column({ default: false })
   agentsCanAddClients: boolean;

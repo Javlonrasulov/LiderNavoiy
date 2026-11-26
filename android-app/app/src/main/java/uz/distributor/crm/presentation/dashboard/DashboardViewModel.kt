@@ -13,6 +13,7 @@ import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.data.repository.DashboardRefreshRepository
 import uz.distributor.crm.data.repository.DashboardRepository
+import uz.distributor.crm.data.repository.ProductRepository
 import uz.distributor.crm.data.repository.PushRepository
 import uz.distributor.crm.domain.model.AuthUser
 import uz.distributor.crm.domain.model.DashboardStats
@@ -52,6 +53,7 @@ class DashboardViewModel @Inject constructor(
     private val dashboardRefreshRepository: DashboardRefreshRepository,
     private val appSettingsRepository: AppSettingsRepository,
     private val cartRepository: CartRepository,
+    private val productRepository: ProductRepository,
     private val pushRepository: PushRepository,
     private val networkMonitor: NetworkMonitor,
 ) : ViewModel() {
@@ -201,7 +203,9 @@ class DashboardViewModel @Inject constructor(
             try {
                 withTimeout(25_000) {
                     val stats = dashboardRepository.getStats()
-                    val productCount = dashboardRefreshRepository.syncSessionBaseline()
+                    // Snapshot faqat diff uchun; UI soni keshdan
+                    runCatching { dashboardRefreshRepository.syncSessionBaseline() }
+                    val productCount = productRepository.getProductCount(forceRefresh = false)
                     val pendingTotal = cartRepository.pendingOrdersTotal()
                     val pendingCount = cartRepository.pendingOrdersCount()
                     _uiState.update {
@@ -224,6 +228,9 @@ class DashboardViewModel @Inject constructor(
                 val pendingTotal = cartRepository.pendingOrdersTotal()
                 val pendingCount = cartRepository.pendingOrdersCount()
                 val previousSales = _uiState.value.stats.totalSales
+                val productCount = runCatching {
+                    productRepository.getProductCount(forceRefresh = false)
+                }.getOrDefault(_uiState.value.productCount)
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -233,7 +240,7 @@ class DashboardViewModel @Inject constructor(
                         displayedTotalSales = previousSales + pendingTotal,
                         pendingOrdersCount = pendingCount,
                         isOnline = networkMonitor.isCurrentlyOnline(),
-                        productCount = it.productCount,
+                        productCount = productCount,
                         cartTotal = cartTotal,
                         cartItemsCount = cartItemsCount,
                         error = if (networkMonitor.isCurrentlyOnline()) {

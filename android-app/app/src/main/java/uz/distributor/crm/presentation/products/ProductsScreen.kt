@@ -1,11 +1,19 @@
 package uz.distributor.crm.presentation.products
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -30,10 +38,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
 import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
+import uz.distributor.crm.presentation.navigation.BottomNavChrome
 import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
@@ -57,6 +67,19 @@ fun ProductsScreen(
     val filterBg = if (isDark) SherinColors.CardDark else Color.White
     val stockFmt = remember { DecimalFormat("#,##0.000") }
     val navBottom = bottomNavHeight()
+    val systemNav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val listState = rememberLazyListState()
+    val chromeVisible = rememberProductsChromeVisibility(listState)
+
+    DisposableEffect(Unit) {
+        onDispose { BottomNavChrome.reset() }
+    }
+
+    LaunchedEffect(chromeVisible) {
+        BottomNavChrome.setVisible(chromeVisible)
+    }
+
+    val listBottomPad = if (chromeVisible) navBottom + 8.dp else systemNav + 8.dp
 
     Column(
         modifier = Modifier
@@ -110,86 +133,92 @@ fun ProductsScreen(
             }
         }
 
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(filterBg)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = expandVertically(tween(220)) + fadeIn(tween(180)),
+            exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
         ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
-                modifier = Modifier.fillMaxWidth().height(36.dp),
-            ) {
-                Row(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Search, null, tint = subColor, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.weight(1f)) {
-                        if (state.searchQuery.isEmpty()) {
-                            Text(AppStrings.search(lang), color = subColor, fontSize = 14.sp)
-                        }
-                        BasicTextField(
-                            value = state.searchQuery,
-                            onValueChange = viewModel::onSearchChange,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            textStyle = LocalTextStyle.current.copy(
-                                color = titleColor,
-                                fontSize = 14.sp,
-                            ),
-                            cursorBrush = SolidColor(SherinColors.Primary),
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(
-                    checked = state.stockOnly,
-                    onCheckedChange = viewModel::setStockOnly,
-                    modifier = Modifier.scale(0.78f),
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = SherinColors.Primary,
-                        uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = if (isDark) Color(0xFF4B5563) else Color(0xFFD1D5DB),
-                    ),
-                )
-                Spacer(Modifier.width(2.dp))
-                Text(
-                    AppStrings.productAvailable(lang),
-                    color = titleColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    .background(filterBg)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
-                ProductCategoryChip(
-                    label = AppStrings.allProducts(lang),
-                    selected = state.selectedCategory == null,
-                    onClick = { viewModel.selectCategory(null) },
-                )
-                state.categories.forEach { category ->
-                    ProductCategoryChip(
-                        label = category,
-                        selected = state.selectedCategory == category,
-                        onClick = { viewModel.selectCategory(category) },
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isDark) Color(0xFF1F2937) else Color(0xFFF3F4F6),
+                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Search, null, tint = subColor, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.weight(1f)) {
+                            if (state.searchQuery.isEmpty()) {
+                                Text(AppStrings.search(lang), color = subColor, fontSize = 14.sp)
+                            }
+                            BasicTextField(
+                                value = state.searchQuery,
+                                onValueChange = viewModel::onSearchChange,
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                textStyle = LocalTextStyle.current.copy(
+                                    color = titleColor,
+                                    fontSize = 14.sp,
+                                ),
+                                cursorBrush = SolidColor(SherinColors.Primary),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = state.stockOnly,
+                        onCheckedChange = viewModel::setStockOnly,
+                        modifier = Modifier.scale(0.78f),
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = SherinColors.Primary,
+                            uncheckedThumbColor = Color.White,
+                            uncheckedTrackColor = if (isDark) Color(0xFF4B5563) else Color(0xFFD1D5DB),
+                        ),
                     )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        AppStrings.productAvailable(lang),
+                        color = titleColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    ProductCategoryChip(
+                        label = AppStrings.allProducts(lang),
+                        selected = state.selectedCategory == null,
+                        onClick = { viewModel.selectCategory(null) },
+                    )
+                    state.categories.forEach { category ->
+                        ProductCategoryChip(
+                            label = category,
+                            selected = state.selectedCategory == category,
+                            onClick = { viewModel.selectCategory(category) },
+                        )
+                    }
                 }
             }
         }
@@ -214,12 +243,13 @@ fun ProductsScreen(
                 when (state.viewMode) {
                     ProductsViewMode.CARD -> {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
                                 top = 10.dp,
-                                bottom = navBottom + 8.dp,
+                                bottom = listBottomPad,
                             ),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
@@ -247,7 +277,8 @@ fun ProductsScreen(
                             titleColor = titleColor,
                             subColor = subColor,
                             stockFmt = stockFmt,
-                            bottomPadding = navBottom + 8.dp,
+                            bottomPadding = listBottomPad,
+                            listState = listState,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }
@@ -255,6 +286,40 @@ fun ProductsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun rememberProductsChromeVisibility(listState: LazyListState): Boolean {
+    var chromeVisible by remember { mutableStateOf(true) }
+    var lastIndex by remember { mutableIntStateOf(0) }
+    var lastOffset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                val scrollingDown = when {
+                    index > lastIndex -> true
+                    index < lastIndex -> false
+                    else -> offset > lastOffset
+                }
+                val delta = when {
+                    index != lastIndex -> 24
+                    else -> kotlin.math.abs(offset - lastOffset)
+                }
+                when {
+                    index == 0 && offset < 24 -> chromeVisible = true
+                    delta < 10 -> Unit
+                    scrollingDown -> chromeVisible = false
+                    else -> chromeVisible = true
+                }
+                lastIndex = index
+                lastOffset = offset
+            }
+    }
+    return chromeVisible
 }
 
 @Composable
@@ -474,6 +539,7 @@ private fun ProductsTableView(
     subColor: Color,
     stockFmt: DecimalFormat,
     bottomPadding: androidx.compose.ui.unit.Dp,
+    listState: LazyListState,
     modifier: Modifier = Modifier,
 ) {
     val headerBg = if (isDark) Color(0xFF1F2937) else Color(0xFFF9FAFB)
@@ -527,6 +593,7 @@ private fun ProductsTableView(
             }
             HorizontalDivider(color = borderColor)
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = bottomPadding),
             ) {

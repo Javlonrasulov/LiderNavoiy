@@ -2,8 +2,10 @@
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -11,7 +13,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,11 +41,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import uz.distributor.crm.domain.model.Client
 import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.components.NavGlassInfoToast
+import uz.distributor.crm.presentation.navigation.BottomNavChrome
+import uz.distributor.crm.presentation.navigation.bottomNavHeight
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -103,6 +110,25 @@ fun ClientsScreen(
     val tabInactiveBg = if (isDark) Color(0xFF374151) else Color(0xFFF3F4F6)
 
     var showDayMenu by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val chromeVisible = rememberClientsChromeVisibility(listState)
+    val navBottom = bottomNavHeight()
+    val systemNav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val listBottomPad = if (chromeVisible) navBottom + 4.dp else systemNav + 4.dp
+
+    DisposableEffect(Unit) {
+        onDispose { BottomNavChrome.reset() }
+    }
+    LaunchedEffect(chromeVisible) {
+        BottomNavChrome.setVisible(chromeVisible)
+        if (!chromeVisible) showDayMenu = false
+    }
+    LaunchedEffect(state.activeTab) {
+        if (state.activeTab == ClientsListTab.SEARCH) {
+            BottomNavChrome.setVisible(true)
+        }
+    }
+
     val dayOptions = (0..6).map { day ->
         val count = state.dayClientCounts[day] ?: 0
         day to "${AppStrings.dayName(day, lang)} ($count)"
@@ -155,71 +181,85 @@ fun ClientsScreen(
                             size = 40.dp,
                         )
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Box {
-                        Surface(
-                            onClick = { showDayMenu = !showDayMenu },
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White.copy(0.12f),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, Color.White.copy(0.2f), RoundedCornerShape(16.dp)),
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(selectedDayLabel, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                                Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(22.dp))
-                            }
-                        }
-                        DropdownMenu(expanded = showDayMenu, onDismissRequest = { showDayMenu = false }) {
-                            dayOptions.forEach { (value, label) ->
-                                DropdownMenuItem(
-                                    text = { Text(label) },
-                                    onClick = {
-                                        viewModel.setSelectedDay(value)
-                                        showDayMenu = false
-                                    },
-                                )
+                    AnimatedVisibility(
+                        visible = chromeVisible,
+                        enter = expandVertically(tween(220)) + fadeIn(tween(180)),
+                        exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
+                    ) {
+                        Column {
+                            Spacer(Modifier.height(12.dp))
+                            Box {
+                                Surface(
+                                    onClick = { showDayMenu = !showDayMenu },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color.White.copy(0.12f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, Color.White.copy(0.2f), RoundedCornerShape(16.dp)),
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(selectedDayLabel, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                        Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                    }
+                                }
+                                DropdownMenu(expanded = showDayMenu, onDismissRequest = { showDayMenu = false }) {
+                                    dayOptions.forEach { (value, label) ->
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                viewModel.setSelectedDay(value)
+                                                showDayMenu = false
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(if (isDark) SherinColors.CardDark else Color.White)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            AnimatedVisibility(
+                visible = chromeVisible,
+                enter = expandVertically(tween(220)) + fadeIn(tween(180)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
             ) {
-                ClientsTabChip(
-                    label = AppStrings.tabSchedule(lang),
-                    selected = state.activeTab == ClientsListTab.SCHEDULE,
-                    isDark = isDark,
-                    inactiveBg = tabInactiveBg,
-                    modifier = Modifier.weight(1f),
-                    onClick = { viewModel.setActiveTab(ClientsListTab.SCHEDULE) },
-                )
-                ClientsTabChip(
-                    label = AppStrings.tabRouteDrops(lang),
-                    selected = state.activeTab == ClientsListTab.ROUTE_DROPS,
-                    isDark = isDark,
-                    inactiveBg = tabInactiveBg,
-                    modifier = Modifier.weight(1f),
-                    onClick = { viewModel.setActiveTab(ClientsListTab.ROUTE_DROPS) },
-                )
-                ClientsTabChip(
-                    label = AppStrings.tabSearchClients(lang),
-                    selected = state.activeTab == ClientsListTab.SEARCH,
-                    isDark = isDark,
-                    inactiveBg = tabInactiveBg,
-                    modifier = Modifier.weight(1f),
-                    onClick = { viewModel.setActiveTab(ClientsListTab.SEARCH) },
-                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (isDark) SherinColors.CardDark else Color.White)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ClientsTabChip(
+                        label = AppStrings.tabSchedule(lang),
+                        selected = state.activeTab == ClientsListTab.SCHEDULE,
+                        isDark = isDark,
+                        inactiveBg = tabInactiveBg,
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.setActiveTab(ClientsListTab.SCHEDULE) },
+                    )
+                    ClientsTabChip(
+                        label = AppStrings.tabRouteDrops(lang),
+                        selected = state.activeTab == ClientsListTab.ROUTE_DROPS,
+                        isDark = isDark,
+                        inactiveBg = tabInactiveBg,
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.setActiveTab(ClientsListTab.ROUTE_DROPS) },
+                    )
+                    ClientsTabChip(
+                        label = AppStrings.tabSearchClients(lang),
+                        selected = state.activeTab == ClientsListTab.SEARCH,
+                        isDark = isDark,
+                        inactiveBg = tabInactiveBg,
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.setActiveTab(ClientsListTab.SEARCH) },
+                    )
+                }
             }
 
             if (state.isLoading) {
@@ -242,8 +282,9 @@ fun ClientsScreen(
                         }
                     } else if (state.activeTab != ClientsListTab.SEARCH || state.searchQuery.length >= 2) {
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 4.dp, bottom = 4.dp),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = listBottomPad),
                         ) {
                             items(state.clients, key = { it.id }) { client ->
                                 ClientListRow(
@@ -305,6 +346,40 @@ fun ClientsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun rememberClientsChromeVisibility(listState: LazyListState): Boolean {
+    var chromeVisible by remember { mutableStateOf(true) }
+    var lastIndex by remember { mutableIntStateOf(0) }
+    var lastOffset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                val scrollingDown = when {
+                    index > lastIndex -> true
+                    index < lastIndex -> false
+                    else -> offset > lastOffset
+                }
+                val delta = when {
+                    index != lastIndex -> 24
+                    else -> kotlin.math.abs(offset - lastOffset)
+                }
+                when {
+                    index == 0 && offset < 24 -> chromeVisible = true
+                    delta < 10 -> Unit
+                    scrollingDown -> chromeVisible = false
+                    else -> chromeVisible = true
+                }
+                lastIndex = index
+                lastOffset = offset
+            }
+    }
+    return chromeVisible
 }
 
 @Composable

@@ -7,10 +7,20 @@ import { Product } from './entities/product.entity';
 import { ProductCategory } from './entities/product-category.entity';
 import { ProductBrand } from './entities/product-brand.entity';
 import { ProductRating } from './entities/product-rating.entity';
+import { ProductAuditEvent } from './entities/product-audit-event.entity';
 import { Order } from '../orders/entities/order.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductCategory, ProductBrand, ProductRating, Order])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Product,
+      ProductCategory,
+      ProductBrand,
+      ProductRating,
+      ProductAuditEvent,
+      Order,
+    ]),
+  ],
   controllers: [ProductsController],
   providers: [ProductsService, ProductsUploadService],
   exports: [ProductsService],

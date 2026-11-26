@@ -148,6 +148,31 @@ export class ProductsController {
     return this.service.removeBrandMeta(metaId);
   }
 
+  @Get('undo-preview')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Preview last undoable product change (15 min window)' })
+  undoPreview(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.getUndoPreview(resolveCompanyScope(req.user, companyId));
+  }
+
+  @Post('undo-last')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Undo last product change within 15 minutes' })
+  undoLast(
+    @Request() req: { user: User },
+    @Query('companyId') companyId?: string,
+  ) {
+    return this.service.undoLastChange(
+      req.user,
+      resolveCompanyScope(req.user, companyId),
+    );
+  }
+
   @Get(':id/stats')
   @ApiOperation({ summary: 'Product detail with sales stats and rating' })
   async productStats(
@@ -162,6 +187,22 @@ export class ProductsController {
     const single =
       typeof scope === 'string' ? scope : Array.isArray(scope) ? scope[0] : null;
     return this.service.getProductStats(id, single);
+  }
+
+  @Get(':id/audit')
+  @UseGuards(AdminGuard)
+  @RequirePage('products')
+  @ApiOperation({ summary: 'Product change history (who / when / what)' })
+  async productAudit(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+  ) {
+    const product = await this.service.findOne(id);
+    if (!product) throw new NotFoundException('Product not found');
+    assertManagerCompanyAccess(req.user, product.companyId);
+    const n = Math.min(Math.max(parseInt(limit || '100', 10) || 100, 1), 500);
+    return this.service.findAudit(id, n);
   }
 
   @Get(':id')
@@ -187,7 +228,7 @@ export class ProductsController {
   @ApiOperation({ summary: 'Create product' })
   create(@Request() req: { user: User }, @Body() dto: CreateProductDto) {
     const companyId = resolveWritableCompanyId(req.user, dto.companyId);
-    return this.service.create({ ...dto, companyId });
+    return this.service.create({ ...dto, companyId }, req.user);
   }
 
   @Patch(':id')
@@ -206,7 +247,7 @@ export class ProductsController {
       dto.companyId !== undefined
         ? { ...dto, companyId: resolveWritableCompanyId(req.user, dto.companyId) }
         : dto;
-    return this.service.update(id, nextDto);
+    return this.service.update(id, nextDto, req.user);
   }
 
   @Delete(':id')
@@ -217,6 +258,6 @@ export class ProductsController {
     const existing = await this.service.findOne(id);
     if (!existing) throw new NotFoundException('Product not found');
     assertManagerCompanyAccess(req.user, existing.companyId);
-    return this.service.remove(id);
+    return this.service.remove(id, req.user);
   }
 }

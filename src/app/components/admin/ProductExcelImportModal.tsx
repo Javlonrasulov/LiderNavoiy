@@ -22,7 +22,6 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import { ADMIN_ORGS } from '../../data/adminProducts';
 
 type ImportRow = {
   key: string;
@@ -119,9 +118,89 @@ const IMPORT_FIELDS: {
     key: 'stock',
     labelKey: 'prodExcelColStock',
     fallback: 'Qoldiq',
-    keywords: ['qoldiq', 'stock', 'остаток', 'balance', 'кол', 'miqdor', 'qty'],
+    keywords: ['qoldiq', 'stock', 'остаток', 'balance', 'количест', 'кол-во', 'miqdor', 'qty', 'quantity'],
   },
 ];
+
+/** Sarlavha qatori uchun — qisqa kalitlar mahsulot nomiga yopishib qolmasin */
+const HEADER_KEYWORDS: string[] = [
+  'nomi', 'name', 'товар', 'tovar', 'mahsulot', 'маҳсулот', 'назван', 'наимен', 'product', 'наименование',
+  'артикул', 'artikul', 'sku', 'article',
+  'kod', 'код', 'code',
+  'brend', 'brand', 'бренд', 'марка',
+  'kategoriya', 'category', 'группа', 'gruppa', 'категор', 'категория',
+  'narx', 'price', 'rtl', 'цена', 'narxi', 'сумма', 'стоимость',
+  'birlik', 'unit', 'единиц', 'ед.изм', 'ед изм',
+  'qoldiq', 'stock', 'остаток', 'balance', 'количест', 'miqdor', 'quantity',
+];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cellMatchesHeaderKeyword(cell: string, keyword: string): boolean {
+  const c = normHeader(cell);
+  const k = normHeader(keyword);
+  if (!c || !k) return false;
+  if (c === k) return true;
+  // Qisqa kalitlar faqat alohida so‘z sifatida (masalan "шт", "кг") —
+  // "колбаса" ichidagi "кол" yoki "Шодлик" ichida tasodifiy match bo‘lmasin
+  if (k.length <= 3) {
+    return new RegExp(`(?:^|[\\s._\\-/(])${escapeRegExp(k)}(?:$|[\\s._\\-/)])`, 'i').test(c);
+  }
+  return c.includes(k);
+}
+
+function looksLikeSku(raw: string): boolean {
+  const s = String(raw || '').trim();
+  if (!s || s.length < 3 || s.length > 32) return false;
+  // Harf+raqam aralash kodlar: ШДВК0033, TVBK0071, PR-101
+  return /^(?=.*[A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ])(?=.*\d)[A-Za-zА-Яа-яЁёЎўҚқҒғҲҳ0-9._\-]+$/.test(s);
+}
+
+function looksLikeDataRow(row: string[]): boolean {
+  const cells = (row || []).map((c) => String(c ?? '').trim()).filter(Boolean);
+  if (cells.length < 2) return false;
+  const skuHits = cells.filter(looksLikeSku).length;
+  const numHits = cells.filter((c) => {
+    const n = Number(String(c).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) && String(c).replace(/\s/g, '').length >= 1;
+  }).length;
+  // Kod + (nom yoki narx) — bu mahsulot qatori, sarlavha emas
+  return skuHits >= 1 && (cells.length >= 2 || numHits >= 1);
+}
+
+function detectHeaderRow(sheet: string[][]): { idx: number; headerless: boolean } {
+  let best = -1;
+  let bestScore = 0;
+  const limit = Math.min(sheet.length, 200);
+  for (let i = 0; i < limit; i++) {
+    const row = sheet[i] || [];
+    const cells = row.map((c) => String(c ?? '').trim()).filter(Boolean);
+    if (cells.length < 2) continue;
+    let score = 0;
+    for (const kw of HEADER_KEYWORDS) {
+      if (cells.some((c) => cellMatchesHeaderKeyword(c, kw))) score += 1;
+    }
+    // Ma'lumot qatoriga o‘xshasa — sarlavha deb hisoblama
+    if (looksLikeDataRow(row)) score -= 3;
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  // Kamida 2 ta ustun nomi mos kelishi kerak
+  if (best >= 0 && bestScore >= 2) return { idx: best, headerless: false };
+
+  // Sarlavhasiz fayl: birinchi to‘liq qator — ma'lumot (tashlab yuborilmaydi)
+  for (let i = 0; i < Math.max(limit, sheet.length); i++) {
+    const row = sheet[i] || [];
+    if ((row || []).filter((c) => String(c ?? '').trim()).length >= 2) {
+      return { idx: i, headerless: true };
+    }
+  }
+  return { idx: -1, headerless: false };
+}
 
 const EMPTY_MAPPING: FieldMapping = {
   name: null,
@@ -152,29 +231,6 @@ function normHeader(h: string): string {
     .trim();
 }
 
-function detectHeaderRow(sheet: string[][]): number {
-  let best = -1;
-  let bestScore = 0;
-  const limit = Math.min(sheet.length, 40);
-  for (let i = 0; i < limit; i++) {
-    const cells = (sheet[i] || []).map(normHeader).filter(Boolean);
-    if (cells.length < 2) continue;
-    let score = 0;
-    for (const f of IMPORT_FIELDS) {
-      if (cells.some((c) => f.keywords.some((k) => c.includes(k)))) score += 1;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = i;
-    }
-  }
-  if (best >= 0 && bestScore >= 1) return best;
-  for (let i = 0; i < limit; i++) {
-    if ((sheet[i] || []).filter((c) => String(c ?? '').trim()).length >= 2) return i;
-  }
-  return -1;
-}
-
 function buildSheetColumns(header: string[], width: number): SheetColumn[] {
   const seen = new Set<string>();
   const cols: SheetColumn[] = [];
@@ -202,6 +258,20 @@ function unionColumns(list: RawSheet[]): UnionColumn[] {
   return Array.from(map.values());
 }
 
+function inferFieldFromSample(sample: string, label: string): FieldKey | null {
+  const s = String(sample || '').trim();
+  const lab = normHeader(label);
+  if (!s && !lab) return null;
+  for (const f of IMPORT_FIELDS) {
+    if (f.keywords.some((k) => lab.includes(k) || cellMatchesHeaderKeyword(lab, k))) return f.key;
+  }
+  if (looksLikeSku(s)) return 'artikul';
+  const asNum = Number(String(s).replace(/\s/g, '').replace(',', '.'));
+  if (Number.isFinite(asNum) && asNum > 0 && !looksLikeSku(s) && s.length <= 16) return 'price';
+  if (s.length >= 4) return 'name';
+  return null;
+}
+
 function autoMap(columns: UnionColumn[], current: FieldMapping): FieldMapping {
   const keys = new Set(columns.map((c) => c.key));
   const next: FieldMapping = { ...EMPTY_MAPPING };
@@ -223,6 +293,17 @@ function autoMap(columns: UnionColumn[], current: FieldMapping): FieldMapping {
       used.add(hit.key);
     }
   }
+  // Sarlavhasiz / "Ustun N" ustunlari — namuna qiymatidan taxmin
+  for (const c of columns) {
+    if (used.has(c.key)) continue;
+    const guessed = inferFieldFromSample(c.sample, c.label);
+    if (!guessed || next[guessed]) continue;
+    next[guessed] = c.key;
+    used.add(c.key);
+  }
+  // Kod yo‘q bo‘lsa — artikuldan foydalaniladi (buildRowsFromMapping ichida)
+  if (!next.code && next.artikul) next.code = next.artikul;
+  if (!next.artikul && next.code) next.artikul = next.code;
   return next;
 }
 
@@ -236,21 +317,20 @@ function parseNumber(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const UNIT_OPTIONS = [
-  { id: 'dona', label: 'dona' },
-  { id: 'kg', label: 'kg' },
-] as const;
+const UNIT_IDS = ['dona', 'kg'] as const;
 
 function UnitToggle({
   value,
   onChange,
   D,
   size = 'md',
+  labelOf,
 }: {
   value: string;
   onChange: (v: string) => void;
   D: boolean;
   size?: 'sm' | 'md';
+  labelOf?: (id: string) => string;
 }) {
   const h = size === 'sm' ? 'h-6' : 'h-8';
   const text = size === 'sm' ? 'text-[10px]' : 'text-xs';
@@ -261,13 +341,14 @@ function UnitToggle({
         D ? 'border-gray-700' : 'border-gray-200'
       }`}
     >
-      {UNIT_OPTIONS.map((u) => {
-        const active = (value || 'dona') === u.id;
+      {UNIT_IDS.map((id) => {
+        const active = (value || 'dona') === id;
+        const label = labelOf ? labelOf(id) : id;
         return (
           <button
-            key={u.id}
+            key={id}
             type="button"
-            onClick={() => onChange(u.id)}
+            onClick={() => onChange(id)}
             className={`${h} ${pad} ${text} font-semibold transition-colors ${
               active
                 ? 'bg-indigo-600 text-white'
@@ -276,7 +357,7 @@ function UnitToggle({
                   : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800'
             }`}
           >
-            {u.label}
+            {label}
           </button>
         );
       })}
@@ -308,8 +389,8 @@ function uniqueCode(base: string, used: Set<string>): string {
 
 export function ProductExcelImportModal({
   D,
-  defaultCompanyId = 'boran',
-  orgOptions,
+  defaultCompanyId = '',
+  orgOptions = [],
   categories = [],
   brands = [],
   onClose,
@@ -317,14 +398,20 @@ export function ProductExcelImportModal({
   t = {},
 }: Props) {
   const tr = (key: string, fb: string) => t[key] ?? fb;
-  const orgs = orgOptions?.length ? orgOptions : ADMIN_ORGS.map((o) => ({ id: o.id, label: o.label }));
+  const unitLabel = (id: string) => {
+    if (id === 'dona') return tr('prodExcelUnitDona', tr('pieces', 'dona'));
+    if (id === 'kg') return tr('prodExcelUnitKg', 'kg');
+    return id;
+  };
+  const orgs = orgOptions;
 
   const text = D ? 'text-white' : 'text-gray-900';
   const sub = D ? 'text-gray-400' : 'text-gray-500';
 
-  const [companyId, setCompanyId] = useState(
-    defaultCompanyId && defaultCompanyId !== 'all' ? defaultCompanyId : 'boran',
-  );
+  const [companyId, setCompanyId] = useState(() => {
+    if (defaultCompanyId && defaultCompanyId !== 'all') return defaultCompanyId;
+    return orgOptions[0]?.id ?? '';
+  });
   const [defaultBrand, setDefaultBrand] = useState('');
   const [defaultCategory, setDefaultCategory] = useState('');
   const [defaultUnit, setDefaultUnit] = useState('dona');
@@ -363,6 +450,16 @@ export function ProductExcelImportModal({
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
   const selectedOrg = orgs.find((o) => o.id === companyId);
 
+  useEffect(() => {
+    if (orgs.length === 0) return;
+    if (!orgs.some((o) => o.id === companyId)) {
+      const next =
+        (defaultCompanyId && orgs.some((o) => o.id === defaultCompanyId) && defaultCompanyId)
+        || orgs[0].id;
+      setCompanyId(next);
+    }
+  }, [orgs, companyId, defaultCompanyId]);
+
   const updateMapEdges = () => {
     const el = mapScrollRef.current;
     if (!el) return;
@@ -398,26 +495,30 @@ export function ProductExcelImportModal({
   };
 
   const readRawSheet = (sheet: string[][], fileName: string): RawSheet => {
-    const hdrIdx = detectHeaderRow(sheet);
-    if (hdrIdx < 0) {
+    const detected = detectHeaderRow(sheet);
+    if (detected.idx < 0) {
       throw new Error(`${fileName}: ${tr('prodExcelNoHeader', 'jadval sarlavhasi (ustun nomlari) topilmadi.')}`);
     }
+    const hdrIdx = detected.idx;
+    const headerless = detected.headerless;
+    // Sarlavhasiz faylda birinchi qator ham mahsulot — tashlab yuborilmaydi
     const data = sheet
-      .slice(hdrIdx + 1)
+      .slice(headerless ? hdrIdx : hdrIdx + 1)
       .map((r) => (r || []).map((c) => String(c ?? '')));
     const width = Math.max(
-      sheet[hdrIdx].length,
-      ...data.slice(0, 50).map((r) => r.length),
+      (sheet[hdrIdx] || []).length,
+      ...data.slice(0, 80).map((r) => r.length),
       1,
     );
     if (!data.some((r) => r.some((c) => c.trim()))) {
       throw new Error(`${fileName}: ${tr('prodExcelNoRows', "Excel'da mahsulot qatorlari topilmadi.")}`);
     }
+    const headerRow = headerless ? Array.from({ length: width }, () => '') : (sheet[hdrIdx] || []);
     return {
       fileName,
-      columns: buildSheetColumns(sheet[hdrIdx], width),
+      columns: buildSheetColumns(headerRow, width),
       data,
-      dataStart: hdrIdx + 1,
+      dataStart: headerless ? hdrIdx : hdrIdx + 1,
     };
   };
 
@@ -491,6 +592,7 @@ export function ProductExcelImportModal({
               header: 1,
               defval: '',
               raw: false,
+              blankrows: true,
             }) as string[][];
             newSheets.push(readRawSheet(sheet, file.name));
             newNames.push(file.name);
@@ -518,10 +620,10 @@ export function ProductExcelImportModal({
           for (const n of newNames) set.add(n);
           return Array.from(set);
         });
-        setProgress(`${newNames.length} fayl · ${tr('prodExcelMapNext', 'ustunlarni moslang')}`);
+        setProgress(`${newNames.length} ${tr('prodExcelFileWord', 'fayl')} · ${tr('prodExcelMapNext', 'ustunlarni moslang')}`);
         if (fileErrors.length > 0) setError(fileErrors.join('\n'));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Excel o‘qishda xatolik');
+        setError(e instanceof Error ? e.message : tr('prodExcelReadError', "Excel o'qishda xatolik"));
         setProgress('');
       } finally {
         setParseBusy(false);
@@ -602,7 +704,7 @@ export function ProductExcelImportModal({
     })));
     setMappingStep(false);
     setError(null);
-    setProgress(`${sheets.length} fayl · ${built.length} ${tr('prodExcelRowsLoaded', 'qator yuklandi')}`);
+    setProgress(`${sheets.length} ${tr('prodExcelFileWord', 'fayl')} · ${built.length} ${tr('prodExcelRowsLoaded', 'qator yuklandi')}`);
   };
 
   const clearLoaded = () => {
@@ -636,7 +738,7 @@ export function ProductExcelImportModal({
           throw e;
         }
         if (!is429 || attempt === tries) throw e;
-        setProgress(`Kutish (juda ko‘p so‘rov)… ${attempt}/${tries}`);
+        setProgress(`${tr('prodExcelRateLimit', "Kutish (juda ko'p so'rov)…")} ${attempt}/${tries}`);
         await sleep(1500 * attempt);
       }
     }
@@ -644,6 +746,10 @@ export function ProductExcelImportModal({
   };
 
   const runImport = async () => {
+    if (!companyId || !orgs.some((o) => o.id === companyId)) {
+      setError(tr('prodExcelPickOrg', 'Tashkilotni tanlang'));
+      return;
+    }
     const selected = rows.filter((r) => r.selected);
     if (selected.length === 0) {
       setError(tr('prodExcelNoneSelected', 'Kamida bitta qatorni belgilang.'));
@@ -826,7 +932,10 @@ export function ProductExcelImportModal({
                 } ${D ? 'bg-[#121212]' : 'bg-white'}`}
               >
                 <span className={`flex-1 truncate font-semibold ${text}`}>
-                  {selectedOrg?.label ?? companyId}
+                  {selectedOrg?.label
+                    ?? (orgs.length === 0
+                      ? tr('prodExcelNoOrgs', 'Organizatsiya topilmadi')
+                      : tr('prodExcelPickOrg', 'Tashkilotni tanlang'))}
                 </span>
                 <ChevronDown
                   size={14}
@@ -1233,6 +1342,7 @@ export function ProductExcelImportModal({
                                   size="sm"
                                   value={defaultUnit}
                                   onChange={setDefaultUnit}
+                                  labelOf={unitLabel}
                                 />
                                 <span className={`text-[10px] text-center leading-tight ${picked ? 'text-indigo-500' : sub}`}>
                                   {picked
@@ -1509,6 +1619,7 @@ export function ProductExcelImportModal({
                               setDefaultUnit(u);
                               setRows((prev) => prev.map((x) => ({ ...x, unit: u })));
                             }}
+                            labelOf={unitLabel}
                           />
                         </div>
                       </th>
@@ -1556,6 +1667,7 @@ export function ProductExcelImportModal({
                                 prev.map((x) => (x.key === r.key ? { ...x, unit: u } : x)),
                               );
                             }}
+                            labelOf={unitLabel}
                           />
                         </td>
                         <td className={`p-2 text-right font-mono ${text}`}>

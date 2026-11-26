@@ -5,7 +5,6 @@ import {
   Scale, DollarSign, Barcode, Hash,
   CheckCircle2, Check, Plus, Maximize2, Minimize2,
 } from 'lucide-react';
-import { ADMIN_ORGS } from '../data/adminProducts';
 import { api } from '../api/client';
 import { compressProductImage } from '../utils/compressImage';
 import { resolveProductImageUrl } from '../utils/productImageUrl';
@@ -46,6 +45,8 @@ interface Props {
   categories?: DrawerCategory[];
   /** Mavjud brendlar (Brend → Kategoriya → Mahsulot) */
   brands?: Array<string | { name: string; color?: string; image?: string }>;
+  /** Tashkilotlar — organizatsiya ro‘yxatidan */
+  orgOptions?: { id: string; label: string }[];
   isEdit?: boolean;
   editTitle?: string;
   saveError?: string | null;
@@ -60,7 +61,7 @@ const BRAND_COLORS: Record<string, string> = {
 };
 
 // ── Main component ───────────────────────────────────────────────────────────
-export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTab, onClose, onSave, categories = [], brands = [], isEdit = false, editTitle, saveError = null, t = {} }: Props) {
+export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTab, onClose, onSave, categories = [], brands = [], orgOptions = [], isEdit = false, editTitle, saveError = null, t = {} }: Props) {
   const applyPatch = patchForm ?? ((patch: Partial<AddForm>) => {
     for (const [key, value] of Object.entries(patch)) {
       setF(key as keyof AddForm, value as string | boolean);
@@ -311,7 +312,7 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-semibold" style={{ color: txt }}>{t.drawerImgUpload ?? 'Rasm yuklash'}</p>
-                    <p className="text-xs mt-0.5" style={{ color: sub }}>JPG, PNG, WEBP · maks 5MB</p>
+                    <p className="text-xs mt-0.5" style={{ color: sub }}>{t.drawerImgFormats ?? 'JPG, PNG, WEBP · maks 5MB'}</p>
                     <p className="text-xs" style={{ color: sub }}>{t.drawerImgHint ?? 'Bosing yoki suring'}</p>
                   </div>
                   <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl"
@@ -585,7 +586,7 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                     <input type="number" className={inpCls} value={addForm.rtl}
                       onChange={e => setF('rtl', e.target.value)}
                       placeholder="0" style={{ paddingRight: '52px' }} />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium" style={{ color: sub }}>so'm</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium" style={{ color: sub }}>{t.som ?? "so'm"}</span>
                   </div>
                 </div>
                 <div>
@@ -594,7 +595,7 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
                     <input type="number" className={inpCls} value={addForm.balance}
                       onChange={e => setF('balance', e.target.value)}
                       placeholder="0" style={{ paddingRight: '52px' }} />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium" style={{ color: sub }}>dona</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-medium" style={{ color: sub }}>{t.pieces ?? 'dona'}</span>
                   </div>
                 </div>
               </div>
@@ -629,7 +630,11 @@ export function AddProductDrawer({ D, addForm, setF, patchForm, addTab, setAddTa
             <div>
               <SectionHead icon={<Building2 size={14} />} label={t.drawerOrgSec ?? 'Tashkilot'} />
               <div className="grid grid-cols-2 gap-2">
-                {ADMIN_ORGS.map(o => {
+                {orgOptions.length === 0 ? (
+                  <p className="col-span-2 text-xs" style={{ color: sub }}>
+                    {t.drawerNoOrgs ?? 'Organizatsiya topilmadi'}
+                  </p>
+                ) : orgOptions.map(o => {
                   const active = addForm.org === o.id;
                   return (
                     <button key={o.id} type="button"

@@ -47,6 +47,76 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`companies.warehouseName migrate: ${(err as Error).message}`);
     }
 
+    // Tashkilot rekvizitlari maydonlari
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE companies
+          ADD COLUMN IF NOT EXISTS "orgCode" varchar(32) NULL,
+          ADD COLUMN IF NOT EXISTS "fullLegalName" varchar(500) NULL,
+          ADD COLUMN IF NOT EXISTS "legalAddress" varchar(500) NULL,
+          ADD COLUMN IF NOT EXISTS "phone" varchar(64) NULL,
+          ADD COLUMN IF NOT EXISTS "callCenterPhone" varchar(64) NULL,
+          ADD COLUMN IF NOT EXISTS "inn" varchar(32) NULL,
+          ADD COLUMN IF NOT EXISTS "vatCode" varchar(64) NULL,
+          ADD COLUMN IF NOT EXISTS "rekvizitNote" text NULL,
+          ADD COLUMN IF NOT EXISTS "cashCashboxName" varchar(200) NULL,
+          ADD COLUMN IF NOT EXISTS "clickCashboxName" varchar(200) NULL,
+          ADD COLUMN IF NOT EXISTS "primaryBankAccountId" uuid NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`companies.rekvizit migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS company_bank_accounts (
+          id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+          "companyId" varchar(64) NOT NULL,
+          code varchar(32) NULL,
+          name varchar(200) NOT NULL,
+          "accountNumber" varchar(32) NOT NULL,
+          "bankName" varchar(200) NULL,
+          mfo varchar(16) NULL,
+          "isPrimary" boolean NOT NULL DEFAULT false,
+          "isActive" boolean NOT NULL DEFAULT true,
+          "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+          "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_company_bank_accounts_company
+          ON company_bank_accounts ("companyId");
+      `);
+    } catch (err) {
+      this.logger.warn(`company_bank_accounts migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS company_social_links (
+          id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+          "companyId" varchar(64) NOT NULL,
+          name varchar(120) NOT NULL,
+          url varchar(500) NOT NULL,
+          "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+          "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_company_social_links_company
+          ON company_social_links ("companyId");
+      `);
+    } catch (err) {
+      this.logger.warn(`company_social_links migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE payment_terminals
+          ADD COLUMN IF NOT EXISTS "externalId" varchar(64) NULL,
+          ADD COLUMN IF NOT EXISTS "account23510" varchar(32) NULL,
+          ADD COLUMN IF NOT EXISTS "bankAccountId" uuid NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`payment_terminals.rekvizit migrate: ${(err as Error).message}`);
+    }
+
     try {
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS login_attempts (
@@ -169,6 +239,29 @@ export class BootSeedService implements OnModuleInit {
       `);
     } catch (err) {
       this.logger.warn(`product_brands migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS product_audit_events (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "productId" uuid NOT NULL,
+          "actorUserId" uuid NULL,
+          "actorName" varchar(160) NOT NULL,
+          "actorRole" varchar(32) NOT NULL,
+          action varchar(32) NOT NULL,
+          summary text NULL,
+          changes jsonb NOT NULL DEFAULT '[]'::jsonb,
+          meta jsonb NULL,
+          "createdAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_product_audit_product_created
+          ON product_audit_events ("productId", "createdAt" DESC)
+      `);
+    } catch (err) {
+      this.logger.warn(`product_audit_events migrate: ${(err as Error).message}`);
     }
 
     // clients.orderRadiusMeters: standart 100 → 50.
