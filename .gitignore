@@ -52,3 +52,18 @@ local.properties
 .cxx/
 captures/
 .externalNativeBuild/
+
+# Android UI/e2e debug dumps (android-app ildizidagi vaqtinchalik fayllar)
+/android-app/*.xml
+/android-app/*.png
+/android-app/*.mp4
+/android-app/*.json
+/android-app/tmp_*.py
+/android-app/ui*.xml
+/android-app/fab*
+/android-app/rc*
+/android-app/co-*
+/android-app/e2e-*
+/android-app/dbg*
+/android-app/of-*
+/android-app/off-*

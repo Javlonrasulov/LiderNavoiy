@@ -1318,8 +1318,10 @@ private fun VisitProductDetailContent(
 
         VisitProductImageCard(
             imageUrl = productImageUrl,
+            title = "${product.code} — ${product.name}",
             cardBg = cardBg,
             borderColor = borderColor,
+            lang = lang,
         )
 
         VisitDetailCartPreview(
@@ -1398,18 +1400,17 @@ private fun VisitProductDetailContent(
 @Composable
 private fun VisitProductImageCard(
     imageUrl: String,
+    title: String,
     cardBg: Color,
     borderColor: Color,
+    lang: AppLanguage,
 ) {
     var showFullScreen by remember { mutableStateOf(false) }
 
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = cardBg,
-        onClick = {
-            if (imageUrl.isNotBlank()) showFullScreen = true
-        },
-        enabled = imageUrl.isNotBlank(),
+        onClick = { showFullScreen = true },
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, borderColor, RoundedCornerShape(16.dp)),
@@ -1418,46 +1419,20 @@ private fun VisitProductImageCard(
             if (imageUrl.isNotBlank()) {
                 AsyncImage(
                     model = imageUrl,
-                    contentDescription = null,
+                    contentDescription = title,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(150.dp)
+                        .height(168.dp)
                         .padding(12.dp),
                     contentScale = ContentScale.Fit,
                 )
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.Black.copy(alpha = 0.45f),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp),
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Fullscreen,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            AppStrings.fullScreenMap(LocalAppLanguage.current),
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
             } else {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(150.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                        .height(168.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(
                         Icons.Default.Inventory2,
                         contentDescription = null,
@@ -1466,12 +1441,40 @@ private fun VisitProductImageCard(
                     )
                 }
             }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Black.copy(alpha = 0.48f),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Fullscreen,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        AppStrings.fullScreenPhoto(lang),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 
-    if (showFullScreen && imageUrl.isNotBlank()) {
+    if (showFullScreen) {
         VisitFullScreenImageDialog(
             imageUrl = imageUrl,
+            title = title,
+            lang = lang,
             onDismiss = { showFullScreen = false },
         )
     }
@@ -1480,6 +1483,8 @@ private fun VisitProductImageCard(
 @Composable
 private fun VisitFullScreenImageDialog(
     imageUrl: String,
+    title: String,
+    lang: AppLanguage,
     onDismiss: () -> Unit,
 ) {
     Dialog(
@@ -1492,29 +1497,120 @@ private fun VisitFullScreenImageDialog(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center,
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF0B1220), Color(0xFF111827), Color(0xFF000000)),
+                    ),
+                ),
         ) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                contentScale = ContentScale.Fit,
-            )
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(12.dp)
-                    .size(40.dp)
+            // Soft glow behind image
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(280.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.18f)),
-            ) {
-                Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                    .background(Color(0xFF3B82F6).copy(alpha = 0.12f)),
+            )
+
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        onClick = onDismiss,
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+                        modifier = Modifier.size(42.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = AppStrings.closeFullscreen(lang),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            AppStrings.fullScreenPhoto(lang),
+                            color = Color.White.copy(0.7f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.4.sp,
+                        )
+                        Text(
+                            title,
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(22.dp),
+                        color = Color.White.copy(alpha = 0.06f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.86f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            if (imageUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = imageUrl,
+                                    contentDescription = title,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            } else {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        Icons.Default.Inventory2,
+                                        contentDescription = null,
+                                        tint = Color.White.copy(0.35f),
+                                        modifier = Modifier.size(72.dp),
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        AppStrings.noProductImage(lang),
+                                        color = Color.White.copy(0.55f),
+                                        fontSize = 13.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    AppStrings.tapToClose(lang),
+                    color = Color.White.copy(0.45f),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .navigationBarsPadding()
+                        .padding(bottom = 18.dp)
+                        .clickable(onClick = onDismiss),
+                )
             }
         }
     }
@@ -2430,6 +2526,7 @@ private fun VisitInlineOrderProductCard(
     modifier: Modifier = Modifier,
 ) {
     val inCart = quantity > 0.0
+    var showFullScreen by remember { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = if (inCart && !showImage) Color(0xFFECFDF5) else cardBg,
@@ -2449,7 +2546,7 @@ private fun VisitInlineOrderProductCard(
                         .height(100.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFFF3F4F6))
-                        .clickable(onClick = onOpenDetail),
+                        .clickable(onClick = { showFullScreen = true }),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (!imageUrl.isNullOrBlank()) {
@@ -2466,6 +2563,23 @@ private fun VisitInlineOrderProductCard(
                             tint = subColor,
                             modifier = Modifier.size(36.dp),
                         )
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.42f),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(26.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Fullscreen,
+                                contentDescription = AppStrings.fullScreenPhoto(lang),
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -2564,6 +2678,15 @@ private fun VisitInlineOrderProductCard(
                 }
             }
         }
+    }
+
+    if (showFullScreen) {
+        VisitFullScreenImageDialog(
+            imageUrl = imageUrl.orEmpty(),
+            title = "${product.code} — ${product.name}",
+            lang = lang,
+            onDismiss = { showFullScreen = false },
+        )
     }
 }
 

@@ -1250,6 +1250,8 @@ object AppStrings {
     fun clientPhoto(lang: AppLanguage) = tr(lang, "Do'kon rasmi", "Дўкон расми", "Фото магазина")
     fun fullScreenPhoto(lang: AppLanguage) = tr(lang, "To'liq ekran", "Тўлиқ экран", "Полный экран")
     fun closeFullscreen(lang: AppLanguage) = tr(lang, "Chiqish", "Чиқиш", "Выйти")
+    fun noProductImage(lang: AppLanguage) = tr(lang, "Rasm yo'q", "Расм йўқ", "Нет фото")
+    fun tapToClose(lang: AppLanguage) = tr(lang, "Yopish uchun bosing", "Ёпиш учун босинг", "Нажмите, чтобы закрыть")
     fun close(lang: AppLanguage) = tr(lang, "Yopish", "Ёпиш", "Закрыть")
     fun useMyLocation(lang: AppLanguage) = tr(lang, "Mening joyim", "Менинг жойим", "Моё местоположение")
     fun tapMapHint(lang: AppLanguage) = tr(

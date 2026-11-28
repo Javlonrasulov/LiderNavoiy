@@ -202,7 +202,41 @@ private fun OrderSalesHeader(
                     fontWeight = FontWeight.SemiBold,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
-                Spacer(Modifier.width(40.dp))
+                if (!hideSentTab) {
+                    val recordingsSelected = selectedTab == OrderSummaryTab.RECORDINGS
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (recordingsSelected) {
+                                    Color.White.copy(alpha = 0.28f)
+                                } else {
+                                    Color.White.copy(alpha = 0.10f)
+                                },
+                            )
+                            .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape)
+                            .clickable {
+                                onTabSelect(
+                                    if (recordingsSelected) {
+                                        OrderSummaryTab.CURRENT
+                                    } else {
+                                        OrderSummaryTab.RECORDINGS
+                                    },
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = AppStrings.recordingsTab(lang),
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.width(40.dp))
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -223,11 +257,6 @@ private fun OrderSalesHeader(
                         label = AppStrings.sentOrders(lang),
                         selected = selectedTab == OrderSummaryTab.SENT,
                         onClick = { onTabSelect(OrderSummaryTab.SENT) },
-                    )
-                    OrderHeaderTab(
-                        label = AppStrings.recordingsTab(lang),
-                        selected = selectedTab == OrderSummaryTab.RECORDINGS,
-                        onClick = { onTabSelect(OrderSummaryTab.RECORDINGS) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -1200,6 +1229,24 @@ private fun SentOrderItemRow(
 private fun formatQty(qty: Double, fmt: DecimalFormat): String =
     if (qty % 1.0 == 0.0) qty.toInt().toString() else fmt.format(qty)
 
+/** API UTC vaqtini Asia/Tashkent (+05:00) ga o‘girib ko‘rsatadi. */
+private fun formatRecordingStartedAt(iso: String): String {
+    if (iso.isBlank()) return "—"
+    return try {
+        val tz = java.util.TimeZone.getTimeZone("Asia/Tashkent")
+        val parser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
+        val normalized = iso.trim().replace(' ', 'T').substringBefore('.').removeSuffix("Z")
+        val parsed = parser.parse(normalized) ?: return iso.take(16).replace('T', ' ')
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).apply {
+            timeZone = tz
+        }.format(parsed)
+    } catch (_: Exception) {
+        iso.take(16).replace('T', ' ')
+    }
+}
+
 @Composable
 private fun RecordingsTabContent(
     state: OrderUiState,
@@ -1311,7 +1358,7 @@ private fun RecordingCard(
                 Text(row.clientName.ifBlank { "—" }, color = titleColor, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(row.clientCode, color = SubText, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("${row.startedAt.take(16).replace('T', ' ')} · $dur", color = SubText, fontSize = 12.sp)
+                Text("${formatRecordingStartedAt(row.startedAt)} · $dur", color = SubText, fontSize = 12.sp)
                 Text("$outcome · ${fmt.format(row.orderTotal.toLong())}", color = SubText, fontSize = 12.sp)
                 if (status != null) {
                     Text(status, color = Color(0xFFEF4444), fontSize = 11.sp)
