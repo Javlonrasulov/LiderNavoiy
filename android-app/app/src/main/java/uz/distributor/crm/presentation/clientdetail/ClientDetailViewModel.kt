@@ -29,6 +29,8 @@ data class ClientDetailUiState(
     val locationError: String? = null,
     /** Admin mijoz qo‘shish/tahrirlash ruxsati */
     val canEditClients: Boolean = false,
+    /** Admin «Tashrif audiosini yozish» yoqilgan */
+    val recordVisitAudio: Boolean = false,
     /** Ruxsat yo‘q — asosiy sahifadagi glass toast */
     val showEditDeniedToast: Boolean = false,
 )
@@ -48,7 +50,12 @@ class ClientDetailViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             authRepository.getUserFlow().collect { user ->
-                _uiState.update { it.copy(canEditClients = user?.canAddClients() == true) }
+                _uiState.update {
+                    it.copy(
+                        canEditClients = user?.canAddClients() == true,
+                        recordVisitAudio = user?.shouldRecordVisitAudio() == true,
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -74,6 +81,8 @@ class ClientDetailViewModel @Inject constructor(
     fun load(clientId: String, showLoading: Boolean = true) {
         loadedClientId = clientId
         viewModelScope.launch {
+            // Admin switch o‘zgarganda eslatma yangilansin
+            runCatching { authRepository.refreshAccessToken() }
             if (showLoading) _uiState.update { it.copy(isLoading = true) }
             val clientDeferred = async { clientRepository.getClientDetail(clientId) }
             val activityDeferred = async { clientRepository.getClientActivity(clientId) }

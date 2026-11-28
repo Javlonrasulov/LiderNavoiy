@@ -27,6 +27,7 @@ class CartRepository @Inject constructor(
     private val api: ApiService,
     private val gson: Gson,
     private val networkMonitor: NetworkMonitor,
+    private val visitRecordingManager: uz.distributor.crm.recording.VisitRecordingManager,
 ) {
     private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
@@ -234,13 +235,27 @@ class CartRepository @Inject constructor(
         }
 
         return try {
-            api.createOrder(CreateOrderRequest(clientId, visitId, orderItems, offlineId))
+            val activeVisitId = visitId ?: visitRecordingManager.peekVisitId()
+            val order = api.createOrder(CreateOrderRequest(clientId, activeVisitId, orderItems, offlineId))
             try {
-                api.createVisit(CreateVisitRequest(
-                    clientId = clientId,
-                    visitedAt = isoFormat.format(Date()),
-                    orderTotal = total,
-                ))
+                if (activeVisitId != null) {
+                    runCatching {
+                        api.completeVisit(
+                            activeVisitId,
+                            uz.distributor.crm.data.remote.dto.CompleteVisitRequest(
+                                orderTotal = total,
+                                orderId = order.id,
+                                outcome = "with_order",
+                            ),
+                        )
+                    }
+                } else {
+                    api.createVisit(CreateVisitRequest(
+                        clientId = clientId,
+                        visitedAt = isoFormat.format(Date()),
+                        orderTotal = total,
+                    ))
+                }
             } catch (_: Exception) {
                 db.pendingVisitDao().insert(PendingVisitEntity(
                     offlineId = offlineId, clientId = clientId,
@@ -248,10 +263,23 @@ class CartRepository @Inject constructor(
                     orderTotal = total,
                 ))
             }
+            runCatching {
+                visitRecordingManager.endVisit(
+                    outcome = "with_order",
+                    orderId = order.id,
+                    orderTotal = total,
+                )
+            }
             db.cartDao().clearClient(clientId)
             Result.success(Unit)
         } catch (e: Exception) {
             queueOffline(offlineId, clientId, orderItems, total)
+            runCatching {
+                visitRecordingManager.endVisit(
+                    outcome = "with_order",
+                    orderTotal = total,
+                )
+            }
             db.cartDao().clearClient(clientId)
             Result.success(Unit)
         }

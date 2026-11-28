@@ -692,6 +692,144 @@ object AppStrings {
         "Текшириш ва давом этиш",
         "Проверить и продолжить",
     )
+
+    fun micRequiredTitle(lang: AppLanguage) = tr(
+        lang,
+        "Mikrofon talab qilinadi",
+        "Микрофон талаб қилинади",
+        "Требуется микрофон",
+    )
+    fun micRequiredMessage(lang: AppLanguage) = tr(
+        lang,
+        "Tashrif suhbatini yozib olish uchun mikrofon ruxsati kerak. Ruxsat berish yozuvni avtomatik boshlamaydi.",
+        "Ташриф суҳбатини ёзиб олиш учун микрофон рухсати керак. Рухсат бериш ёзувни автоматик бошламайди.",
+        "Для записи разговора на визите нужен доступ к микрофону. Выдача разрешения сама запись не запускает.",
+    )
+    fun micRequiredEnable(lang: AppLanguage) = tr(
+        lang,
+        "Mikrofonni yoqish",
+        "Микрофонни ёқиш",
+        "Включить микрофон",
+    )
+    fun micRequiredOpenSettings(lang: AppLanguage) = tr(
+        lang,
+        "Sozlamalarni ochish",
+        "Созламаларни очиш",
+        "Открыть настройки",
+    )
+    fun micRequiredContinue(lang: AppLanguage) = tr(
+        lang,
+        "Tekshirish va davom etish",
+        "Текшириш ва давом этиш",
+        "Проверить и продолжить",
+    )
+
+    /** Tashrif tugmasi yonidagi qisqa eslatma (dialog o‘rniga). */
+    fun recordingVisitHint(lang: AppLanguage) = tr(
+        lang,
+        "Suhbat yozib olinadi — suhbatdoshni oldindan ogohlantiring",
+        "Суҳбат ёзиб олинади — суҳбатдошни олдиндан огоҳлантиринг",
+        "Разговор записывается — заранее предупредите собеседника",
+    )
+    fun recordingInProgress(lang: AppLanguage) = tr(
+        lang,
+        "Audio yozilmoqda",
+        "Аудио ёзилмоқда",
+        "Идёт запись",
+    )
+    fun recordingInterrupted(lang: AppLanguage) = tr(
+        lang,
+        "Yozuv uzildi",
+        "Ёзув узилди",
+        "Запись прервана",
+    )
+    fun recordingsTab(lang: AppLanguage) = tr(
+        lang,
+        "Zapislar",
+        "Запислар",
+        "Записи",
+    )
+    fun recordingsToday(lang: AppLanguage) = tr(lang, "Bugun", "Бугун", "Сегодня")
+    fun recordingsYesterday(lang: AppLanguage) = tr(lang, "Kecha", "Кеча", "Вчера")
+    fun recordingsSearchHint(lang: AppLanguage) = tr(
+        lang,
+        "Mijoz nomi yoki kodi…",
+        "Мижоз номи ёки коди…",
+        "Имя или код клиента…",
+    )
+    fun recordingsEmpty(lang: AppLanguage) = tr(
+        lang,
+        "Yozuvlar topilmadi",
+        "Ёзувлар топилмади",
+        "Записи не найдены",
+    )
+    fun recordingsPendingUpload(lang: AppLanguage) = tr(
+        lang,
+        "Yuklanmoqda…",
+        "Юкланмоқда…",
+        "Загрузка…",
+    )
+    fun recordingsInterruptedState(lang: AppLanguage) = tr(
+        lang,
+        "Uzilgan",
+        "Узилган",
+        "Прервана",
+    )
+    fun recordingsErrorState(lang: AppLanguage) = tr(
+        lang,
+        "Xato",
+        "Хато",
+        "Ошибка",
+    )
+    fun recordingsExpired(lang: AppLanguage) = tr(
+        lang,
+        "Muddati o‘tgan",
+        "Муддати ўтган",
+        "Истёк срок",
+    )
+    fun recordingsNotFound(lang: AppLanguage) = tr(
+        lang,
+        "Audio topilmadi",
+        "Аудио топилмади",
+        "Аудио не найдено",
+    )
+    fun recordingsDuration(lang: AppLanguage) = tr(lang, "Davomiylik", "Давомийлик", "Длительность")
+    fun recordingsOutcomeWithOrder(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtma bilan",
+        "Буюртма билан",
+        "С заказом",
+    )
+    fun recordingsOutcomeWithoutOrder(lang: AppLanguage) = tr(
+        lang,
+        "Buyurtmasiz",
+        "Буюртмасиз",
+        "Без заказа",
+    )
+    fun recordingsOutcomeCancelled(lang: AppLanguage) = tr(
+        lang,
+        "Bekor qilingan",
+        "Бекор қилинган",
+        "Отменён",
+    )
+    fun recordingSaved(lang: AppLanguage) = tr(
+        lang,
+        "Yozuv saqlandi",
+        "Ёзув сақланди",
+        "Запись сохранена",
+    )
+    fun recordingsPlayError(lang: AppLanguage) = tr(
+        lang,
+        "Audio ijro etilmadi",
+        "Аудио ижро этилмади",
+        "Не удалось воспроизвести",
+    )
+    fun visitStarting(lang: AppLanguage) = tr(
+        lang,
+        "Tashrif boshlanmoqda…",
+        "Ташриф бошланмоқда…",
+        "Начало визита…",
+    )
     fun notificationPermissionDenied(lang: AppLanguage) = tr(
         lang,
         "Bildirishnomalarga ruxsat bering — push xabarlar majburiy",
@@ -945,6 +1083,19 @@ object AppStrings {
     }
     fun allGoods(lang: AppLanguage) = tr(lang, "Barcha tovarlar", "Барча товарлар", "Все товары")
     fun seeAllGoods(lang: AppLanguage) = tr(lang, "Hammasini ko'rish", "Ҳаммасини кўриш", "Смотреть все")
+    fun showOutOfStock(lang: AppLanguage) = tr(lang, "Qoldiqsiz", "Қолдиқсиз", "Без остатка")
+    fun productsWithPhotos(lang: AppLanguage) = tr(lang, "Rasmlar", "Расмлар", "Фото")
+    fun sortAlpha(lang: AppLanguage) = tr(lang, "Alfavit", "Алфавит", "А–Я")
+    fun sortBestSelling(lang: AppLanguage) = tr(lang, "Ko'p sotilgan", "Кўп сотилган", "Хиты")
+    fun sortDefault(lang: AppLanguage) = tr(lang, "Oddiy", "Оддий", "Обычный")
+    fun quickCartTitle(lang: AppLanguage) = tr(lang, "Tanlangan tovarlar", "Танланган товарлар", "Выбранные товары")
+    fun hideFloatingCartHint(lang: AppLanguage) = tr(
+        lang,
+        "Savatchani shu yerga tashlang — yashiriladi",
+        "Саватчани шу ерга ташланг — яширилади",
+        "Перетащите корзину сюда — скрыть",
+    )
+    fun continueShopping(lang: AppLanguage) = tr(lang, "Davom etish", "Давом этиш", "Продолжить")
     fun productsCount(lang: AppLanguage, shown: Int, total: Int) = when (lang) {
         AppLanguage.UZ_LATIN -> "$shown / $total mahsulot"
         AppLanguage.UZ_CYRILLIC -> "$shown / $total маҳсулот"
@@ -955,6 +1106,8 @@ object AppStrings {
     fun stock(lang: AppLanguage) = tr(lang, "Sklad", "Склад", "Склад")
     fun priceLabel(lang: AppLanguage) = tr(lang, "Narx", "Нарх", "Цена")
     fun quantityLabel(lang: AppLanguage) = tr(lang, "Miqdor", "Миқдор", "Количество")
+    fun backToCategoryList(lang: AppLanguage) = tr(lang, "Ro'yxat", "Рўйхат", "К списку")
+    fun backToCategories(lang: AppLanguage) = tr(lang, "Kategoriya", "Категория", "Категории")
     fun promoQuantityLabel(lang: AppLanguage) = tr(
         lang,
         "Aksiya miqdori",

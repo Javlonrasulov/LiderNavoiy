@@ -2,22 +2,29 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, RefreshCw, Scale, Package,
-  Trash2, RotateCcw, Calendar,
+  Trash2, RotateCcw, Calendar, Check,
   Tag, FolderOpen, ArrowRight, Zap, ChevronDown,
   LayoutList, Truck, CheckCircle2, Phone, Smartphone,
-  Search, Plus, Minus, X as XIcon, Printer,
+  Search, Plus, Minus, X as XIcon, Printer, Maximize2, Minimize2, LockOpen,
 } from 'lucide-react';
 import { NumpadModal } from '../NumpadModal';
 import { NewOrderModal } from './NewOrderModal';
 import { UrgentDangerIcon } from '../UrgentDangerIcon';
+import { AdminSettingsMenu } from '../AdminSettingsMenu';
+import { useAppLock } from '../../AppLockContext';
 import { demo } from '../../../data/demoLimit';
 import { api } from '../../../api/client';
+import type { LangAdmin } from '../../../data/adminData';
 import {
   backendOrderToTaroziItem,
+  emptyPackageCounts,
+  formatPackageCounts,
   groupTaroziByAgent,
+  normalizePackageCounts,
   orderCreatedLocalDate,
   orderItemsToTaroziProducts,
   sameCalendarDay,
+  type OrderPackageCounts,
   type TaroziListItem,
   type TaroziOrderStatus,
   type TaroziProductRow,
@@ -27,6 +34,13 @@ interface Props {
   D: boolean; card: string; divider: string; sub: string;
   t: Record<string, string>;
   selectedCompanyIds?: Set<string>;
+  showBalances?: boolean;
+  setShowBalances?: (fn: (p: boolean) => boolean) => void;
+  adminLang?: LangAdmin;
+  setAdminLang?: (l: LangAdmin) => void;
+  isDark?: boolean;
+  setIsDark?: (v: boolean) => void;
+  text?: string;
 }
 
 function hasApiToken(): boolean {
@@ -386,7 +400,18 @@ const getMockDaysWithOrders = (year: number, month: number): Set<number> => {
   return result;
 };
 
-export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }: Props) {
+export function AdminTaroziTab({
+  D, card, divider, sub, t, selectedCompanyIds,
+  showBalances = true,
+  setShowBalances,
+  adminLang = 'cy',
+  setAdminLang,
+  isDark,
+  setIsDark,
+  text = '',
+}: Props) {
+  const settingsReady = !!(setShowBalances && setAdminLang && setIsDark && typeof isDark === 'boolean');
+  const { hasPasscode, lock } = useAppLock();
   const today = new Date();
   const fmtDate = (d: Date) =>
     `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
@@ -395,6 +420,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [zayvka, setZayvka]   = useState('');
   const [clientName, setClientName] = useState('');
+  const [clientCode, setClientCode] = useState('');
   const [liniya, setLiniya]   = useState(LINES[0]);
   const [naprav, setNaprav]   = useState(DIRS[0]);
   const [tip, setTip]         = useState(TYPES[0]);
@@ -409,9 +435,21 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   const [qoldiqLoading, setQoldiqLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
   // ── Package qty counters (Xalta / Quti / Paket / Mayda_kor) ──────────────
-  const [pkgQty, setPkgQty] = useState({ xalta: 0, quti: 0, paket: 0, mayda: 0 });
-  const changePkg = (key: keyof typeof pkgQty, delta: number) =>
-    setPkgQty(p => ({ ...p, [key]: Math.max(0, p[key] + delta) }));
+  const [pkgQty, setPkgQty] = useState<OrderPackageCounts>(emptyPackageCounts());
+  const pkgSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistPackageCounts = useCallback((orderId: string, next: OrderPackageCounts) => {
+    setApiOrders(prev =>
+      prev.map(o => (o.id === orderId ? { ...o, packageCounts: next } : o)),
+    );
+    if (!hasApiToken()) return;
+    if (pkgSaveTimer.current) clearTimeout(pkgSaveTimer.current);
+    pkgSaveTimer.current = setTimeout(() => {
+      api.updateOrder(orderId, { packageCounts: next }).catch(err => {
+        console.error('[Tarozi] packageCounts save failed', err);
+      });
+    }, 450);
+  }, []);
 
   // ── New Order Modal ───────────────────────────────────────────────────────
   const [showNewOrder, setShowNewOrder] = useState(false);
@@ -423,10 +461,21 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   const [statusOverrides, setStatusOverrides] = useState<Record<string, OrderStatus>>({});
   const companyId = selectedCompanyIds?.size === 1 ? [...selectedCompanyIds][0] : undefined;
 
-  const refreshOrders = useCallback(async () => {
+  const [refreshUi, setRefreshUi] = useState<'idle' | 'loading' | 'done'>('idle');
+  const refreshDoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshOrders = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) {
+      if (refreshDoneTimer.current) clearTimeout(refreshDoneTimer.current);
+      setRefreshUi('loading');
+    }
     if (!hasApiToken()) {
       setApiOrders([]);
       setBackendReady(false);
+      if (!silent) {
+        setRefreshUi('idle');
+      }
       return;
     }
     try {
@@ -437,19 +486,28 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           .map(backendOrderToTaroziItem),
       );
       setBackendReady(true);
+      if (!silent) {
+        setRefreshUi('done');
+        refreshDoneTimer.current = setTimeout(() => setRefreshUi('idle'), 1400);
+      }
     } catch {
       setApiOrders([]);
       setBackendReady(false);
+      if (!silent) setRefreshUi('idle');
     }
   }, [companyId]);
 
-  useEffect(() => { refreshOrders(); }, [refreshOrders]);
+  useEffect(() => { void refreshOrders({ silent: true }); }, [refreshOrders]);
 
   useEffect(() => {
-    const handler = () => { refreshOrders(); };
+    const handler = () => { void refreshOrders({ silent: true }); };
     window.addEventListener('lider:order-created', handler);
     return () => window.removeEventListener('lider:order-created', handler);
   }, [refreshOrders]);
+
+  useEffect(() => () => {
+    if (refreshDoneTimer.current) clearTimeout(refreshDoneTimer.current);
+  }, []);
 
   // ── Mobile panel detection (<500px) ──────────────────────────────────────
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 500);
@@ -457,6 +515,47 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     const handleResize = () => setIsMobile(window.innerWidth < 500);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ── Browser Fullscreen API (tabs / address bar yashiriladi) ──────────────
+  const fullscreenRootRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const el = fullscreenRootRef.current;
+      setIsFullscreen(!!el && document.fullscreenElement === el);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange as EventListener);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange as EventListener);
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = fullscreenRootRef.current as (HTMLDivElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    }) | null;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement === el) {
+        await document.exitFullscreen();
+        return;
+      }
+      const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void };
+      if (document.fullscreenElement && doc.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+      if (el.requestFullscreen) {
+        await el.requestFullscreen();
+      } else if (el.webkitRequestFullscreen) {
+        await el.webkitRequestFullscreen();
+      }
+    } catch {
+      /* foydalanuvchi rad etgan yoki brauzer qo'llab-quvvatlamaydi */
+    }
   }, []);
 
   // ── Product Picker ────────────────────────────────────────────────────────
@@ -507,6 +606,8 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
   // 'ready-load' → ready + delivered (yuklashga tayyor / yuklangan)
   type FilterKey = 'all' | 'accepted' | 'ready-load';
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+  /** Ochilgan agentlar — bosilganda buyurtmalari ko'rinadi */
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
 
   // ── Resizable left panel ──────────────────────────────────────────────────
   const [leftWidth, setLeftWidth] = useState(220);
@@ -590,28 +691,86 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     );
   }, [backendReady, apiOrders, currentDate, statusOverrides]);
 
-  /** Hamma tabda ready (skladga yuborilgan) ham chiqsin */
+  /** Status/qidiruv bo'yicha filter + agent guruhlari (soni to'g'ri) */
   const filteredAgents = useMemo(() => {
     const statusAllowed: OrderStatus[] =
       activeFilter === 'all'        ? ['pending', 'ready', 'delivered'] :
       activeFilter === 'accepted'   ? ['pending'] :
       /* ready-load */                ['ready', 'delivered'];
 
-    return agentsForDate.filter(a =>
-      (a.group || statusAllowed.includes(a.status)) &&
-      (!search || a.client.toLowerCase().includes(search.toLowerCase()) || a.code.includes(search)
-        || a.agentName.toLowerCase().includes(search.toLowerCase())
-        || String(a.orderNum).includes(search)
-        || a.id.toLowerCase().includes(search.toLowerCase()))
-    );
-  }, [search, activeFilter, agentsForDate]);
+    const q = search.trim().toLowerCase();
+    const orders = agentsForDate.filter(a => {
+      if (a.group) return false;
+      if (!statusAllowed.includes(a.status)) return false;
+      if (!q) return true;
+      return a.client.toLowerCase().includes(q)
+        || a.code.toLowerCase().includes(q)
+        || a.agentName.toLowerCase().includes(q)
+        || String(a.orderNum).includes(q)
+        || a.id.toLowerCase().includes(q);
+    });
 
-  // ── Footer counts ─────────────────────────────────────────────────────────
-  const nonGroup = filteredAgents.filter(a => !a.group);
-  const cntReady     = nonGroup.filter(a => a.status === 'ready').length;
-  const cntPending   = nonGroup.filter(a => a.status === 'pending').length;
-  const cntDelivered = nonGroup.filter(a => a.status === 'delivered').length;
-  const cntTotal     = nonGroup.length;
+    const byAgent = new Map<string, ListItem[]>();
+    for (const o of orders) {
+      const key = o.agentName || 'Agent';
+      if (!byAgent.has(key)) byAgent.set(key, []);
+      byAgent.get(key)!.push(o);
+    }
+
+    const out: ListItem[] = [];
+    for (const [agent, list] of byAgent) {
+      out.push({
+        id: `grp:${agent}`,
+        name: agent,
+        code: '',
+        client: String(list.length),
+        status: 'pending',
+        group: true,
+        agentName: agent,
+        orderNum: 0,
+        lineCode: '',
+        items: [],
+        amount: 0,
+        createdAt: '',
+      });
+      if (expandedAgents.has(agent)) {
+        out.push(...list);
+      }
+    }
+    return out;
+  }, [search, activeFilter, agentsForDate, expandedAgents]);
+
+  const toggleAgentExpand = useCallback((agentName: string) => {
+    setExpandedAgents(prev => {
+      const next = new Set(prev);
+      if (next.has(agentName)) next.delete(agentName);
+      else next.add(agentName);
+      return next;
+    });
+  }, []);
+
+  // ── Footer counts (ochilgan/yopilganiga qaramay barcha filtrlangan zakazlar) ──
+  const countedOrders = useMemo(() => {
+    const statusAllowed: OrderStatus[] =
+      activeFilter === 'all'        ? ['pending', 'ready', 'delivered'] :
+      activeFilter === 'accepted'   ? ['pending'] :
+                                      ['ready', 'delivered'];
+    const q = search.trim().toLowerCase();
+    return agentsForDate.filter(a => {
+      if (a.group) return false;
+      if (!statusAllowed.includes(a.status)) return false;
+      if (!q) return true;
+      return a.client.toLowerCase().includes(q)
+        || a.code.toLowerCase().includes(q)
+        || a.agentName.toLowerCase().includes(q)
+        || String(a.orderNum).includes(q)
+        || a.id.toLowerCase().includes(q);
+    });
+  }, [agentsForDate, activeFilter, search]);
+  const cntReady     = countedOrders.filter(a => a.status === 'ready').length;
+  const cntPending   = countedOrders.filter(a => a.status === 'pending').length;
+  const cntDelivered = countedOrders.filter(a => a.status === 'delivered').length;
+  const cntTotal     = countedOrders.length;
 
   const totalVes   = rows.reduce((s, r) => s + r.ves, 0);
   const totalSum   = rows.reduce((s, r) => s + r.summa, 0);
@@ -630,6 +789,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     if (a.group) return;
     setSelectedAgent(a.id);
     setClientName(a.client);
+    setClientCode(a.code || '');
     setZayvka(String(a.orderNum || a.id));
     if (a.lineCode) setLiniya(a.lineCode);
     if (backendReady && a.items.length > 0) {
@@ -637,6 +797,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     } else {
       setRows(getProductsForAgent(a.id, a.status === 'delivered'));
     }
+    setPkgQty(normalizePackageCounts(a.packageCounts));
     setNote('');
     setExpandedRows(new Set());
     setSelectedRow(null);
@@ -651,6 +812,23 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     ? agentsForDate.find(a => a.id === selectedAgent)
     : undefined;
   const isReadonly = selectedItem?.status === 'delivered';
+
+  const changePkg = (key: keyof OrderPackageCounts, delta: number) => {
+    if (!selectedAgent || isReadonly) return;
+    setPkgQty(p => {
+      const next = { ...p, [key]: Math.max(0, p[key] + delta) };
+      persistPackageCounts(selectedAgent, next);
+      return next;
+    });
+  };
+
+  const pkgSummary = formatPackageCounts(pkgQty, {
+    xalta: t.taroziPkgXalta || 'xalta',
+    quti: t.taroziPkgQuti || 'quti',
+    paket: t.taroziPkgPaket || 'paket',
+    mayda: t.taroziPkgMayda || 'mayda qop',
+  });
+  const createdByLabel = selectedItem?.createdByName || selectedItem?.agentName || '';
 
   /** Yuborish: tarozida tayyor → status «yuklashga tayyor» (backend: packing) → Tovar yuklash */
   const markOrderReady = useCallback(async (): Promise<boolean> => {
@@ -674,10 +852,15 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           }));
         await api.updateOrder(selectedAgent, {
           status: 'packing',
+          packageCounts: pkgQty,
           ...(itemsPayload.length > 0 ? { items: itemsPayload } : {}),
         });
         setApiOrders(prev =>
-          prev.map(o => (o.id === selectedAgent ? { ...o, status: 'ready' as OrderStatus } : o)),
+          prev.map(o =>
+            o.id === selectedAgent
+              ? { ...o, status: 'ready' as OrderStatus, packageCounts: pkgQty }
+              : o,
+          ),
         );
       } catch (e) {
         console.error('[Tarozi] packing update failed', e);
@@ -696,6 +879,8 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
             client: selectedItem.client,
             code: selectedItem.code,
             agentName: selectedItem.agentName,
+            createdByName: selectedItem.createdByName,
+            packageCounts: pkgQty,
             amount: selectedItem.amount,
             itemCount: selectedItem.items?.length ?? rows.length,
             createdAt: new Date().toISOString(),
@@ -710,37 +895,104 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
     }));
     setActiveFilter('ready-load');
     return true;
-  }, [selectedAgent, selectedItem, backendReady, rows]);
+  }, [selectedAgent, selectedItem, backendReady, rows, pkgQty]);
 
+  const [qoldiqDone, setQoldiqDone] = useState(false);
+  const qoldiqDoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleRefresh = () => {
+    if (qoldiqLoading) return;
+    if (qoldiqDoneTimer.current) clearTimeout(qoldiqDoneTimer.current);
+    setQoldiqDone(false);
     setQoldiqLoading(true);
     setTimeout(() => {
       setShowQoldiq(true);
       setQoldiqLoading(false);
+      setQoldiqDone(true);
+      qoldiqDoneTimer.current = setTimeout(() => setQoldiqDone(false), 1400);
     }, 700);
   };
 
-  // ── Grid template — qoldiq ustuni ko'rinsa kengayadi ─────────────────────
-  // Ustun tartibi: N | Tovar | [Ostatok] | Zakaz | Narx | Ves | Ed | Summa | del
-  const gridCols = showQoldiq
-    ? '28px 1fr 72px 46px 74px 54px 38px 80px 24px'
-    : '28px 1fr 46px 74px 54px 38px 80px 24px';
+  // ── Jadval ustunlari (surib kengaytirish/kichraytirish) ──────────────────
+  type ColKey = 'n' | 'tovar' | 'qoldiq' | 'miqdor' | 'narx' | 'vaz' | 'ed' | 'summa' | 'del';
+  const COL_DEFAULT: Record<ColKey, number> = {
+    n: 32, tovar: 200, qoldiq: 72, miqdor: 52, narx: 82, vaz: 58, ed: 40, summa: 90, del: 28,
+  };
+  const COL_MIN: Record<ColKey, number> = {
+    n: 24, tovar: 100, qoldiq: 48, miqdor: 36, narx: 56, vaz: 44, ed: 28, summa: 60, del: 24,
+  };
+  const [colWidths, setColWidths] = useState<Record<ColKey, number>>(() => {
+    try {
+      const raw = localStorage.getItem('tarozi_col_widths');
+      if (raw) return { ...COL_DEFAULT, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return { ...COL_DEFAULT };
+  });
+  const colResizeRef = useRef<{ key: ColKey; startX: number; startW: number } | null>(null);
+  const colWidthsRef = useRef(colWidths);
+  colWidthsRef.current = colWidths;
 
-  // ustun sarlavhalari
-  const colHeaders = [
-    { label: '№',         cls: '' },
-    { label: t.taroziTovar, cls: '' },
-    ...(showQoldiq ? [{ label: 'Остаток', cls: D ? 'text-amber-400' : 'text-amber-600' }] : []),
-    { label: t.taroziMiqdor, cls: '' },
-    { label: t.taroziNarx,   cls: '' },
-    { label: t.taroziVaz,    cls: `font-bold px-1 rounded ${D ? 'bg-indigo-600/30 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}` },
-    { label: t.taroziEd,     cls: '' },
-    { label: t.taroziSumma,  cls: '' },
-    { label: '',             cls: '' },
+  useEffect(() => {
+    const onMove = (e: PointerEvent | MouseEvent) => {
+      const drag = colResizeRef.current;
+      if (!drag) return;
+      e.preventDefault();
+      const next = Math.max(COL_MIN[drag.key], drag.startW + (e.clientX - drag.startX));
+      setColWidths(prev => (prev[drag.key] === next ? prev : { ...prev, [drag.key]: next }));
+    };
+    const onUp = () => {
+      if (!colResizeRef.current) return;
+      colResizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try {
+        localStorage.setItem('tarozi_col_widths', JSON.stringify(colWidthsRef.current));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const startColResize = (key: ColKey, e: React.PointerEvent | React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startW = colWidthsRef.current[key];
+    colResizeRef.current = { key, startX: e.clientX, startW };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    if ('pointerId' in e && typeof (e.target as HTMLElement).setPointerCapture === 'function') {
+      try {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } catch { /* ignore */ }
+    }
+  };
+
+  const visibleCols: { key: ColKey; label: string; cls: string; align?: string }[] = [
+    { key: 'n', label: '№', cls: '', align: 'center' },
+    { key: 'tovar', label: t.taroziTovar, cls: '' },
+    ...(showQoldiq ? [{ key: 'qoldiq' as ColKey, label: 'Остаток', cls: D ? 'text-amber-400' : 'text-amber-600', align: 'right' }] : []),
+    { key: 'miqdor', label: t.taroziMiqdor, cls: '', align: 'center' },
+    { key: 'narx', label: t.taroziNarx, cls: '', align: 'right' },
+    { key: 'vaz', label: t.taroziVaz, cls: `font-bold px-1 rounded ${D ? 'bg-indigo-600/30 text-indigo-300' : 'bg-indigo-100 text-indigo-600'}`, align: 'center' },
+    { key: 'ed', label: t.taroziEd, cls: '', align: 'center' },
+    { key: 'summa', label: t.taroziSumma, cls: '', align: 'right' },
+    { key: 'del', label: '', cls: '' },
   ];
 
-  // ─── LEFT PANEL ─────────────────────────────────────────────────────────────
-  const LeftPanel = () => {
+  const gridCols = visibleCols.map(c => `${colWidths[c.key]}px`).join(' ');
+  const tableMinWidth = visibleCols.reduce((s, c) => s + colWidths[c.key], 0);
+
+  // ─── LEFT PANEL (JSX IIFE — nested component remount bo‘lmasin) ───────────
+  const leftPanel = (() => {
     const isRu = t.taroziCancel === 'Отмена';
     const MONTHS_UZ = ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'];
     const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
@@ -779,6 +1031,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
       setCurrentDate(new Date(calYear, calMon, d));
       setSelectedAgent(null);
       setClientName('');
+      setClientCode('');
       setRows([]);
       setNote('');
       setShowQoldiq(false);
@@ -809,7 +1062,34 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           <Calendar size={10} className="opacity-50"/>
         </button>
         <button onClick={nextDay} className={`${btnGhost} !px-1.5`}><ChevronRight size={13}/></button>
-        <button className={`${btnGhost} !px-1.5 ml-auto`} title="Yangilash"><RefreshCw size={12}/></button>
+        <button
+          type="button"
+          onClick={() => { void refreshOrders(); }}
+          disabled={refreshUi === 'loading'}
+          className={`${btnGhost} !px-1.5 ml-auto relative overflow-hidden transition-all duration-200
+            ${refreshUi === 'done'
+              ? D
+                ? '!bg-emerald-900/40 !text-emerald-300 ring-1 ring-emerald-500/40'
+                : '!bg-emerald-50 !text-emerald-600 ring-1 ring-emerald-300'
+              : refreshUi === 'loading'
+                ? D ? '!text-indigo-300' : '!text-indigo-600'
+                : ''
+            }`}
+          title={t.taroziRefreshBtn}
+        >
+          {refreshUi === 'done' ? (
+            <Check
+              size={13}
+              strokeWidth={2.8}
+              className="animate-[taroziCheckPop_.35s_cubic-bezier(.34,1.56,.64,1)]"
+            />
+          ) : (
+            <RefreshCw
+              size={12}
+              className={refreshUi === 'loading' ? 'animate-spin' : ''}
+            />
+          )}
+        </button>
 
         {/* ── Calendar popup ── */}
         {showCalendar && (
@@ -958,33 +1238,47 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
 
       {/* Agent list */}
       <div className="flex-1 overflow-y-auto">
-        {filteredAgents.filter(a => !a.group).length === 0 ? (
+        {filteredAgents.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-24 gap-1.5 ${sub}`}>
             <Calendar size={20} className="opacity-30"/>
             <span className="text-[11px]">{fmtDate(currentDate)}</span>
           </div>
         ) : filteredAgents.map(a => {
           const isActive = selectedAgent === a.id;
-          if (a.group) return (
-            <div key={a.id}
-              className={`grid items-center border-b ${divider} ${D?'bg-[#161618]':'bg-gray-100/80'}`}
-              style={{gridTemplateColumns:'36px 52px 1fr'}}>
-              {/* Agent col — ⊖ */}
-              <div className={`flex items-center justify-center py-1.5 self-stretch border-r ${divider}`}>
-                <span className={`text-[10px] ${sub}`}>⊖</span>
-              </div>
-              {/* Nom + hisoblagich — 2-3 ustunni birlashtirish */}
-              <div className="flex items-center justify-between px-1.5 py-1.5"
-                style={{gridColumn:'2 / -1'}}>
-                <span className={`text-[11px] font-semibold ${D?'text-indigo-400':'text-indigo-600'}`}>
-                  {a.name}
-                </span>
-                <span className={`text-[11px] font-bold flex-shrink-0 ml-2 ${D?'text-gray-300':'text-gray-600'}`}>
-                  {a.client}
-                </span>
-              </div>
-            </div>
-          );
+          if (a.group) {
+            const isOpen = expandedAgents.has(a.agentName);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => toggleAgentExpand(a.agentName)}
+                className={`w-full grid items-center border-b text-left transition-colors ${divider}
+                  ${isOpen
+                    ? D ? 'bg-indigo-600/15' : 'bg-indigo-50/80'
+                    : D ? 'bg-[#161618] hover:bg-[#1c1c1e]' : 'bg-gray-100/80 hover:bg-gray-100'}`}
+                style={{gridTemplateColumns:'36px 52px 1fr'}}
+                title={isOpen
+                  ? (t.taroziCollapseAgent ?? 'Yopish')
+                  : (t.taroziExpandAgent ?? 'Buyurtmalarni ko‘rish')}
+              >
+                <div className={`flex items-center justify-center py-1.5 self-stretch border-r ${divider}`}>
+                  <span className={`text-[11px] font-bold ${D ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                    {isOpen ? '⊖' : '⊕'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 px-1.5 py-1.5 min-w-0"
+                  style={{gridColumn:'2 / -1'}}>
+                  <span className={`text-[11px] font-semibold truncate ${D?'text-indigo-400':'text-indigo-600'}`}>
+                    {a.name}
+                  </span>
+                  <span className={`text-[11px] font-bold flex-shrink-0 tabular-nums px-1.5 py-0.5 rounded-md
+                    ${D ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-700'}`}>
+                    {a.client}
+                  </span>
+                </div>
+              </button>
+            );
+          }
 
           // ── status dot & text color ───────────────────────────────────────
           const statusDot =
@@ -1022,13 +1316,20 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
                 </span>
               </div>
               {/* Klient */}
-              <div className="px-1.5 py-2 flex items-center gap-1 min-w-0">
-                {a.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
-                <span className={`text-[11px] truncate block leading-tight ${
-                  a.isUrgent ? (D ? 'text-rose-300' : 'text-rose-700') : textCls
-                }`}>
-                  {a.client}
-                </span>
+              <div className="px-1.5 py-2 flex flex-col gap-0.5 min-w-0">
+                <div className="flex items-center gap-1 min-w-0">
+                  {a.isUrgent && <UrgentDangerIcon title="Shoshilinch" size="sm" />}
+                  <span className={`text-[11px] truncate block leading-tight ${
+                    a.isUrgent ? (D ? 'text-rose-300' : 'text-rose-700') : textCls
+                  }`}>
+                    {a.client}
+                  </span>
+                </div>
+                {(formatPackageCounts(a.packageCounts) || a.createdByName) && (
+                  <span className={`text-[8px] truncate leading-tight ${D ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {[formatPackageCounts(a.packageCounts), a.createdByName].filter(Boolean).join(' · ')}
+                  </span>
+                )}
               </div>
             </button>
           );
@@ -1078,10 +1379,10 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
       </div>
     </div>
   );
-  };
+  })();
 
-  // ─── RIGHT PANEL ─────────────────────────────────────────────────────────────
-  const RightPanel = () => (
+  // ─── RIGHT PANEL (JSX, not nested component — remount resize’ni buzmasin) ───
+  const rightPanel = (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Row 1 — Buyurtma fields */}
       <div className={`px-3 py-2 border-b ${divider} ${D?'bg-[#161618]':'bg-gray-50/50'}`}>
@@ -1094,6 +1395,16 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
             <p className={labelCls}>{t.taroziSana}</p>
             <input value={fmtDate(currentDate)} readOnly className={`${inputCls} cursor-default`}/>
           </div>
+          <div className="min-w-[70px] max-w-[100px]">
+            <p className={labelCls}>{t.taroziCode ?? 'Kod'}</p>
+            <input
+              value={clientCode}
+              onChange={e => setClientCode(e.target.value)}
+              readOnly={isReadonly}
+              className={`${inputCls} font-mono font-semibold ${D ? 'text-sky-300' : 'text-sky-700'}`}
+              placeholder="—"
+            />
+          </div>
           <div className="flex-1 min-w-[100px]">
             <p className={labelCls}>{t.taroziClient}</p>
             <input value={clientName} onChange={e=>setClientName(e.target.value)} className={inputCls}/>
@@ -1103,8 +1414,10 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
             onClick={() => {
               setSelectedAgent(null);
               setClientName('');
+              setClientCode('');
               setZayvka('');
               setRows([]);
+              setPkgQty(emptyPackageCounts());
               setNote('');
               setExpandedRows(new Set());
               setSelectedRow(null);
@@ -1124,7 +1437,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           <div className="min-w-[120px] max-w-[180px]">
             <p className={labelCls}>{t.taroziAgent}</p>
             <div className={`${inputCls} cursor-default truncate`}>
-              {clientName || <span className={sub}>—</span>}
+              {selectedItem?.agentName || <span className={sub}>—</span>}
             </div>
           </div>
           {[
@@ -1200,6 +1513,19 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
             );
           })}
         </div>
+        {(pkgSummary || createdByLabel) && (
+          <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] ${sub}`}>
+            {pkgSummary && (
+              <span className={D ? 'text-violet-300' : 'text-violet-700'}>{pkgSummary}</span>
+            )}
+            {createdByLabel && (
+              <span>
+                {t.taroziCreatedBy ?? 'Yaratgan'}:{' '}
+                <span className={D ? 'text-gray-200' : 'text-gray-700'}>{createdByLabel}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Row 3 — Toolbar */}
@@ -1226,6 +1552,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
               const isTovar   = btn.label === t.taroziTovar;
               const isRefresh = (btn as {refresh?: boolean}).refresh;
               const isDanger  = (btn as {danger?: boolean}).danger;
+              const RefreshIcon = qoldiqDone && isRefresh ? Check : btn.icon;
               return (
                 <button key={btn.label}
                   onClick={
@@ -1245,13 +1572,25 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
                         ? D ? 'text-rose-400 bg-rose-900/30 hover:bg-rose-900/50' : 'text-rose-500 bg-rose-50 hover:bg-rose-100'
                         : D ? 'text-gray-600 cursor-not-allowed opacity-40' : 'text-gray-400 cursor-not-allowed opacity-40'
                       : isRefresh
-                        ? showQoldiq
-                          ? D ? 'text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/30' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                          : btnGhost
+                        ? qoldiqDone
+                          ? D ? 'text-emerald-300 bg-emerald-900/35 ring-1 ring-emerald-500/40' : 'text-emerald-600 bg-emerald-50 ring-1 ring-emerald-300'
+                          : showQoldiq
+                            ? D ? 'text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/30' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                            : btnGhost
                         : isTovar && showPicker
                           ? D ? 'text-indigo-300 bg-indigo-600/20 border border-indigo-600/40' : 'text-indigo-600 bg-indigo-50 border border-indigo-200'
                           : btnGhost}`}>
-                  <btn.icon size={11} className={qoldiqLoading && isRefresh ? 'animate-spin' : ''}/>
+                  <RefreshIcon
+                    size={11}
+                    strokeWidth={qoldiqDone && isRefresh ? 2.8 : undefined}
+                    className={
+                      qoldiqLoading && isRefresh
+                        ? 'animate-spin'
+                        : qoldiqDone && isRefresh
+                          ? 'animate-[taroziCheckPop_.35s_cubic-bezier(.34,1.56,.64,1)]'
+                          : ''
+                    }
+                  />
                   <span>{btn.label}</span>
                   {isTovar && rows.length > 0 && (
                     <span className={`ml-0.5 min-w-[14px] h-3.5 px-1 rounded-full text-[9px] font-bold flex items-center justify-center
@@ -1266,176 +1605,213 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
         )}
       </div>
 
-      {/* ─── Table ─────────────────────���─── */}
+      {/* ─── Jadval (ustunlarni surib o'lchamlanadi) ─── */}
       <div className="flex flex-1 flex-col overflow-hidden relative">
-        {/* Header — hidden on mobile */}
-        {!isMobile && (
-          <div className={`grid items-center px-3 py-1.5 border-b ${divider} ${D?'bg-[#161618]':'bg-gray-50'}`}
-            style={{gridTemplateColumns: gridCols}}>
-            {colHeaders.map((h, i) => (
-              <span key={i} className={`text-[10px] font-semibold ${sub} ${h.cls}`}>{h.label}</span>
-            ))}
-          </div>
-        )}
-
-        {/* Rows */}
-        <div className="flex-1 overflow-y-auto">
-          {rows.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center h-32 gap-2 ${sub}`}>
-              <Package size={28} className="opacity-30"/>
-              <span className="text-xs">{t.taroziNoProducts}</span>
-            </div>
-          ) : rows.map((r) => {
-            const isDanger = r.danger;
-            const dangerTxt = isDanger ? (D ? 'text-rose-400' : 'text-rose-500') : '';
-
-            /* ── Mobile card row ── */
-            if (isMobile) return (
-              <div key={r.id}
-                onClick={() => !isReadonly && setSelectedRow(r.id === selectedRow ? null : r.id)}
-                className={`px-3 py-2.5 border-b ${divider} transition-colors cursor-pointer
-                  ${r.id === selectedRow
-                    ? D ? 'bg-indigo-600/20 border-l-2 border-l-indigo-500' : 'bg-indigo-50 border-l-2 border-l-indigo-500'
-                    : isDanger
-                      ? D ? 'bg-rose-950/20' : 'bg-rose-50/60'
-                      : D ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50'}`}>
-                <div className="flex items-start gap-2">
-                  <span className={`text-[10px] font-mono w-5 flex-shrink-0 mt-0.5 ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[11px] truncate mb-1.5 ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
-                      {r.name}
-                      {(r.promotionId || r.isFree) && (
-                        <span className={`ml-1.5 inline-block px-1.5 py-0.5 rounded text-[9px] font-bold ${D ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
-                          {t.taroziAksiya ?? 'Aksiya'}{r.isFree || r.cena === 0 ? ' · 0' : ''}
-                        </span>
-                      )}
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[11px] font-bold ${isDanger ? dangerTxt : D ? 'text-gray-100' : 'text-gray-800'}`}>
-                        {r.zakaz} {r.ed === 'dona' ? 'шт' : r.ed}
-                      </span>
-                      <span className={`text-[10px] ${sub}`}>× {r.cena.toLocaleString('ru-RU')}</span>
-                      {/* Ves button */}
-                      {!isReadonly ? (
-                        <button
-                          onClick={e => { e.stopPropagation(); setNumpad({ rowId: r.id, name: r.name, n: r.n, val: r.ves }); }}
-                          className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border transition-colors
-                            ${r.ves > 0
-                              ? D ? 'bg-indigo-900/40 border-indigo-700/60 text-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700'
-                              : D ? 'bg-[#1c1c24] border-gray-700/60 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
-                          {r.ves > 0 ? r.ves : <span className="opacity-50">{t.taroziVaz}?</span>}
-                        </button>
-                      ) : (
-                        r.ves > 0 && <span className={`text-[10px] font-medium ${D ? 'text-emerald-400' : 'text-emerald-600'}`}>{r.ves}</span>
-                      )}
-                      {r.summa > 0 && (
-                        <span className={`text-[11px] font-semibold ml-auto ${isDanger ? dangerTxt : D ? 'text-indigo-400' : 'text-indigo-600'}`}>
-                          {fmt(r.summa)}
-                        </span>
-                      )}
-                    </div>
-                    {showQoldiq && (
-                      <p className={`text-[9px] mt-0.5 ${r.qoldiq < r.zakaz ? D ? 'text-rose-400' : 'text-rose-500' : D ? 'text-amber-400' : 'text-amber-700'}`}>
-                        qoldiq: {fmtQ(r.qoldiq)}
+        {isMobile ? (
+          <div className="flex-1 overflow-y-auto">
+            {rows.length === 0 ? (
+              <div className={`flex flex-col items-center justify-center h-32 gap-2 ${sub}`}>
+                <Package size={28} className="opacity-30"/>
+                <span className="text-xs">{t.taroziNoProducts}</span>
+              </div>
+            ) : rows.map((r) => {
+              const isDanger = r.danger;
+              const dangerTxt = isDanger ? (D ? 'text-rose-400' : 'text-rose-500') : '';
+              return (
+                <div key={r.id}
+                  onClick={() => !isReadonly && setSelectedRow(r.id === selectedRow ? null : r.id)}
+                  className={`px-3 py-2.5 border-b ${divider} transition-colors cursor-pointer
+                    ${r.id === selectedRow
+                      ? D ? 'bg-indigo-600/20 border-l-2 border-l-indigo-500' : 'bg-indigo-50 border-l-2 border-l-indigo-500'
+                      : isDanger
+                        ? D ? 'bg-rose-950/20' : 'bg-rose-50/60'
+                        : D ? 'hover:bg-gray-800/40' : 'hover:bg-gray-50'}`}>
+                  <div className="flex items-start gap-2">
+                    <span className={`text-[10px] font-mono w-5 flex-shrink-0 mt-0.5 ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[11px] truncate mb-1.5 ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
+                        {r.name}
                       </p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[11px] font-bold ${isDanger ? dangerTxt : D ? 'text-gray-100' : 'text-gray-800'}`}>
+                          {r.zakaz} {r.ed === 'dona' ? 'шт' : r.ed}
+                        </span>
+                        <span className={`text-[10px] ${sub}`}>× {r.cena.toLocaleString('ru-RU')}</span>
+                        {!isReadonly ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); setNumpad({ rowId: r.id, name: r.name, n: r.n, val: r.ves }); }}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-medium border transition-colors
+                              ${r.ves > 0
+                                ? D ? 'bg-indigo-900/40 border-indigo-700/60 text-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                                : D ? 'bg-[#1c1c24] border-gray-700/60 text-gray-500' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                            {r.ves > 0 ? r.ves : <span className="opacity-50">{t.taroziVaz}?</span>}
+                          </button>
+                        ) : (
+                          r.ves > 0 && <span className={`text-[10px] font-medium ${D ? 'text-emerald-400' : 'text-emerald-600'}`}>{r.ves}</span>
+                        )}
+                        {r.summa > 0 && (
+                          <span className={`text-[11px] font-semibold ml-auto ${isDanger ? dangerTxt : D ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                            {fmt(r.summa)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {!isReadonly && (
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ id: r.id, name: r.name }); }}
+                        className={`w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 transition-colors
+                          ${D?'text-gray-600 hover:text-rose-400 hover:bg-rose-900/30':'text-gray-300 hover:text-rose-500 hover:bg-rose-50'}`}>
+                        <Trash2 size={12}/>
+                      </button>
                     )}
                   </div>
-                  {!isReadonly && (
-                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ id: r.id, name: r.name }); }}
-                      className={`w-6 h-6 flex items-center justify-center rounded-lg flex-shrink-0 mt-0.5 transition-colors
-                        ${D?'text-gray-600 hover:text-rose-400 hover:bg-rose-900/30':'text-gray-300 hover:text-rose-500 hover:bg-rose-50'}`}>
-                      <Trash2 size={12}/>
-                    </button>
+                </div>
+              );
+            })}
+            {rows.length > 0 && (
+              <div className={`px-3 py-2 border-t ${divider} ${D?'bg-[#161618]':'bg-gray-50'}`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-semibold ${sub}`}>
+                    {t.taroziTotal}: <span className={D?'text-gray-200':'text-gray-700'}>{totalZakaz}</span>
+                    <span className={`ml-2 tabular-nums ${totalVes > 0 ? (D?'text-indigo-300':'text-indigo-600') : sub}`}>
+                      {totalVes > 0 ? `${Number(totalVes.toFixed(3))} kg` : '0 kg'}
+                    </span>
+                  </span>
+                  <span className={`text-xs font-bold ${D?'text-indigo-400':'text-indigo-600'}`}>{totalSum > 0 ? fmt(totalSum) : ''}</span>
+                </div>
+                {(pkgSummary || createdByLabel) && (
+                  <div className={`mt-1 flex flex-wrap gap-x-2 text-[9px] ${sub}`}>
+                    {pkgSummary && <span className={D ? 'text-violet-300' : 'text-violet-700'}>{pkgSummary}</span>}
+                    {createdByLabel && <span>{t.taroziCreatedBy ?? 'Yaratgan'}: {createdByLabel}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto">
+            <div style={{ minWidth: tableMinWidth }}>
+              {/* Header */}
+              <div className={`sticky top-0 z-10 grid items-stretch border-b select-none ${divider} ${D?'bg-[#161618]':'bg-gray-50'}`}
+                style={{ gridTemplateColumns: gridCols }}>
+                {visibleCols.map((h, i) => (
+                  <div key={h.key} className={`relative flex items-center px-1.5 py-1.5 border-r last:border-r-0 ${divider}
+                    ${h.align === 'center' ? 'justify-center' : h.align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                    <span className={`text-[10px] font-semibold truncate pointer-events-none ${sub} ${h.cls}`}>{h.label}</span>
+                    {i < visibleCols.length - 1 && (
+                      <span
+                        onPointerDown={e => startColResize(h.key, e)}
+                        className={`absolute right-0 top-0 bottom-0 w-3 -mr-1.5 cursor-col-resize z-30 touch-none
+                          after:content-[''] after:absolute after:inset-y-1 after:left-1/2 after:-translate-x-1/2
+                          after:w-[2px] after:rounded-full
+                          after:bg-transparent hover:after:bg-indigo-500 active:after:bg-indigo-400
+                          ${D ? 'hover:bg-indigo-500/15' : 'hover:bg-indigo-400/20'}`}
+                        title="Ustun enini o'zgartirish — surib torting"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {rows.length === 0 ? (
+                <div className={`flex flex-col items-center justify-center h-32 gap-2 ${sub}`}>
+                  <Package size={28} className="opacity-30"/>
+                  <span className="text-xs">{t.taroziNoProducts}</span>
+                </div>
+              ) : rows.map((r) => {
+                const isDanger = r.danger;
+                const dangerTxt = isDanger ? (D ? 'text-rose-400' : 'text-rose-500') : '';
+                return (
+                  <div key={r.id}
+                    onClick={() => !isReadonly && setSelectedRow(r.id === selectedRow ? null : r.id)}
+                    className={`grid items-center border-b text-xs transition-colors ${divider}
+                      ${isReadonly
+                        ? D ? 'opacity-70' : 'opacity-80'
+                        : r.id === selectedRow
+                          ? D ? 'bg-indigo-600/20 border-l-2 border-l-indigo-500 cursor-pointer' : 'bg-indigo-50 border-l-2 border-l-indigo-500 cursor-pointer'
+                          : isDanger
+                            ? D ? 'bg-rose-950/20 hover:bg-rose-950/30 cursor-pointer' : 'bg-rose-50/60 hover:bg-rose-50 cursor-pointer'
+                            : D ? 'hover:bg-gray-800/50 cursor-pointer' : 'hover:bg-gray-50 cursor-pointer'}`}
+                    style={{ gridTemplateColumns: gridCols, minHeight: 34 }}>
+                    <span className={`font-mono text-[11px] px-1.5 text-center border-r ${divider} ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
+                    <span className={`truncate text-[11px] px-1.5 border-r ${divider} ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
+                      {r.name}
+                      {(r.promotionId || r.isFree) && (
+                        <span className={`ml-1.5 inline-block px-1 py-0.5 rounded text-[9px] font-bold align-middle ${D ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
+                          {t.taroziAksiya ?? 'Aksiya'}
+                        </span>
+                      )}
+                    </span>
+                    {showQoldiq && (
+                      <span className={`text-right text-[11px] font-medium px-1.5 truncate border-r ${divider}
+                        ${isDanger ? dangerTxt : r.qoldiq < r.zakaz ? D ? 'text-rose-400' : 'text-rose-500' : D ? 'text-amber-400' : 'text-amber-700'}`}>
+                        {fmtQ(r.qoldiq)}
+                      </span>
+                    )}
+                    <span className={`text-center font-bold text-[12px] px-1 border-r ${divider} ${isDanger ? dangerTxt : D ? 'text-gray-100' : 'text-gray-800'}`}>{r.zakaz}</span>
+                    <span className={`text-right px-1.5 text-[11px] border-r ${divider} ${isDanger ? dangerTxt : sub}`}>{r.cena.toLocaleString('ru-RU')},00</span>
+                    <div className={`px-0.5 py-0.5 border-r ${divider} self-stretch flex items-center`}>
+                      {isReadonly ? (
+                        <span className={`w-full text-center text-[11px] font-medium ${r.ves > 0 ? D ? 'text-emerald-400' : 'text-emerald-600' : sub}`}>
+                          {r.ves > 0 ? r.ves : '—'}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); setNumpad({ rowId: r.id, name: r.name, n: r.n, val: r.ves }); }}
+                          className={`w-full h-full min-h-[26px] text-center text-[11px] font-medium rounded px-0.5 border transition-colors
+                            ${r.ves > 0
+                              ? D ? 'bg-indigo-900/40 border-indigo-700/60 text-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                              : D ? 'bg-[#1c1c24] border-gray-700/60 text-gray-700' : 'bg-gray-100 border-gray-200 text-gray-300'}`}>
+                          {r.ves > 0 ? r.ves : ''}
+                        </button>
+                      )}
+                    </div>
+                    <span className={`text-[10px] font-bold text-center px-1 border-r ${divider} ${isDanger ? dangerTxt : D ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {r.ed === 'dona' ? 'шт' : r.ed}
+                    </span>
+                    <span className={`text-right text-[11px] font-semibold px-1.5 border-r ${divider} ${isDanger ? dangerTxt : D ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                      {r.summa > 0 ? fmt(r.summa) : ''}
+                    </span>
+                    <div className="flex items-center justify-center">
+                      {isReadonly ? null : (
+                        <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ id: r.id, name: r.name }); }}
+                          className={`w-5 h-5 flex items-center justify-center rounded transition-colors
+                            ${D?'hover:bg-rose-900/30 text-gray-600 hover:text-rose-400':'hover:bg-rose-50 text-gray-300 hover:text-rose-400'}`}>
+                          <Trash2 size={11}/>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Totals — miqdor + umumiy kg + summa */}
+              {rows.length > 0 && (
+                <div className={`sticky bottom-0 grid items-center border-t ${divider} text-xs font-semibold ${D?'bg-[#161618]':'bg-gray-50'}`}
+                  style={{ gridTemplateColumns: gridCols }}>
+                  <span className={`border-r ${divider}`}/>
+                  <span className={`px-1.5 py-2 border-r ${divider} ${sub}`}>{t.taroziTotal}:</span>
+                  {showQoldiq && <span className={`border-r ${divider}`}/>}
+                  <span className={`text-center font-bold py-2 border-r ${divider} ${D?'text-gray-200':'text-gray-800'}`}>{totalZakaz}</span>
+                  <span className={`border-r ${divider}`}/>
+                  <span className={`text-center py-2 border-r tabular-nums ${divider}
+                    ${totalVes > 0 ? (D?'text-indigo-300':'text-indigo-600') : sub}`}>
+                    {totalVes > 0 ? `${Number(totalVes.toFixed(3))} kg` : '—'}
+                  </span>
+                  <span className={`border-r ${divider}`}/>
+                  <span className={`text-right px-1.5 py-2 border-r ${divider} ${D?'text-indigo-400':'text-indigo-600'}`}>{totalSum > 0 ? fmt(totalSum) : ''}</span>
+                  <span/>
+                </div>
+              )}
+              {(pkgSummary || createdByLabel) && rows.length > 0 && (
+                <div className={`px-2 py-1.5 border-t text-[9px] flex flex-wrap gap-x-3 gap-y-0.5 ${divider} ${sub} ${D?'bg-[#121214]':'bg-gray-50/80'}`}>
+                  {pkgSummary && <span className={D ? 'text-violet-300' : 'text-violet-700'}>{pkgSummary}</span>}
+                  {createdByLabel && (
+                    <span>{t.taroziCreatedBy ?? 'Yaratgan'}: <span className={D?'text-gray-300':'text-gray-700'}>{createdByLabel}</span></span>
                   )}
                 </div>
-              </div>
-            );
-
-            /* ── Desktop grid row ── */
-            return (
-              <div key={r.id}
-                onClick={() => !isReadonly && setSelectedRow(r.id === selectedRow ? null : r.id)}
-                className={`grid items-center px-3 border-b text-xs transition-colors ${divider}
-                  ${isReadonly
-                    ? D ? 'opacity-70' : 'opacity-80'
-                    : r.id === selectedRow
-                      ? D ? 'bg-indigo-600/20 border-l-2 border-l-indigo-500 cursor-pointer' : 'bg-indigo-50 border-l-2 border-l-indigo-500 cursor-pointer'
-                      : isDanger
-                        ? D ? 'bg-rose-950/20 hover:bg-rose-950/30 cursor-pointer' : 'bg-rose-50/60 hover:bg-rose-50 cursor-pointer'
-                        : D ? 'hover:bg-gray-800/50 cursor-pointer' : 'hover:bg-gray-50 cursor-pointer'}`}
-                style={{gridTemplateColumns: gridCols, minHeight: 34}}>
-                <span className={`font-mono text-[11px] ${isDanger ? dangerTxt : sub}`}>{r.n}</span>
-                <span className={`truncate text-[11px] ${isDanger ? dangerTxt : D ? 'text-gray-200' : 'text-gray-800'}`}>
-                  {r.name}
-                  {(r.promotionId || r.isFree) && (
-                    <span className={`ml-1.5 inline-block px-1 py-0.5 rounded text-[9px] font-bold align-middle ${D ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
-                      {t.taroziAksiya ?? 'Aksiya'}
-                    </span>
-                  )}
-                </span>
-                {showQoldiq && (
-                  <span className={`text-right text-[11px] font-medium pr-2 truncate
-                    ${isDanger ? dangerTxt : r.qoldiq < r.zakaz ? D ? 'text-rose-400' : 'text-rose-500' : D ? 'text-amber-400' : 'text-amber-700'}`}>
-                    {fmtQ(r.qoldiq)}
-                  </span>
-                )}
-                <span className={`text-center font-bold text-[12px] ${isDanger ? dangerTxt : D ? 'text-gray-100' : 'text-gray-800'}`}>{r.zakaz}</span>
-                <span className={`text-right pr-1 text-[11px] ${isDanger ? dangerTxt : sub}`}>{r.cena.toLocaleString('ru-RU')},00</span>
-                {isReadonly ? (
-                  <span className={`text-center text-[11px] font-medium ${r.ves > 0 ? D ? 'text-emerald-400' : 'text-emerald-600' : sub}`}>
-                    {r.ves > 0 ? r.ves : '—'}
-                  </span>
-                ) : (
-                  <button
-                    onClick={e => { e.stopPropagation(); setNumpad({ rowId: r.id, name: r.name, n: r.n, val: r.ves }); }}
-                    className={`w-full h-full text-center text-[11px] font-medium rounded px-0.5 py-0.5 border transition-colors
-                      ${r.ves > 0
-                        ? D ? 'bg-indigo-900/40 border-indigo-700/60 text-indigo-300' : 'bg-indigo-100 border-indigo-300 text-indigo-700'
-                        : D ? 'bg-[#1c1c24] border-gray-700/60 text-gray-700' : 'bg-gray-100 border-gray-200 text-gray-300'}`}>
-                    {r.ves > 0 ? r.ves : ''}
-                  </button>
-                )}
-                <span className={`text-[10px] font-bold text-center ${isDanger ? dangerTxt : D ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {r.ed === 'dona' ? 'шт' : r.ed}
-                </span>
-                <span className={`text-right text-[11px] font-semibold pr-1 ${isDanger ? dangerTxt : D ? 'text-indigo-400' : 'text-indigo-600'}`}>
-                  {r.summa > 0 ? fmt(r.summa) : ''}
-                </span>
-                {isReadonly ? <span/> : (
-                  <button onClick={e => { e.stopPropagation(); setDeleteConfirm({ id: r.id, name: r.name }); }}
-                    className={`w-5 h-5 flex items-center justify-center rounded transition-colors
-                      ${D?'hover:bg-rose-900/30 text-gray-600 hover:text-rose-400':'hover:bg-rose-50 text-gray-300 hover:text-rose-400'}`}>
-                    <Trash2 size={11}/>
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Totals row */}
-        {isMobile ? (
-          rows.length > 0 && (
-            <div className={`flex items-center justify-between px-3 py-2 border-t ${divider} ${D?'bg-[#161618]':'bg-gray-50'}`}>
-              <span className={`text-[10px] font-semibold ${sub}`}>
-                {t.taroziTotal}: <span className={D?'text-gray-200':'text-gray-700'}>{totalZakaz}</span>
-                {totalVes > 0 && <span className={`ml-2 ${D?'text-indigo-300':'text-indigo-600'}`}>{totalVes.toFixed(3)}</span>}
-              </span>
-              <span className={`text-xs font-bold ${D?'text-indigo-400':'text-indigo-600'}`}>{totalSum > 0 ? fmt(totalSum) : ''}</span>
+              )}
             </div>
-          )
-        ) : (
-          <div className={`grid items-center px-3 py-2 border-t ${divider} text-xs font-semibold ${D?'bg-[#161618]':'bg-gray-50'}`}
-            style={{gridTemplateColumns: gridCols}}>
-            <span/>
-            <span className={sub}>{t.taroziTotal}:</span>
-            {showQoldiq && <span/>}
-            <span className={`text-center font-bold ${D?'text-gray-200':'text-gray-800'}`}>{totalZakaz}</span>
-            <span/>
-            <span className={`text-center ${D?'text-indigo-300':'text-indigo-600'}`}>{totalVes > 0 ? totalVes.toFixed(3) : ''}</span>
-            <span/>
-            <span className={D?'text-indigo-400':'text-indigo-600'}>{totalSum > 0 ? fmt(totalSum) : ''}</span>
-            <span/>
           </div>
         )}
 
@@ -1590,7 +1966,18 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col overflow-hidden" style={{height:'calc(100vh - var(--nav-h))'}}>
+    <div
+      ref={fullscreenRootRef}
+      className={`flex flex-col overflow-hidden ${D ? 'bg-[#0d0d0d]' : 'bg-white'}`}
+      style={{ height: isFullscreen ? '100%' : 'calc(100vh - var(--nav-h))' }}
+    >
+      <style>{`
+        @keyframes taroziCheckPop{
+          0%{opacity:0;transform:scale(.55)}
+          70%{opacity:1;transform:scale(1.18)}
+          100%{opacity:1;transform:scale(1)}
+        }
+      `}</style>
 
       {/* ── Main layout ── */}
       <div ref={containerRef} className="flex h-full overflow-hidden">
@@ -1601,7 +1988,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
             ${isMobile ? (activePane === 'left' ? 'w-full' : '!hidden') : ''}`}
           style={!isMobile ? { width: leftWidth } : {}}
         >
-          <LeftPanel/>
+          {leftPanel}
         </div>
 
         {/* ── Drag handle — hidden on mobile ── */}
@@ -1701,6 +2088,57 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
                   </span>
                 )}
               </button>
+              {/* ── Ekran qulfi (topnav dublikati) ── */}
+              {hasPasscode && (
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  title={t.appLockNow ?? 'Ekranni qulflash'}
+                  aria-label={t.appLockNow ?? 'Ekranni qulflash'}
+                  className={`w-8 h-8 flex items-center justify-center rounded-xl border transition-all active:scale-95
+                    ${D
+                      ? 'bg-[#1c1c1e] hover:bg-[#252528] border-gray-700/60 hover:border-sky-500/50 text-sky-300'
+                      : 'bg-white hover:bg-sky-50 border-gray-200 hover:border-sky-300 text-sky-600'}`}
+                >
+                  <LockOpen size={14} strokeWidth={2} />
+                </button>
+              )}
+              {/* ── Sozlamalar (topnav bilan bir xil) ── */}
+              {settingsReady && (
+                <AdminSettingsMenu
+                  D={D}
+                  sub={sub}
+                  text={text || (D ? 'text-gray-100' : 'text-gray-800')}
+                  t={t}
+                  showBalances={showBalances}
+                  setShowBalances={setShowBalances!}
+                  adminLang={adminLang}
+                  setAdminLang={setAdminLang!}
+                  isDark={isDark!}
+                  setIsDark={setIsDark!}
+                  triggerIconSize={14}
+                  triggerClassName={`w-8 h-8 flex items-center justify-center rounded-xl border transition-all active:scale-95
+                    ${D
+                      ? 'bg-[#1c1c1e] hover:bg-[#252528] border-gray-700/60 hover:border-indigo-500/50 text-gray-400 hover:text-indigo-300'
+                      : 'bg-white hover:bg-indigo-50 border-gray-200 hover:border-indigo-300 text-gray-400 hover:text-indigo-600'}`}
+                />
+              )}
+              {/* ── Fullscreen button ── */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? (t.taroziExitFullscreen ?? "Ekrandan chiqish") : (t.taroziFullscreen ?? "To'liq ekran")}
+                className={`w-8 h-8 flex items-center justify-center rounded-xl border transition-all active:scale-95
+                  ${isFullscreen
+                    ? D
+                      ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300'
+                      : 'bg-indigo-50 border-indigo-300 text-indigo-600'
+                    : D
+                      ? 'bg-[#1c1c1e] hover:bg-[#252528] border-gray-700/60 hover:border-gray-500/60 text-gray-400 hover:text-gray-200'
+                      : 'bg-white hover:bg-gray-50 border-gray-200 hover:border-gray-300 text-gray-400 hover:text-gray-700'}`}
+              >
+                {isFullscreen ? <Minimize2 size={14}/> : <Maximize2 size={14}/>}
+              </button>
               {/* ── Printer button ── */}
               <button
                 title={t.taroziPrint ?? 'Chop etish'}
@@ -1712,7 +2150,7 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
               </button>
             </div>
           </div>
-          <RightPanel/>
+          {rightPanel}
         </div>
       </div>
 
@@ -1804,7 +2242,9 @@ export function AdminTaroziTab({ D, card, divider, sub, t, selectedCompanyIds }:
           divider={divider}
           sub={sub}
           t={t}
+          companyId={companyId}
           onClose={() => setShowNewOrder(false)}
+          onSaved={() => { void refreshOrders(); }}
         />
       )}
 

@@ -59,6 +59,10 @@ export class OrderPayment {
   @Column({ default: false })
   hourReminderSent: boolean;
 
+  /** Haqiqiy pul kelgan vaqt (qarzga yozilganda null) */
+  @Column({ type: 'timestamptz', nullable: true })
+  paidAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

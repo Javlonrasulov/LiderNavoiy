@@ -126,6 +126,7 @@ export class PaymentsService {
       status: payStatus,
       dueAt: stillDue > 0.01 ? dueAt : null,
       photoUrl,
+      paidAt: collectNow > 0.01 ? new Date() : null,
     });
     await this.paymentRepo.save(payment);
 
@@ -181,6 +182,7 @@ export class PaymentsService {
       status: PaymentStatus.PAID,
       dueAt: null,
       photoUrl,
+      paidAt: new Date(),
     });
     await this.paymentRepo.save(payment);
 

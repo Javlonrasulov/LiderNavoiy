@@ -1,14 +1,15 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
-  Check, ChevronDown, Eye, EyeOff, Globe, Menu, Moon, Settings, Sun, LayoutGrid, X,
+  ChevronDown, LockOpen, Menu, LayoutGrid, X,
 } from 'lucide-react';
-import { ADMIN_LANGS, COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
+import { COMPANY_DATA, NAV_ITEMS_BASE, fmt, type ClientRow, type LangAdmin, type Tab } from '../../data/adminData';
 import { useCompanies } from '../CompaniesContext';
 import { companyShowsTarozi, useAdminAuth } from '../AdminAuthContext';
-import { useTheme } from '../ThemeContext';
+import { useAppLock } from '../AppLockContext';
 import { CompanyAvatar } from '../CompanyAvatar';
 import { ClientRequestBell } from './ClientRequestBell';
-import type { TextColorId } from '../../utils/textColor';
+import { AdminSettingsMenu } from './AdminSettingsMenu';
+import { hasPageAccess } from '../../utils/pagePermissions';
 
 interface AdminNavbarProps {
   D: boolean;
@@ -53,13 +54,15 @@ export function AdminNavbar({
   existingClients = [],
 }: AdminNavbarProps) {
   const { companies } = useCompanies();
-  const { selectedCompany: authCompany } = useAdminAuth();
-  const { textColor, setTextColor } = useTheme();
+  const { selectedCompany: authCompany, adminUser } = useAdminAuth();
+  const { hasPasscode, lock } = useAppLock();
   const [showModuleBar, setShowModuleBar] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const settingsBtnRef = useRef<HTMLButtonElement>(null);
   void showLangMenu;
   void langBtnRef;
+  void setShowLangMenu;
+
+  const canAccess = (id: string) =>
+    hasPageAccess(adminUser?.role ?? 'admin', adminUser?.permissions, id);
 
   // Build flat navItems with icons from NAV_ITEMS_BASE
   const flatNavWithIcons = NAV_ITEMS_BASE.map(base => {
@@ -85,8 +88,12 @@ export function AdminNavbar({
     'prodaji',
     'ombor',
     'vanSales',
+    'kirimChiqim',
+    'zapislar',
   ]);
-  const moduleBarItems = flatNavWithIcons.filter(item => MODULE_BAR_IDS.has(item.id));
+  const moduleBarItems = flatNavWithIcons.filter(
+    item => MODULE_BAR_IDS.has(item.id) && canAccess(item.id),
+  );
 
   return (
     <>
@@ -156,24 +163,32 @@ export function AdminNavbar({
                 companyId={selectedCompanyIds.size === 1 ? [...selectedCompanyIds][0] : undefined}
               />
 
-              {/* Sozlamalar: til, tun/kun, balans, matn rangi */}
-              <button
-                ref={settingsBtnRef}
-                onClick={() => {
-                  setShowSettings(v => !v);
-                  setShowLangMenu(() => false);
-                }}
-                title={t.settingsMenu ?? 'Sozlamalar'}
-                aria-label={t.settingsMenu ?? 'Sozlamalar'}
-                aria-expanded={showSettings}
-                className={`w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center transition-colors ${
-                  showSettings
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30'
-                    : D ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                }`}
-              >
-                <Settings size={16} />
-              </button>
+              {hasPasscode && (
+                <button
+                  type="button"
+                  onClick={() => lock()}
+                  title={t.appLockNow ?? 'Ekranni qulflash'}
+                  aria-label={t.appLockNow ?? 'Ekranni qulflash'}
+                  className={`w-8 h-8 md:w-9 md:h-9 rounded-xl flex items-center justify-center transition-colors
+                    ${D ? 'bg-gray-800 hover:bg-gray-700 text-sky-300' : 'bg-gray-100 hover:bg-gray-200 text-sky-600'}`}
+                >
+                  <LockOpen size={16} strokeWidth={2} />
+                </button>
+              )}
+
+              {/* Sozlamalar: til, tun/kun, balans, matn rangi, qulf */}
+              <AdminSettingsMenu
+                D={D}
+                sub={sub}
+                text={text}
+                t={t}
+                showBalances={showBalances}
+                setShowBalances={setShowBalances}
+                adminLang={adminLang}
+                setAdminLang={setAdminLang}
+                isDark={isDark}
+                setIsDark={setIsDark}
+              />
 
               {/* ── Module bar toggle button ── */}
               <button
@@ -229,6 +244,18 @@ export function AdminNavbar({
             </span>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {hasPasscode && (
+              <button
+                type="button"
+                onClick={() => lock()}
+                title={t.appLockNow ?? 'Ekranni qulflash'}
+                aria-label={t.appLockNow ?? 'Ekranni qulflash'}
+                className={`w-6 h-6 rounded-md flex items-center justify-center
+                  ${D ? 'bg-gray-800 hover:bg-gray-700 text-sky-300' : 'bg-gray-100 hover:bg-gray-200 text-sky-600'}`}
+              >
+                <LockOpen size={12} />
+              </button>
+            )}
             <button
               onClick={() => setShowModuleBar(v => !v)}
               title={t.navModules ?? 'Modullar'}
@@ -368,124 +395,6 @@ export function AdminNavbar({
         );
       })()}
 
-      {/* Sozlamalar paneli */}
-      {showSettings && (() => {
-        const r = settingsBtnRef.current?.getBoundingClientRect();
-        const btnCls = (active: boolean) =>
-          `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-            active
-              ? D ? 'bg-indigo-600/20 text-indigo-300' : 'bg-indigo-50 text-indigo-700'
-              : D ? 'text-gray-200 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-50'
-          }`;
-        const sectionLabel = `px-1 mb-1.5 text-[10px] font-bold uppercase tracking-wider ${sub}`;
-        const textOpts: { id: TextColorId; label: string; swatch: string }[] = [
-          {
-            id: 'default',
-            label: t.textColorDefault ?? 'Standart',
-            swatch: 'linear-gradient(135deg, #64748b 0%, #0f172a 100%)',
-          },
-          {
-            id: 'black',
-            label: t.textColorBlack ?? 'Qora',
-            swatch: D ? '#ffffff' : '#000000',
-          },
-        ];
-        return (
-          <>
-            <div className="fixed inset-0 z-[230]" onClick={() => setShowSettings(false)} />
-            <div
-              className={`fixed z-[231] w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl border shadow-2xl overflow-hidden ${D ? 'bg-[#1a1a1a] border-gray-700' : 'bg-white border-gray-100'}`}
-              style={{ top: r ? r.bottom + 6 : 66, right: r ? Math.max(8, window.innerWidth - r.right) : 16 }}
-            >
-              <div className={`px-4 py-3 border-b ${D ? 'border-gray-700' : 'border-gray-100'}`}>
-                <p className={`text-sm font-semibold ${text}`}>{t.settingsMenu ?? 'Sozlamalar'}</p>
-              </div>
-
-              <div className="p-3 space-y-4 max-h-[min(70vh,520px)] overflow-y-auto">
-                {/* Til */}
-                <div>
-                  <p className={sectionLabel}>{t.languageLabel ?? 'Til'}</p>
-                  <div className="space-y-0.5">
-                    {ADMIN_LANGS.map(l => (
-                      <button
-                        key={l.id}
-                        type="button"
-                        onClick={() => setAdminLang(l.id)}
-                        className={btnCls(adminLang === l.id)}
-                      >
-                        <Globe size={15} className="opacity-70 flex-shrink-0" />
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${D ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-500'}`}>
-                          {l.flag}
-                        </span>
-                        <span className="flex-1 text-left font-medium">{l.label}</span>
-                        {adminLang === l.id && <Check size={14} className="text-indigo-500" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tun / kun */}
-                <div>
-                  <p className={sectionLabel}>{t.themeLabel ?? 'Mavzu'}</p>
-                  <button
-                    type="button"
-                    onClick={() => setIsDark(!isDark)}
-                    className={btnCls(false)}
-                  >
-                    {D ? <Sun size={15} className="flex-shrink-0" /> : <Moon size={15} className="flex-shrink-0" />}
-                    <span className="flex-1 text-left font-medium">
-                      {D ? (t.themeLight ?? 'Kun rejimi') : (t.themeDark ?? 'Tun rejimi')}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${D ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-500'}`}>
-                      {D ? (t.themeDarkShort ?? 'Tun') : (t.themeLightShort ?? 'Kun')}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Balans */}
-                <div>
-                  <p className={sectionLabel}>{t.balanceLabel ?? 'Balans'}</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowBalances(v => !v)}
-                    className={btnCls(false)}
-                  >
-                    {showBalances ? <Eye size={15} className="flex-shrink-0" /> : <EyeOff size={15} className="flex-shrink-0" />}
-                    <span className="flex-1 text-left font-medium">
-                      {showBalances ? (t.hideBalance ?? 'Balansni yashir') : (t.showBalance ?? "Balansni ko'rsat")}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Matn rangi */}
-                <div>
-                  <p className={sectionLabel}>{t.textColor ?? 'Matn rangi'}</p>
-                  <div className="space-y-0.5">
-                    {textOpts.map(opt => {
-                      const active = textColor === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setTextColor(opt.id)}
-                          className={btnCls(active)}
-                        >
-                          <span
-                            className={`h-[18px] w-[18px] rounded-full border flex-shrink-0 ${D ? 'border-gray-600' : 'border-gray-200'}`}
-                            style={{ background: opt.swatch }}
-                          />
-                          <span className="flex-1 text-left font-medium">{opt.label}</span>
-                          {active && <Check size={14} className="text-indigo-500" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        );
-      })()}
     </>
   );
 }

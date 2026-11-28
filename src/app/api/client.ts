@@ -76,7 +76,44 @@ export interface AppUserRecord {
   lastDeviceOs?: string | null;
   devices?: AppUserDeviceRecord[];
   canAddClients?: boolean;
+  recordVisitAudio?: boolean;
   phone?: string | null;
+}
+
+export interface VisitRecordingRecord {
+  id: string;
+  visitId: string;
+  distributorId: string;
+  companyId?: string | null;
+  clientId: string;
+  orderId?: string | null;
+  startedAt: string;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
+  status: string;
+  uploadStatus: string;
+  visitOutcome: string;
+  clientConsent: boolean;
+  expiresAt: string;
+  hasAudio: boolean;
+  fileSizeBytes?: number | null;
+  mimeType?: string | null;
+  failureReason?: string | null;
+  clientName?: string;
+  clientCode?: string;
+  orderNumber?: string | null;
+  orderTotal?: number;
+  visitStatus?: string | null;
+  agentName?: string | null;
+  audioState: string;
+}
+
+export interface VisitRecordingListResponse {
+  items: VisitRecordingRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  day?: string;
 }
 
 export type PositionAppAccess = 'agent' | 'delivery' | 'agent_delivery' | 'manager';
@@ -482,6 +519,13 @@ export interface BackendOrderAudit {
   createdAt: string;
 }
 
+export interface OrderPackageCounts {
+  xalta: number;
+  quti: number;
+  paket: number;
+  mayda: number;
+}
+
 export interface BackendOrder {
   id: string;
   clientId: string;
@@ -495,6 +539,9 @@ export interface BackendOrder {
   isOfflineCreated: boolean;
   isUrgent?: boolean;
   offlineId?: string | null;
+  packageCounts?: OrderPackageCounts | null;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
   createdAt: string;
   updatedAt: string;
   client?: {
@@ -679,6 +726,17 @@ export const api = {
 
   revokeSession: (id: string) =>
     request<void>(`/auth/sessions/${id}`, { method: 'DELETE' }),
+
+  /** Joriy foydalanuvchi login va/yoki parolini o‘zgartirish */
+  changeCredentials: (body: {
+    currentPassword: string;
+    newUsername?: string;
+    newPassword?: string;
+  }) =>
+    request<{ username: string; passwordChanged: boolean }>('/auth/change-credentials', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   getUsdExchangeRates: () => request<UsdExchangeRates>('/exchange-rates/usd'),
 
@@ -882,6 +940,7 @@ export const api = {
     department?: string;
     departmentId?: string;
     canAddClients?: boolean;
+    recordVisitAudio?: boolean;
   }) =>
     request<AppUserRecord>('/users/app', {
       method: 'POST',
@@ -903,6 +962,7 @@ export const api = {
     department?: string;
     departmentId?: string;
     canAddClients?: boolean;
+    recordVisitAudio?: boolean;
   }) =>
     request<AppUserRecord>(`/users/app/${id}`, {
       method: 'PATCH',
@@ -911,6 +971,43 @@ export const api = {
 
   deactivateAppUser: (id: string) =>
     request<void>(`/users/app/${id}`, { method: 'DELETE' }),
+
+  listRecordingsAdmin: (params?: {
+    companyId?: string;
+    distributorId?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.companyId) qs.set('companyId', params.companyId);
+    if (params?.distributorId) qs.set('distributorId', params.distributorId);
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to) qs.set('to', params.to);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    const q = qs.toString();
+    return request<VisitRecordingListResponse>(`/recordings/admin${q ? `?${q}` : ''}`);
+  },
+
+  getRecordingAdmin: (id: string) =>
+    request<VisitRecordingRecord>(`/recordings/admin/${id}`),
+
+  fetchRecordingAudioAdmin: async (id: string): Promise<Blob> => {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/recordings/admin/${id}/audio`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Audio HTTP ${res.status}`);
+    }
+    return res.blob();
+  },
 
   // ─── System users (admin panel) ───
   listSystemUsers: () => request<SystemUserRecord[]>('/users/system'),
@@ -1868,6 +1965,24 @@ export const api = {
   getOrders: (companyId?: string) =>
     request<BackendOrder[]>(`/orders${companyId ? `?companyId=${companyId}` : ''}`),
 
+  /** Admin: agent nomidan yangi buyurtma yaratish */
+  createOrderAdmin: (body: {
+    distributorId: string;
+    clientId: string;
+    items: Array<{
+      productId: string;
+      productCode: string;
+      productName: string;
+      quantity: number;
+      price: number;
+      unit: string;
+    }>;
+  }) =>
+    request<BackendOrder>('/orders/admin', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   /** Admin tarix: agent yoki dostavka buyurtmalari (sana oralig‘i) */
   getOrdersHistory: (opts: {
     companyId?: string;
@@ -1892,6 +2007,7 @@ export const api = {
   updateOrder: (id: string, body: {
     status?: string;
     deliveryDistributorId?: string | null;
+    packageCounts?: OrderPackageCounts | null;
     items?: Array<{
       productId: string;
       productCode: string;
@@ -2228,7 +2344,204 @@ export const api = {
       };
     }>(`/van-sales/report${qs ? `?${qs}` : ''}`);
   },
+
+  // ─── Kirim-chiqim / Cash flow ───
+  getCashFlowSummary: (params: { companyIds?: string[]; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    for (const id of params.companyIds ?? []) q.append('companyId', id);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    const qs = q.toString();
+    return request<CashFlowSummary>(`/cash-flow/summary${qs ? `?${qs}` : ''}`);
+  },
+
+  getCashFlowMovements: (params: {
+    companyIds?: string[];
+    from?: string;
+    to?: string;
+    type?: string;
+    categoryPath?: string;
+    method?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const q = new URLSearchParams();
+    for (const id of params.companyIds ?? []) q.append('companyId', id);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.type) q.set('type', params.type);
+    if (params.categoryPath) q.set('categoryPath', params.categoryPath);
+    if (params.method) q.set('method', params.method);
+    if (params.search) q.set('search', params.search);
+    if (params.page != null) q.set('page', String(params.page));
+    if (params.pageSize != null) q.set('pageSize', String(params.pageSize));
+    const qs = q.toString();
+    return request<CashFlowMovementsResponse>(`/cash-flow/movements${qs ? `?${qs}` : ''}`);
+  },
+
+  getCashFlowGroups: (params: {
+    companyIds?: string[];
+    from?: string;
+    to?: string;
+    type?: string;
+    categoryPath?: string;
+    search?: string;
+  }) => {
+    const q = new URLSearchParams();
+    for (const id of params.companyIds ?? []) q.append('companyId', id);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.type) q.set('type', params.type);
+    if (params.categoryPath) q.set('categoryPath', params.categoryPath);
+    if (params.search) q.set('search', params.search);
+    const qs = q.toString();
+    return request<CashFlowGroupsResponse>(`/cash-flow/groups${qs ? `?${qs}` : ''}`);
+  },
+
+  getSalesProfit: (params: {
+    companyIds?: string[];
+    from?: string;
+    to?: string;
+    productId?: string;
+    productCategory?: string;
+    agentId?: string;
+    sort?: string;
+  }) => {
+    const q = new URLSearchParams();
+    for (const id of params.companyIds ?? []) q.append('companyId', id);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.productId) q.set('productId', params.productId);
+    if (params.productCategory) q.set('productCategory', params.productCategory);
+    if (params.agentId) q.set('agentId', params.agentId);
+    if (params.sort) q.set('sort', params.sort);
+    const qs = q.toString();
+    return request<SalesProfitResponse>(`/cash-flow/sales-profit${qs ? `?${qs}` : ''}`);
+  },
+
+  getCashCategories: (companyIds?: string[]) => {
+    const q = new URLSearchParams();
+    for (const id of companyIds ?? []) q.append('companyId', id);
+    const qs = q.toString();
+    return request<CashCategoryDto[]>(`/cash-flow/categories${qs ? `?${qs}` : ''}`);
+  },
+
+  createCashMovement: (body: {
+    companyId: string;
+    type: 'income' | 'expense';
+    amount: number;
+    occurredAt: string;
+    categoryId?: string | null;
+    categoryPath?: string | null;
+    method?: string;
+    cashbox?: string | null;
+    counterparty?: string | null;
+    note?: string | null;
+  }) =>
+    request<CashMovementDto>('/cash-flow/movements', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteCashMovement: (id: string) =>
+    request<{ ok: boolean }>(`/cash-flow/movements/${id}`, { method: 'DELETE' }),
 };
+
+export interface CashFlowSummary {
+  incomeTotal: number;
+  expenseTotal: number;
+  netCash: number;
+  grossProfit: number;
+  chart: { date: string; income: number; expense: number }[];
+  topExpenseGroups: { name: string; amount: number }[];
+  profitMeta: { missingCostLines: number; totalLines: number; partial: boolean };
+}
+
+export interface CashMovementDto {
+  id: string;
+  companyId: string;
+  type: 'income' | 'expense';
+  categoryId: string | null;
+  categoryPath: string | null;
+  amount: number;
+  method: string;
+  cashbox: string | null;
+  counterparty: string | null;
+  note: string | null;
+  occurredAt: string;
+  sourceType: string;
+  sourceId: string | null;
+  orderId: string | null;
+  editable?: boolean;
+}
+
+export interface CashFlowMovementsResponse {
+  items: CashMovementDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  incomeTotal: number;
+  expenseTotal: number;
+}
+
+export interface CashFlowGroupNode {
+  name: string;
+  path: string;
+  amount: number;
+  count: number;
+  children: CashFlowGroupNode[];
+  operations: CashMovementDto[];
+}
+
+export interface CashFlowGroupsResponse {
+  total: number;
+  groups: CashFlowGroupNode[];
+}
+
+export interface CashCategoryDto {
+  id: string;
+  companyId: string | null;
+  parentId: string | null;
+  name: string;
+  kind: string;
+  sortOrder: number;
+}
+
+export interface SalesProfitResponse {
+  totals: {
+    netSales: number;
+    cogs: number;
+    grossProfit: number;
+    marginPct: number | null;
+    totalLines: number;
+    missingCostLines: number;
+  };
+  rows: Array<{
+    productId: string;
+    productCode: string;
+    productName: string;
+    category: string | null;
+    unit: string;
+    qty: number;
+    netSales: number;
+    cogs: number | null;
+    grossProfit: number | null;
+    marginPct: number | null;
+    costMissing: boolean;
+    missingCostQty: number;
+    lines: Array<{
+      orderId: string;
+      deliveredAt: string | null;
+      qty: number;
+      netSales: number;
+      unitCost: number | null;
+      cogs: number | null;
+      grossProfit: number | null;
+      costMissing: boolean;
+    }>;
+  }>;
+}
 
 export interface VanLoadItemDto {
   id: string;

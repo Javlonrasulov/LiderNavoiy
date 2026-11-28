@@ -45,6 +45,26 @@ export class OrdersService {
     private readonly trackingGateway: TrackingGateway,
   ) {}
 
+  /** Sotuv paytidagi tannarxni itemlarga yozib qo‘yadi (keyin o‘zgarmaydi). */
+  private async attachUnitCosts(items: OrderItem[]): Promise<OrderItem[]> {
+    const ids = [
+      ...new Set(items.map((it) => it.productId).filter(Boolean)),
+    ];
+    if (!ids.length) return items;
+    const products = await this.repo.manager.getRepository(Product).find({
+      where: { id: In(ids) },
+    });
+    const costMap = new Map(
+      products.map((p) => [p.id, Number(p.costPrice) || 0]),
+    );
+    return items.map((it) => {
+      if (it.unitCost != null && Number.isFinite(Number(it.unitCost))) return it;
+      const cost = it.productId ? costMap.get(it.productId) : undefined;
+      if (cost == null || !(cost > 0)) return { ...it, unitCost: it.unitCost ?? null };
+      return { ...it, unitCost: cost };
+    });
+  }
+
   /**
    * Order itemlarni normalizatsiya + promo qatorlarini soft validatsiya.
    * Promo line: promotionId + reward product/qty/price; shartlar >= bo‘lishi kerak.
@@ -158,10 +178,19 @@ export class OrdersService {
     dto: CreateOrderDto,
     offline = false,
     source: OrderSource = OrderSource.AGENT,
+    actor?: User | null,
   ) {
-    const items = await this.normalizeAndValidatePromoItems(dto.items);
+    const items = await this.attachUnitCosts(
+      await this.normalizeAndValidatePromoItems(dto.items),
+    );
     const totalAmount = items.reduce((sum, i) => sum + Number(i.quantity) * Number(i.price), 0);
     const client = await this.clientRepo.findOne({ where: { id: dto.clientId } });
+    const createdByName =
+      source === OrderSource.CLIENT
+        ? client?.name?.trim() || client?.fullName?.trim() || 'Mijoz'
+        : this.actorDisplayName(actor) !== '—'
+          ? this.actorDisplayName(actor)
+          : null;
     const order = this.repo.create({
       distributorId,
       clientId: dto.clientId,
@@ -173,6 +202,9 @@ export class OrdersService {
       source,
       isOfflineCreated: offline,
       offlineId: dto.offlineId ?? null,
+      packageCounts: null,
+      createdByUserId: actor?.id ?? null,
+      createdByName,
     });
     const saved = await this.repo.save(order);
 
@@ -191,6 +223,18 @@ export class OrdersService {
       }).catch(() => {});
     } else {
       this.notifyAdminsAsync(distributorId, dto.clientId, totalAmount, saved.id).catch(() => {});
+      if (actor) {
+        this.recordAudit({
+          orderId: saved.id,
+          actorUserId: actor.id,
+          actorName: this.actorDisplayName(actor),
+          actorRole: actor.role,
+          action: 'created',
+          afterItems: items,
+          itemChanges: [],
+          summary: `${this.roleLabel(actor.role)} ${this.actorDisplayName(actor)} buyurtma yaratdi`,
+        }).catch(() => {});
+      }
     }
 
     return saved;
@@ -292,12 +336,33 @@ export class OrdersService {
     );
   }
 
-  async syncBatch(distributorId: string, orders: CreateOrderDto[]) {
+  async syncBatch(distributorId: string, orders: CreateOrderDto[], actor?: User | null) {
     const saved = [];
     for (const o of orders) {
-      saved.push(await this.create(distributorId, o, true, OrderSource.AGENT));
+      saved.push(await this.create(distributorId, o, true, OrderSource.AGENT, actor));
     }
     return { synced: saved.length, orders: saved };
+  }
+
+  private normalizePackageCounts(raw?: {
+    xalta?: number;
+    quti?: number;
+    paket?: number;
+    mayda?: number;
+  } | null) {
+    if (!raw) return null;
+    const n = (v?: number) => {
+      const x = Number(v);
+      return Number.isFinite(x) && x > 0 ? Math.min(9999, Math.floor(x)) : 0;
+    };
+    const counts = {
+      xalta: n(raw.xalta),
+      quti: n(raw.quti),
+      paket: n(raw.paket),
+      mayda: n(raw.mayda),
+    };
+    if (!counts.xalta && !counts.quti && !counts.paket && !counts.mayda) return null;
+    return counts;
   }
 
   async findByDistributor(distributorId: string, from?: Date, to?: Date) {
@@ -330,6 +395,9 @@ export class OrdersService {
         totalAmount: Number(order.totalAmount),
         items: order.items,
         isUrgent: !!order.isUrgent,
+        packageCounts: order.packageCounts ?? null,
+        createdByUserId: order.createdByUserId ?? null,
+        createdByName: order.createdByName ?? null,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         clientName: client?.name ?? 'Klient',
@@ -505,6 +573,9 @@ export class OrdersService {
         dueAt: due ? due.toISOString() : null,
         items: order.items,
         isUrgent: !!order.isUrgent,
+        packageCounts: order.packageCounts ?? null,
+        createdByUserId: order.createdByUserId ?? null,
+        createdByName: order.createdByName ?? null,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         loadedAt: order.loadedAt
@@ -939,13 +1010,13 @@ export class OrdersService {
       : [];
 
     // Sovg‘a/aksiya avtomatik qo‘shilmaydi — agent/admin buyurtmada belgilagan itemlar saqlanadi
-    const expandedItems: OrderItem[] = (Array.isArray(order.items) ? order.items : []).map(
-      (it) => ({
+    const expandedItems: OrderItem[] = await this.attachUnitCosts(
+      (Array.isArray(order.items) ? order.items : []).map((it) => ({
         ...it,
         isFree: it.isFree === true,
         promotionId: it.promotionId,
         actualQuantity: it.actualQuantity ?? null,
-      }),
+      })),
     );
 
     order.items = expandedItems;
@@ -1391,6 +1462,12 @@ export class OrdersService {
           isOfflineCreated: order.isOfflineCreated,
           isUrgent: !!order.isUrgent,
           offlineId: order.offlineId,
+          packageCounts: order.packageCounts ?? null,
+          createdByUserId: order.createdByUserId ?? null,
+          createdByName:
+            order.createdByName?.trim() ||
+            profile?.user?.fullName?.trim() ||
+            null,
           createdAt: order.createdAt,
           updatedAt: order.updatedAt,
           client: client
@@ -1467,6 +1544,9 @@ export class OrdersService {
     if (dto.status !== undefined) order.status = dto.status;
     if (dto.deliveryDistributorId !== undefined) {
       order.deliveryDistributorId = dto.deliveryDistributorId;
+    }
+    if (dto.packageCounts !== undefined) {
+      order.packageCounts = this.normalizePackageCounts(dto.packageCounts);
     }
 
     // Tarozi: haqiqiy miqdor (ves) ni actualQuantity sifatida saqlash

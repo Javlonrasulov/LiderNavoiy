@@ -43,11 +43,20 @@ export function companyShowsTarozi(productType?: ProductType | string | null): b
 /** @deprecated Hardcoded ro‘yxat olib tashlandi — useCompanies() ishlatilsin */
 export const COMPANIES: Company[] = [];
 
+export type AdminUserInfo = {
+  id?: string;
+  name: string;
+  role: string;
+  username?: string;
+  permissions?: string[] | null;
+};
+
 interface AdminAuthContextType {
   isLoggedIn: boolean;
   selectedCompany: Company | null;
-  adminUser: { name: string; role: string; permissions?: string[] | null } | null;
-  login: (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }) => boolean;
+  adminUser: AdminUserInfo | null;
+  login: (username: string, password: string, userData?: AdminUserInfo) => boolean;
+  updateAdminUser: (patch: Partial<AdminUserInfo>) => void;
   logout: () => void;
   selectCompany: (company: Company) => void;
   clearCompany: () => void;
@@ -81,7 +90,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     // Faqat to‘liq company JSON saqlangan bo‘lsa tiklanadi (hardcoded fallback yo‘q)
     return null;
   });
-  const [adminUser, setAdminUser] = useState<{ name: string; role: string; permissions?: string[] | null } | null>(() => {
+  const [adminUser, setAdminUser] = useState<AdminUserInfo | null>(() => {
     const saved = localStorage.getItem('admin_user');
     return saved ? JSON.parse(saved) : null;
   });
@@ -93,14 +102,27 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoggedIn]);
 
-  const login = (username: string, password: string, userData?: { name: string; role: string; permissions?: string[] | null }): boolean => {
+  const login = (username: string, password: string, userData?: AdminUserInfo): boolean => {
     resetUnauthorizedGuard();
     if (!userData) return false;
+    const withLogin: AdminUserInfo = {
+      ...userData,
+      username: userData.username ?? username.trim().toLowerCase(),
+    };
     setIsLoggedIn(true);
-    setAdminUser(userData);
+    setAdminUser(withLogin);
     localStorage.setItem('admin_logged_in', 'true');
-    localStorage.setItem('admin_user', JSON.stringify(userData));
+    localStorage.setItem('admin_user', JSON.stringify(withLogin));
     return true;
+  };
+
+  const updateAdminUser = (patch: Partial<AdminUserInfo>) => {
+    setAdminUser(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      localStorage.setItem('admin_user', JSON.stringify(next));
+      return next;
+    });
   };
 
   const logout = () => {
@@ -135,7 +157,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AdminAuthContext.Provider value={{
-      isLoggedIn, selectedCompany, adminUser,
+      isLoggedIn, selectedCompany, adminUser, updateAdminUser,
       login, logout, selectCompany, clearCompany,
     }}>
       {children}

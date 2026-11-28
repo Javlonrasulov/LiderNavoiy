@@ -32,6 +32,10 @@ export class Product {
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   price: number;
 
+  /** O‘rtacha / oxirgi ombor tannarxi (kirimlardan yangilanadi) */
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  costPrice: number;
+
   @Column({ default: 'kg' })
   unit: string;
 

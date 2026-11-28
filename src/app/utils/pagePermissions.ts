@@ -16,6 +16,8 @@ export const PAGE_PERMISSIONS = [
   { id: 'prodaji',    labelKey: 'permProdaji',    fallback: 'Prodaji' },
   { id: 'ombor',      labelKey: 'permOmbor',      fallback: 'Ombor' },
   { id: 'vanSales',   labelKey: 'permVanSales',   fallback: 'Van Sales' },
+  { id: 'kirimChiqim', labelKey: 'permKirimChiqim', fallback: 'Kirim-chiqim' },
+  { id: 'zapislar',   labelKey: 'permZapislar',   fallback: 'Zapislar' },
   { id: 'systemUsers', labelKey: 'permSystemUsers', fallback: 'Tizim foydalanuvchilari' },
 ] as const;
 

@@ -53,6 +53,13 @@ async function bootstrap() {
 
   const uploadsDir = join(process.cwd(), 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+  const recordingsDir = join(uploadsDir, 'recordings');
+  if (!existsSync(recordingsDir)) mkdirSync(recordingsDir, { recursive: true });
+
+  // Visit audio — faqat autentifikatsiyalangan API orqali
+  app.use('/uploads/recordings', (_req: Request, res: Response) => {
+    res.status(404).end();
+  });
 
   app.use('/uploads/products', (req: Request, res: Response, next: NextFunction) => {
     void (async () => {

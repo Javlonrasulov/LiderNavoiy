@@ -59,6 +59,7 @@ export interface AppUserListRow {
   acceptPay: boolean;
   consig: boolean;
   canAddClients: boolean;
+  recordVisitAudio?: boolean;
   gps: boolean;
   isOnline?: boolean;
   device?: string;
@@ -272,6 +273,7 @@ export function appUserToRow(
     acceptPay: true,
     consig: false,
     canAddClients: isManager ? true : !!app.canAddClients,
+    recordVisitAudio: !!app.recordVisitAudio,
     gps: !isManager,
     isOnline: app.isOnline,
     device: deviceInfo.summary,
@@ -375,6 +377,8 @@ export function appUserToSotrudnikRow(
     backendUserId: app.id,
     distributorId: distributor?.id,
     username: app.username,
+    positionId: app.positionId ?? undefined,
+    recordVisitAudio: !!app.recordVisitAudio,
   };
 }
 

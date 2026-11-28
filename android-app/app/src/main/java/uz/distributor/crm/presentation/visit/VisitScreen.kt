@@ -1,10 +1,14 @@
 package uz.distributor.crm.presentation.visit
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -52,12 +56,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
@@ -72,20 +78,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.graphics.Brush
 import uz.distributor.crm.domain.model.CartItem
 import uz.distributor.crm.domain.model.Product
 import uz.distributor.crm.domain.model.ProductPromotion
@@ -93,6 +99,8 @@ import uz.distributor.crm.localization.AppLanguage
 import uz.distributor.crm.localization.AppStrings
 import uz.distributor.crm.localization.LocalAppLanguage
 import uz.distributor.crm.presentation.navigation.BottomNavChrome
+import uz.distributor.crm.presentation.recording.RecordingStatusRow
+import uz.distributor.crm.recording.VisitRecordingUiState
 import uz.distributor.crm.presentation.theme.SherinColors
 import uz.distributor.crm.presentation.theme.SherinGlassIconButton
 import uz.distributor.crm.presentation.theme.sherinHeroBrush
@@ -105,6 +113,7 @@ fun VisitScreen(
     clientId: String,
     onBack: () -> Unit,
     onOrderSummary: (String) -> Unit,
+    recordingState: VisitRecordingUiState = VisitRecordingUiState(),
     viewModel: VisitViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -149,6 +158,7 @@ fun VisitScreen(
             VisitViewLevel.CATEGORIES -> onBack()
         }
     }
+    BackHandler(onBack = handleBack)
 
     val categoriesListState = rememberLazyListState()
     val productsListState = rememberLazyListState()
@@ -181,6 +191,7 @@ fun VisitScreen(
                 onProductTabClick = viewModel::openProductsTab,
                 onPromoTabClick = viewModel::openPromotionsTab,
                 onCartTabClick = viewModel::openCartSheet,
+                recordingState = recordingState,
             )
             VisitViewLevel.PROMOTIONS -> VisitCategoriesHeader(
                 isDark = isDark,
@@ -192,6 +203,7 @@ fun VisitScreen(
                 onProductTabClick = viewModel::openProductsTab,
                 onPromoTabClick = viewModel::openPromotionsTab,
                 onCartTabClick = viewModel::openCartSheet,
+                recordingState = recordingState,
             )
             VisitViewLevel.PRODUCT_DETAIL -> {
                 val product = state.selectedProduct
@@ -203,13 +215,17 @@ fun VisitScreen(
                         },
                         product = product,
                         isDark = isDark,
+                        lang = lang,
                         onBack = handleBack,
+                        onBackToCategories = viewModel::backToCategories,
+                        recordingState = recordingState,
                     )
                 }
             }
             VisitViewLevel.PRODUCTS -> VisitProductsHeader(
-                categoryName = when (state.selectedCategory) {
-                    VisitViewModel.ALL_CATEGORY -> AppStrings.allGoods(lang)
+                categoryName = when {
+                    state.showAllCategories || state.selectedCategory == VisitViewModel.ALL_CATEGORY ->
+                        AppStrings.allGoods(lang)
                     else -> state.selectedCategory.orEmpty()
                 },
                 subtitle = AppStrings.productsCount(
@@ -218,13 +234,22 @@ fun VisitScreen(
                     state.totalProductCount,
                 ),
                 searchQuery = state.searchQuery,
-                showAllProducts = state.showAllProducts,
-                cartTotal = state.cartTotal,
+                showAllCategories = state.showAllCategories,
+                showOutOfStock = state.showOutOfStock,
+                productsGridMode = state.productsGridMode,
+                productSort = state.productSort,
+                alphabetLetters = state.alphabetLetters,
+                alphabetAnchor = state.alphabetAnchor,
                 chromeVisible = productsChromeVisible,
                 isDark = isDark,
                 onBack = handleBack,
                 onSearchChange = viewModel::setSearchQuery,
-                onToggleAll = viewModel::toggleShowAllProducts,
+                onToggleAllCategories = viewModel::toggleShowAllCategories,
+                onToggleOutOfStock = viewModel::toggleShowOutOfStock,
+                onToggleGridMode = viewModel::toggleProductsGridMode,
+                onSetSort = viewModel::setProductSort,
+                onAlphabetJump = viewModel::jumpToAlphabet,
+                recordingState = recordingState,
             )
         }
 
@@ -251,9 +276,10 @@ fun VisitScreen(
 
         if (state.viewLevel == VisitViewLevel.CATEGORIES) {
             VisitAllGoodsToggle(
-                showAllProducts = state.showAllProducts,
+                showAllProducts = state.showOutOfStock,
                 isDark = isDark,
-                onToggleAll = viewModel::toggleShowAllProducts,
+                label = AppStrings.showOutOfStock(lang),
+                onToggleAll = viewModel::toggleShowOutOfStock,
             )
         }
 
@@ -293,7 +319,7 @@ fun VisitScreen(
                     .mapValues { (_, items) -> items.any { it.stockBalance > 0 } }
                 val filteredCategories = state.categoryCounts.filter { category ->
                     val hasStock = stockByCategory[category.name] == true
-                    val matchesStock = state.showAllProducts || hasStock
+                    val matchesStock = state.showOutOfStock || hasStock
                     val matchesQuery = state.searchQuery.isBlank() ||
                         UzScript.matches(category.name, state.searchQuery)
                     matchesStock && matchesQuery
@@ -445,6 +471,7 @@ fun VisitScreen(
                         onCartItemClick = viewModel::openProductById,
                         onEditCartItem = viewModel::editCartItem,
                         onRemoveCartItem = viewModel::removeFromCart,
+                        onBackToCategory = viewModel::backFromProductDetail,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -459,11 +486,10 @@ fun VisitScreen(
             }
             else -> {
                 VisitProductsListContent(
-                    selectedProducts = state.selectedInList,
-                    allProducts = state.unselectedInList,
+                    products = state.filteredProducts,
                     cart = state.cart,
-                    selectedExpanded = state.selectedSectionExpanded,
-                    allExpanded = state.allSectionExpanded,
+                    gridMode = state.productsGridMode,
+                    alphabetAnchor = state.alphabetAnchor,
                     priceFmt = priceFmt,
                     stockFmt = stockFmt,
                     cardBg = cardBg,
@@ -471,12 +497,15 @@ fun VisitScreen(
                     titleColor = titleColor,
                     subColor = subColor,
                     lang = lang,
+                    isDark = isDark,
                     promotionsByProductId = state.promotionsByProductId,
+                    resolveImageUrl = viewModel::resolveProductImageUrl,
                     listState = productsListState,
-                    onToggleSelected = viewModel::toggleSelectedSection,
-                    onToggleAll = viewModel::toggleAllSection,
                     onProductClick = viewModel::openProduct,
-                    onRemoveFromCart = viewModel::removeFromCart,
+                    onIncrementQty = viewModel::incrementListProductQty,
+                    onDecrementQty = viewModel::decrementListProductQty,
+                    onSetQty = viewModel::setListProductQty,
+                    onAlphabetHandled = viewModel::clearAlphabetAnchor,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -516,6 +545,20 @@ fun VisitScreen(
         }
         }
     }
+
+    if (state.showFloatingCart) {
+        VisitFloatingCartFab(
+            count = state.paidCartItemCount,
+            dropZoneVisible = state.showFabDropZone,
+            lang = lang,
+            onClick = viewModel::openQuickCartModal,
+            onDragStart = viewModel::showFabDropZone,
+            onDropHide = viewModel::hideFloatingCartForClient,
+            onCancelDrop = viewModel::hideFabDropZone,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+
     SnackbarHost(
         hostState = snackbarHostState,
         modifier = Modifier
@@ -536,9 +579,25 @@ fun VisitScreen(
             titleColor = titleColor,
             cardBg = cardBg,
             borderColor = borderColor,
+            recordingState = recordingState,
             onDismiss = viewModel::closeCartSheet,
             onItemClick = viewModel::openProductById,
             onEditItem = viewModel::editCartItem,
+            onRemoveItem = viewModel::removeFromCart,
+        )
+    }
+
+    if (state.showQuickCartModal) {
+        VisitQuickCartModal(
+            cart = state.cart.filter { it.promotionId == null },
+            productImages = state.allProducts.associate {
+                it.id to viewModel.resolveProductImageUrl(it.imageUrl)
+            },
+            priceFmt = priceFmt,
+            stockFmt = stockFmt,
+            isDark = isDark,
+            lang = lang,
+            onDismiss = viewModel::closeQuickCartModal,
             onRemoveItem = viewModel::removeFromCart,
         )
     }
@@ -730,6 +789,7 @@ private fun VisitCartSheet(
     titleColor: Color,
     cardBg: Color,
     borderColor: Color,
+    recordingState: VisitRecordingUiState = VisitRecordingUiState(),
     onDismiss: () -> Unit,
     onItemClick: (String) -> Unit,
     onEditItem: (String) -> Unit,
@@ -763,6 +823,11 @@ private fun VisitCartSheet(
                     Icon(Icons.Default.Close, contentDescription = null)
                 }
             }
+            RecordingStatusRow(
+                state = recordingState,
+                onDarkHeader = isDark,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            )
             Spacer(Modifier.height(8.dp))
             if (cart.isEmpty()) {
                 Box(
@@ -798,7 +863,10 @@ private fun VisitProductDetailHeader(
     categoryLabel: String,
     product: Product,
     isDark: Boolean,
+    lang: AppLanguage,
     onBack: () -> Unit,
+    onBackToCategories: () -> Unit,
+    recordingState: VisitRecordingUiState = VisitRecordingUiState(),
 ) {
     Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
         Column(
@@ -807,19 +875,28 @@ private fun VisitProductDetailHeader(
                 .padding(horizontal = 16.dp)
                 .padding(top = 36.dp, bottom = 20.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 SherinGlassIconButton(
                     onClick = onBack,
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     size = 40.dp,
                 )
-                Column(modifier = Modifier.padding(start = 12.dp)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                ) {
                     Text(
                         categoryLabel.uppercase(),
                         color = Color.White.copy(0.75f),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         letterSpacing = 1.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         "${product.code} — ${product.name}",
@@ -830,8 +907,49 @@ private fun VisitProductDetailHeader(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+                VisitCategoriesGlassChip(
+                    label = AppStrings.backToCategories(lang),
+                    onClick = onBackToCategories,
+                )
             }
+            RecordingStatusRow(
+                state = recordingState,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
+    }
+}
+
+/** Header o‘ngidagi premium glass chip — kategoriyalar sahifasiga */
+@Composable
+private fun VisitCategoriesGlassChip(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.14f))
+            .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            Icons.Default.Apps,
+            contentDescription = label,
+            tint = Color.White,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.2.sp,
+            maxLines = 1,
+        )
     }
 }
 
@@ -884,6 +1002,7 @@ private fun VisitProductDetailContent(
     onCartItemClick: (String) -> Unit,
     onEditCartItem: (String) -> Unit,
     onRemoveCartItem: (String) -> Unit,
+    onBackToCategory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
@@ -981,6 +1100,8 @@ private fun VisitProductDetailContent(
                 isDark = isDark,
                 focusQuantity = focusQuantity,
                 resetKey = product.id,
+                backToCategoryLabel = AppStrings.backToCategoryList(lang),
+                onBackToCategory = onBackToCategory,
                 onFocusHandled = onFocusQuantityHandled,
                 onDecrement = onDecrement,
                 onIncrement = onIncrement,
@@ -1034,7 +1155,7 @@ private fun VisitProductDetailContent(
                     Spacer(Modifier.height(16.dp))
                     Row(
                         Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Bottom,
                     ) {
                         VisitQtyButton(
                             icon = Icons.Default.Remove,
@@ -1044,7 +1165,9 @@ private fun VisitProductDetailContent(
                             onClick = onDecrement,
                         )
                         Box(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .align(Alignment.CenterVertically),
                             contentAlignment = Alignment.Center,
                         ) {
                             key(product.id) {
@@ -1059,13 +1182,23 @@ private fun VisitProductDetailContent(
                                 )
                             }
                         }
-                        VisitQtyButton(
-                            icon = Icons.Default.Add,
-                            enabled = true,
-                            tint = Color.White,
-                            bg = Color(0xFF3B82F6),
-                            onClick = onIncrement,
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            VisitBackToCategoryButton(
+                                label = AppStrings.backToCategoryList(lang),
+                                isDark = isDark,
+                                onClick = onBackToCategory,
+                            )
+                            VisitQtyButton(
+                                icon = Icons.Default.Add,
+                                enabled = true,
+                                tint = Color.White,
+                                bg = Color(0xFF3B82F6),
+                                onClick = onIncrement,
+                            )
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     Row(
@@ -1634,6 +1767,8 @@ private fun VisitQuantityCard(
     isDark: Boolean,
     focusQuantity: Boolean,
     resetKey: Any = Unit,
+    backToCategoryLabel: String? = null,
+    onBackToCategory: (() -> Unit)? = null,
     onFocusHandled: () -> Unit,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
@@ -1660,7 +1795,7 @@ private fun VisitQuantityCard(
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Bottom,
             ) {
                 VisitQtyButton(
                     icon = Icons.Default.Remove,
@@ -1670,7 +1805,9 @@ private fun VisitQuantityCard(
                     onClick = onDecrement,
                 )
                 Box(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .align(Alignment.CenterVertically),
                     contentAlignment = Alignment.Center,
                 ) {
                     key(resetKey) {
@@ -1686,13 +1823,25 @@ private fun VisitQuantityCard(
                         )
                     }
                 }
-                VisitQtyButton(
-                    icon = Icons.Default.Add,
-                    enabled = enabled,
-                    tint = Color.White,
-                    bg = if (enabled) accent else Color(0xFF9CA3AF),
-                    onClick = onIncrement,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (onBackToCategory != null && !backToCategoryLabel.isNullOrBlank()) {
+                        VisitBackToCategoryButton(
+                            label = backToCategoryLabel,
+                            isDark = isDark,
+                            onClick = onBackToCategory,
+                        )
+                    }
+                    VisitQtyButton(
+                        icon = Icons.Default.Add,
+                        enabled = enabled,
+                        tint = Color.White,
+                        bg = if (enabled) accent else Color(0xFF9CA3AF),
+                        onClick = onIncrement,
+                    )
+                }
             }
             if (presets.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
@@ -1749,7 +1898,6 @@ private fun VisitEditableQuantity(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val view = LocalView.current
-    val scope = rememberCoroutineScope()
     var isFocused by remember { mutableStateOf(false) }
     val commitGate = remember { java.util.concurrent.atomic.AtomicBoolean(true) }
 
@@ -1768,50 +1916,44 @@ private fun VisitEditableQuantity(
     }
 
     DisposableEffect(Unit) {
-        onDispose {
-            // Mahsulot almasganda blur orqali eski qty yangi mahsulotga yozilmasin
-            commitGate.set(false)
-        }
+        onDispose { commitGate.set(false) }
     }
 
     fun showKeyboard() {
         if (!enabled) return
-        keyboardController?.show()
-        val imm = view.context.getSystemService<InputMethodManager>()
-        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        view.post {
+            keyboardController?.show()
+            val imm = view.context.getSystemService<InputMethodManager>()
+            imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
-    fun openEditor() {
-        if (!enabled) return
-        scope.launch {
+    fun commitQty() {
+        if (!commitGate.get()) return
+        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceAtLeast(0.0)
+        onQuantityChange(finalQty)
+        val text = displayQty(finalQty)
+        fieldValue = TextFieldValue(text, TextRange(text.length))
+    }
+
+    LaunchedEffect(requestFocus) {
+        if (requestFocus && enabled) {
+            onFocusHandled()
             val text = if (quantity <= 0.0) "" else displayQty(quantity)
             fieldValue = TextFieldValue(text, TextRange(text.length))
             try {
                 focusRequester.requestFocus()
             } catch (_: IllegalStateException) {
             }
-            delay(80)
             showKeyboard()
         }
     }
 
-    LaunchedEffect(requestFocus) {
-        if (requestFocus && enabled) {
-            onFocusHandled()
-            openEditor()
-        }
-    }
+    val textColor = titleColor
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .widthIn(min = 72.dp, max = 120.dp)
-            .clickable(
-                enabled = enabled,
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = { openEditor() },
-            ),
+        modifier = Modifier.widthIn(min = 72.dp, max = 120.dp),
     ) {
         BasicTextField(
             value = fieldValue,
@@ -1819,19 +1961,13 @@ private fun VisitEditableQuantity(
                 if (!enabled) return@BasicTextField
                 val sanitized = sanitizeQuantityTyping(next.text) ?: return@BasicTextField
                 fieldValue = next.copy(text = sanitized)
-                val parsed = parseQuantityInput(sanitized)
-                if (parsed != null && !sanitized.endsWith('.') && !sanitized.endsWith(',')) {
-                    onQuantityChange(parsed.coerceAtLeast(0.0))
-                } else if (sanitized.isEmpty()) {
-                    onQuantityChange(0.0)
-                }
             },
             enabled = enabled,
             singleLine = true,
             textStyle = TextStyle(
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (quantity > 0.0 || isFocused) titleColor else subColor,
+                color = textColor,
                 textAlign = TextAlign.Center,
             ),
             keyboardOptions = KeyboardOptions(
@@ -1840,48 +1976,34 @@ private fun VisitEditableQuantity(
             ),
             keyboardActions = KeyboardActions(
                 onDone = {
-                    if (commitGate.get()) {
-                        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceAtLeast(0.0)
-                        onQuantityChange(finalQty)
-                        val text = displayQty(finalQty)
-                        fieldValue = TextFieldValue(text, TextRange(text.length))
-                    }
+                    commitQty()
                     focusManager.clearFocus()
                     keyboardController?.hide()
                 },
             ),
             modifier = Modifier
                 .widthIn(min = 56.dp, max = 110.dp)
+                .defaultMinSize(minHeight = 44.dp)
                 .padding(vertical = 4.dp)
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     val wasFocused = isFocused
                     isFocused = focusState.isFocused
-                    if (focusState.isFocused) {
+                    if (focusState.isFocused && !wasFocused) {
+                        if (quantity <= 0.0 && fieldValue.text == displayQty(quantity)) {
+                            fieldValue = TextFieldValue("", TextRange(0))
+                        }
                         showKeyboard()
-                    } else if (wasFocused && commitGate.get()) {
-                        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceAtLeast(0.0)
-                        onQuantityChange(finalQty)
-                        val text = displayQty(finalQty)
-                        fieldValue = TextFieldValue(text, TextRange(text.length))
+                    } else if (wasFocused && !focusState.isFocused) {
+                        commitQty()
                     }
-                }
-                .pointerInput(enabled) {
-                    if (!enabled) return@pointerInput
-                    detectTapGestures(onTap = { openEditor() })
                 },
             decorationBox = { inner ->
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .widthIn(min = 56.dp, max = 110.dp)
-                        .defaultMinSize(minHeight = 44.dp)
-                        .clickable(
-                            enabled = enabled,
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = { openEditor() },
-                        ),
+                        .defaultMinSize(minHeight = 44.dp),
                 ) {
                     inner()
                 }
@@ -1933,6 +2055,62 @@ private fun VisitQtyButton(
     }
 }
 
+/** Mahsulotlar ro‘yxatiga (kategoriya) qaytish — + tepasida */
+@Composable
+private fun VisitBackToCategoryButton(
+    label: String,
+    isDark: Boolean,
+    onClick: () -> Unit,
+) {
+    val accent = Color(0xFF334155)
+    val bg = if (isDark) Color(0xFF1E293B) else Color(0xFFF8FAFC)
+    val border = if (isDark) Color(0xFF475569) else Color(0xFFE2E8F0)
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        color = bg,
+        border = BorderStroke(1.dp, border),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
+        modifier = Modifier.width(52.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isDark) Color(0xFF334155) else Color(0xFFEEF2FF),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = label,
+                    tint = if (isDark) Color(0xFFE2E8F0) else accent,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Text(
+                label,
+                color = if (isDark) Color(0xFFCBD5E1) else accent,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 /** +/- orasidagi miqdor — bosilganda raqamli klaviatura */
 @Composable
 private fun VisitCompactEditableQty(
@@ -1946,11 +2124,10 @@ private fun VisitCompactEditableQty(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val view = LocalView.current
-    val scope = rememberCoroutineScope()
     var isFocused by remember { mutableStateOf(false) }
 
     fun displayQty(v: Double): String =
-        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
+        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v).replace(',', '.')
 
     var fieldValue by remember {
         val text = displayQty(quantity)
@@ -1965,35 +2142,26 @@ private fun VisitCompactEditableQty(
     }
 
     fun showKeyboard() {
-        keyboardController?.show()
-        val imm = view.context.getSystemService<InputMethodManager>()
-        imm?.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+        view.post {
+            keyboardController?.show()
+            val imm = view.context.getSystemService<InputMethodManager>()
+            imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
-    fun openEditor() {
-        scope.launch {
-            val text = if (quantity <= 0.0) "" else displayQty(quantity)
-            fieldValue = TextFieldValue(text, TextRange(text.length))
-            try {
-                focusRequester.requestFocus()
-            } catch (_: IllegalStateException) {
-            }
-            delay(80)
-            showKeyboard()
-        }
+    fun commitQty() {
+        val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceIn(0.0, maxQuantity)
+        onQuantityChange(finalQty)
+        val text = displayQty(finalQty)
+        fieldValue = TextFieldValue(text, TextRange(text.length))
     }
 
     BasicTextField(
         value = fieldValue,
         onValueChange = { next ->
+            // Faqat lokal matn — savatga Done/blur da yoziladi
             val sanitized = sanitizeQuantityTyping(next.text) ?: return@BasicTextField
             fieldValue = next.copy(text = sanitized)
-            val parsed = parseQuantityInput(sanitized)
-            if (parsed != null && !sanitized.endsWith('.') && !sanitized.endsWith(',')) {
-                onQuantityChange(parsed.coerceIn(0.0, maxQuantity))
-            } else if (sanitized.isEmpty()) {
-                onQuantityChange(0.0)
-            }
         },
         singleLine = true,
         textStyle = TextStyle(
@@ -2008,46 +2176,30 @@ private fun VisitCompactEditableQty(
         ),
         keyboardActions = KeyboardActions(
             onDone = {
-                val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0).coerceIn(0.0, maxQuantity)
-                onQuantityChange(finalQty)
-                val text = displayQty(finalQty)
-                fieldValue = TextFieldValue(text, TextRange(text.length))
+                commitQty()
                 focusManager.clearFocus()
                 keyboardController?.hide()
             },
         ),
         modifier = modifier
-            .widthIn(min = 44.dp, max = 80.dp)
-            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .widthIn(min = 48.dp, max = 88.dp)
+            .defaultMinSize(minHeight = 36.dp)
+            .padding(horizontal = 4.dp, vertical = 6.dp)
             .focusRequester(focusRequester)
             .onFocusChanged { focusState ->
+                val wasFocused = isFocused
                 isFocused = focusState.isFocused
-                if (focusState.isFocused) {
+                if (focusState.isFocused && !wasFocused) {
+                    if (quantity <= 0.0) {
+                        fieldValue = TextFieldValue("", TextRange(0))
+                    }
                     showKeyboard()
-                } else {
-                    val finalQty = (parseQuantityInput(fieldValue.text) ?: 0.0)
-                        .coerceIn(0.0, maxQuantity)
-                    onQuantityChange(finalQty)
-                    val text = displayQty(finalQty)
-                    fieldValue = TextFieldValue(text, TextRange(text.length))
+                } else if (wasFocused && !focusState.isFocused) {
+                    commitQty()
                 }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { openEditor() })
             },
         decorationBox = { inner ->
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = { openEditor() },
-                    ),
-            ) {
-                inner()
-            }
+            Box(contentAlignment = Alignment.Center) { inner() }
         },
     )
 }
@@ -2116,11 +2268,10 @@ private fun VisitNavProductButton(
 
 @Composable
 private fun VisitProductsListContent(
-    selectedProducts: List<Product>,
-    allProducts: List<Product>,
+    products: List<Product>,
     cart: List<CartItem>,
-    selectedExpanded: Boolean,
-    allExpanded: Boolean,
+    gridMode: Boolean,
+    alphabetAnchor: String?,
     priceFmt: DecimalFormat,
     stockFmt: DecimalFormat,
     cardBg: Color,
@@ -2128,72 +2279,287 @@ private fun VisitProductsListContent(
     titleColor: Color,
     subColor: Color,
     lang: AppLanguage,
+    isDark: Boolean,
     promotionsByProductId: Map<String, ProductPromotion> = emptyMap(),
+    resolveImageUrl: (String?) -> String,
     listState: LazyListState,
-    onToggleSelected: () -> Unit,
-    onToggleAll: () -> Unit,
     onProductClick: (Product) -> Unit,
-    onRemoveFromCart: (String) -> Unit,
+    onIncrementQty: (String) -> Unit,
+    onDecrementQty: (String) -> Unit,
+    onSetQty: (String, Double) -> Unit,
+    onAlphabetHandled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    LaunchedEffect(alphabetAnchor, products) {
+        val letter = alphabetAnchor ?: return@LaunchedEffect
+        val index = products.indexOfFirst {
+            VisitViewModel.firstLetterKey(it.name) == letter
+        }
+        if (index >= 0) {
+            val lazyIndex = if (gridMode) index / 2 else index
+            listState.animateScrollToItem(lazyIndex.coerceAtLeast(0))
+        }
+        onAlphabetHandled()
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (selectedProducts.isNotEmpty()) {
-            item {
-                VisitSectionHeader(
-                    title = AppStrings.selectedProducts(lang),
-                    countLabel = AppStrings.selectedCount(lang, selectedProducts.size),
-                    expanded = selectedExpanded,
-                    bgColor = Color(0xFFECFDF5),
-                    titleColor = Color(0xFF059669),
-                    onClick = onToggleSelected,
+        if (gridMode) {
+            items(
+                products.chunked(2),
+                key = { row -> row.joinToString("-") { it.id } },
+            ) { row ->
+                VisitProductGridRow(
+                    products = row,
+                    cart = cart,
+                    priceFmt = priceFmt,
+                    stockFmt = stockFmt,
+                    cardBg = cardBg,
+                    borderColor = borderColor,
+                    titleColor = titleColor,
+                    subColor = subColor,
+                    lang = lang,
+                    isDark = isDark,
+                    promotionsByProductId = promotionsByProductId,
+                    resolveImageUrl = resolveImageUrl,
+                    onProductClick = onProductClick,
+                    onIncrementQty = onIncrementQty,
+                    onDecrementQty = onDecrementQty,
+                    onSetQty = onSetQty,
                 )
             }
-            if (selectedExpanded) {
-                items(selectedProducts, key = { "sel-${it.id}" }) { product ->
-                    val qty = cart.find { it.productId == product.id }?.quantity ?: 0.0
-                    VisitSelectedProductCard(
-                        product = product,
-                        quantity = qty,
-                        priceFmt = priceFmt,
-                        stockFmt = stockFmt,
-                        lang = lang,
-                        promotion = promotionsByProductId[product.id],
-                        onClick = { onProductClick(product) },
-                        onRemove = { onRemoveFromCart(product.id) },
+        } else {
+            items(products, key = { it.id }) { product ->
+                val qty = cart.find { it.productId == product.id && it.promotionId == null }?.quantity ?: 0.0
+                VisitInlineOrderProductCard(
+                    product = product,
+                    quantity = qty,
+                    priceFmt = priceFmt,
+                    stockFmt = stockFmt,
+                    cardBg = if (qty > 0) Color(0xFFECFDF5) else cardBg,
+                    borderColor = if (qty > 0) Color(0xFF10B981).copy(0.35f) else borderColor,
+                    titleColor = if (qty > 0) Color(0xFF065F46) else titleColor,
+                    subColor = subColor,
+                    lang = lang,
+                    promotion = promotionsByProductId[product.id],
+                    imageUrl = null,
+                    showImage = false,
+                    onOpenDetail = { onProductClick(product) },
+                    onIncrement = { onIncrementQty(product.id) },
+                    onDecrement = { onDecrementQty(product.id) },
+                    onQuantityChange = { value -> onSetQty(product.id, value) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VisitProductGridRow(
+    products: List<Product>,
+    cart: List<CartItem>,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+    lang: AppLanguage,
+    isDark: Boolean,
+    promotionsByProductId: Map<String, ProductPromotion>,
+    resolveImageUrl: (String?) -> String,
+    onProductClick: (Product) -> Unit,
+    onIncrementQty: (String) -> Unit,
+    onDecrementQty: (String) -> Unit,
+    onSetQty: (String, Double) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        products.forEach { product ->
+            val qty = cart.find { it.productId == product.id && it.promotionId == null }?.quantity ?: 0.0
+            VisitInlineOrderProductCard(
+                product = product,
+                quantity = qty,
+                priceFmt = priceFmt,
+                stockFmt = stockFmt,
+                cardBg = cardBg,
+                borderColor = borderColor,
+                titleColor = titleColor,
+                subColor = subColor,
+                lang = lang,
+                promotion = promotionsByProductId[product.id],
+                imageUrl = resolveImageUrl(product.imageUrl),
+                showImage = true,
+                onOpenDetail = { onProductClick(product) },
+                onIncrement = { onIncrementQty(product.id) },
+                onDecrement = { onDecrementQty(product.id) },
+                onQuantityChange = { value -> onSetQty(product.id, value) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (products.size == 1) {
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun VisitInlineOrderProductCard(
+    product: Product,
+    quantity: Double,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    cardBg: Color,
+    borderColor: Color,
+    titleColor: Color,
+    subColor: Color,
+    lang: AppLanguage,
+    promotion: ProductPromotion?,
+    imageUrl: String?,
+    showImage: Boolean,
+    onOpenDetail: () -> Unit,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onQuantityChange: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val inCart = quantity > 0.0
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (inCart && !showImage) Color(0xFFECFDF5) else cardBg,
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                1.dp,
+                if (inCart) Color(0xFF10B981).copy(0.4f) else borderColor,
+                RoundedCornerShape(14.dp),
+            ),
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            if (showImage) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF3F4F6))
+                        .clickable(onClick = onOpenDetail),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (!imageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = product.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Inventory2,
+                            contentDescription = null,
+                            tint = subColor,
+                            modifier = Modifier.size(36.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenDetail),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (inCart) Color(0xFFD1FAE5) else Color(0xFFEFF6FF),
+                    ) {
+                        Text(
+                            product.code,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 10.sp,
+                            color = if (inCart) Color(0xFF059669) else Color(0xFF3B82F6),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        product.name,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = if (showImage) 12.sp else 13.sp,
+                        color = titleColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${priceFmt.format(product.price.toLong())} ${AppStrings.sumCurrency(lang)}",
+                            fontSize = 12.sp,
+                            color = subColor,
+                        )
+                        if (promotion != null) {
+                            Spacer(Modifier.width(6.dp))
+                            PromoBadge(promotion)
+                        }
+                    }
+                    Text(
+                        "${stockFmt.format(product.stockBalance)} ${product.unit}",
+                        fontSize = 11.sp,
+                        color = if (product.stockBalance > 0) Color(0xFF10B981) else Color(0xFFEF4444),
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
-        }
-
-        if (allProducts.isNotEmpty()) {
-            item {
-                VisitSectionHeader(
-                    title = AppStrings.allGoods(lang),
-                    countLabel = AppStrings.allGoodsCount(lang, allProducts.size),
-                    expanded = allExpanded,
-                    bgColor = Color(0xFFF3F4F6),
-                    titleColor = Color(0xFF374151),
-                    onClick = onToggleAll,
-                )
-            }
-            if (allExpanded) {
-                items(allProducts, key = { "all-${it.id}" }) { product ->
-                    VisitProductCard(
-                        product = product,
-                        priceFmt = priceFmt,
-                        stockFmt = stockFmt,
-                        cardBg = cardBg,
-                        borderColor = borderColor,
-                        titleColor = titleColor,
-                        subColor = subColor,
-                        lang = lang,
-                        promotion = promotionsByProductId[product.id],
-                        onClick = { onProductClick(product) },
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFFF3F4F6))
+                        .clickable(enabled = quantity > 0, onClick = onDecrement),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Remove,
+                        contentDescription = null,
+                        tint = if (quantity > 0) Color(0xFF111827) else subColor,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                key(product.id) {
+                    VisitCompactEditableQty(
+                        quantity = quantity,
+                        maxQuantity = 999_999.0,
+                        textColor = if (inCart) Color(0xFF059669) else titleColor,
+                        onQuantityChange = onQuantityChange,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF3B82F6))
+                        .clickable(onClick = onIncrement),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -2348,6 +2714,7 @@ private fun VisitCategoriesHeader(
     onProductTabClick: () -> Unit,
     onPromoTabClick: () -> Unit,
     onCartTabClick: () -> Unit,
+    recordingState: VisitRecordingUiState = VisitRecordingUiState(),
 ) {
     val lang = LocalAppLanguage.current
     Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
@@ -2401,13 +2768,17 @@ private fun VisitCategoriesHeader(
                     )
                 }
             }
+            RecordingStatusRow(
+                state = recordingState,
+                modifier = Modifier.padding(top = 8.dp),
+            )
             AnimatedVisibility(
                 visible = showTabs,
                 enter = expandVertically(tween(220)) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(220)) + fadeOut(tween(140)),
             ) {
                 Column {
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     VisitTabRow(
                         activeTab = activeTab,
                         onProductTabClick = onProductTabClick,
@@ -2425,16 +2796,24 @@ private fun VisitProductsHeader(
     categoryName: String,
     subtitle: String,
     searchQuery: String,
-    showAllProducts: Boolean,
-    cartTotal: Double,
+    showAllCategories: Boolean,
+    showOutOfStock: Boolean,
+    productsGridMode: Boolean,
+    productSort: VisitProductSort,
+    alphabetLetters: List<String>,
+    alphabetAnchor: String?,
     chromeVisible: Boolean,
     isDark: Boolean,
     onBack: () -> Unit,
     onSearchChange: (String) -> Unit,
-    onToggleAll: () -> Unit,
+    onToggleAllCategories: () -> Unit,
+    onToggleOutOfStock: () -> Unit,
+    onToggleGridMode: () -> Unit,
+    onSetSort: (VisitProductSort) -> Unit,
+    onAlphabetJump: (String) -> Unit,
+    recordingState: VisitRecordingUiState = VisitRecordingUiState(),
 ) {
     val lang = LocalAppLanguage.current
-    val priceFmt = remember { DecimalFormat("#,###") }
     Box(Modifier.fillMaxWidth().background(sherinHeroBrush(isDark))) {
         Column(
             Modifier
@@ -2476,6 +2855,10 @@ private fun VisitProductsHeader(
                     ),
                 )
             }
+            RecordingStatusRow(
+                state = recordingState,
+                modifier = Modifier.padding(top = 8.dp),
+            )
 
             AnimatedVisibility(
                 visible = chromeVisible,
@@ -2500,19 +2883,24 @@ private fun VisitProductsHeader(
                     Spacer(Modifier.height(10.dp))
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
                                 AppStrings.allGoods(lang),
                                 color = Color.White.copy(0.9f),
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(6.dp))
                             Switch(
-                                checked = showAllProducts,
-                                onCheckedChange = { onToggleAll() },
+                                checked = showAllCategories,
+                                onCheckedChange = { onToggleAllCategories() },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = Color(0xFF3B82F6),
@@ -2521,21 +2909,120 @@ private fun VisitProductsHeader(
                                 ),
                             )
                         }
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.White.copy(0.15f),
-                        ) {
-                            Text(
-                                "${priceFmt.format(cartTotal.toLong())} ${AppStrings.sumCurrency(lang)}",
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
-                            )
+                        VisitHeaderChip(
+                            selected = productsGridMode,
+                            label = AppStrings.productsWithPhotos(lang),
+                            icon = Icons.Default.Apps,
+                            onClick = onToggleGridMode,
+                        )
+                        VisitHeaderChip(
+                            selected = showOutOfStock,
+                            label = AppStrings.showOutOfStock(lang),
+                            icon = Icons.Default.Inventory2,
+                            onClick = onToggleOutOfStock,
+                        )
+                    }
+
+                    AnimatedVisibility(visible = showAllCategories) {
+                        Column {
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                VisitHeaderChip(
+                                    selected = productSort == VisitProductSort.ALPHA,
+                                    label = AppStrings.sortAlpha(lang),
+                                    onClick = { onSetSort(VisitProductSort.ALPHA) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                VisitHeaderChip(
+                                    selected = productSort == VisitProductSort.BEST_SELLING,
+                                    label = AppStrings.sortBestSelling(lang),
+                                    onClick = { onSetSort(VisitProductSort.BEST_SELLING) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                VisitHeaderChip(
+                                    selected = productSort == VisitProductSort.DEFAULT,
+                                    label = AppStrings.sortDefault(lang),
+                                    onClick = { onSetSort(VisitProductSort.DEFAULT) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (alphabetLetters.isNotEmpty()) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    alphabetLetters.forEach { letter ->
+                                        val selected = alphabetAnchor == letter
+                                        Surface(
+                                            onClick = { onAlphabetJump(letter) },
+                                            shape = CircleShape,
+                                            color = if (selected) {
+                                                Color.White
+                                            } else {
+                                                Color.White.copy(0.14f)
+                                            },
+                                        ) {
+                                            Text(
+                                                letter,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                color = if (selected) Color(0xFF4F46E5) else Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun VisitHeaderChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Color.White else Color.White.copy(0.14f),
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (icon != null) {
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (selected) Color(0xFF4F46E5) else Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+            Text(
+                label,
+                color = if (selected) Color(0xFF4F46E5) else Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -2759,6 +3246,7 @@ private fun VisitAllGoodsToggle(
     showAllProducts: Boolean,
     isDark: Boolean,
     onToggleAll: () -> Unit,
+    label: String? = null,
 ) {
     val lang = LocalAppLanguage.current
     val cardBg = if (isDark) SherinColors.CardRowDark else Color.White
@@ -2781,7 +3269,7 @@ private fun VisitAllGoodsToggle(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                AppStrings.allGoods(lang),
+                label ?: AppStrings.allGoods(lang),
                 color = titleColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -2794,6 +3282,164 @@ private fun VisitAllGoodsToggle(
                     checkedTrackColor = Color(0xFF3B82F6),
                 ),
             )
+        }
+    }
+}
+
+@Composable
+private fun VisitQuickCartModal(
+    cart: List<CartItem>,
+    productImages: Map<String, String>,
+    priceFmt: DecimalFormat,
+    stockFmt: DecimalFormat,
+    isDark: Boolean,
+    lang: AppLanguage,
+    onDismiss: () -> Unit,
+    onRemoveItem: (String) -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = if (isDark) SherinColors.CardDark else Color.White,
+            tonalElevation = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .padding(vertical = 24.dp),
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            AppStrings.quickCartTitle(lang),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = if (isDark) Color.White else Color(0xFF111827),
+                        )
+                        Text(
+                            AppStrings.cartPreviewTitle(lang, cart.size),
+                            color = subColor,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = null, tint = subColor)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                if (cart.isEmpty()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(100.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(AppStrings.cartEmpty(lang), color = subColor)
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        cart.forEach { item ->
+                            val qty = if (item.quantity % 1.0 == 0.0) {
+                                item.quantity.toInt().toString()
+                            } else {
+                                stockFmt.format(item.quantity)
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isDark) Color(0xFF1F2937) else Color(0xFFF8FAFC),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(Color(0xFFE5E7EB)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        val img = productImages[item.productId].orEmpty()
+                                        if (img.isNotBlank()) {
+                                            AsyncImage(
+                                                model = img,
+                                                contentDescription = null,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Default.Inventory2,
+                                                null,
+                                                tint = subColor,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            item.productName,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = if (isDark) Color.White else Color(0xFF111827),
+                                        )
+                                        Text(
+                                            "${priceFmt.format((item.price * item.quantity).toLong())} ${AppStrings.sumCurrency(lang)}",
+                                            color = subColor,
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFF10B981).copy(0.15f),
+                                    ) {
+                                        Text(
+                                            "$qty ${item.unit}",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            color = Color(0xFF059669),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                    IconButton(onClick = { onRemoveItem(item.productId) }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = null,
+                                            tint = Color(0xFFEF4444),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                ) {
+                    Text(AppStrings.continueShopping(lang), fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }

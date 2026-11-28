@@ -9,18 +9,20 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.data.repository.LocationRepository
+import uz.distributor.crm.recording.VisitRecordingManager
 import uz.distributor.crm.util.NetworkMonitor
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Internet qayta yoqilganda offline GPS va buyurtma navbatini yuboradi.
+ * Internet qayta yoqilganda offline GPS, buyurtma va audio navbatini yuboradi.
  */
 @Singleton
 class LocationNetworkWatcher @Inject constructor(
     @ApplicationContext private val context: Context,
     private val locationRepository: LocationRepository,
     private val cartRepository: CartRepository,
+    private val visitRecordingManager: VisitRecordingManager,
     private val networkMonitor: NetworkMonitor,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,7 +43,9 @@ class LocationNetworkWatcher @Inject constructor(
                         }
                     }
                     runCatching { cartRepository.syncPending() }
+                    runCatching { visitRecordingManager.syncPendingUploads() }
                     LocationSyncWorker.enqueueImmediate(context)
+                    RecordingUploadWorker.enqueueOnConnected(context)
                 }
         }
     }

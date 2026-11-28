@@ -67,6 +67,7 @@ function formToUserRow(
     acceptPay: data.appAcceptPay,
     consig: false,
     canAddClients: data.appAddClient,
+    recordVisitAudio: data.appRecordAudio,
     gps: data.appGps,
     device: prevDevice || '',
     devices: [],
@@ -126,6 +127,7 @@ async function syncAppCredentials(
       department: data.department.trim() || undefined,
       departmentId: data.departmentId.trim() || undefined,
       canAddClients: data.appAddClient,
+      recordVisitAudio: data.appRecordAudio,
     });
     storeAppPassword(username, password);
     return created.id;
@@ -144,6 +146,7 @@ async function syncAppCredentials(
     department: data.department.trim() || '',
     departmentId: data.departmentId.trim() || '',
     canAddClients: data.appAddClient,
+    recordVisitAudio: data.appRecordAudio,
   };
   if (password) payload.password = password;
 

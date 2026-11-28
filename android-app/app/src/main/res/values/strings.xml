@@ -4,4 +4,7 @@
     <string name="channel_location">Lider Navoiy</string>
     <string name="channel_location_desc">Ilova fon rejimida ishlaydi</string>
     <string name="channel_location_active">Lider Navoiy</string>
+    <string name="recording_notification_channel">Tashrif yozuvi</string>
+    <string name="recording_notification_title">Audio yozilmoqda</string>
+    <string name="recording_notification_text">Tashrif suhbatining audio yozuvi davom etmoqda</string>
 </resources>

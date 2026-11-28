@@ -5,6 +5,12 @@ import {
   saveTextColor,
   type TextColorId,
 } from '../utils/textColor';
+import {
+  applyTextScale,
+  readStoredTextScale,
+  saveTextScale,
+  type TextScaleId,
+} from '../utils/textScale';
 
 interface ThemeContextType {
   isDark: boolean;
@@ -14,6 +20,8 @@ interface ThemeContextType {
   setLanguage: (value: 'uz_latn' | 'uz_cyrl' | 'ru') => void;
   textColor: TextColorId;
   setTextColor: (id: TextColorId) => void;
+  textScale: TextScaleId;
+  setTextScale: (id: TextScaleId) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -28,6 +36,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
   const [language, setLanguage] = useState<'uz_latn' | 'uz_cyrl' | 'ru'>('uz_cyrl');
   const [textColor, setTextColorState] = useState<TextColorId>(() => readStoredTextColor());
+  const [textScale, setTextScaleState] = useState<TextScaleId>(() => readStoredTextScale());
 
   const setIsDark = useCallback((value: boolean) => {
     setIsDarkState(value);
@@ -45,14 +54,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     saveTextColor(id);
   }, []);
 
+  const setTextScale = useCallback((id: TextScaleId) => {
+    setTextScaleState(id);
+    saveTextScale(id);
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
     applyTextColor(textColor, isDark);
   }, [isDark, textColor]);
 
+  useEffect(() => {
+    applyTextScale(textScale);
+  }, [textScale]);
+
   return (
     <ThemeContext.Provider
-      value={{ isDark, setIsDark, toggleTheme, language, setLanguage, textColor, setTextColor }}
+      value={{
+        isDark, setIsDark, toggleTheme,
+        language, setLanguage,
+        textColor, setTextColor,
+        textScale, setTextScale,
+      }}
     >
       {children}
     </ThemeContext.Provider>
@@ -67,4 +90,4 @@ export function useTheme() {
   return context;
 }
 
-export type { TextColorId };
+export type { TextColorId, TextScaleId };

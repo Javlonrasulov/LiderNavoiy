@@ -48,6 +48,8 @@ data class UserDto(
     val isAgent: Boolean? = null,
     /** Kompaniya sozlamasi — default false / null = ruxsat yo‘q */
     val agentsCanAddClients: Boolean? = null,
+    /** Agent tashrif audio yozuvi; default false / null = o‘chiq */
+    val recordVisitAudio: Boolean? = null,
 )
 
 data class DashboardStatsDto(
@@ -345,6 +347,9 @@ data class VisitDto(
     val orderId: String? = null,
     val orderStatus: String? = null,
     val orderSource: String? = null,
+    val status: String? = null,
+    val checkInLatitude: Double? = null,
+    val checkInLongitude: Double? = null,
 )
 
 data class OrderPaymentDto(
@@ -674,4 +679,78 @@ data class AgentSalesStatsDto(
     val week: SalesPeriodStatsDto = SalesPeriodStatsDto(),
     val month: SalesPeriodStatsDto = SalesPeriodStatsDto(),
     val custom: SalesPeriodStatsDto? = null,
+)
+
+// ─── Visit recordings ───────────────────────────────────────────────────────
+
+data class StartVisitRequest(
+    val clientId: String,
+    val checkInLatitude: Double? = null,
+    val checkInLongitude: Double? = null,
+    val visitedAt: String? = null,
+)
+
+data class StartVisitResponseDto(
+    val visit: VisitDto,
+    val recordVisitAudio: Boolean = false,
+    val reused: Boolean = false,
+)
+
+data class CompleteVisitRequest(
+    val orderTotal: Double? = null,
+    val orderId: String? = null,
+    val outcome: String? = null,
+    val notes: String? = null,
+)
+
+data class OpenRecordingSessionRequest(
+    val visitId: String,
+    val clientConsent: Boolean,
+)
+
+data class FinishRecordingRequest(
+    val durationSeconds: Int? = null,
+    val interrupted: Boolean? = null,
+    val failureReason: String? = null,
+    val orderId: String? = null,
+    val outcome: String? = null,
+)
+
+data class LinkRecordingOrderRequest(
+    val orderId: String,
+)
+
+data class VisitRecordingDto(
+    val id: String,
+    val visitId: String,
+    val distributorId: String? = null,
+    val companyId: String? = null,
+    val clientId: String,
+    val orderId: String? = null,
+    val startedAt: String? = null,
+    val endedAt: String? = null,
+    val durationSeconds: Int? = null,
+    val status: String? = null,
+    val uploadStatus: String? = null,
+    val visitOutcome: String? = null,
+    val clientConsent: Boolean = false,
+    val expiresAt: String? = null,
+    val hasAudio: Boolean = false,
+    val fileSizeBytes: Long? = null,
+    val mimeType: String? = null,
+    val failureReason: String? = null,
+    val clientName: String? = null,
+    val clientCode: String? = null,
+    val orderNumber: String? = null,
+    @JsonAdapter(FlexibleDoubleAdapter::class) val orderTotal: Double = 0.0,
+    val visitStatus: String? = null,
+    val audioState: String? = null,
+)
+
+data class VisitRecordingsPageDto(
+    val items: List<VisitRecordingDto> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 1,
+    val pageSize: Int = 20,
+    val day: String? = null,
 )

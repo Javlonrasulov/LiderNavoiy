@@ -40,6 +40,13 @@ export class ReturnsService {
     }
     if (!dto.items?.length) throw new BadRequestException('Items required');
 
+    const orderCostByProduct = new Map<string, number>();
+    for (const oi of order.items || []) {
+      if (!oi.productId) continue;
+      if (oi.unitCost != null && Number(oi.unitCost) > 0) {
+        orderCostByProduct.set(oi.productId, Number(oi.unitCost));
+      }
+    }
     const items: OrderReturnItem[] = dto.items.map((i) => ({
       productId: i.productId,
       productCode: i.productCode,
@@ -47,6 +54,7 @@ export class ReturnsService {
       quantity: i.quantity,
       price: i.price,
       unit: i.unit,
+      unitCost: orderCostByProduct.get(i.productId) ?? null,
     }));
     const totalAmount = items.reduce((s, i) => s + i.quantity * i.price, 0);
 

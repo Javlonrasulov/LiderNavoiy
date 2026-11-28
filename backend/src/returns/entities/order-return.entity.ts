@@ -15,6 +15,8 @@ export interface OrderReturnItem {
   quantity: number;
   price: number;
   unit?: string;
+  /** Asl sotuvdagi tannarx (agar bor bo‘lsa) */
+  unitCost?: number | null;
 }
 
 @Entity('order_returns')

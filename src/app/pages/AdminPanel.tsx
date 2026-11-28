@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { EmployeeMapModal } from '../components/EmployeeMapModal';
 import { useTheme } from '../components/ThemeContext';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useAdminAuth, companyShowsTarozi } from '../components/AdminAuthContext';
 import { useCompanies } from '../components/CompaniesContext';
 import { useLang } from '../components/LangContext';
@@ -32,6 +32,8 @@ import { AdminPostavchikTab } from '../components/admin/tabs/AdminPostavchikTab'
 import { AdminProductsTab } from '../components/AdminProductsTab';
 import { AdminOmborTab }    from '../components/admin/tabs/AdminOmborTab';
 import { AdminVanSalesTab } from '../components/admin/tabs/AdminVanSalesTab';
+import { AdminKirimChiqimTab } from '../components/admin/tabs/AdminKirimChiqimTab';
+import { AdminZapislarTab } from '../components/admin/tabs/AdminZapislarTab';
 import { AdminLiniyaTab } from '../components/admin/tabs/AdminLiniyaTab';
 import { AdminXodimlarTab } from '../components/admin/tabs/AdminXodimlarTab';
 import { AdminZatratiTab } from '../components/admin/tabs/AdminZatratiTab';
@@ -120,11 +122,27 @@ function distributorToMarker(d: Distributor, index = 0): EmployeeMarker | null {
 export default function AdminPanel() {
   const { isDark, setIsDark } = useTheme();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isLoggedIn, selectedCompany, logout, clearCompany, adminUser } = useAdminAuth();
   const { companies } = useCompanies();
   const { lang: adminLang, setLang: setAdminLang } = useLang();
 
-  const [tab, setTab] = useState<Tab>('dashboard');
+  const tabFromUrl = searchParams.get('tab') as Tab | null;
+  const [tab, setTabState] = useState<Tab>(() => tabFromUrl || 'dashboard');
+  const setTab = (next: Tab) => {
+    setTabState(next);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      if (next === 'dashboard') p.delete('tab');
+      else p.set('tab', next);
+      return p;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('tab') as Tab | null;
+    if (fromUrl && fromUrl !== tab) setTabState(fromUrl);
+  }, [searchParams]);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState<'agent' | 'category' | 'terminal' | 'product' | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<AgentRow | null>(null);
@@ -193,6 +211,25 @@ export default function AdminPanel() {
   const userPerms = adminUser?.permissions ?? null;
   const canAccess = (tabId: string) => hasPageAccess(userRole, userPerms, tabId);
 
+  // Bitta sahifa huquqi → to‘liq ekran (sidebar/navbar yo‘q)
+  // debtors / unpreparedOrders — alohida sahifa emas (dashboard/tarozi alias)
+  const accessiblePageCount = (() => {
+    if (userRole === 'admin') return Number.POSITIVE_INFINITY;
+    let n = 0;
+    for (const entry of NAV_ITEMS_BASE) {
+      if (entry.id === 'debtors' || entry.id === 'unpreparedOrders') continue;
+      if (entry.children?.length) {
+        for (const c of entry.children) {
+          if (canAccess(c.id)) n += 1;
+        }
+      } else if (canAccess(entry.id as string)) {
+        n += 1;
+      }
+    }
+    return n;
+  })();
+  const singlePageMode = accessiblePageCount === 1;
+
   const NAV_ITEMS = NAV_ITEMS_BASE
     .filter(n => {
       if (n.hideInSidebar) return false;
@@ -208,16 +245,15 @@ export default function AdminPanel() {
     }));
 
   useEffect(() => {
-    if (!canAccess(tab)) {
-      for (const n of NAV_ITEMS_BASE) {
-        if (n.hideInSidebar) continue;
-        if (n.children?.length) {
-          const child = n.children.find(c => canAccess(c.id));
-          if (child) { setTab(child.id); return; }
-        } else if (canAccess(n.id as string)) {
-          setTab(n.id as Tab);
-          return;
-        }
+    if (canAccess(tab)) return;
+    // Sidebar va yashirin modullar (tarozi, ombor, ...) ham tekshiriladi
+    for (const n of NAV_ITEMS_BASE) {
+      if (n.children?.length) {
+        const child = n.children.find(c => canAccess(c.id));
+        if (child) { setTab(child.id); return; }
+      } else if (canAccess(n.id as string)) {
+        setTab(n.id as Tab);
+        return;
       }
     }
   }, [tab, userRole, userPerms]);
@@ -710,43 +746,49 @@ export default function AdminPanel() {
         .show-sb{scrollbar-color:#4b5563 #1f2937 !important}
       ` : ''}`}</style>
 
-      {/* Sidebar */}
-      <AdminSidebar
-        D={D} sidebar={sidebar} divider={divider} sub={sub} text={text}
-        tab={tab} setTab={setTab}
-        sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed}
-        sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
-        t={t} selectedCompany={selectedCompany}
-        clearCompany={clearCompany} navigate={navigate} logout={logout}
-        messagesUnread={messagesUnread} navItems={NAV_ITEMS}
-      />
+      {/* Sidebar — bitta sahifa rejimida yashirin */}
+      {!singlePageMode && (
+        <AdminSidebar
+          D={D} sidebar={sidebar} divider={divider} sub={sub} text={text}
+          tab={tab} setTab={setTab}
+          sidebarCollapsed={sidebarCollapsed} setSidebarCollapsed={setSidebarCollapsed}
+          sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
+          t={t} selectedCompany={selectedCompany}
+          clearCompany={clearCompany} navigate={navigate} logout={logout}
+          messagesUnread={messagesUnread} navItems={NAV_ITEMS}
+        />
+      )}
 
       {/* Main content */}
-      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'}`}>
+      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 ${
+        singlePageMode ? '' : (sidebarCollapsed ? 'md:ml-16' : 'md:ml-60')
+      }`}>
 
-        {/* Navbar */}
-        <div ref={navbarWrapRef}>
-        <AdminNavbar
-          D={D} sub={sub} text={text}
-          tab={tab} navItems={NAV_ITEMS} t={t}
-          selectedCompanyIds={selectedCompanyIds}
-          setSelectedCompanyIds={setSelectedCompanyIds}
-          selectedCompany={selectedCompany}
-          showBalances={showBalances} setShowBalances={setShowBalances}
-          adminLang={adminLang as LangAdmin} setAdminLang={setAdminLang as (l: LangAdmin) => void}
-          setSidebarOpen={setSidebarOpen}
-          headerCollapsed={headerCollapsed} setHeaderCollapsed={setHeaderCollapsed}
-          isDark={D} setIsDark={setIsDark}
-          showCompanyDropdown={showCompanyDropdown} setShowCompanyDropdown={setShowCompanyDropdown}
-          showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu}
-          companyBtnRef={companyBtnRef} langBtnRef={langBtnRef}
-          setTab={setTab}
-          existingClients={clientsForBell}
-        />
-        </div>
+        {/* Navbar — bitta sahifa rejimida umuman yo‘q */}
+        {!singlePageMode && (
+          <div ref={navbarWrapRef}>
+            <AdminNavbar
+              D={D} sub={sub} text={text}
+              tab={tab} navItems={NAV_ITEMS} t={t}
+              selectedCompanyIds={selectedCompanyIds}
+              setSelectedCompanyIds={setSelectedCompanyIds}
+              selectedCompany={selectedCompany}
+              showBalances={showBalances} setShowBalances={setShowBalances}
+              adminLang={adminLang as LangAdmin} setAdminLang={setAdminLang as (l: LangAdmin) => void}
+              setSidebarOpen={setSidebarOpen}
+              headerCollapsed={headerCollapsed} setHeaderCollapsed={setHeaderCollapsed}
+              isDark={D} setIsDark={setIsDark}
+              showCompanyDropdown={showCompanyDropdown} setShowCompanyDropdown={setShowCompanyDropdown}
+              showLangMenu={showLangMenu} setShowLangMenu={setShowLangMenu}
+              companyBtnRef={companyBtnRef} langBtnRef={langBtnRef}
+              setTab={setTab}
+              existingClients={clientsForBell}
+            />
+          </div>
+        )}
 
         {/* Org view tabs */}
-        {selectedCompanyIds.size > 1 && (
+        {!singlePageMode && selectedCompanyIds.size > 1 && (
           <div className={`sticky ${headerCollapsed ? 'top-8' : 'top-[65px]'} transition-all duration-300 z-[5] border-b ${D ? 'bg-[#0a0a0a] border-gray-800' : 'bg-gray-50 border-gray-200'}`}>
             <div className="px-2 md:px-5 lg:px-8 py-1.5 md:py-2.5 flex flex-wrap items-center gap-1 md:gap-2">
               <button
@@ -798,7 +840,7 @@ export default function AdminPanel() {
         {/* PAGE CONTENT */}
         <main className={`flex-1 transition-all duration-300 ${(tab === 'tarozi' || tab === 'ombor' || tab === 'vanSales' || tab === 'debtors') ? '' : `px-5 md:px-8 ${selectedCompanyIds.size > 1 ? 'pt-11 pb-6 md:py-6' : 'py-6'}`}`}>
 
-          {tab === 'dashboard' && (
+          {canAccess(tab) && tab === 'dashboard' && (
             <AdminDashboardTab
               D={D} card={card} divider={divider} cardHover={cardHover} sub={sub} t={t}
               showBalances={showBalances} activeKpi={activeKpi}
@@ -817,11 +859,11 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'liniya' && (
+          {canAccess(tab) && tab === 'liniya' && (
             <AdminLiniyaTab D={D} card={card} divider={divider} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
           )}
 
-          {tab === 'xodimlar' && (
+          {canAccess(tab) && tab === 'xodimlar' && (
             <AdminXodimlarTab
               D={D} card={card} divider={divider} cardHover={cardHover} sub={sub} t={t}
               activeAgents={activeAgents} selectedCompanyIds={selectedCompanyIds}
@@ -833,7 +875,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'clients' && (
+          {canAccess(tab) && tab === 'clients' && (
             <AdminClientsTab
               D={D} card={card} divider={divider} text={text} sub={sub} t={t}
               showBalances={showBalances}
@@ -843,7 +885,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'savdoNuqtalari' && (
+          {canAccess(tab) && tab === 'savdoNuqtalari' && (
             <AdminClientsTab
               D={D} card={card} divider={divider} text={text} sub={sub} t={t}
               showBalances={showBalances}
@@ -854,14 +896,14 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'tashkilotRekvizitlari' && (
+          {canAccess(tab) && tab === 'tashkilotRekvizitlari' && (
             <AdminTashkilotRekvizitlariTab
               D={D} card={card} divider={divider} text={text} sub={sub} input={input} t={t}
               viewOrg={viewOrg} activeIds={activeIds}
             />
           )}
 
-          {tab === 'products' && (
+          {canAccess(tab) && tab === 'products' && (
             <AdminProductsTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               text={text} sub={sub} input={input} t={t}
@@ -869,7 +911,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'reports' && (
+          {canAccess(tab) && tab === 'reports' && (
             <AdminReportsTab
               D={D} card={card} divider={divider} sub={sub} t={t}
               showBalances={showBalances}
@@ -878,7 +920,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'postavchik' && (
+          {canAccess(tab) && tab === 'postavchik' && (
             <AdminPostavchikTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               sub={sub} text={text} input={input} t={t}
@@ -886,24 +928,30 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'zatrati' && (
+          {canAccess(tab) && tab === 'zatrati' && (
             <AdminZatratiTab D={D} card={card} divider={divider} sub={sub} t={t} showBalances={showBalances}
               selectedCompanyIds={selectedCompanyIds} viewOrg={viewOrg} />
           )}
 
-          {tab === 'tarozi' && (
-            <AdminTaroziTab D={D} card={card} divider={divider} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
+          {canAccess(tab) && tab === 'tarozi' && (
+            <AdminTaroziTab
+              D={D} card={card} divider={divider} sub={sub} text={text} t={t}
+              selectedCompanyIds={selectedCompanyIds}
+              showBalances={showBalances} setShowBalances={setShowBalances}
+              adminLang={adminLang} setAdminLang={setAdminLang}
+              isDark={isDark} setIsDark={setIsDark}
+            />
           )}
 
-          {tab === 'unpreparedOrders' && (
+          {canAccess(tab) && tab === 'unpreparedOrders' && (
             <AdminUnpreparedOrdersTab D={D} card={card} sub={sub} t={t} />
           )}
 
-          {tab === 'prodaji' && (
+          {canAccess(tab) && tab === 'prodaji' && (
             <AdminProdajiTab D={D} sub={sub} t={t} selectedCompanyIds={selectedCompanyIds} />
           )}
 
-          {tab === 'ombor' && (
+          {canAccess(tab) && tab === 'ombor' && (
             <AdminOmborTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               text={text} sub={sub} input={input} t={t}
@@ -911,7 +959,7 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'vanSales' && (
+          {canAccess(tab) && tab === 'vanSales' && (
             <AdminVanSalesTab
               D={D} card={card} divider={divider} cardHover={cardHover}
               text={text} sub={sub} input={input} t={t}
@@ -919,13 +967,39 @@ export default function AdminPanel() {
             />
           )}
 
-          {tab === 'messages' && <AdminMessagesTab />}
+          {canAccess(tab) && tab === 'kirimChiqim' && (
+            <AdminKirimChiqimTab
+              D={D} card={card} divider={divider} sub={sub} t={t}
+              showBalances={showBalances}
+              selectedCompanyIds={selectedCompanyIds}
+              viewOrg={viewOrg}
+              onOpenOrder={() => setTab('prodaji')}
+            />
+          )}
 
-          {tab === 'systemUsers' && (
+          {canAccess(tab) && tab === 'zapislar' && (
+            <AdminZapislarTab
+              D={D}
+              sub={sub}
+              text={text}
+              card={card}
+              divider={divider}
+              t={t}
+              selectedCompanyIds={selectedCompanyIds}
+              onOpenOrder={(orderId) => {
+                setTab('prodaji');
+                void orderId;
+              }}
+            />
+          )}
+
+          {canAccess(tab) && tab === 'messages' && <AdminMessagesTab />}
+
+          {canAccess(tab) && tab === 'systemUsers' && (
             <AdminSystemUsersTab D={D} card={card} sub={sub} t={t} />
           )}
 
-          {tab === 'debtors' && (
+          {canAccess(tab) && tab === 'debtors' && (
             <AdminDebtorsTab
               onBack={() => setTab('dashboard')}
               D={D}
@@ -1011,7 +1085,7 @@ export default function AdminPanel() {
         t={t}
       />
 
-      {isLoggedIn && selectedCompany && (
+      {isLoggedIn && selectedCompany && canAccess('messages') && !singlePageMode && (
         <MessageNotificationHost onGoToMessages={() => setTab('messages')} />
       )}
     </div>

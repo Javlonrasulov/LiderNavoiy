@@ -136,6 +136,22 @@ fun OrderSummaryScreen(
                 onToggleOrder = viewModel::toggleSentOrderExpanded,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
+            OrderSummaryTab.RECORDINGS -> RecordingsTabContent(
+                state = state,
+                lang = lang,
+                isDark = isDark,
+                cardBg = cardBg,
+                titleColor = titleColor,
+                fmt = fmt,
+                onDaySelect = viewModel::setRecordingsDay,
+                onQueryChange = viewModel::setRecordingsQuery,
+                onPlayToggle = { id ->
+                    viewModel.setPlayingRecording(
+                        if (state.playingRecordingId == id) null else id,
+                    )
+                },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
         }
     }
 
@@ -195,8 +211,8 @@ private fun OrderSalesHeader(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     OrderHeaderTab(
                         label = AppStrings.currentOrder(lang),
@@ -207,6 +223,11 @@ private fun OrderSalesHeader(
                         label = AppStrings.sentOrders(lang),
                         selected = selectedTab == OrderSummaryTab.SENT,
                         onClick = { onTabSelect(OrderSummaryTab.SENT) },
+                    )
+                    OrderHeaderTab(
+                        label = AppStrings.recordingsTab(lang),
+                        selected = selectedTab == OrderSummaryTab.RECORDINGS,
+                        onClick = { onTabSelect(OrderSummaryTab.RECORDINGS) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
@@ -1178,3 +1199,134 @@ private fun SentOrderItemRow(
 
 private fun formatQty(qty: Double, fmt: DecimalFormat): String =
     if (qty % 1.0 == 0.0) qty.toInt().toString() else fmt.format(qty)
+
+@Composable
+private fun RecordingsTabContent(
+    state: OrderUiState,
+    lang: AppLanguage,
+    isDark: Boolean,
+    cardBg: Color,
+    titleColor: Color,
+    fmt: DecimalFormat,
+    onDaySelect: (String) -> Unit,
+    onQueryChange: (String) -> Unit,
+    onPlayToggle: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxSize().padding(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.recordingsDay == "today",
+                onClick = { onDaySelect("today") },
+                label = { Text(AppStrings.recordingsToday(lang)) },
+            )
+            FilterChip(
+                selected = state.recordingsDay == "yesterday",
+                onClick = { onDaySelect("yesterday") },
+                label = { Text(AppStrings.recordingsYesterday(lang)) },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = state.recordingsQuery,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text(AppStrings.recordingsSearchHint(lang)) },
+            shape = RoundedCornerShape(12.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        when {
+            state.isLoadingRecordings -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+            state.recordings.isEmpty() -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(AppStrings.recordingsEmpty(lang), color = SubText)
+                }
+            }
+            else -> {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(state.recordings, key = { it.id }) { row ->
+                        RecordingCard(
+                            row = row,
+                            lang = lang,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            titleColor = titleColor,
+                            fmt = fmt,
+                            playing = state.playingRecordingId == row.id,
+                            onPlayToggle = { onPlayToggle(row.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingCard(
+    row: RecordingListItemUi,
+    lang: AppLanguage,
+    isDark: Boolean,
+    cardBg: Color,
+    titleColor: Color,
+    fmt: DecimalFormat,
+    playing: Boolean,
+    onPlayToggle: () -> Unit,
+) {
+    val outcome = when (row.outcome) {
+        "with_order" -> AppStrings.recordingsOutcomeWithOrder(lang)
+        "without_order" -> AppStrings.recordingsOutcomeWithoutOrder(lang)
+        "cancelled" -> AppStrings.recordingsOutcomeCancelled(lang)
+        else -> "—"
+    }
+    val status = when (row.audioState) {
+        "ready" -> null
+        "pending_upload" -> AppStrings.recordingsPendingUpload(lang)
+        "interrupted" -> AppStrings.recordingsInterruptedState(lang)
+        "expired" -> AppStrings.recordingsExpired(lang)
+        "error" -> AppStrings.recordingsErrorState(lang)
+        else -> AppStrings.recordingsNotFound(lang)
+    }
+    val dur = row.durationSeconds?.let { sec ->
+        "%02d:%02d".format(sec / 60, sec % 60)
+    } ?: "—"
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = cardBg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, if (isDark) Color(0xFF374151) else CardBorder, RoundedCornerShape(16.dp)),
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(row.clientName.ifBlank { "—" }, color = titleColor, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.clientCode, color = SubText, fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("${row.startedAt.take(16).replace('T', ' ')} · $dur", color = SubText, fontSize = 12.sp)
+                Text("$outcome · ${fmt.format(row.orderTotal.toLong())}", color = SubText, fontSize = 12.sp)
+                if (status != null) {
+                    Text(status, color = Color(0xFFEF4444), fontSize = 11.sp)
+                }
+            }
+            IconButton(
+                onClick = onPlayToggle,
+                enabled = row.hasAudio && row.audioState == "ready",
+            ) {
+                Icon(
+                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = if (row.hasAudio) PrimaryBlue else SubText,
+                )
+            }
+        }
+    }
+}

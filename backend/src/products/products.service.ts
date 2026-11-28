@@ -456,6 +456,7 @@ export class ProductsService {
       category: dto.category ?? null,
       brand: dto.brand ?? null,
       price: dto.price,
+      costPrice: dto.costPrice ?? 0,
       unit: dto.unit,
       stockBalance: dto.stockBalance ?? 0,
       imageUrl: image.url ?? null,

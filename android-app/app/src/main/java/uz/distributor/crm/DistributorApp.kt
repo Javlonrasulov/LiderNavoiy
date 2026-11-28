@@ -1,6 +1,8 @@
 package uz.distributor.crm
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import uz.distributor.crm.map.OsmdroidConfig
 import uz.distributor.crm.push.NotificationHelper
@@ -10,10 +12,16 @@ import uz.distributor.crm.util.AppForegroundTracker
 import javax.inject.Inject
 
 @HiltAndroidApp
-class DistributorApp : Application() {
+class DistributorApp : Application(), Configuration.Provider {
 
+    @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var locationNetworkWatcher: LocationNetworkWatcher
     @Inject lateinit var networkMonitor: uz.distributor.crm.util.NetworkMonitor
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     override fun onCreate() {
         super.onCreate()

@@ -70,6 +70,10 @@ export class DistributorProfile {
   @Column({ default: false })
   canAddClients: boolean;
 
+  /** Agent APK: tashrif audiosini yozish (default: o‘chiq) */
+  @Column({ default: false })
+  recordVisitAudio: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

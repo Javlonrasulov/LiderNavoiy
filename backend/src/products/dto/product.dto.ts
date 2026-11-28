@@ -30,6 +30,12 @@ export class CreateProductDto {
   @Min(0)
   price: number;
 
+  @ApiPropertyOptional({ default: 0, description: 'Tannarx (cost)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  costPrice?: number;
+
   @ApiProperty({ default: 'kg' })
   @IsString()
   unit: string;

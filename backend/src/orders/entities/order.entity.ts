@@ -92,11 +92,29 @@ export class Order {
   @Column({ type: 'varchar', nullable: true })
   offlineId: string | null;
 
+  /** Tarozi: xalta / quti / paket / mayda qop sonlari */
+  @Column({ type: 'jsonb', nullable: true })
+  packageCounts: OrderPackageCounts | null;
+
+  /** Buyurtmani yaratgan user (admin/agent/manager) */
+  @Column({ type: 'uuid', nullable: true })
+  createdByUserId: string | null;
+
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  createdByName: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+}
+
+export interface OrderPackageCounts {
+  xalta: number;
+  quti: number;
+  paket: number;
+  mayda: number;
 }
 
 export interface OrderItem {
@@ -115,4 +133,10 @@ export interface OrderItem {
 
   /** Tarozi / ombor yozgan haqiqiy miqdor (ves) */
   actualQuantity?: number | null;
+
+  /**
+   * Sotuv paytidagi birlik tannarx (snapshot).
+   * Keyingi partiya narxi eski foydani o‘zgartirmasligi uchun saqlanadi.
+   */
+  unitCost?: number | null;
 }

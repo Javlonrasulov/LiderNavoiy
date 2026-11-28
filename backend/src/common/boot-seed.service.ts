@@ -264,6 +264,140 @@ export class BootSeedService implements OnModuleInit {
       this.logger.warn(`product_audit_events migrate: ${(err as Error).message}`);
     }
 
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE distributor_profiles
+        ADD COLUMN IF NOT EXISTS "recordVisitAudio" boolean NOT NULL DEFAULT false
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS visit_recordings (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "visitId" uuid NOT NULL,
+          "distributorId" uuid NOT NULL,
+          "companyId" varchar(64) NULL,
+          "clientId" uuid NOT NULL,
+          "orderId" uuid NULL,
+          "startedAt" timestamptz NOT NULL,
+          "endedAt" timestamptz NULL,
+          "durationSeconds" int NULL,
+          status varchar(32) NOT NULL DEFAULT 'recording',
+          "uploadStatus" varchar(32) NOT NULL DEFAULT 'none',
+          "visitOutcome" varchar(32) NOT NULL DEFAULT 'unknown',
+          "clientConsent" boolean NOT NULL DEFAULT false,
+          "recordingEnabledAtStart" boolean NOT NULL DEFAULT true,
+          "storageKey" varchar(512) NULL,
+          "fileSizeBytes" bigint NULL,
+          "mimeType" varchar(64) NULL,
+          "expiresAt" timestamptz NOT NULL,
+          "failureReason" text NULL,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_visit_recordings_visit
+          ON visit_recordings ("visitId")
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_visit_recordings_distributor_started
+          ON visit_recordings ("distributorId", "startedAt" DESC)
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_visit_recordings_company_started
+          ON visit_recordings ("companyId", "startedAt" DESC)
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_visit_recordings_expires
+          ON visit_recordings ("expiresAt")
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_visit_recordings_client
+          ON visit_recordings ("clientId")
+      `);
+    } catch (err) {
+      this.logger.warn(`visit_recordings migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS "packageCounts" jsonb NULL,
+          ADD COLUMN IF NOT EXISTS "createdByUserId" uuid NULL,
+          ADD COLUMN IF NOT EXISTS "createdByName" varchar(160) NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`orders packageCounts migrate: ${(err as Error).message}`);
+    }
+
+    try {
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS cash_categories (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "companyId" varchar(64) NULL,
+          "parentId" uuid NULL,
+          name varchar(255) NOT NULL,
+          kind varchar(16) NOT NULL DEFAULT 'expense',
+          "sortOrder" int NOT NULL DEFAULT 0,
+          "isActive" boolean NOT NULL DEFAULT true,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_cash_categories_company ON cash_categories ("companyId")
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_cash_categories_parent ON cash_categories ("parentId")
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS cash_movements (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "companyId" varchar(64) NOT NULL,
+          type varchar(16) NOT NULL,
+          "categoryId" uuid NULL,
+          "categoryPath" varchar(512) NULL,
+          amount numeric(18,2) NOT NULL DEFAULT 0,
+          method varchar(16) NOT NULL DEFAULT 'cash',
+          cashbox varchar(128) NULL,
+          counterparty varchar(255) NULL,
+          note text NULL,
+          "occurredAt" timestamptz NOT NULL,
+          "sourceType" varchar(32) NOT NULL DEFAULT 'manual',
+          "sourceId" uuid NULL,
+          "orderId" uuid NULL,
+          "createdByUserId" uuid NULL,
+          "createdByName" varchar(160) NULL,
+          "isDeleted" boolean NOT NULL DEFAULT false,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_cash_movements_company_date ON cash_movements ("companyId", "occurredAt")
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_cash_movements_type ON cash_movements (type)
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS idx_cash_movements_category ON cash_movements ("categoryId")
+      `);
+      await this.dataSource.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_movements_source_unique
+          ON cash_movements ("sourceType", "sourceId")
+          WHERE "sourceId" IS NOT NULL
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS "costPrice" numeric(15,2) NOT NULL DEFAULT 0
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE order_payments
+        ADD COLUMN IF NOT EXISTS "paidAt" timestamptz NULL
+      `);
+    } catch (err) {
+      this.logger.warn(`cash_flow migrate: ${(err as Error).message}`);
+    }
+
     // clients.orderRadiusMeters: standart 100 → 50.
     // Eski 100 lar faqat BIR MARTA 50 ga o‘tkaziladi (marker jadvali orqali),
     // keyin ataylab 100 tanlangan radiuslar qayta o‘zgartirilmaydi.

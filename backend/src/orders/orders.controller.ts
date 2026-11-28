@@ -2,7 +2,15 @@ import { Controller, Get, Post, Patch, Put, Body, Param, UseGuards, Request, Que
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateOrderDto, BatchOrdersDto, UpdateOrderDto, SendToWarehouseDto, UpdateOrderItemsDto, ReorderDeliveryDto } from './dto/order.dto';
+import {
+  AdminCreateOrderDto,
+  CreateOrderDto,
+  BatchOrdersDto,
+  UpdateOrderDto,
+  SendToWarehouseDto,
+  UpdateOrderItemsDto,
+  ReorderDeliveryDto,
+} from './dto/order.dto';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { User } from '../auth/entities/user.entity';
 import { UserRole, OrderStatus } from '../common/enums';
@@ -18,13 +26,34 @@ export class OrdersController {
   @Post()
   @ApiOperation({ summary: 'Create order' })
   create(@Request() req: { user: User }, @Body() dto: CreateOrderDto) {
-    return this.service.create(req.user.distributorProfile!.id, dto);
+    return this.service.create(
+      req.user.distributorProfile!.id,
+      dto,
+      false,
+      undefined,
+      req.user,
+    );
+  }
+
+  @Post('admin')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Admin/manager creates order for an agent' })
+  createAsAdmin(
+    @Request() req: { user: User },
+    @Body() dto: AdminCreateOrderDto,
+  ) {
+    const { distributorId, ...orderDto } = dto;
+    return this.service.create(distributorId, orderDto, false, undefined, req.user);
   }
 
   @Post('sync')
   @ApiOperation({ summary: 'Sync offline orders batch' })
   syncBatch(@Request() req: { user: User }, @Body() dto: BatchOrdersDto) {
-    return this.service.syncBatch(req.user.distributorProfile!.id, dto.orders);
+    return this.service.syncBatch(
+      req.user.distributorProfile!.id,
+      dto.orders,
+      req.user,
+    );
   }
 
   @Get('client')

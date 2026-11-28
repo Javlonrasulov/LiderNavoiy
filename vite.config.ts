@@ -92,9 +92,20 @@ export default defineConfig(({ mode }) => {
     },
 
     server: {
-      // Windowsda vaqtinchalik .py skriptlar EBUSY bilan Vite ni yiqitmasin
+      // Windowsda tmp/screenshot/.py fayllar EBUSY bilan Vite ni yiqitmasin
       watch: {
-        ignored: ['**/*.py', '**/_*.py', '**/node_modules/**', '**/backend/**', '**/android-app/**'],
+        ignored: [
+          '**/node_modules/**',
+          '**/backend/**',
+          '**/android-app/**',
+          '**/tmp/**',
+          '**/_*.py',
+          '**/*.py',
+          '**/*.png',
+          '**/*.jpg',
+          '**/*.jpeg',
+          '**/*.webp',
+        ],
       },
     },
 

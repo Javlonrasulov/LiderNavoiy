@@ -182,7 +182,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
   const [showAdd, setShowAdd]     = useState(false);
   const [addDraft, setAddDraft]   = useState<SotrudnikRow>({
     tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-    deptKey: '', posKey: 'salesAgent',
+    deptKey: '', posKey: 'salesAgent', recordVisitAudio: false,
   });
   const [addLogin, setAddLogin]   = useState('');
   const [addPassword, setAddPassword] = useState('');
@@ -416,6 +416,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         positionId: meta.id || undefined,
         department: dept?.name || editDraft.department || undefined,
         departmentId: dept?.id || editDraft.deptKey || undefined,
+        recordVisitAudio: !!editDraft.recordVisitAudio,
       });
       const distributorId = editDraft.distributorId
         ?? apiDistributors.find(d => d.userId === editDraft.backendUserId)?.id;
@@ -479,6 +480,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         positionId: meta.id || undefined,
         department: dept?.name || addDraft.department || undefined,
         departmentId: dept?.id || addDraft.deptKey || undefined,
+        recordVisitAudio: !!addDraft.recordVisitAudio,
       });
       await refreshEmployees();
       setShowAdd(false);
@@ -487,7 +489,7 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
       setShowAddPassword(false);
       setAddDraft({
         tabel: 0, name: '', department: '', position: '', phone: UZ_PHONE_DEFAULT, orgId: '',
-        deptKey: '', posKey: 'salesAgent', positionId: '',
+        deptKey: '', posKey: 'salesAgent', positionId: '', recordVisitAudio: false,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
@@ -701,6 +703,27 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
               options={posOptions}
               placeholder={t.empPosNone || '— lavozim tanlang —'}
               D={D} border={border} txt={txt} muted={muted}
+            />
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 14px', borderRadius: 12,
+            border: `1px solid ${border}`,
+            background: D ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: txt }}>
+                {t.empRecordAudio || 'Tashrif audiosini yozish'}
+              </div>
+              <div style={{ fontSize: 11, color: muted, marginTop: 2 }}>
+                {t.empRecordAudioHint || 'Default o‘chiq'}
+              </div>
+            </div>
+            <EmpToggleSwitch
+              D={D}
+              value={!!draft.recordVisitAudio}
+              onChange={(v) => onChangeDraft({ ...draft, recordVisitAudio: v })}
             />
           </div>
         </div>
@@ -1232,5 +1255,47 @@ export function AdminAgentsTab({ D, t, selectedCompanyIds }: Props) {
         </div>
       </div>
     </>
+  );
+}
+
+function EmpToggleSwitch({
+  D, value, onChange,
+}: {
+  D: boolean;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      onClick={() => onChange(!value)}
+      style={{
+        width: 42,
+        height: 24,
+        borderRadius: 20,
+        border: 'none',
+        background: value ? '#5E48E8' : (D ? '#374151' : '#d1d5db'),
+        position: 'relative',
+        cursor: 'pointer',
+        flexShrink: 0,
+        transition: 'background 0.2s',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: value ? 22 : 3,
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          background: '#fff',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+          transition: 'left 0.2s',
+        }}
+      />
+    </button>
   );
 }

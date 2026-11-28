@@ -67,6 +67,7 @@ export class UsersService {
           department: dto.department,
           departmentId: dto.departmentId,
           canAddClients: dto.canAddClients ?? false,
+          recordVisitAudio: dto.recordVisitAudio ?? false,
         });
         return this.toDto(await this.findAppUserOrFail(saved.id));
       }
@@ -86,6 +87,7 @@ export class UsersService {
           department: dto.department,
           departmentId: dto.departmentId,
           canAddClients: dto.canAddClients,
+          recordVisitAudio: dto.recordVisitAudio,
         });
       }
       throw new ConflictException('Username already exists');
@@ -109,6 +111,7 @@ export class UsersService {
       department: dto.department,
       departmentId: dto.departmentId,
       canAddClients: dto.canAddClients ?? false,
+      recordVisitAudio: dto.recordVisitAudio ?? false,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
@@ -141,6 +144,7 @@ export class UsersService {
       department: dto.department,
       departmentId: dto.departmentId,
       canAddClients: dto.canAddClients,
+      recordVisitAudio: dto.recordVisitAudio,
     });
 
     return this.toDto(await this.findAppUserOrFail(saved.id));
@@ -171,6 +175,7 @@ export class UsersService {
       department?: string;
       departmentId?: string;
       canAddClients?: boolean;
+      recordVisitAudio?: boolean;
     },
   ): Promise<void> {
     if (user.role !== UserRole.DISTRIBUTOR && user.role !== UserRole.MANAGER) {
@@ -187,6 +192,7 @@ export class UsersService {
       data.department !== undefined ||
       data.departmentId !== undefined ||
       data.canAddClients !== undefined ||
+      data.recordVisitAudio !== undefined ||
       user.role === UserRole.DISTRIBUTOR;
 
     if (!hasProfileData) return;
@@ -210,6 +216,7 @@ export class UsersService {
         department: data.department?.trim() || null,
         departmentId: data.departmentId?.trim() || null,
         canAddClients: data.canAddClients ?? false,
+        recordVisitAudio: data.recordVisitAudio ?? false,
         status: DistributorStatus.OFFLINE,
         isOnline: false,
       });
@@ -228,6 +235,9 @@ export class UsersService {
       }
       if (data.canAddClients !== undefined) {
         profile.canAddClients = !!data.canAddClients;
+      }
+      if (data.recordVisitAudio !== undefined) {
+        profile.recordVisitAudio = !!data.recordVisitAudio;
       }
     }
 
@@ -600,6 +610,7 @@ export class UsersService {
       companyIds,
       phone: profile?.phone ?? null,
       canAddClients: !!profile?.canAddClients,
+      recordVisitAudio: !!profile?.recordVisitAudio,
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastActiveAt: lastActiveAt?.toISOString() ?? null,
       isOnline,

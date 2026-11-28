@@ -3,8 +3,10 @@ package uz.distributor.crm.presentation.order
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uz.distributor.crm.data.remote.ApiErrorMapper
 import uz.distributor.crm.data.remote.dto.OrderDto
 import uz.distributor.crm.data.repository.AppSettingsRepository
@@ -14,7 +16,20 @@ import uz.distributor.crm.data.repository.ProductRepository
 import uz.distributor.crm.domain.model.CartItem
 import javax.inject.Inject
 
-enum class OrderSummaryTab { CURRENT, SENT }
+enum class OrderSummaryTab { CURRENT, SENT, RECORDINGS }
+
+data class RecordingListItemUi(
+    val id: String,
+    val clientName: String,
+    val clientCode: String,
+    val startedAt: String,
+    val durationSeconds: Int?,
+    val outcome: String,
+    val orderTotal: Double,
+    val orderId: String?,
+    val audioState: String,
+    val hasAudio: Boolean,
+)
 
 data class DraftOrderUi(
     val clientId: String,
@@ -51,6 +66,11 @@ data class OrderUiState(
     val submitted: Boolean = false,
     val editingClientOrderId: String? = null,
     val error: String? = null,
+    val recordingsDay: String = "today",
+    val recordingsQuery: String = "",
+    val recordings: List<RecordingListItemUi> = emptyList(),
+    val isLoadingRecordings: Boolean = false,
+    val playingRecordingId: String? = null,
 ) {
     val total: Double get() = drafts.sumOf { it.total }
     val items: List<CartItem> get() = drafts.flatMap { it.items }
@@ -87,6 +107,95 @@ class OrderViewModel @Inject constructor(
     fun selectTab(tab: OrderSummaryTab) {
         _uiState.update { it.copy(tab = tab) }
         if (tab == OrderSummaryTab.SENT) loadSentOrders()
+        if (tab == OrderSummaryTab.RECORDINGS) loadRecordings()
+    }
+
+    fun setRecordingsDay(day: String) {
+        _uiState.update { it.copy(recordingsDay = day) }
+        loadRecordings()
+    }
+
+    fun setRecordingsQuery(q: String) {
+        _uiState.update { it.copy(recordingsQuery = q) }
+        loadRecordings()
+    }
+
+    fun loadRecordings() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingRecordings = true) }
+            val day = _uiState.value.recordingsDay
+            val q = _uiState.value.recordingsQuery.trim().ifBlank { null }
+            val items = try {
+                api.getMyRecordings(day = day, q = q).items.map { dto ->
+                    RecordingListItemUi(
+                        id = dto.id,
+                        clientName = dto.clientName.orEmpty(),
+                        clientCode = dto.clientCode.orEmpty(),
+                        startedAt = dto.startedAt.orEmpty(),
+                        durationSeconds = dto.durationSeconds,
+                        outcome = dto.visitOutcome.orEmpty(),
+                        orderTotal = dto.orderTotal,
+                        orderId = dto.orderId,
+                        audioState = dto.audioState.orEmpty(),
+                        hasAudio = dto.hasAudio,
+                    )
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
+            _uiState.update { it.copy(recordings = items, isLoadingRecordings = false) }
+        }
+    }
+
+    private var mediaPlayer: android.media.MediaPlayer? = null
+    private var playingTempFile: java.io.File? = null
+
+    fun setPlayingRecording(id: String?) {
+        viewModelScope.launch {
+            stopPlayer()
+            if (id == null) {
+                _uiState.update { it.copy(playingRecordingId = null) }
+                return@launch
+            }
+            _uiState.update { it.copy(playingRecordingId = id) }
+            try {
+                val tmp = withContext(Dispatchers.IO) {
+                    val body = api.downloadMyRecordingAudio(id)
+                    val file = java.io.File.createTempFile("rec_", ".m4a")
+                    body.byteStream().use { input ->
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    file
+                }
+                playingTempFile = tmp
+                val player = android.media.MediaPlayer().apply {
+                    setDataSource(tmp.absolutePath)
+                    setOnCompletionListener {
+                        stopPlayer()
+                        _uiState.update { s -> s.copy(playingRecordingId = null) }
+                    }
+                    prepare()
+                    start()
+                }
+                mediaPlayer = player
+            } catch (_: Exception) {
+                stopPlayer()
+                _uiState.update { it.copy(playingRecordingId = null, error = "recording_play_failed") }
+            }
+        }
+    }
+
+    private fun stopPlayer() {
+        runCatching { mediaPlayer?.stop() }
+        runCatching { mediaPlayer?.release() }
+        mediaPlayer = null
+        playingTempFile?.delete()
+        playingTempFile = null
+    }
+
+    override fun onCleared() {
+        stopPlayer()
+        super.onCleared()
     }
 
     fun toggleClientExpanded(clientId: String) {

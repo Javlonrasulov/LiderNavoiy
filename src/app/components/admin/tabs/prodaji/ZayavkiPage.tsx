@@ -220,6 +220,8 @@ export function ZayavkiPage({ D, t, pendingOrders = [], selectedCompanyIds }: Pr
     status: row.status, note: row.note, code: row.code, konsDate: row.konsDate,
     items: row.items,
     audit: row.audit,
+    packageLabel: row.packageLabel,
+    createdByName: row.createdByName,
   });
 
   /* ── Theme colours ── */

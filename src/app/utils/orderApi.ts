@@ -1,4 +1,46 @@
-import type { BackendOrder, BackendOrderItem, BackendOrderAudit } from '../api/client';
+import type {
+  BackendOrder,
+  BackendOrderItem,
+  BackendOrderAudit,
+  OrderPackageCounts,
+} from '../api/client';
+
+export type { OrderPackageCounts };
+
+/** «xalta 1 ta · mayda qop 2 ta · paket 10» */
+export function formatPackageCounts(
+  pkg?: OrderPackageCounts | null,
+  labels?: Partial<Record<keyof OrderPackageCounts, string>>,
+): string {
+  if (!pkg) return '';
+  const parts: string[] = [];
+  const push = (key: keyof OrderPackageCounts, fallback: string) => {
+    const n = Number(pkg[key]) || 0;
+    if (n <= 0) return;
+    const label = labels?.[key] || fallback;
+    parts.push(`${label} ${n} ta`);
+  };
+  push('xalta', 'xalta');
+  push('quti', 'quti');
+  push('paket', 'paket');
+  push('mayda', 'mayda qop');
+  return parts.join(' · ');
+}
+
+export function emptyPackageCounts(): OrderPackageCounts {
+  return { xalta: 0, quti: 0, paket: 0, mayda: 0 };
+}
+
+export function normalizePackageCounts(
+  pkg?: OrderPackageCounts | null,
+): OrderPackageCounts {
+  return {
+    xalta: Math.max(0, Number(pkg?.xalta) || 0),
+    quti: Math.max(0, Number(pkg?.quti) || 0),
+    paket: Math.max(0, Number(pkg?.paket) || 0),
+    mayda: Math.max(0, Number(pkg?.mayda) || 0),
+  };
+}
 
 export type ZayavkaStatus = 'pri' | 'otr' | 'cancelled';
 
@@ -28,6 +70,9 @@ export interface ZayavkaRow {
   isUrgent?: boolean;
   items?: BackendOrderItem[];
   audit?: BackendOrderAudit[];
+  packageCounts?: OrderPackageCounts | null;
+  createdByName?: string | null;
+  packageLabel?: string;
 }
 
 /** Tarozi chap ro'yxat statusi */
@@ -47,6 +92,8 @@ export interface TaroziListItem {
   amount: number;
   createdAt: string;
   isUrgent?: boolean;
+  packageCounts?: OrderPackageCounts | null;
+  createdByName?: string | null;
 }
 
 export interface TaroziProductRow {
@@ -147,13 +194,21 @@ export function backendOrderToZayavka(o: BackendOrder): ZayavkaRow {
     otgr: '—',
     status: ui,
     konsDate: '—',
-    note: o.isOfflineCreated ? 'Offline' : (shortId !== o.client?.code ? `#${shortId}` : ''),
+    note: [
+      o.isOfflineCreated ? 'Offline' : '',
+      shortId !== o.client?.code ? `#${shortId}` : '',
+      formatPackageCounts(o.packageCounts),
+      o.createdByName ? `user: ${o.createdByName}` : '',
+    ].filter(Boolean).join(' · '),
     deleted,
     shipped,
     processed,
     isUrgent: !!o.isUrgent,
     items: o.items ?? [],
     audit: o.audit ?? [],
+    packageCounts: o.packageCounts ?? null,
+    createdByName: o.createdByName ?? null,
+    packageLabel: formatPackageCounts(o.packageCounts),
   };
 }
 
@@ -192,6 +247,8 @@ export function backendOrderToTaroziItem(o: BackendOrder): TaroziListItem {
     amount: Number(o.totalAmount) || 0,
     createdAt: o.createdAt,
     isUrgent: !!o.isUrgent,
+    packageCounts: normalizePackageCounts(o.packageCounts),
+    createdByName: o.createdByName ?? null,
   };
 }
 
@@ -219,6 +276,8 @@ export function groupTaroziByAgent(items: TaroziListItem[]): TaroziListItem[] {
       amount: 0,
       createdAt: '',
       isUrgent: false,
+      packageCounts: emptyPackageCounts(),
+      createdByName: null,
     });
     // Shoshilinch buyurtmalar agent guruhida yuqorida
     out.push(...[...list].sort((a, b) => Number(!!b.isUrgent) - Number(!!a.isUrgent)));
@@ -280,6 +339,9 @@ export interface OtgrApiRow {
   direction: string;
   timeOtgr: string;
   author: string;
+  createdByName?: string | null;
+  packageLabel?: string;
+  packageCounts?: OrderPackageCounts | null;
   backendStatus: string;
   deliveryDistributorId: string | null;
   needsDriver: boolean;
@@ -330,7 +392,10 @@ export function backendOrderToOtgr(o: BackendOrder): OtgrApiRow | null {
     exid: o.client?.code ?? '—',
     direction: o.client?.lineCode ?? '—',
     timeOtgr,
-    author: o.agentName ?? '—',
+    author: o.createdByName || o.agentName || '—',
+    createdByName: o.createdByName ?? null,
+    packageLabel: formatPackageCounts(o.packageCounts),
+    packageCounts: o.packageCounts ?? null,
     backendStatus: o.status,
     deliveryDistributorId: o.deliveryDistributorId ?? null,
     needsDriver: o.status === 'packing' && !o.deliveryDistributorId,

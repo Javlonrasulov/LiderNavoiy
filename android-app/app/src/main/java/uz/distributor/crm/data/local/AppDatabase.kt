@@ -86,6 +86,24 @@ data class PendingVisitEntity(
     val syncStatus: String = SyncStatus.PENDING.name,
 )
 
+@Entity(tableName = "pending_recordings")
+data class PendingRecordingEntity(
+    @PrimaryKey val recordingId: String,
+    val visitId: String,
+    val clientId: String,
+    val localFilePath: String,
+    val durationSeconds: Int = 0,
+    val interrupted: Boolean = false,
+    val failureReason: String? = null,
+    val orderId: String? = null,
+    val outcome: String? = null,
+    val finishSent: Boolean = false,
+    val uploadSent: Boolean = false,
+    val linkSent: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val syncStatus: String = SyncStatus.PENDING.name,
+)
+
 enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
 
 @Dao interface PendingLocationDao {
@@ -153,10 +171,51 @@ enum class SyncStatus { PENDING, SYNCING, SYNCED, FAILED }
     suspend fun updateStatus(id: String, status: String)
 }
 
+@Dao interface PendingRecordingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insert(entity: PendingRecordingEntity)
+    @Query("SELECT * FROM pending_recordings WHERE syncStatus = 'PENDING' ORDER BY createdAt ASC")
+    suspend fun getPending(): List<PendingRecordingEntity>
+    @Query("SELECT * FROM pending_recordings WHERE recordingId = :id LIMIT 1")
+    suspend fun getById(id: String): PendingRecordingEntity?
+    @Query(
+        """
+        UPDATE pending_recordings SET
+            finishSent = :finishSent,
+            uploadSent = :uploadSent,
+            linkSent = :linkSent,
+            orderId = COALESCE(:orderId, orderId),
+            outcome = COALESCE(:outcome, outcome),
+            syncStatus = :syncStatus
+        WHERE recordingId = :id
+        """,
+    )
+    suspend fun updateProgress(
+        id: String,
+        finishSent: Boolean,
+        uploadSent: Boolean,
+        linkSent: Boolean,
+        orderId: String?,
+        outcome: String?,
+        syncStatus: String,
+    )
+    @Query("DELETE FROM pending_recordings WHERE recordingId = :id")
+    suspend fun delete(id: String)
+    @Query("SELECT COUNT(*) FROM pending_recordings WHERE syncStatus = 'PENDING'")
+    suspend fun pendingCount(): Int
+}
+
 @Database(
-    entities = [PendingLocationEntity::class, ClientEntity::class, ProductEntity::class,
-        CartItemEntity::class, PendingOrderEntity::class, PendingVisitEntity::class],
-    version = 7, exportSchema = false,
+    entities = [
+        PendingLocationEntity::class,
+        ClientEntity::class,
+        ProductEntity::class,
+        CartItemEntity::class,
+        PendingOrderEntity::class,
+        PendingVisitEntity::class,
+        PendingRecordingEntity::class,
+    ],
+    version = 9,
+    exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pendingLocationDao(): PendingLocationDao
@@ -165,6 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cartDao(): CartDao
     abstract fun pendingOrderDao(): PendingOrderDao
     abstract fun pendingVisitDao(): PendingVisitDao
+    abstract fun pendingRecordingDao(): PendingRecordingDao
 }
 
 fun LocationPoint.toEntity(deviceId: String?) = PendingLocationEntity(

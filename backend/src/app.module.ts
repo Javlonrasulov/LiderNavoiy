@@ -32,6 +32,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { ReturnsModule } from './returns/returns.module';
 import { GoodsReceiptsModule } from './goods-receipts/goods-receipts.module';
 import { VanSalesModule } from './van-sales/van-sales.module';
+import { RecordingsModule } from './recordings/recordings.module';
+import { CashFlowModule } from './cash-flow/cash-flow.module';
 import { RedisModule } from './common/redis/redis.module';
 import { User } from './auth/entities/user.entity';
 import { Company } from './companies/entities/company.entity';
@@ -112,6 +114,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ReturnsModule,
     GoodsReceiptsModule,
     VanSalesModule,
+    RecordingsModule,
+    CashFlowModule,
   ],
   providers: [
     BootSeedService,

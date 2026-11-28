@@ -66,12 +66,41 @@ export class CreateOrderDto {
   offlineId?: string;
 }
 
+/** Admin/manager: agent o‘rniga buyurtma yaratish */
+export class AdminCreateOrderDto extends CreateOrderDto {
+  @ApiProperty({ description: 'Agent (distributor) profile id' })
+  @IsUUID()
+  distributorId: string;
+}
+
 export class BatchOrdersDto {
   @ApiProperty({ type: [CreateOrderDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateOrderDto)
   orders: CreateOrderDto[];
+}
+
+export class PackageCountsDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  xalta?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  quti?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  paket?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  mayda?: number;
 }
 
 export class UpdateOrderDto {
@@ -92,6 +121,13 @@ export class UpdateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
   items?: OrderItemDto[];
+
+  /** Tarozi: xalta / quti / paket / mayda qop */
+  @ApiPropertyOptional({ type: PackageCountsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PackageCountsDto)
+  packageCounts?: PackageCountsDto;
 }
 
 export class ReorderDeliveryDto {

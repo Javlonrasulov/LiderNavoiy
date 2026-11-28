@@ -26,6 +26,8 @@ export interface ZayavkaInfo {
   konsDate: string;
   items?: BackendOrderItem[];
   audit?: BackendOrderAudit[];
+  packageLabel?: string;
+  createdByName?: string | null;
 }
 
 interface ZProduct {
@@ -175,6 +177,7 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
     { key: 'shipDate',  label: t.zShipDate  ?? 'Дат. отгр.',  val: formatDisplayDate(zayavka.shipDate)  },
     { key: 'code',      label: t.zCode      ?? 'Код',         val: zayavka.code      },
     { key: 'agent',     label: t.zAgent     ?? 'Агент',       val: zayavka.agent     },
+    { key: 'createdBy', label: t.taroziCreatedBy ?? 'Yaratgan', val: zayavka.createdByName || zayavka.agent || '—' },
     { key: 'org',       label: t.zOrg       ?? 'Орг.',        val: zayavka.org       },
     { key: 'liniya',    label: t.zLine      ?? 'Линия',       val: zayavka.liniya    },
     { key: 'direction', label: t.zDirection ?? 'Напр.',       val: zayavka.direction },
@@ -182,6 +185,7 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
     { key: 'vs',        label: t.zVS        ?? 'VS',          val: zayavka.vs        },
     { key: 'otgr',      label: t.zShipCol   ?? 'Отгр.',       val: zayavka.otgr || '—' },
     { key: 'status',    label: t.zStatus    ?? 'Статус',      val: statusLabel       },
+    { key: 'packages',  label: t.taroziPkgXalta ? 'Qadoq' : 'Qadoq', val: zayavka.packageLabel || '—' },
     { key: 'note',      label: t.zNote      ?? 'Примеч.',     val: zayavka.note || '—' },
   ];
 
@@ -285,6 +289,22 @@ export function ZayavkaDetailModal({ zayavka, D, t, onClose }: Props) {
               </td>
             ))}
           </tr>
+          {(zayavka.packageLabel || zayavka.createdByName) && (
+            <tr style={{ background: hdr }}>
+              <td colSpan={COLS.length} style={{ padding: '5px 8px', fontSize: 10, color: sub }}>
+                {zayavka.packageLabel && (
+                  <span style={{ color: D ? '#c4b5fd' : '#6d28d9', marginRight: 12 }}>
+                    {zayavka.packageLabel}
+                  </span>
+                )}
+                {zayavka.createdByName && (
+                  <span>
+                    {t.taroziCreatedBy ?? 'Yaratgan'}: {zayavka.createdByName}
+                  </span>
+                )}
+              </td>
+            </tr>
+          )}
         </tfoot>
       </table>
     </div>

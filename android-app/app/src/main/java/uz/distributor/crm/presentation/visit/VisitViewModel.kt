@@ -25,6 +25,8 @@ enum class VisitViewLevel { CATEGORIES, PRODUCTS, PRODUCT_DETAIL, PROMOTIONS }
 
 enum class VisitRefreshButtonState { IDLE, LOADING, SUCCESS }
 
+enum class VisitProductSort { DEFAULT, ALPHA, BEST_SELLING }
+
 data class CategoryWithCount(val name: String, val count: Int)
 
 data class VisitUiState(
@@ -33,6 +35,8 @@ data class VisitUiState(
     val allProducts: List<Product> = emptyList(),
     val products: List<Product> = emptyList(),
     val selectedCategory: String? = null,
+    /** Kategoriya ochilganda asl kategoriya — "Barcha tovarlar" o‘chganda qaytish uchun */
+    val baseCategory: String? = null,
     val selectedProductId: String? = null,
     val detailQuantity: Double = 0.0,
     val detailPromoQuantity: Double = 0.0,
@@ -40,7 +44,21 @@ data class VisitUiState(
     val selectedSectionExpanded: Boolean = true,
     val allSectionExpanded: Boolean = true,
     val searchQuery: String = "",
-    val showAllProducts: Boolean = true,
+    /** @deprecated — showOutOfStock ishlatiladi; kategoriyalar filtri bilan moslik */
+    val showAllProducts: Boolean = false,
+    /** Barcha kategoriyalardagi tovarlar */
+    val showAllCategories: Boolean = false,
+    /** Skladda 0 qoldiqli tovarlarni ham ko‘rsatish */
+    val showOutOfStock: Boolean = false,
+    /** Rasmlar bilan grid ko‘rinish */
+    val productsGridMode: Boolean = false,
+    val productSort: VisitProductSort = VisitProductSort.DEFAULT,
+    /** Alfavit harfi — shu harf bilan boshlanadiganlarga scroll */
+    val alphabetAnchor: String? = null,
+    val showQuickCartModal: Boolean = false,
+    /** Ushbu klient uchun floating savat yashirilgan */
+    val floatingCartHidden: Boolean = false,
+    val showFabDropZone: Boolean = false,
     val cart: List<CartItem> = emptyList(),
     val cartTotal: Double = 0.0,
     val isLoading: Boolean = true,
@@ -67,14 +85,39 @@ data class VisitUiState(
     val bonusModalDraftQtys: Map<String, Double> = emptyMap(),
 ) {
     val filteredProducts: List<Product>
-        get() = VisitViewModel.filterProducts(products, searchQuery, showAllProducts)
+        get() {
+            val base = VisitViewModel.filterProducts(products, searchQuery, showOutOfStock)
+            val sorted = when (productSort) {
+                VisitProductSort.ALPHA -> base.sortedBy { it.name.lowercase() }
+                VisitProductSort.BEST_SELLING -> base.sortedWith(
+                    compareByDescending<Product> { cartQtyFor(it.id) }
+                        .thenBy { it.stockBalance }
+                        .thenBy { it.name.lowercase() },
+                )
+                VisitProductSort.DEFAULT -> base
+            }
+            return sorted
+        }
+
+    val alphabetLetters: List<String>
+        get() = filteredProducts
+            .mapNotNull { VisitViewModel.firstLetterKey(it.name) }
+            .distinct()
+            .sorted()
 
     val totalProductCount: Int
-        get() = when (selectedCategory) {
-            VisitViewModel.ALL_CATEGORY -> allProducts.size
-            null -> allProducts.size
+        get() = when {
+            showAllCategories || selectedCategory == VisitViewModel.ALL_CATEGORY -> allProducts.size
+            selectedCategory == null -> allProducts.size
             else -> allProducts.count { it.category == selectedCategory }
         }
+
+    val paidCartItemCount: Int
+        get() = cart.count { it.promotionId == null }
+
+    val showFloatingCart: Boolean
+        get() = paidCartItemCount > 0 && !floatingCartHidden &&
+            (viewLevel == VisitViewLevel.PRODUCTS || viewLevel == VisitViewLevel.CATEGORIES)
 
     val cartProductIds: Set<String>
         get() = cart.filter { it.promotionId == null }.map { it.productId }.toSet()
@@ -177,9 +220,13 @@ class VisitViewModel @Inject constructor(
 
     fun init(clientId: String) {
         viewModelScope.launch {
+            val switchedClient = _uiState.value.clientId != clientId
             _uiState.update {
                 it.copy(
                     clientId = clientId,
+                    floatingCartHidden = if (switchedClient) false else it.floatingCartHidden,
+                    showQuickCartModal = false,
+                    showFabDropZone = false,
                 )
             }
             appSettingsRepository.setActiveClientId(clientId)
@@ -203,10 +250,14 @@ class VisitViewModel @Inject constructor(
                 it.copy(
                     viewLevel = VisitViewLevel.PRODUCTS,
                     selectedCategory = cat,
+                    baseCategory = cat,
                     products = products,
                     searchQuery = "",
                     selectedProductId = null,
                     showCartSheet = false,
+                    showAllCategories = cat == ALL_CATEGORY,
+                    productSort = VisitProductSort.DEFAULT,
+                    alphabetAnchor = null,
                 )
             }
         }
@@ -465,8 +516,121 @@ class VisitViewModel @Inject constructor(
         _uiState.update { it.copy(searchQuery = query) }
     }
 
+    /** Kategoriyalar sahifasi: qoldiqsiz kategoriyalarni ham ko‘rsatish */
     fun toggleShowAllProducts() {
-        _uiState.update { it.copy(showAllProducts = !it.showAllProducts) }
+        toggleShowOutOfStock()
+    }
+
+    fun toggleShowOutOfStock() {
+        _uiState.update {
+            val next = !it.showOutOfStock
+            it.copy(showOutOfStock = next, showAllProducts = next)
+        }
+    }
+
+    fun toggleShowAllCategories() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val next = !state.showAllCategories
+            if (next) {
+                _uiState.update {
+                    it.copy(
+                        showAllCategories = true,
+                        selectedCategory = ALL_CATEGORY,
+                        products = it.allProducts,
+                        alphabetAnchor = null,
+                    )
+                }
+            } else {
+                val base = state.baseCategory?.takeIf { it != ALL_CATEGORY }
+                val products = if (base == null) {
+                    emptyList()
+                } else {
+                    productRepository.getByCategory(base)
+                }
+                _uiState.update {
+                    it.copy(
+                        showAllCategories = false,
+                        selectedCategory = base,
+                        products = products,
+                        productSort = VisitProductSort.DEFAULT,
+                        alphabetAnchor = null,
+                    )
+                }
+                if (base == null) {
+                    backToCategories()
+                }
+            }
+        }
+    }
+
+    fun toggleProductsGridMode() {
+        _uiState.update { it.copy(productsGridMode = !it.productsGridMode) }
+    }
+
+    fun setProductSort(sort: VisitProductSort) {
+        _uiState.update {
+            it.copy(
+                productSort = if (it.productSort == sort) VisitProductSort.DEFAULT else sort,
+                alphabetAnchor = null,
+            )
+        }
+    }
+
+    fun jumpToAlphabet(letter: String) {
+        _uiState.update { it.copy(alphabetAnchor = letter, productSort = VisitProductSort.ALPHA) }
+    }
+
+    fun clearAlphabetAnchor() {
+        _uiState.update { it.copy(alphabetAnchor = null) }
+    }
+
+    fun openQuickCartModal() {
+        _uiState.update { it.copy(showQuickCartModal = true, showFabDropZone = false) }
+    }
+
+    fun closeQuickCartModal() {
+        _uiState.update { it.copy(showQuickCartModal = false) }
+    }
+
+    fun showFabDropZone() {
+        _uiState.update { it.copy(showFabDropZone = true) }
+    }
+
+    fun hideFabDropZone() {
+        _uiState.update { it.copy(showFabDropZone = false) }
+    }
+
+    fun hideFloatingCartForClient() {
+        _uiState.update {
+            it.copy(
+                floatingCartHidden = true,
+                showFabDropZone = false,
+                showQuickCartModal = false,
+            )
+        }
+    }
+
+    /** Ro‘yxatdan to‘g‘ridan-to‘g‘ri miqdor — savatga yoziladi */
+    fun setListProductQty(productId: String, qty: Double) {
+        val product = _uiState.value.allProducts.find { it.id == productId }
+            ?: _uiState.value.products.find { it.id == productId }
+            ?: return
+        val clamped = qty.coerceAtLeast(0.0)
+        viewModelScope.launch {
+            cartRepository.setCartQty(_uiState.value.clientId, product, clamped)
+            refreshCart()
+        }
+    }
+
+    fun incrementListProductQty(productId: String, step: Double = 1.0) {
+        val current = _uiState.value.cartQtyFor(productId)
+        setListProductQty(productId, current + step)
+    }
+
+    fun decrementListProductQty(productId: String, step: Double = 1.0) {
+        val current = _uiState.value.cartQtyFor(productId)
+        setListProductQty(productId, (current - step).coerceAtLeast(0.0))
     }
 
     fun retry() = load()
@@ -854,7 +1018,7 @@ class VisitViewModel @Inject constructor(
         fun filterProducts(
             products: List<Product>,
             query: String,
-            showAll: Boolean,
+            showOutOfStock: Boolean,
         ): List<Product> {
             val q = query.trim()
             return products.filter { product ->
@@ -863,9 +1027,14 @@ class VisitViewModel @Inject constructor(
                     UzScript.matches(product.code, q) ||
                     UzScript.matches(product.category, q) ||
                     UzScript.matches(product.brand, q)
-                val matchesStock = showAll || product.stockBalance > 0
+                val matchesStock = showOutOfStock || product.stockBalance > 0
                 matchesQuery && matchesStock
             }
+        }
+
+        fun firstLetterKey(name: String): String? {
+            val ch = name.trim().firstOrNull()?.uppercaseChar() ?: return null
+            return if (ch.isLetter()) ch.toString() else "#"
         }
     }
 }

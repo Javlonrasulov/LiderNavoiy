@@ -8,6 +8,7 @@ import {
 import type { OrderItem } from './order.entity';
 
 export type OrderAuditAction =
+  | 'created'
   | 'client_submitted'
   | 'items_updated'
   | 'sent_to_warehouse'

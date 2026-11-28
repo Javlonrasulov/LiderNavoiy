@@ -3,6 +3,8 @@ import {
   UnauthorizedException,
   Logger,
   ForbiddenException,
+  BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -14,7 +16,13 @@ import { User } from './entities/user.entity';
 import { UserLoginDevice } from './entities/user-login-device.entity';
 import { DistributorProfile } from '../distributors/entities/distributor-profile.entity';
 import { Company } from '../companies/entities/company.entity';
-import { ChangePasswordDto, LoginDto, AuthResponseDto, LoginDeviceDto } from './dto/auth.dto';
+import {
+  ChangeCredentialsDto,
+  ChangePasswordDto,
+  LoginDto,
+  AuthResponseDto,
+  LoginDeviceDto,
+} from './dto/auth.dto';
 import { UserRole } from '../common/enums';
 import { isAgentPosition, isDeliveryPosition } from '../common/staff-role.util';
 import { SessionClient, SessionStoreService, sessionClientOf } from './session-store.service';
@@ -300,6 +308,42 @@ export class AuthService {
     await this.sessions.revokeAllSessions(userId);
   }
 
+  async changeCredentials(
+    userId: string,
+    dto: ChangeCredentialsDto,
+  ): Promise<{ username: string; passwordChanged: boolean }> {
+    const newUsername = dto.newUsername?.trim().toLowerCase() || undefined;
+    const newPassword = dto.newPassword?.trim() || undefined;
+    if (!newUsername && !newPassword) {
+      throw new BadRequestException('newUsername or newPassword is required');
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
+    if (!user || !(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid current password');
+    }
+
+    if (newUsername && newUsername !== user.username) {
+      const taken = await this.userRepo.findOne({ where: { username: newUsername } });
+      if (taken && taken.id !== user.id) {
+        throw new ConflictException('Username already exists');
+      }
+      user.username = newUsername;
+    }
+
+    let passwordChanged = false;
+    if (newPassword) {
+      user.passwordHash = await this.hashPassword(newPassword);
+      passwordChanged = true;
+    }
+
+    await this.userRepo.save(user);
+    if (passwordChanged) {
+      await this.sessions.revokeAllSessions(userId);
+    }
+    return { username: user.username, passwordChanged };
+  }
+
   private deviceKeyOf(device?: LoginDeviceDto): string | null {
     if (!device) return null;
     const id = device.id?.trim();
@@ -422,6 +466,7 @@ export class AuthService {
     const primaryCompanyId = companyIds[0] ?? profile?.companyId ?? undefined;
     // Per-user Ilova toggle (default false). Company-level flag is separate admin setting.
     const agentsCanAddClients = !!profile?.canAddClients;
+    const recordVisitAudio = !!profile?.recordVisitAudio;
 
     return {
       accessToken,
@@ -447,6 +492,7 @@ export class AuthService {
         companyIds: companyIds.length ? companyIds : undefined,
         companyName: profile?.companyName ?? undefined,
         agentsCanAddClients,
+        recordVisitAudio,
         clientId: user.clientId ?? undefined,
         clientName: user.client?.name ?? undefined,
       },

@@ -42,8 +42,13 @@ import uz.distributor.crm.data.location.DeviceLocationProvider
 import uz.distributor.crm.data.repository.AuthRepository
 import uz.distributor.crm.presentation.auth.LocationRequiredScreen
 import uz.distributor.crm.presentation.auth.LoginScreen
+import uz.distributor.crm.presentation.auth.MicRequiredScreen
 import uz.distributor.crm.presentation.auth.NotificationRequiredScreen
 import uz.distributor.crm.presentation.clientdetail.ClientDetailScreen
+import uz.distributor.crm.presentation.recording.VisitStartViewModel
+import uz.distributor.crm.recording.VisitRecordingPhase
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import uz.distributor.crm.presentation.clients.ClientsScreen
 import uz.distributor.crm.presentation.clients.CustomerFormScreen
 import uz.distributor.crm.presentation.components.BottomNavBar
@@ -75,6 +80,7 @@ enum class SplashResult {
     LOGIN,
     LOCATION,
     NOTIFICATIONS,
+    MIC,
 }
 
 @HiltViewModel
@@ -91,6 +97,7 @@ class SplashViewModel @Inject constructor(
                 !loggedIn -> onResult(SplashResult.LOGIN)
                 !NotificationAccess.areEnabled(context) -> onResult(SplashResult.NOTIFICATIONS)
                 !deviceLocationProvider.isReadyForTracking() -> onResult(SplashResult.LOCATION)
+                !uz.distributor.crm.util.MicAccess.isGranted(context) -> onResult(SplashResult.MIC)
                 else -> {
                     locationTrackingController.startIfReady()
                     onResult(SplashResult.MAIN)
@@ -111,6 +118,7 @@ class AppNavigationViewModel @Inject constructor(
 @Composable
 fun AppNavHost(
     navViewModel: AppNavigationViewModel = hiltViewModel(),
+    visitStartViewModel: VisitStartViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -121,6 +129,23 @@ fun AppNavHost(
     val chromeVisible by BottomNavChrome.visible.collectAsState()
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val currentUser by navViewModel.currentUser.collectAsState(initial = null)
+    val recordingState by visitStartViewModel.recordingState.collectAsState()
+    var startingVisit by remember { mutableStateOf(false) }
+
+    fun goToVisit(clientId: String) {
+        navController.navigate("visit/$clientId")
+    }
+
+    fun startVisitFlow(clientId: String) {
+        if (startingVisit) return
+        startingVisit = true
+        // Admin switch yoqilgan bo'lsa — rozilik dialogisiz avtomatik yozuv
+        val autoRecord = currentUser?.shouldRecordVisitAudio() == true
+        visitStartViewModel.beginVisit(clientId, if (autoRecord) true else null) {
+            startingVisit = false
+            goToVisit(clientId)
+        }
+    }
 
     LaunchedEffect(currentRoute) {
         val keepChromeState =
@@ -141,9 +166,24 @@ fun AppNavHost(
                 "splash",
                 "login",
                 "notification_required",
+                "mic_required",
+                "location_required",
             )
             if (!allowedWithoutNotifications && !NotificationAccess.areEnabled(context)) {
                 navController.navigate("notification_required") {
+                    popUpTo(0) { inclusive = true }
+                }
+                return@LifecycleEventObserver
+            }
+            val allowedWithoutMic = route in setOf(
+                "splash",
+                "login",
+                "notification_required",
+                "mic_required",
+                "location_required",
+            )
+            if (!allowedWithoutMic && !uz.distributor.crm.util.MicAccess.isGranted(context)) {
+                navController.navigate("mic_required") {
                     popUpTo(0) { inclusive = true }
                 }
             }
@@ -221,12 +261,19 @@ fun AppNavHost(
                         popUpTo("splash") { inclusive = true }
                     }
                 },
+                onMicRequired = {
+                    navController.navigate("mic_required") {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                },
             )
         }
         composable("login") {
             LoginScreen(
                 onLoginSuccess = {
-                    navController.navigate("main") { popUpTo("login") { inclusive = true } }
+                    navController.navigate("notification_required") {
+                        popUpTo("login") { inclusive = true }
+                    }
                 },
                 onNotificationRequired = {
                     navController.navigate("notification_required") {
@@ -248,14 +295,31 @@ fun AppNavHost(
         composable("location_required") {
             LocationRequiredScreen(
                 onReady = {
-                    if (!NotificationAccess.areEnabled(context)) {
-                        navController.navigate("notification_required") {
-                            popUpTo("location_required") { inclusive = true }
+                    when {
+                        !NotificationAccess.areEnabled(context) -> {
+                            navController.navigate("notification_required") {
+                                popUpTo("location_required") { inclusive = true }
+                            }
                         }
-                    } else {
-                        navController.navigate("main") {
-                            popUpTo("location_required") { inclusive = true }
+                        !uz.distributor.crm.util.MicAccess.isGranted(context) -> {
+                            navController.navigate("mic_required") {
+                                popUpTo("location_required") { inclusive = true }
+                            }
                         }
+                        else -> {
+                            navController.navigate("main") {
+                                popUpTo("location_required") { inclusive = true }
+                            }
+                        }
+                    }
+                },
+            )
+        }
+        composable("mic_required") {
+            MicRequiredScreen(
+                onReady = {
+                    navController.navigate("main") {
+                        popUpTo("mic_required") { inclusive = true }
                     }
                 },
             )
@@ -381,7 +445,7 @@ fun AppNavHost(
             ClientDetailScreen(
                 clientId = entry.arguments?.getString("clientId") ?: "",
                 onBack = { navController.popBackStack() },
-                onStartVisit = { id -> navController.navigate("visit/$id") },
+                onStartVisit = { id -> startVisitFlow(id) },
                 onReconciliation = { id -> navController.navigate("reconciliation/$id") },
                 onEditClient = { id -> navController.navigate("edit_client/$id") },
             )
@@ -402,7 +466,12 @@ fun AppNavHost(
         ) { entry ->
             VisitScreen(
                 clientId = entry.arguments?.getString("clientId") ?: "",
-                onBack = { navController.popBackStack() },
+                recordingState = recordingState,
+                onBack = {
+                    visitStartViewModel.endVisit("without_order") {
+                        navController.popBackStack()
+                    }
+                },
                 onOrderSummary = { id -> navController.navigate("order/$id") },
             )
         }
@@ -474,6 +543,7 @@ fun AppNavHost(
                     .zIndex(1000f),
             )
         }
+
         AnimatedVisibility(
             visible = showBottomNav && !imeVisible && chromeVisible,
             enter = slideInVertically { it } + fadeIn(),
@@ -483,7 +553,18 @@ fun AppNavHost(
                 selected = selectedTab,
                 onTabSelected = { tab ->
                     if (tab == NavTab.DELIVERY && !isDeliveryPerson) return@BottomNavBar
-                    navController.navigateBottomTab(tab)
+                    val onVisit = currentRoute?.startsWith("visit/") == true
+                    val recordingActive =
+                        recordingState.phase == VisitRecordingPhase.Recording ||
+                            recordingState.phase == VisitRecordingPhase.Interrupted
+                    if (onVisit || recordingActive) {
+                        // Pastki tab tashrifni yakunlaydi — mikrofon/taymer darhol to'xtaydi
+                        visitStartViewModel.endVisit("without_order") {
+                            navController.navigateBottomTab(tab)
+                        }
+                    } else {
+                        navController.navigateBottomTab(tab)
+                    }
                 },
                 isDark = isDark,
                 showDelivery = isDeliveryPerson,
@@ -499,6 +580,7 @@ private fun SplashRoute(
     onNotLoggedIn: () -> Unit,
     onLocationRequired: () -> Unit,
     onNotificationRequired: () -> Unit,
+    onMicRequired: () -> Unit,
 ) {
     val viewModel: SplashViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
@@ -508,6 +590,7 @@ private fun SplashRoute(
                 SplashResult.LOGIN -> onNotLoggedIn()
                 SplashResult.LOCATION -> onLocationRequired()
                 SplashResult.NOTIFICATIONS -> onNotificationRequired()
+                SplashResult.MIC -> onMicRequired()
             }
         }
     }

@@ -235,6 +235,17 @@ fun ClientDetailScreen(
                                     fontWeight = FontWeight.SemiBold,
                                 )
                             }
+                            if (state.recordVisitAudio) {
+                                Text(
+                                    AppStrings.recordingVisitHint(lang),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                                    color = subColor,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                )
+                            }
                             Spacer(Modifier.height(10.dp))
                             Row(
                                 Modifier.fillMaxWidth(),

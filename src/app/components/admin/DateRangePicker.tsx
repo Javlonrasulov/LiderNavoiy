@@ -74,6 +74,8 @@ interface Props {
   onViewMonthChange?: (year: number, month: number) => void;
   /** Optional clear handler; default resets to month-start → today */
   onClear?: () => void;
+  /** Dropdown horizontal alignment */
+  align?: 'left' | 'right';
 }
 
 /** LiderPlast navbar uslubidagi bitta kalendar — diapazon tanlash */
@@ -87,6 +89,7 @@ export function DateRangePicker({
   hasDataDates,
   onViewMonthChange,
   onClear,
+  align = 'left',
 }: Props) {
   const { lang } = useLang();
   const labels = LABELS[lang] ?? LABELS.uz;
@@ -232,7 +235,7 @@ export function DateRangePicker({
         <div
           className={`absolute z-[80] ${panelBg} border rounded-2xl shadow-2xl overflow-hidden
             ${compact
-              ? 'left-0 w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)]'
+              ? `${align === 'right' ? 'right-0' : 'left-0'} w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)]`
               : 'left-0 right-0 w-full'
             }
             ${dropUp ? 'bottom-full mb-2' : 'top-full mt-2'}`}

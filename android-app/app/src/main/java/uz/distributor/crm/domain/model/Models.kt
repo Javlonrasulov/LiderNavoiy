@@ -14,6 +14,11 @@ data class AuthUser(
     val isAgent: Boolean? = null,
     /** Backend kompaniya flagi; null/false = mijoz qo‘shish taqiqlangan */
     val agentsCanAddClients: Boolean? = null,
+    /**
+     * Backend `recordVisitAudio` — tashrif audio yozuvi.
+     * Faqat login/refresh/server qiymati; eski lokal true bilan yozuv boshlanmasin.
+     */
+    val recordVisitAudio: Boolean? = null,
 ) {
     /** Agent va dostavkachi ikkalasi ham role=distributor; farq backend position/isDelivery. */
     fun isDeliveryPerson(): Boolean {
@@ -29,6 +34,9 @@ data class AuthUser(
     }
 
     fun canAddClients(): Boolean = agentsCanAddClients == true
+
+    /** Faqat aniq server `true`; null/false = yozuv yo‘q */
+    fun shouldRecordVisitAudio(): Boolean = recordVisitAudio == true
 }
 
 /** Backend `staff-role.util.ts` bilan bir xil markerlar. */

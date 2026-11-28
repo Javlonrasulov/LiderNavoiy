@@ -83,6 +83,14 @@ export class CreateAppUserDto {
   @IsOptional()
   @IsBoolean()
   canAddClients?: boolean;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Agent APK: tashrif audiosini yozish (default false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  recordVisitAudio?: boolean;
 }
 
 export class UpdateAppUserDto {
@@ -161,6 +169,14 @@ export class UpdateAppUserDto {
   @IsOptional()
   @IsBoolean()
   canAddClients?: boolean;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Agent APK: tashrif audiosini yozish (default false)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  recordVisitAudio?: boolean;
 }
 
 export class AppUserResponseDto {
@@ -179,6 +195,8 @@ export class AppUserResponseDto {
   phone?: string | null;
   /** Agent APK: mijoz qo‘shish (default false) */
   canAddClients?: boolean;
+  /** Agent APK: tashrif audiosini yozish (default false) */
+  recordVisitAudio?: boolean;
   lastLoginAt?: string | null;
   lastActiveAt?: string | null;
   isOnline?: boolean;

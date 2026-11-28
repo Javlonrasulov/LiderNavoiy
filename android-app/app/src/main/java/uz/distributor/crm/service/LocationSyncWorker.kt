@@ -15,6 +15,7 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import uz.distributor.crm.data.repository.CartRepository
 import uz.distributor.crm.data.repository.LocationRepository
+import uz.distributor.crm.recording.VisitRecordingManager
 import java.util.concurrent.TimeUnit
 
 @HiltWorker
@@ -23,6 +24,7 @@ class LocationSyncWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val locationRepository: LocationRepository,
     private val cartRepository: CartRepository,
+    private val visitRecordingManager: VisitRecordingManager,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -32,6 +34,7 @@ class LocationSyncWorker @AssistedInject constructor(
             if (saved == 0) return@repeat
         }
         cartRepository.syncPending()
+        visitRecordingManager.syncPendingUploads()
         return Result.success()
     }
 

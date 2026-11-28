@@ -4,9 +4,10 @@ import { GoodsReceipt } from './entities/goods-receipt.entity';
 import { FactoryReconciliation } from './entities/factory-reconciliation.entity';
 import { GoodsReceiptsService } from './goods-receipts.service';
 import { GoodsReceiptsController } from './goods-receipts.controller';
+import { Product } from '../products/entities/product.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GoodsReceipt, FactoryReconciliation])],
+  imports: [TypeOrmModule.forFeature([GoodsReceipt, FactoryReconciliation, Product])],
   controllers: [GoodsReceiptsController],
   providers: [GoodsReceiptsService],
   exports: [GoodsReceiptsService],

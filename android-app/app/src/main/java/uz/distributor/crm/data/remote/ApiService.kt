@@ -128,8 +128,51 @@ interface ApiService {
     @POST("visits")
     suspend fun createVisit(@Body body: CreateVisitRequest): Map<String, Any>
 
+    @POST("visits/start")
+    suspend fun startVisit(@Body body: StartVisitRequest): StartVisitResponseDto
+
+    @POST("visits/{id}/complete")
+    suspend fun completeVisit(
+        @Path("id") id: String,
+        @Body body: CompleteVisitRequest,
+    ): VisitDto
+
     @POST("visits/sync")
     suspend fun syncVisits(@Body body: BatchVisitsRequest): Map<String, Any>
+
+    @POST("recordings/sessions")
+    suspend fun openRecordingSession(@Body body: OpenRecordingSessionRequest): VisitRecordingDto
+
+    @POST("recordings/{id}/finish")
+    suspend fun finishRecording(
+        @Path("id") id: String,
+        @Body body: FinishRecordingRequest,
+    ): VisitRecordingDto
+
+    @Multipart
+    @POST("recordings/{id}/upload")
+    suspend fun uploadRecording(
+        @Path("id") id: String,
+        @Part file: MultipartBody.Part,
+    ): VisitRecordingDto
+
+    @POST("recordings/{id}/link-order")
+    suspend fun linkRecordingOrder(
+        @Path("id") id: String,
+        @Body body: LinkRecordingOrderRequest,
+    ): VisitRecordingDto
+
+    @GET("recordings/mine")
+    suspend fun getMyRecordings(
+        @Query("day") day: String? = "today",
+        @Query("q") q: String? = null,
+        @Query("page") page: Int? = 1,
+        @Query("pageSize") pageSize: Int? = 20,
+    ): VisitRecordingsPageDto
+
+    @retrofit2.http.Streaming
+    @GET("recordings/mine/{id}/audio")
+    suspend fun downloadMyRecordingAudio(@Path("id") id: String): okhttp3.ResponseBody
 
     @GET("orders")
     suspend fun getOrders(): List<OrderDto>
@@ -194,7 +237,7 @@ interface ApiService {
     suspend fun rejectClientOrder(@Path("id") id: String): OrderDto
 
     @POST("orders")
-    suspend fun createOrder(@Body body: CreateOrderRequest): Map<String, Any>
+    suspend fun createOrder(@Body body: CreateOrderRequest): OrderDto
 
     @POST("orders/sync")
     suspend fun syncOrders(@Body body: BatchOrdersRequest): Map<String, Any>

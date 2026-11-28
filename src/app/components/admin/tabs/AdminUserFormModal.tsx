@@ -28,6 +28,7 @@ export interface UserFormRow {
   acceptPay: boolean;
   consig: boolean;
   canAddClients: boolean;
+  recordVisitAudio?: boolean;
   gps: boolean;
   companyId?: string | null;
   companyIds?: string[];
@@ -54,6 +55,7 @@ interface FormData {
   appPassword: string;
   appAcceptPay: boolean;
   appAddClient: boolean;
+  appRecordAudio: boolean;
   /** Agent APK da GPS doim; menejer ilovasida GPS yo‘q */
   appGps: boolean;
 }
@@ -271,6 +273,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
         appPassword: getStoredAppPassword(user.onTrade || ''),
         appAcceptPay: user.acceptPay,
         appAddClient: maybeManager ? true : !!user.canAddClients,
+        appRecordAudio: !!user.recordVisitAudio,
         appGps: !maybeManager,
       };
     }
@@ -280,7 +283,7 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
       telegramId: '', org: '', grafik: grafikOptions[0],
       companyIds: [],
       appLogin: '', appPassword: '',
-      appAcceptPay: true, appAddClient: false, appGps: true,
+      appAcceptPay: true, appAddClient: false, appRecordAudio: false, appGps: true,
     };
   });
 
@@ -637,6 +640,11 @@ export function AdminUserFormModal({ D, t, user, onClose, onSave, onDelete }: Pr
             hint: managerLavozim
               ? tr(t, 'userAppAddClientManagerOn', 'Menejer mijoz qo‘sha oladi')
               : undefined,
+          },
+          {
+            key: 'appRecordAudio' as const,
+            label: tr(t, 'empRecordAudio', 'Tashrif audiosini yozish'),
+            locked: false,
           },
         ].map((item, i, arr) => {
           const val = form[item.key];

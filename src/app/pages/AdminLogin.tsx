@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { Eye, EyeOff, Moon, Sun, Shield, AlertCircle, Loader, Globe, ChevronDown, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router';
+import { Eye, EyeOff, Moon, Sun, Shield, AlertCircle, Loader, Globe, ChevronDown, Check, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '../components/ThemeContext';
 import { useAdminAuth } from '../components/AdminAuthContext';
 import { api, setTokens, clearTokens } from '../api/client';
@@ -56,6 +56,7 @@ export default function AdminLogin() {
   const { isDark, setIsDark } = useTheme();
   const { login } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const { lang, setLang } = useLang();
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -63,8 +64,17 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [shake, setShake] = useState(false);
+
+  useEffect(() => {
+    const msg = (location.state as { notice?: string } | null)?.notice;
+    if (msg) {
+      setNotice(msg);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
 
   const D = isDark;
   const t = T[lang];
@@ -125,8 +135,10 @@ export default function AdminLogin() {
       localStorage.setItem('api_user_id', res.user.id);
       window.dispatchEvent(new CustomEvent('lider:auth-changed'));
       const userData = {
+        id: res.user.id,
         name: res.user.fullName,
         role: res.user.role,
+        username: res.user.username ?? username.trim().toLowerCase(),
         permissions: res.user.permissions ?? null,
       };
       login(username.trim(), password.trim(), userData);
@@ -241,6 +253,12 @@ export default function AdminLogin() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className={`rounded-3xl border p-6 space-y-4 ${cardBg} ${shake ? 'shake' : ''}`}>
+            {notice && (
+              <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl ${D ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <CheckCircle2 size={15} className="text-emerald-500 flex-shrink-0" />
+                <p className={`text-sm ${D ? 'text-emerald-400' : 'text-emerald-700'}`}>{notice}</p>
+              </div>
+            )}
             {/* Error */}
             {error && (
               <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl ${D ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-rose-50 border border-rose-200'}`}>

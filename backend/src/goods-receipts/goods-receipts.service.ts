@@ -14,6 +14,7 @@ import {
   CreateGoodsReceiptDto,
   UpsertFactoryReconciliationDto,
 } from './dto/goods-receipt.dto';
+import { Product } from '../products/entities/product.entity';
 
 function n(v: unknown, fallback = 0): number {
   const x = Number(v);
@@ -38,6 +39,8 @@ export class GoodsReceiptsService {
     private readonly receiptRepo: Repository<GoodsReceipt>,
     @InjectRepository(FactoryReconciliation)
     private readonly reconRepo: Repository<FactoryReconciliation>,
+    @InjectRepository(Product)
+    private readonly productRepo: Repository<Product>,
   ) {}
 
   private normalizeItems(items: CreateGoodsReceiptDto['items']): GoodsReceiptItem[] {
@@ -59,6 +62,7 @@ export class GoodsReceiptsService {
 
   async create(dto: CreateGoodsReceiptDto, authorId?: string) {
     const type = (dto.type === 'chakana' || dto.type === 'ishlab' ? dto.type : 'opt') as GoodsReceiptType;
+    const items = this.normalizeItems(dto.items);
     const row = this.receiptRepo.create({
       legacyId: dto.legacyId != null ? String(dto.legacyId) : null,
       companyId: dto.companyId?.trim() || null,
@@ -76,9 +80,32 @@ export class GoodsReceiptsService {
       type,
       author: dto.author || '',
       authorId: dto.authorId || authorId || null,
-      items: this.normalizeItems(dto.items),
+      items,
     });
-    return this.receiptRepo.save(row);
+    const saved = await this.receiptRepo.save(row);
+    await this.applyWeightedAverageCost(items);
+    return saved;
+  }
+
+  /** Ombor kirimidan mahsulot o‘rtacha tannarxini yangilash (eski sotuv snapshotiga tegmaydi). */
+  private async applyWeightedAverageCost(items: GoodsReceiptItem[]) {
+    for (const it of items) {
+      if (!it.productId) continue;
+      const qty = receivedQty(it);
+      const unitCost = n(it.tsenaPriv, n(it.tsenaPost));
+      if (!(qty > 0) || !(unitCost > 0)) continue;
+      const product = await this.productRepo.findOne({ where: { id: it.productId } });
+      if (!product) continue;
+      const prevQty = Math.max(0, n(product.stockBalance));
+      const prevCost = n(product.costPrice);
+      const totalQty = prevQty + qty;
+      const avg =
+        totalQty > 0
+          ? (prevQty * prevCost + qty * unitCost) / totalQty
+          : unitCost;
+      product.costPrice = Math.round(avg * 100) / 100;
+      await this.productRepo.save(product);
+    }
   }
 
   async importMany(rows: CreateGoodsReceiptDto[], authorId?: string) {

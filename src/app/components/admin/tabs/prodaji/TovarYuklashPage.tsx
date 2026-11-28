@@ -44,6 +44,8 @@ interface OtgrRow {
   direction: string;
   timeOtgr: string;
   author: string;
+  createdByName?: string | null;
+  packageLabel?: string;
   needsDriver?: boolean;
   backendStatus?: string;
 }
@@ -163,6 +165,7 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
         const raw = sessionStorage.getItem('lider:ready-load-orders');
         const list = raw ? JSON.parse(raw) as Array<{
           id: string; client?: string; code?: string; agentName?: string;
+          createdByName?: string; packageCounts?: { xalta?: number; quti?: number; paket?: number; mayda?: number };
           amount?: number; itemCount?: number; createdAt?: string; status?: string;
           driver?: string; deliveryDistributorId?: string;
         }> : [];
@@ -170,6 +173,15 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
           const d = o.createdAt ? new Date(o.createdAt) : new Date();
           const date = `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
           const isLoaded = o.status === 'on_way' || !!o.deliveryDistributorId;
+          const pkg = o.packageCounts;
+          const packageLabel = pkg
+            ? [
+                pkg.xalta ? `xalta ${pkg.xalta} ta` : '',
+                pkg.quti ? `quti ${pkg.quti} ta` : '',
+                pkg.paket ? `paket ${pkg.paket} ta` : '',
+                pkg.mayda ? `mayda qop ${pkg.mayda} ta` : '',
+              ].filter(Boolean).join(' · ')
+            : '';
           return {
             id: o.id,
             date,
@@ -189,7 +201,9 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
             exid: o.code ?? '—',
             direction: '—',
             timeOtgr: isLoaded ? date : '—',
-            author: o.agentName ?? '—',
+            author: o.createdByName || o.agentName || '—',
+            createdByName: o.createdByName ?? null,
+            packageLabel,
             needsDriver: !isLoaded,
             backendStatus: o.status ?? 'packing',
           };
@@ -440,6 +454,11 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
   const cellVal = (row: OtgrRow, key: string): string => {
     if (key === 'summa') return fmtSum(row.summa);
     if (key === 'ves')   return fmtVes(row.ves);
+    if (key === 'author') return row.createdByName || row.author || '—';
+    if (key === 'direction') {
+      const base = row.direction || '—';
+      return row.packageLabel ? `${base} · ${row.packageLabel}` : base;
+    }
     if (key === 'date' || key === 'timeOtgr') {
       const v = (row as Record<string, unknown>)[key];
       return v ? formatDisplayDate(String(v)) : '—';
@@ -849,7 +868,8 @@ export function TovarYuklashPage({ D, t, onCreateClick, pendingOrders = [], sele
                   { label: 'ExID',                              val: row.exid           },
                   { label: t.zDirection    ?? 'Yo\'nalish',    val: row.direction      },
                   { label: t.otgrTime      ?? 'Yuklash vaqti', val: formatDisplayDate(row.timeOtgr) },
-                  { label: t.otgrAuthor    ?? 'Muallif',       val: row.author         },
+                  { label: t.otgrAuthor    ?? 'Muallif',       val: row.createdByName || row.author },
+                  { label: 'Qadoq',                             val: row.packageLabel || '—' },
                 ].map(item => (
                   <div key={item.label} style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
                     <span style={{ fontSize:11, color:muted }}>{item.label}</span>

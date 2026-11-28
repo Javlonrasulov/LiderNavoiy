@@ -17,6 +17,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
+  ChangeCredentialsDto,
   ChangePasswordDto,
   LoginDto,
   RefreshTokenDto,
@@ -145,5 +146,17 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
     return this.authService.changePassword(req.user.id, dto);
+  }
+
+  @Post('change-credentials')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change login and/or password for the authenticated user' })
+  changeCredentials(
+    @Request() req: { user: User },
+    @Body() dto: ChangeCredentialsDto,
+  ): Promise<{ username: string; passwordChanged: boolean }> {
+    return this.authService.changeCredentials(req.user.id, dto);
   }
 }

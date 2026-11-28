@@ -93,6 +93,26 @@ export class ChangePasswordDto {
   newPassword: string;
 }
 
+/** Login va/yoki parolni o‘zgartirish (joriy parol majburiy) */
+export class ChangeCredentialsDto {
+  @ApiProperty({ example: 'agent123' })
+  @IsString()
+  @IsNotEmpty()
+  currentPassword: string;
+
+  @ApiPropertyOptional({ example: 'newadmin' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  newUsername?: string;
+
+  @ApiPropertyOptional({ example: 'newpassword123' })
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  newPassword?: string;
+}
+
 export class AuthResponseDto {
   accessToken: string;
   refreshToken: string;
@@ -114,6 +134,8 @@ export class AuthResponseDto {
     companyName?: string;
     /** Agent/dostavkachi mijoz qo‘sha oladimi (kompaniya sozlamasi, default false) */
     agentsCanAddClients?: boolean;
+    /** Agent: tashrif audiosini yozish (default false) */
+    recordVisitAudio?: boolean;
     clientId?: string;
     clientName?: string;
   };
