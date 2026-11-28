@@ -67,3 +67,6 @@ captures/
 /android-app/dbg*
 /android-app/of-*
 /android-app/off-*
+
+/android-app/*.m4a
+/android-app/zapis-*
